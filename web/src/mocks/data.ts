@@ -77,7 +77,10 @@ export const currentUser: UserProfile = {
   ratingCount: 6,
 };
 
-const stock = (seed: string) => `https://picsum.photos/seed/${seed}/800/600`;
+// Real car photos (Unsplash), chosen to match each vehicle's body type / make.
+const img = (id: string) =>
+  `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=900&q=70`;
+const INTERIOR = '1485463611174-f302f6a5c1c9'; // shared cabin/dashboard shot
 
 // ---------------------------------------------------------------------------
 // Listings.
@@ -98,7 +101,7 @@ export const listings: Listing[] = [
     pricePerDayRwf: 45000,
     location: 'Kimihurura, Kigali',
     city: 'Kigali',
-    photos: [stock('rav4a'), stock('rav4b'), stock('rav4c')],
+    photos: [img('1617469767053-d3b523a0b982'), img(INTERIOR)],
     features: ['Air conditioning', 'Bluetooth', 'Backup camera', 'USB charging'],
     bookingMode: 'instant',
     ratingAvg: 4.9,
@@ -120,7 +123,7 @@ export const listings: Listing[] = [
     pricePerDayRwf: 85000,
     location: 'Nyarutarama, Kigali',
     city: 'Kigali',
-    photos: [stock('prado1'), stock('prado2')],
+    photos: [img('1533473359331-0135ef1b58bf'), img(INTERIOR)],
     features: ['4WD', 'Roof rack', 'Air conditioning', '7 seats'],
     bookingMode: 'request',
     ratingAvg: 4.7,
@@ -142,7 +145,7 @@ export const listings: Listing[] = [
     pricePerDayRwf: 28000,
     location: 'Kacyiru, Kigali',
     city: 'Kigali',
-    photos: [stock('swift1'), stock('swift2')],
+    photos: [img('1549317661-bd32c8ce0db2')],
     features: ['Air conditioning', 'Fuel efficient', 'Bluetooth'],
     bookingMode: 'instant',
     ratingAvg: 4.6,
@@ -164,7 +167,7 @@ export const listings: Listing[] = [
     pricePerDayRwf: 95000,
     location: 'Remera, Kigali',
     city: 'Kigali',
-    photos: [stock('hiace1'), stock('hiace2')],
+    photos: [img('1464219789935-c2d9d9aba644')],
     features: ['14 seats', 'Air conditioning', 'Commercial insurance'],
     bookingMode: 'instant',
     ratingAvg: 4.5,
@@ -186,7 +189,7 @@ export const listings: Listing[] = [
     pricePerDayRwf: 130000,
     location: 'Remera, Kigali',
     city: 'Kigali',
-    photos: [stock('cclass1'), stock('cclass2')],
+    photos: [img('1503376780353-7e6692767b70'), img(INTERIOR)],
     features: ['Leather seats', 'Air conditioning', 'Premium audio', 'Commercial insurance'],
     bookingMode: 'request',
     ratingAvg: 4.8,
@@ -208,7 +211,7 @@ export const listings: Listing[] = [
     pricePerDayRwf: 70000,
     location: 'Remera, Kigali',
     city: 'Kigali',
-    photos: [stock('hilux1'), stock('hilux2')],
+    photos: [img('1559416523-140ddc3d238c')],
     features: ['4WD', 'Cargo bed', 'Air conditioning'],
     bookingMode: 'instant',
     ratingAvg: 4.4,
@@ -248,8 +251,8 @@ export const bookings: Booking[] = [
     serviceFeeRwf: 19000,
     totalRwf: 209000,
     createdAt: '2026-05-01T12:00:00Z',
-    checkIn: [{ url: stock('ci1'), label: 'Front', takenAt: '2026-05-10T08:00:00Z' }],
-    checkOut: [{ url: stock('co1'), label: 'Front', takenAt: '2026-05-12T17:00:00Z' }],
+    checkIn: [{ url: img('1464219789935-c2d9d9aba644'), label: 'Front', takenAt: '2026-05-10T08:00:00Z' }],
+    checkOut: [{ url: img('1464219789935-c2d9d9aba644'), label: 'Front', takenAt: '2026-05-12T17:00:00Z' }],
   },
   {
     id: 'bk-3',
