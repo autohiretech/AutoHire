@@ -1,0 +1,407 @@
+import type {
+  AppNotification,
+  Booking,
+  Conversation,
+  Host,
+  Listing,
+  Message,
+  Payout,
+  Review,
+  UserProfile,
+} from '@autohire/shared';
+
+// ---------------------------------------------------------------------------
+// Hosts — a mix of individual owners and a business/fleet agency (Section 3).
+// ---------------------------------------------------------------------------
+export const hosts: Host[] = [
+  {
+    id: 'host-1',
+    fullName: 'Aline Uwase',
+    email: 'aline@example.rw',
+    phone: '+250788111222',
+    role: 'owner',
+    joinedAt: '2025-02-10',
+    verification: 'verified',
+    ratingAvg: 4.9,
+    ratingCount: 37,
+    ownerType: 'individual',
+    payoutTerms: 'per_trip',
+    insuranceType: 'platform_provided',
+    vehicleCount: 1,
+  },
+  {
+    id: 'host-2',
+    fullName: 'Jean-Paul Habimana',
+    email: 'jp@example.rw',
+    phone: '+250788333444',
+    role: 'owner',
+    joinedAt: '2024-11-02',
+    verification: 'verified',
+    ratingAvg: 4.7,
+    ratingCount: 21,
+    ownerType: 'individual',
+    payoutTerms: 'per_trip',
+    insuranceType: 'platform_provided',
+    vehicleCount: 2,
+  },
+  {
+    id: 'host-3',
+    fullName: 'Kigali Car Rental Self Drive',
+    businessName: 'Kigali Car Rental Self Drive',
+    email: 'fleet@kcrsd.rw',
+    phone: '+250788555666',
+    role: 'owner',
+    joinedAt: '2023-06-18',
+    verification: 'verified',
+    ratingAvg: 4.6,
+    ratingCount: 142,
+    ownerType: 'business',
+    payoutTerms: 'net_30',
+    insuranceType: 'commercial',
+    vehicleCount: 24,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Renter (the "current user" for mock flows).
+// ---------------------------------------------------------------------------
+export const currentUser: UserProfile = {
+  id: 'user-1',
+  fullName: 'Chris Mugisha',
+  email: 'chris@example.rw',
+  phone: '+250788999000',
+  role: 'renter',
+  joinedAt: '2026-01-05',
+  verification: 'verified',
+  ratingAvg: 4.8,
+  ratingCount: 6,
+};
+
+const stock = (seed: string) => `https://picsum.photos/seed/${seed}/800/600`;
+
+// ---------------------------------------------------------------------------
+// Listings.
+// ---------------------------------------------------------------------------
+export const listings: Listing[] = [
+  {
+    id: 'car-1',
+    title: 'Toyota RAV4 — great for Kigali & trips',
+    hostId: 'host-1',
+    ownerType: 'individual',
+    category: 'suv',
+    make: 'Toyota',
+    model: 'RAV4',
+    year: 2019,
+    seats: 5,
+    transmission: 'automatic',
+    fuel: 'petrol',
+    pricePerDayRwf: 45000,
+    location: 'Kimihurura, Kigali',
+    city: 'Kigali',
+    photos: [stock('rav4a'), stock('rav4b'), stock('rav4c')],
+    features: ['Air conditioning', 'Bluetooth', 'Backup camera', 'USB charging'],
+    bookingMode: 'instant',
+    ratingAvg: 4.9,
+    ratingCount: 28,
+    blockedDates: ['2026-06-20', '2026-06-21'],
+  },
+  {
+    id: 'car-2',
+    title: 'Toyota Land Cruiser Prado 4x4',
+    hostId: 'host-2',
+    ownerType: 'individual',
+    category: '4x4',
+    make: 'Toyota',
+    model: 'Land Cruiser Prado',
+    year: 2017,
+    seats: 7,
+    transmission: 'automatic',
+    fuel: 'diesel',
+    pricePerDayRwf: 85000,
+    location: 'Nyarutarama, Kigali',
+    city: 'Kigali',
+    photos: [stock('prado1'), stock('prado2')],
+    features: ['4WD', 'Roof rack', 'Air conditioning', '7 seats'],
+    bookingMode: 'request',
+    ratingAvg: 4.7,
+    ratingCount: 15,
+    blockedDates: [],
+  },
+  {
+    id: 'car-3',
+    title: 'Suzuki Swift — economical city car',
+    hostId: 'host-2',
+    ownerType: 'individual',
+    category: 'hatchback',
+    make: 'Suzuki',
+    model: 'Swift',
+    year: 2020,
+    seats: 5,
+    transmission: 'manual',
+    fuel: 'petrol',
+    pricePerDayRwf: 28000,
+    location: 'Kacyiru, Kigali',
+    city: 'Kigali',
+    photos: [stock('swift1'), stock('swift2')],
+    features: ['Air conditioning', 'Fuel efficient', 'Bluetooth'],
+    bookingMode: 'instant',
+    ratingAvg: 4.6,
+    ratingCount: 9,
+    blockedDates: [],
+  },
+  {
+    id: 'car-4',
+    title: 'Toyota Hiace — group & tour transport',
+    hostId: 'host-3',
+    ownerType: 'business',
+    category: 'van',
+    make: 'Toyota',
+    model: 'Hiace',
+    year: 2021,
+    seats: 14,
+    transmission: 'manual',
+    fuel: 'diesel',
+    pricePerDayRwf: 95000,
+    location: 'Remera, Kigali',
+    city: 'Kigali',
+    photos: [stock('hiace1'), stock('hiace2')],
+    features: ['14 seats', 'Air conditioning', 'Commercial insurance'],
+    bookingMode: 'instant',
+    ratingAvg: 4.5,
+    ratingCount: 64,
+    blockedDates: [],
+  },
+  {
+    id: 'car-5',
+    title: 'Mercedes-Benz C-Class — premium self-drive',
+    hostId: 'host-3',
+    ownerType: 'business',
+    category: 'luxury',
+    make: 'Mercedes-Benz',
+    model: 'C-Class',
+    year: 2022,
+    seats: 5,
+    transmission: 'automatic',
+    fuel: 'petrol',
+    pricePerDayRwf: 130000,
+    location: 'Remera, Kigali',
+    city: 'Kigali',
+    photos: [stock('cclass1'), stock('cclass2')],
+    features: ['Leather seats', 'Air conditioning', 'Premium audio', 'Commercial insurance'],
+    bookingMode: 'request',
+    ratingAvg: 4.8,
+    ratingCount: 31,
+    blockedDates: [],
+  },
+  {
+    id: 'car-6',
+    title: 'Toyota Hilux — double cab pickup',
+    hostId: 'host-3',
+    ownerType: 'business',
+    category: 'pickup',
+    make: 'Toyota',
+    model: 'Hilux',
+    year: 2020,
+    seats: 5,
+    transmission: 'manual',
+    fuel: 'diesel',
+    pricePerDayRwf: 70000,
+    location: 'Remera, Kigali',
+    city: 'Kigali',
+    photos: [stock('hilux1'), stock('hilux2')],
+    features: ['4WD', 'Cargo bed', 'Air conditioning'],
+    bookingMode: 'instant',
+    ratingAvg: 4.4,
+    ratingCount: 18,
+    blockedDates: [],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Bookings / trips across various states.
+// ---------------------------------------------------------------------------
+export const bookings: Booking[] = [
+  {
+    id: 'bk-1',
+    listingId: 'car-1',
+    renterId: 'user-1',
+    hostId: 'host-1',
+    startDate: '2026-06-20',
+    endDate: '2026-06-23',
+    days: 3,
+    state: 'confirmed',
+    subtotalRwf: 135000,
+    serviceFeeRwf: 13500,
+    totalRwf: 148500,
+    createdAt: '2026-06-15T09:30:00Z',
+  },
+  {
+    id: 'bk-2',
+    listingId: 'car-4',
+    renterId: 'user-1',
+    hostId: 'host-3',
+    startDate: '2026-05-10',
+    endDate: '2026-05-12',
+    days: 2,
+    state: 'completed',
+    subtotalRwf: 190000,
+    serviceFeeRwf: 19000,
+    totalRwf: 209000,
+    createdAt: '2026-05-01T12:00:00Z',
+    checkIn: [{ url: stock('ci1'), label: 'Front', takenAt: '2026-05-10T08:00:00Z' }],
+    checkOut: [{ url: stock('co1'), label: 'Front', takenAt: '2026-05-12T17:00:00Z' }],
+  },
+  {
+    id: 'bk-3',
+    listingId: 'car-2',
+    renterId: 'user-1',
+    hostId: 'host-2',
+    startDate: '2026-07-01',
+    endDate: '2026-07-05',
+    days: 4,
+    state: 'requested',
+    subtotalRwf: 340000,
+    serviceFeeRwf: 34000,
+    totalRwf: 374000,
+    createdAt: '2026-06-16T15:45:00Z',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Payouts (owner side — split rail: MoMo / Airtel / bank).
+// ---------------------------------------------------------------------------
+export const payouts: Payout[] = [
+  {
+    id: 'po-1',
+    bookingId: 'bk-2',
+    hostId: 'host-3',
+    amountRwf: 190000,
+    channel: 'bank_transfer',
+    status: 'paid',
+    scheduledFor: '2026-05-13',
+    paidAt: '2026-05-14',
+  },
+  {
+    id: 'po-2',
+    bookingId: 'bk-1',
+    hostId: 'host-1',
+    amountRwf: 135000,
+    channel: 'mtn_momo',
+    status: 'scheduled',
+    scheduledFor: '2026-06-24',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Messaging.
+// ---------------------------------------------------------------------------
+export const conversations: Conversation[] = [
+  {
+    id: 'conv-1',
+    listingId: 'car-1',
+    renterId: 'user-1',
+    hostId: 'host-1',
+    lastMessagePreview: 'Great, see you at 8am for pickup!',
+    lastMessageAt: '2026-06-16T18:20:00Z',
+    unread: 1,
+  },
+  {
+    id: 'conv-2',
+    listingId: 'car-2',
+    renterId: 'user-1',
+    hostId: 'host-2',
+    lastMessagePreview: 'Is the Prado available the first week of July?',
+    lastMessageAt: '2026-06-16T16:00:00Z',
+    unread: 0,
+  },
+];
+
+export const messages: Message[] = [
+  {
+    id: 'msg-1',
+    conversationId: 'conv-1',
+    senderId: 'user-1',
+    body: 'Hi Aline, is the RAV4 available this weekend?',
+    sentAt: '2026-06-16T17:55:00Z',
+  },
+  {
+    id: 'msg-2',
+    conversationId: 'conv-1',
+    senderId: 'host-1',
+    body: 'Yes it is! You can book instantly.',
+    sentAt: '2026-06-16T18:05:00Z',
+  },
+  {
+    id: 'msg-3',
+    conversationId: 'conv-1',
+    senderId: 'user-1',
+    body: 'Booked. What time for pickup?',
+    sentAt: '2026-06-16T18:15:00Z',
+  },
+  {
+    id: 'msg-4',
+    conversationId: 'conv-1',
+    senderId: 'host-1',
+    body: 'Great, see you at 8am for pickup!',
+    sentAt: '2026-06-16T18:20:00Z',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Reviews (two-way).
+// ---------------------------------------------------------------------------
+export const reviews: Review[] = [
+  {
+    id: 'rv-1',
+    bookingId: 'bk-2',
+    authorId: 'user-1',
+    subjectId: 'host-3',
+    direction: 'renter_to_host',
+    rating: 5,
+    body: 'Spotless van, smooth handover. Highly recommend.',
+    createdAt: '2026-05-13',
+  },
+  {
+    id: 'rv-2',
+    bookingId: 'bk-2',
+    authorId: 'host-3',
+    subjectId: 'user-1',
+    direction: 'host_to_renter',
+    rating: 5,
+    body: 'Returned the car clean and on time. Welcome back anytime.',
+    createdAt: '2026-05-13',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Notifications — SMS treated as a first-class channel alongside push.
+// ---------------------------------------------------------------------------
+export const notifications: AppNotification[] = [
+  {
+    id: 'nt-1',
+    kind: 'booking_confirmation',
+    title: 'Booking confirmed',
+    body: 'Your Toyota RAV4 booking for 20–23 Jun is confirmed.',
+    channels: ['sms', 'push', 'in_app'],
+    createdAt: '2026-06-15T09:31:00Z',
+    read: false,
+  },
+  {
+    id: 'nt-2',
+    kind: 'pickup_reminder',
+    title: 'Pickup tomorrow',
+    body: 'Reminder: pick up the RAV4 at 8am in Kimihurura.',
+    channels: ['sms', 'push'],
+    createdAt: '2026-06-19T08:00:00Z',
+    read: false,
+  },
+  {
+    id: 'nt-3',
+    kind: 'payout_alert',
+    title: 'Payout sent',
+    body: 'RWF 190,000 was sent to your bank account.',
+    channels: ['sms', 'in_app'],
+    createdAt: '2026-05-14T10:00:00Z',
+    read: true,
+  },
+];

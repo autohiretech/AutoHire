@@ -1,0 +1,15 @@
+{
+  "name": "autohire",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace web",
+    "build": "npm run build --workspace web",
+    "preview": "npm run preview --workspace web",
+    "lint": "npm run lint --workspace web"
+  }
+}
