@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Lock, ShieldCheck } from 'lucide-react';
-import { SERVICE_FEE_RATE, mockClient } from '@/mocks/client';
+import { SERVICE_FEE_RATE } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { formatRwf } from '@/lib/format';
 import { Badge, Button, Card, CardBody, CardHeader, Input, Label, Spinner } from '@/components/ui';
 
@@ -16,7 +17,7 @@ function diffDays(start: string, end: string): number {
 /**
  * A3 — booking flow for a listing: pick dates → mock payment → confirmation.
  * Reached at /cars/:id/book (the A2 detail page's CTA will link here). On
- * confirm it creates the booking via mockClient and routes to the new trip.
+ * confirm it creates the booking via the data client and routes to the new trip.
  */
 export function BookingPage() {
   const { id = '' } = useParams();
@@ -29,11 +30,11 @@ export function BookingPage() {
 
   const { data: listing, isLoading } = useQuery({
     queryKey: ['listing', id],
-    queryFn: () => mockClient.getListing(id),
+    queryFn: () => client.getListing(id),
   });
 
   const mutation = useMutation({
-    mutationFn: () => mockClient.createBooking({ listingId: id, startDate, endDate }),
+    mutationFn: () => client.createBooking({ listingId: id, startDate, endDate }),
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       navigate(`/trips/${booking.id}`);

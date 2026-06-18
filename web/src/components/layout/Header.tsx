@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bell, Car, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar } from '@/components/ui';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { currentUser } from '@/mocks/data';
 import { MODE_HOME, useAppMode, type AppMode } from '@/lib/appMode';
 
@@ -24,19 +24,19 @@ export function Header() {
 
   const { data: conversations } = useQuery({
     queryKey: ['conversations'],
-    queryFn: () => mockClient.listConversations(),
+    queryFn: () => client.listConversations(),
   });
   const unread = (conversations ?? []).reduce((sum, c) => sum + c.unread, 0);
 
   const { data: notifications } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => mockClient.listNotifications(),
+    queryFn: () => client.listNotifications(),
   });
   const unreadNotifications = (notifications ?? []).filter((n) => !n.read).length;
 
   const { data: host } = useQuery({
     queryKey: ['ownerHost'],
-    queryFn: () => mockClient.getCurrentHost(),
+    queryFn: () => client.getCurrentHost(),
     enabled: mode === 'host',
   });
 

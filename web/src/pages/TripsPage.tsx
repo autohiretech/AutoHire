@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Car } from 'lucide-react';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { TRIP_GROUPS } from '@/lib/trips';
 import { Button, Card, CardBody, Spinner } from '@/components/ui';
 import { TripCard } from '@/components/TripCard';
@@ -14,11 +14,11 @@ import { TripCard } from '@/components/TripCard';
 export function TripsPage() {
   const bookingsQuery = useQuery({
     queryKey: ['bookings'],
-    queryFn: () => mockClient.listBookings(),
+    queryFn: () => client.listBookings(),
   });
   const listingsQuery = useQuery({
     queryKey: ['listings'],
-    queryFn: () => mockClient.listListings(),
+    queryFn: () => client.listListings(),
   });
 
   const isLoading = bookingsQuery.isLoading || listingsQuery.isLoading;

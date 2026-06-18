@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, CheckCheck, MessageSquare, Search, Send } from 'lucide-react';
 import type { Conversation, Host, Message } from '@autohire/shared';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { currentUser } from '@/mocks/data';
 import { cn } from '@/lib/cn';
 import { formatDayLabel, formatTime, timeAgo } from '@/lib/format';
@@ -25,9 +25,9 @@ export function MessagesPage() {
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations'],
-    queryFn: () => mockClient.listConversations(),
+    queryFn: () => client.listConversations(),
   });
-  const { data: hosts } = useQuery({ queryKey: ['hosts'], queryFn: () => mockClient.listHosts() });
+  const { data: hosts } = useQuery({ queryKey: ['hosts'], queryFn: () => client.listHosts() });
 
   const hostsById = useMemo(() => new Map((hosts ?? []).map((h) => [h.id, h])), [hosts]);
 
@@ -168,15 +168,15 @@ function Thread({ conversation, host }: { conversation: Conversation; host?: Hos
 
   const listingQuery = useQuery({
     queryKey: ['listing', conversation.listingId],
-    queryFn: () => mockClient.getListing(conversation.listingId),
+    queryFn: () => client.getListing(conversation.listingId),
   });
   const messagesQuery = useQuery({
     queryKey: ['messages', conversation.id],
-    queryFn: () => mockClient.listMessages(conversation.id),
+    queryFn: () => client.listMessages(conversation.id),
   });
 
   const sendMutation = useMutation({
-    mutationFn: (body: string) => mockClient.sendMessage(conversation.id, body),
+    mutationFn: (body: string) => client.sendMessage(conversation.id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
@@ -184,7 +184,7 @@ function Thread({ conversation, host }: { conversation: Conversation; host?: Hos
   });
 
   const readMutation = useMutation({
-    mutationFn: () => mockClient.markConversationRead(conversation.id),
+    mutationFn: () => client.markConversationRead(conversation.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
   });
 

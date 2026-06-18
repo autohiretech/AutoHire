@@ -2,7 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CarFront, Search, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import type { CarCategory, OwnerType, Transmission } from '@autohire/shared';
-import { mockClient, type ListingFilters } from '@/mocks/client';
+import type { ListingFilters } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { Button, Card, CardBody, Input, Label, Select, Spinner } from '@/components/ui';
 import { ListingCard } from '@/components/ListingCard';
 
@@ -25,7 +26,7 @@ const SEAT_OPTIONS = [2, 4, 5, 7];
 /**
  * A1 — Search & browse. The search bar and filter panel drive a `ListingFilters`
  * object that's part of the TanStack Query key, so results refetch through
- * `mockClient.listListings` whenever a filter changes. Handles loading + empty
+ * `client.listListings` whenever a filter changes. Handles loading + empty
  * states.
  */
 export function HomePage() {
@@ -34,7 +35,7 @@ export function HomePage() {
 
   const { data: listings, isLoading } = useQuery({
     queryKey: ['listings', filters],
-    queryFn: () => mockClient.listListings(filters),
+    queryFn: () => client.listListings(filters),
   });
 
   function setFilter<K extends keyof ListingFilters>(key: K, value: ListingFilters[K]) {

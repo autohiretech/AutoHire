@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CalendarDays, Camera, Check, MapPin } from 'lucide-react';
 import type { Booking, CheckPhoto, Host, Review, ReviewDirection, TripState } from '@autohire/shared';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { currentUser } from '@/mocks/data';
 import { cn } from '@/lib/cn';
 import { useAppMode } from '@/lib/appMode';
@@ -17,18 +17,18 @@ export function TripDetailPage() {
 
   const bookingQuery = useQuery({
     queryKey: ['booking', id],
-    queryFn: () => mockClient.getBooking(id),
+    queryFn: () => client.getBooking(id),
   });
   const booking = bookingQuery.data;
 
   const listingQuery = useQuery({
     queryKey: ['listing', booking?.listingId],
-    queryFn: () => mockClient.getListing(booking!.listingId),
+    queryFn: () => client.getListing(booking!.listingId),
     enabled: !!booking,
   });
   const hostQuery = useQuery({
     queryKey: ['host', booking?.hostId],
-    queryFn: () => mockClient.getHost(booking!.hostId),
+    queryFn: () => client.getHost(booking!.hostId),
     enabled: !!booking,
   });
 
@@ -249,14 +249,14 @@ function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
 
   const { data: reviews } = useQuery({
     queryKey: ['bookingReviews', booking.id],
-    queryFn: () => mockClient.listReviewsForBooking(booking.id),
+    queryFn: () => client.listReviewsForBooking(booking.id),
   });
 
   const mine = reviews?.find((r) => r.direction === direction);
   const completed = booking.state === 'completed';
 
   const mutation = useMutation({
-    mutationFn: () => mockClient.createReview({ bookingId: booking.id, direction, rating, body }),
+    mutationFn: () => client.createReview({ bookingId: booking.id, direction, rating, body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookingReviews', booking.id] });
       queryClient.invalidateQueries({ queryKey: ['reviews'] });

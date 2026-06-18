@@ -8,7 +8,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import type { AppNotification, NotificationChannel, NotificationKind } from '@autohire/shared';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { timeAgo } from '@/lib/format';
 import { Badge, Button, Card, CardBody, Spinner } from '@/components/ui';
@@ -33,15 +33,15 @@ export function NotificationsPage() {
 
   const { data: notifications, isLoading } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => mockClient.listNotifications(),
+    queryFn: () => client.listNotifications(),
   });
 
   const readMutation = useMutation({
-    mutationFn: (id: string) => mockClient.markNotificationRead(id),
+    mutationFn: (id: string) => client.markNotificationRead(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
   const readAllMutation = useMutation({
-    mutationFn: () => mockClient.markAllNotificationsRead(),
+    mutationFn: () => client.markAllNotificationsRead(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
