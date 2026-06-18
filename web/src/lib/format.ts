@@ -12,6 +12,23 @@ export function formatDate(iso: string): string {
   });
 }
 
+/** Clock time, e.g. "18:20". */
+export function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Day label for chat separators: "Today", "Yesterday", else "17 Jun 2026". */
+export function formatDayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (sameDay(d, today)) return 'Today';
+  if (sameDay(d, yesterday)) return 'Yesterday';
+  return formatDate(iso);
+}
+
 /** Relative-ish short time for chat/notifications, e.g. "2h ago". */
 export function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();

@@ -12,6 +12,25 @@ export type UserRole = 'renter' | 'owner' | 'admin';
 
 export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
 
+/** Documents collected during identity (renter) / vehicle (host) verification. */
+export type VerificationDocType =
+  | 'drivers_license'
+  | 'national_id'
+  | 'vehicle_registration'
+  | 'insurance_certificate';
+
+export interface VerificationDocument {
+  id: ID;
+  type: VerificationDocType;
+  status: VerificationStatus;
+  fileName?: string;
+  uploadedAt?: string; // ISO
+  /** Reviewer note, e.g. the reason a document was rejected. */
+  note?: string;
+  /** OCR-extracted fields — placeholder until Stage C wires a real OCR provider. */
+  extracted?: Record<string, string>;
+}
+
 export interface UserProfile {
   id: ID;
   fullName: string;
@@ -131,6 +150,8 @@ export interface Message {
   senderId: ID;
   body: string;
   sentAt: string;
+  /** When the recipient read the message. Undefined = delivered but unread. */
+  readAt?: string;
 }
 
 export interface Conversation {
@@ -174,4 +195,59 @@ export interface AppNotification {
   channels: NotificationChannel[];
   createdAt: string;
   read: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Admin / moderation (A9).
+// ---------------------------------------------------------------------------
+
+export type FlagTargetType = 'listing' | 'user';
+export type FlagReason = 'inappropriate' | 'spam' | 'fraud' | 'safety' | 'other';
+export type ModerationStatus = 'open' | 'approved' | 'removed' | 'dismissed';
+
+/** A user/listing reported for moderator review. */
+export interface Flag {
+  id: ID;
+  targetType: FlagTargetType;
+  targetId: ID;
+  /** Denormalized name/title of the reported entity for display. */
+  targetLabel: string;
+  reason: FlagReason;
+  detail: string;
+  reportedBy: ID;
+  createdAt: string;
+  status: ModerationStatus;
+}
+
+export type DisputeStatus =
+  | 'open'
+  | 'under_review'
+  | 'resolved_renter'
+  | 'resolved_host'
+  | 'dismissed';
+
+/** A damage/charge claim tied to a booking, resolved by an admin. */
+export interface Dispute {
+  id: ID;
+  bookingId: ID;
+  raisedBy: ID;
+  against: ID;
+  reason: string;
+  /** Amount claimed, in RWF. */
+  amountRwf: number;
+  createdAt: string;
+  status: DisputeStatus;
+}
+
+/** Platform-wide figures for the admin reporting view. */
+export interface AdminStats {
+  grossRwf: number;
+  revenueRwf: number;
+  payoutsPaidRwf: number;
+  payoutsDueRwf: number;
+  bookings: number;
+  listings: number;
+  hosts: number;
+  openFlags: number;
+  openDisputes: number;
 }
