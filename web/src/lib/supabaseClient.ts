@@ -1,5 +1,6 @@
 import type {
   AdminStats,
+  AppNotification,
   Booking,
   Conversation,
   Dispute,
@@ -18,21 +19,22 @@ import type {
 import {
   SERVICE_FEE_RATE,
   type CreateBookingInput,
+  type CreateListingInput,
   type CreateReviewInput,
   type ListingFilters,
-  type MockClient,
-} from '@/mocks/client';
+} from '@/lib/types';
 import { getSupabase } from '@/lib/supabase';
+import { getCurrentUserId } from '@/lib/identity';
 
 /**
- * Real data client — implements the same `Client` interface as `mockClient`,
- * backed by Supabase. Selected by the seam in `client.ts` when VITE_USE_MOCK=false.
+ * The Supabase-backed data client — the single implementation the app runs on.
+ * `client.ts` re-exports it as `client` and derives the `Client` type from it.
  *
- * Identity is hardcoded pre-auth (matches the demo renter/host); Supabase Auth
- * replaces these with the logged-in session (ROADMAP Stage B step 4).
+ * Identity comes from the logged-in Supabase session. Under "fresh signups
+ * start empty" the acting user is one identity that backs both the renter and
+ * host views, so `me()` drives renter_id and host_id alike.
  */
-const CURRENT_USER_ID = 'user-1';
-const CURRENT_HOST_ID = 'host-3';
+const me = () => getCurrentUserId();
 
 const sb = () => getSupabase();
 
@@ -65,7 +67,7 @@ function diffDays(start: string, end: string): number {
   return Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000));
 }
 
-export const supabaseClient: MockClient = {
+export const supabaseClient = {
   // --- Listings ----------------------------------------------------------
   async listListings(filters: ListingFilters = {}): Promise<Listing[]> {
     let q = sb().from('listings').select('*');
@@ -114,7 +116,7 @@ export const supabaseClient: MockClient = {
         .insert({
           id: `bk-${Date.now()}`,
           listing_id: input.listingId,
-          renter_id: CURRENT_USER_ID,
+          renter_id: me(),
           host_id: listing.host_id,
           start_date: input.startDate,
           end_date: input.endDate,
@@ -139,17 +141,17 @@ export const supabaseClient: MockClient = {
   // --- Owner dashboard ---------------------------------------------------
   async getCurrentHost() {
     return mapRow<Host>(
-      await run(sb().from('profiles').select('*').eq('id', CURRENT_HOST_ID).maybeSingle()),
+      await run(sb().from('profiles').select('*').eq('id', me()).maybeSingle()),
     );
   },
   async listOwnerListings() {
-    return mapRows<Listing>(await run(sb().from('listings').select('*').eq('host_id', CURRENT_HOST_ID)));
+    return mapRows<Listing>(await run(sb().from('listings').select('*').eq('host_id', me())));
   },
   async listOwnerBookings() {
-    return mapRows<Booking>(await run(sb().from('bookings').select('*').eq('host_id', CURRENT_HOST_ID)));
+    return mapRows<Booking>(await run(sb().from('bookings').select('*').eq('host_id', me())));
   },
   async listOwnerPayouts() {
-    return mapRows<Payout>(await run(sb().from('payouts').select('*').eq('host_id', CURRENT_HOST_ID)));
+    return mapRows<Payout>(await run(sb().from('payouts').select('*').eq('host_id', me())));
   },
   async respondToBooking(id: string, action: 'approve' | 'decline') {
     const row = await run(
@@ -170,6 +172,64 @@ export const supabaseClient: MockClient = {
       sb().from('listings').update(dbPatch).eq('id', id).select('*').maybeSingle(),
     );
     return mapRow<Listing>(row);
+  },
+  /**
+   * Create a listing owned by the logged-in user. The first listing promotes the
+   * profile to an individual host (owner_type / role / payout + insurance terms);
+   * existing hosts keep their owner_type. vehicle_count is refreshed to match.
+   */
+  async createListing(input: CreateListingInput): Promise<Listing> {
+    const hostId = me();
+    const profile = await run(
+      sb().from('profiles').select('owner_type').eq('id', hostId).single(),
+    );
+    const ownerType = ((profile?.owner_type as Listing['ownerType']) ?? 'individual');
+
+    const row = await run(
+      sb()
+        .from('listings')
+        .insert({
+          id: `car-${Date.now()}`,
+          title: input.title,
+          host_id: hostId,
+          owner_type: ownerType,
+          category: input.category,
+          make: input.make,
+          model: input.model,
+          year: input.year,
+          seats: input.seats,
+          transmission: input.transmission,
+          fuel: input.fuel,
+          price_per_day_rwf: input.pricePerDayRwf,
+          location: input.location,
+          city: input.city,
+          photos: input.photos,
+          features: input.features,
+          booking_mode: input.bookingMode,
+        })
+        .select('*')
+        .single(),
+    );
+
+    const { count } = await sb()
+      .from('listings')
+      .select('id', { count: 'exact', head: true })
+      .eq('host_id', hostId);
+    await run(
+      sb()
+        .from('profiles')
+        .update({
+          role: 'owner',
+          owner_type: ownerType,
+          payout_terms: 'per_trip',
+          insurance_type: 'platform_provided',
+          vehicle_count: count ?? 1,
+        })
+        .eq('id', hostId)
+        .select('id'),
+    );
+
+    return mapRow<Listing>(row) as Listing;
   },
 
   // --- Messaging ---------------------------------------------------------
@@ -197,7 +257,7 @@ export const supabaseClient: MockClient = {
         .from('messages')
         .update({ read_at: new Date().toISOString() })
         .eq('conversation_id', conversationId)
-        .neq('sender_id', CURRENT_USER_ID)
+        .neq('sender_id', me())
         .is('read_at', null)
         .select('id'),
     );
@@ -210,7 +270,7 @@ export const supabaseClient: MockClient = {
         .insert({
           id: `msg-${Date.now()}`,
           conversation_id: conversationId,
-          sender_id: CURRENT_USER_ID,
+          sender_id: me(),
           body,
           sent_at: sentAt,
         })
@@ -262,30 +322,51 @@ export const supabaseClient: MockClient = {
   },
 
   // --- Notifications -----------------------------------------------------
-  async listNotifications() {
-    return mapRows(
-      await run(sb().from('notifications').select('*').order('created_at', { ascending: false })),
+  async listNotifications(): Promise<AppNotification[]> {
+    return mapRows<AppNotification>(
+      await run(
+        sb()
+          .from('notifications')
+          .select('*')
+          .eq('profile_id', me())
+          .order('created_at', { ascending: false }),
+      ),
     );
   },
   async markNotificationRead(id: string): Promise<void> {
     await run(sb().from('notifications').update({ read: true }).eq('id', id).select('id'));
   },
   async markAllNotificationsRead(): Promise<void> {
-    await run(sb().from('notifications').update({ read: true }).eq('read', false).select('id'));
+    await run(
+      sb()
+        .from('notifications')
+        .update({ read: true })
+        .eq('profile_id', me())
+        .eq('read', false)
+        .select('id'),
+    );
   },
 
   // --- Verification ------------------------------------------------------
   async listVerificationDocuments(): Promise<VerificationDocument[]> {
-    return mapRows<VerificationDocument>(await run(sb().from('verification_documents').select('*')));
+    return mapRows<VerificationDocument>(
+      await run(sb().from('verification_documents').select('*').eq('profile_id', me())),
+    );
   },
   async uploadVerificationDocument(
     type: VerificationDocType,
     fileName: string,
   ): Promise<VerificationDocument> {
     const existing = await run(
-      sb().from('verification_documents').select('id').eq('type', type).maybeSingle(),
+      sb()
+        .from('verification_documents')
+        .select('id')
+        .eq('profile_id', me())
+        .eq('type', type)
+        .maybeSingle(),
     );
     const fields = {
+      profile_id: me(),
       type,
       status: 'pending' as const,
       file_name: fileName,
@@ -351,7 +432,7 @@ export const supabaseClient: MockClient = {
   // --- Current user ------------------------------------------------------
   async getCurrentUser() {
     return mapRow<UserProfile>(
-      await run(sb().from('profiles').select('*').eq('id', CURRENT_USER_ID).maybeSingle()),
+      await run(sb().from('profiles').select('*').eq('id', me()).maybeSingle()),
     ) as UserProfile;
   },
 };

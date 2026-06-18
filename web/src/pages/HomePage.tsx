@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CarFront, Search, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import type { CarCategory, OwnerType, Transmission } from '@autohire/shared';
-import type { ListingFilters } from '@/mocks/client';
+import type { ListingFilters } from '@/lib/types';
 import { client } from '@/lib/client';
 import { Button, Card, CardBody, Input, Label, Select, Spinner } from '@/components/ui';
 import { ListingCard } from '@/components/ListingCard';

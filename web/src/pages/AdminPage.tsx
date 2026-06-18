@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart3, Car, Flag, Scale, User } from 'lucide-react';
 import type { Dispute, Flag as FlagType } from '@autohire/shared';
 import { client } from '@/lib/client';
-import { currentUser } from '@/mocks/data';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
 import { formatRwf, timeAgo } from '@/lib/format';
 import {
@@ -18,6 +18,7 @@ type Tab = 'moderation' | 'disputes' | 'reporting';
 /** A9 — Admin panel: moderation queue, dispute resolution, and reporting. */
 export function AdminPage() {
   const [tab, setTab] = useState<Tab>('moderation');
+  const { data: me } = useCurrentUser();
 
   const flagsQuery = useQuery({ queryKey: ['flags'], queryFn: () => client.listFlags() });
   const disputesQuery = useQuery({
@@ -31,7 +32,7 @@ export function AdminPage() {
   const hostsById = new Map((hostsQuery.data ?? []).map((h) => [h.id, h]));
 
   function nameOf(id: string): string {
-    if (id === currentUser.id) return currentUser.fullName;
+    if (id === me?.id) return me.fullName;
     const h = hostsById.get(id);
     return h?.businessName ?? h?.fullName ?? id;
   }

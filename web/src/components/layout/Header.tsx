@@ -1,11 +1,12 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Car, MessageSquare } from 'lucide-react';
+import { Bell, Car, LogOut, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { Avatar } from '@/components/ui';
+import { Avatar, Button } from '@/components/ui';
 import { client } from '@/lib/client';
-import { currentUser } from '@/mocks/data';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { MODE_HOME, useAppMode, type AppMode } from '@/lib/appMode';
+import { useAuth } from '@/lib/auth';
 
 const NAV_BY_MODE: Record<AppMode, { to: string; label: string; end?: boolean }[]> = {
   renter: [
@@ -20,6 +21,8 @@ const NAV_BY_MODE: Record<AppMode, { to: string; label: string; end?: boolean }[
 
 export function Header() {
   const { mode, setMode } = useAppMode();
+  const { user, signOut } = useAuth();
+  const { data: me } = useCurrentUser();
   const navigate = useNavigate();
 
   const { data: conversations } = useQuery({
@@ -47,7 +50,8 @@ export function Header() {
   }
 
   const navItems = NAV_BY_MODE[mode];
-  const identityName = mode === 'host' ? host?.businessName ?? host?.fullName ?? 'Host' : currentUser.fullName;
+  const identityName =
+    mode === 'host' ? host?.businessName ?? host?.fullName ?? 'Host' : me?.fullName ?? 'You';
 
   return (
     <header className="sticky top-0 z-30 border-b border-ink-200 bg-white/90 backdrop-blur">
@@ -124,8 +128,26 @@ export function Header() {
             )}
           </Link>
           <Link to="/verification" aria-label="Account & verification" className="ml-1">
-            <Avatar name={identityName} src={mode === 'host' ? host?.avatarUrl : currentUser.avatarUrl} size="sm" />
+            <Avatar name={identityName} src={mode === 'host' ? host?.avatarUrl : me?.avatarUrl} size="sm" />
           </Link>
+
+          {user ? (
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="ml-1 rounded-lg p-2 text-ink-500 hover:bg-ink-100"
+              aria-label="Sign out"
+              title={user.email ?? 'Sign out'}
+            >
+              <LogOut size={18} />
+            </button>
+          ) : (
+            <Link to="/login" className="ml-1">
+              <Button size="sm" variant="outline">
+                Sign in
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </header>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Banknote, CalendarClock, Car, Check, Plus, X } from 'lucide-react';
 import type { Booking, Listing } from '@autohire/shared';
@@ -60,6 +61,11 @@ export function DashboardPage() {
             {host ? host.businessName ?? host.fullName : 'Loading…'}
           </p>
         </div>
+        <Link to="/cars/new">
+          <Button>
+            <Plus size={16} /> List a car
+          </Button>
+        </Link>
       </div>
 
       {/* Summary stats */}
@@ -101,11 +107,29 @@ export function DashboardPage() {
       <div className="mt-6">
         {tab === 'listings' && (
           <TabState query={listingsQuery}>
-            <div className="space-y-4">
-              {listings.map((l) => (
-                <ListingManageCard key={l.id} listing={l} />
-              ))}
-            </div>
+            {listings.length === 0 ? (
+              <Card>
+                <CardBody className="flex flex-col items-center gap-3 py-12 text-center">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+                    <Car size={20} />
+                  </span>
+                  <p className="text-sm text-ink-500">
+                    No cars listed yet. Add your first vehicle to start hosting.
+                  </p>
+                  <Link to="/cars/new">
+                    <Button>
+                      <Plus size={16} /> List a car
+                    </Button>
+                  </Link>
+                </CardBody>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {listings.map((l) => (
+                  <ListingManageCard key={l.id} listing={l} />
+                ))}
+              </div>
+            )}
           </TabState>
         )}
 

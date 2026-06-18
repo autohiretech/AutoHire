@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CalendarDays, Camera, Check, MapPin } from 'lucide-react';
 import type { Booking, CheckPhoto, Host, Review, ReviewDirection, TripState } from '@autohire/shared';
 import { client } from '@/lib/client';
-import { currentUser } from '@/mocks/data';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
 import { useAppMode } from '@/lib/appMode';
 import { formatDate, formatRwf } from '@/lib/format';
@@ -237,6 +237,7 @@ function PhotoPanel({
  */
 function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
   const { mode } = useAppMode();
+  const { data: me } = useCurrentUser();
   const queryClient = useQueryClient();
   const [rating, setRating] = useState(0);
   const [body, setBody] = useState('');
@@ -244,7 +245,7 @@ function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
   const direction: ReviewDirection = mode === 'host' ? 'host_to_renter' : 'renter_to_host';
   const meId = mode === 'host' ? booking.hostId : booking.renterId;
   const hostName = host?.businessName ?? host?.fullName ?? 'Host';
-  const renterName = currentUser.fullName;
+  const renterName = me?.fullName ?? 'You';
   const subjectName = direction === 'renter_to_host' ? hostName : renterName;
 
   const { data: reviews } = useQuery({

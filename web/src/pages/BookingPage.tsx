@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Lock, ShieldCheck } from 'lucide-react';
-import { SERVICE_FEE_RATE } from '@/mocks/client';
+import { SERVICE_FEE_RATE } from '@/lib/types';
 import { client } from '@/lib/client';
 import { formatRwf } from '@/lib/format';
 import { Badge, Button, Card, CardBody, CardHeader, Input, Label, Spinner } from '@/components/ui';

@@ -133,6 +133,7 @@ create table reviews (
 
 create table verification_documents (
   id          text primary key,
+  profile_id  text not null references profiles(id),
   type        verification_doc_type not null,
   status      verification_status not null,
   file_name   text,
@@ -143,6 +144,7 @@ create table verification_documents (
 
 create table notifications (
   id         text primary key,
+  profile_id text not null references profiles(id),
   kind       notification_kind not null,
   title      text not null,
   body       text not null,
@@ -177,12 +179,12 @@ create table disputes (
 -- ----------------------------------------------------------------------------
 -- Row-Level Security
 -- ----------------------------------------------------------------------------
--- RLS is enabled on every table (Supabase best practice). For now we grant
--- public read so the browse/app works with the anon key, plus PERMISSIVE DEV
--- write policies so the mock-style mutations persist while there is no auth.
+-- RLS is enabled on every table (Supabase best practice). Profile ids equal the
+-- Supabase Auth uid (the app keys `profiles.id` to auth.uid under the
+-- "fresh signups start empty" model), so ownership checks compare against
+-- `auth.uid()::text`.
 --
--- ⚠️  DEV ONLY: replace the "_dev_write" policies below with auth.uid()-scoped
--- ownership policies when Supabase Auth lands (ROADMAP Stage B step 4).
+-- Re-runnable: drop existing policies first so this block can be pasted again.
 
 alter table profiles               enable row level security;
 alter table listings               enable row level security;
@@ -196,16 +198,99 @@ alter table notifications          enable row level security;
 alter table flags                  enable row level security;
 alter table disputes               enable row level security;
 
+-- Drop any previously-created policies (idempotent re-paste).
 do $$
-declare t text;
+declare r record;
 begin
-  foreach t in array array[
-    'profiles','listings','bookings','payouts','conversations','messages',
-    'reviews','verification_documents','notifications','flags','disputes'
-  ]
+  for r in
+    select schemaname, tablename, policyname from pg_policies
+    where schemaname = 'public'
   loop
-    execute format('create policy %I_read on %I for select using (true);', t, t);
-    -- DEV ONLY — remove once auth-scoped policies exist:
-    execute format('create policy %I_dev_write on %I for all using (true) with check (true);', t, t);
+    execute format('drop policy if exists %I on %I.%I;', r.policyname, r.schemaname, r.tablename);
   end loop;
 end $$;
+
+-- Helper expression used throughout: auth.uid()::text  ==  profiles.id
+
+-- is_admin(): true when the logged-in user's profile has the 'admin' role.
+-- Provision an admin by setting profiles.role = 'admin' for their uid.
+-- SECURITY DEFINER so the lookup isn't itself blocked by profiles RLS.
+create or replace function is_admin() returns boolean
+  language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from profiles p
+    where p.id = auth.uid()::text and p.role = 'admin'
+  );
+$$;
+
+-- profiles: anyone can read (public host/renter pages); you may insert/update
+-- only your own row.
+create policy profiles_read   on profiles for select using (true);
+create policy profiles_insert on profiles for insert with check (id = auth.uid()::text);
+create policy profiles_update on profiles for update using (id = auth.uid()::text) with check (id = auth.uid()::text);
+
+-- listings: public browse; only the owning host can write their listings.
+create policy listings_read   on listings for select using (true);
+create policy listings_write  on listings for all
+  using (host_id = auth.uid()::text) with check (host_id = auth.uid()::text);
+
+-- bookings: visible to the renter or the host on the booking; the renter creates
+-- them; either party may update (host approves/declines, renter cancels).
+create policy bookings_read   on bookings for select
+  using (renter_id = auth.uid()::text or host_id = auth.uid()::text or is_admin());
+create policy bookings_insert on bookings for insert
+  with check (renter_id = auth.uid()::text);
+create policy bookings_update on bookings for update
+  using (renter_id = auth.uid()::text or host_id = auth.uid()::text)
+  with check (renter_id = auth.uid()::text or host_id = auth.uid()::text);
+
+-- payouts: read-only to the host they belong to (writes happen server-side).
+create policy payouts_read on payouts for select
+  using (host_id = auth.uid()::text or is_admin());
+
+-- conversations / messages: limited to the two participants.
+create policy conversations_read   on conversations for select
+  using (renter_id = auth.uid()::text or host_id = auth.uid()::text);
+create policy conversations_write  on conversations for all
+  using (renter_id = auth.uid()::text or host_id = auth.uid()::text)
+  with check (renter_id = auth.uid()::text or host_id = auth.uid()::text);
+create policy messages_read on messages for select
+  using (exists (
+    select 1 from conversations c
+    where c.id = messages.conversation_id
+      and (c.renter_id = auth.uid()::text or c.host_id = auth.uid()::text)
+  ));
+create policy messages_insert on messages for insert
+  with check (sender_id = auth.uid()::text);
+create policy messages_update on messages for update
+  using (exists (
+    select 1 from conversations c
+    where c.id = messages.conversation_id
+      and (c.renter_id = auth.uid()::text or c.host_id = auth.uid()::text)
+  ));
+
+-- reviews: public read (shown on listings/profiles); you author as yourself.
+create policy reviews_read   on reviews for select using (true);
+create policy reviews_insert on reviews for insert with check (author_id = auth.uid()::text);
+
+-- flags / disputes: a reporter files as themselves and sees their own reports;
+-- admins see and resolve everything (the /admin moderation queue).
+create policy flags_read   on flags for select
+  using (reported_by = auth.uid()::text or is_admin());
+create policy flags_insert on flags for insert with check (reported_by = auth.uid()::text);
+create policy flags_update on flags for update using (is_admin()) with check (is_admin());
+create policy disputes_read   on disputes for select
+  using (raised_by = auth.uid()::text or against = auth.uid()::text or is_admin());
+create policy disputes_insert on disputes for insert with check (raised_by = auth.uid()::text);
+create policy disputes_update on disputes for update using (is_admin()) with check (is_admin());
+
+-- verification_documents / notifications: scoped to the owning profile; admins
+-- can read all (verification review queue / support).
+create policy vdocs_read   on verification_documents for select
+  using (profile_id = auth.uid()::text or is_admin());
+create policy vdocs_write  on verification_documents for all
+  using (profile_id = auth.uid()::text) with check (profile_id = auth.uid()::text);
+create policy notifications_read  on notifications for select
+  using (profile_id = auth.uid()::text or is_admin());
+create policy notifications_write on notifications for all
+  using (profile_id = auth.uid()::text) with check (profile_id = auth.uid()::text);

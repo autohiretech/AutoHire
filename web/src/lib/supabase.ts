@@ -3,9 +3,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 /**
  * Lazily-created Supabase client (anon key, RLS-guarded — browser-safe).
  *
- * Created on first use so the mock-only app (VITE_USE_MOCK=true) never needs
- * Supabase env vars. The real `supabaseClient` data layer (Stage B) calls
- * `getSupabase()` to talk to the project.
+ * Created on first use (so env is only required when something actually talks to
+ * the backend). The `supabaseClient` data layer and `AuthProvider` call
+ * `getSupabase()` to reach the project.
  */
 let cached: SupabaseClient | null = null;
 

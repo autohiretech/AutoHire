@@ -21,6 +21,8 @@ export type VerificationDocType =
 
 export interface VerificationDocument {
   id: ID;
+  /** Owner of the document — the profile that uploaded it. */
+  profileId: ID;
   type: VerificationDocType;
   status: VerificationStatus;
   fileName?: string;
@@ -188,6 +190,8 @@ export type NotificationKind =
 
 export interface AppNotification {
   id: ID;
+  /** Recipient profile this notification belongs to. */
+  profileId: ID;
   kind: NotificationKind;
   title: string;
   body: string;

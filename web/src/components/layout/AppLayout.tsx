@@ -1,10 +1,26 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/cn';
+import { useAuth } from '@/lib/auth';
+import { Spinner } from '@/components/ui';
 import { Header } from './Header';
 import { Footer } from './Footer';
 
 export function AppLayout() {
   const { pathname } = useLocation();
+  const { user, loading } = useAuth();
+
+  // Require a Supabase session to see anything in the app shell.
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner size={28} />
+      </div>
+    );
+  }
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: pathname }} />;
+  }
+
   // Messaging is a full-bleed app screen: fills the viewport, no footer.
   const fullBleed = pathname === '/messages' || pathname.startsWith('/messages/');
 

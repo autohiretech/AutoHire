@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, CheckCheck, MessageSquare, Search, Send } from 'lucide-react';
 import type { Conversation, Host, Message } from '@autohire/shared';
 import { client } from '@/lib/client';
-import { currentUser } from '@/mocks/data';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
 import { formatDayLabel, formatTime, timeAgo } from '@/lib/format';
 import { Avatar, Button, Input, Spinner } from '@/components/ui';
@@ -163,6 +163,7 @@ function ConversationRow({
 
 function Thread({ conversation, host }: { conversation: Conversation; host?: Host }) {
   const queryClient = useQueryClient();
+  const { data: me } = useCurrentUser();
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -238,7 +239,12 @@ function Thread({ conversation, host }: { conversation: Conversation; host?: Hos
           </div>
         ) : (
           messages?.map((m, i) => (
-            <MessageRow key={m.id} message={m} previous={i > 0 ? messages[i - 1] : undefined} />
+            <MessageRow
+              key={m.id}
+              message={m}
+              previous={i > 0 ? messages[i - 1] : undefined}
+              myId={me?.id}
+            />
           ))
         )}
       </div>
@@ -259,8 +265,16 @@ function Thread({ conversation, host }: { conversation: Conversation; host?: Hos
   );
 }
 
-function MessageRow({ message, previous }: { message: Message; previous?: Message }) {
-  const mine = message.senderId === currentUser.id;
+function MessageRow({
+  message,
+  previous,
+  myId,
+}: {
+  message: Message;
+  previous?: Message;
+  myId?: string;
+}) {
+  const mine = message.senderId === myId;
   const showDay =
     !previous || new Date(previous.sentAt).toDateString() !== new Date(message.sentAt).toDateString();
 
