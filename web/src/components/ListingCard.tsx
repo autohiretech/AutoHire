@@ -5,8 +5,8 @@ import { formatRwf } from '@/lib/format';
 import { Badge, Card, CardBody, Rating } from '@/components/ui';
 
 /**
- * Listing summary card used on the browse grid (A1) and reused by detail /
- * trip screens later. Links to the car detail page (A2).
+ * Listing summary card used on the browse grid (A1). Links to the car detail
+ * page (A2), whose CTA continues into the booking flow (A3).
  */
 export function ListingCard({ listing }: { listing: Listing }) {
   const isBusiness = listing.ownerType === 'business';

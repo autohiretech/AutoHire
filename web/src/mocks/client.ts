@@ -1,4 +1,4 @@
-import type { Host, Listing } from '@autohire/shared';
+import type { Booking, Host, Listing, Payout } from '@autohire/shared';
 import {
   bookings,
   conversations,
@@ -21,6 +21,9 @@ import {
  */
 const LATENCY_MS = 350;
 
+/** Platform service fee applied on top of the rental subtotal. */
+export const SERVICE_FEE_RATE = 0.1;
+
 function delay<T>(value: T, ms = LATENCY_MS): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
 }
@@ -35,6 +38,19 @@ export interface ListingFilters {
   maxPriceRwf?: number;
   query?: string;
 }
+
+export interface CreateBookingInput {
+  listingId: string;
+  startDate: string; // ISO date (yyyy-mm-dd)
+  endDate: string; // ISO date (yyyy-mm-dd)
+}
+
+/**
+ * The host account represented by the owner dashboard in Stage A — a
+ * business/fleet host so the dashboard demos multiple listings, an incoming
+ * request queue, and payouts. Stage B derives this from the logged-in user.
+ */
+export const CURRENT_HOST_ID = 'host-3';
 
 export const mockClient = {
   // --- Listings -----------------------------------------------------------
@@ -75,10 +91,72 @@ export const mockClient = {
   getBooking(id: string) {
     return delay(bookings.find((b) => b.id === id));
   },
+  /**
+   * Create a booking from a listing + date range. Computes pricing (subtotal +
+   * 10% service fee) and prepends it to the in-memory list so it shows up in
+   * "My trips". Instant-book listings land `confirmed`; request-to-book ones
+   * land `requested` (awaiting host approval). Stage B replaces this with a POST.
+   */
+  createBooking(input: CreateBookingInput): Promise<Booking> {
+    const listing = listings.find((l) => l.id === input.listingId);
+    if (!listing) return Promise.reject(new Error(`Unknown listing ${input.listingId}`));
+
+    const start = new Date(input.startDate);
+    const end = new Date(input.endDate);
+    const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000));
+    const subtotalRwf = listing.pricePerDayRwf * days;
+    const serviceFeeRwf = Math.round(subtotalRwf * SERVICE_FEE_RATE);
+
+    const booking: Booking = {
+      id: `bk-${Date.now()}`,
+      listingId: listing.id,
+      renterId: currentUser.id,
+      hostId: listing.hostId,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      days,
+      state: listing.bookingMode === 'instant' ? 'confirmed' : 'requested',
+      subtotalRwf,
+      serviceFeeRwf,
+      totalRwf: subtotalRwf + serviceFeeRwf,
+      createdAt: new Date().toISOString(),
+    };
+    bookings.unshift(booking);
+    return delay(booking);
+  },
 
   // --- Payouts ------------------------------------------------------------
   listPayouts() {
     return delay(payouts);
+  },
+
+  // --- Owner dashboard (host-scoped) --------------------------------------
+  getCurrentHost(): Promise<Host | undefined> {
+    return delay(hosts.find((h) => h.id === CURRENT_HOST_ID));
+  },
+  listOwnerListings(): Promise<Listing[]> {
+    return delay(listings.filter((l) => l.hostId === CURRENT_HOST_ID));
+  },
+  listOwnerBookings(): Promise<Booking[]> {
+    return delay(bookings.filter((b) => b.hostId === CURRENT_HOST_ID));
+  },
+  listOwnerPayouts(): Promise<Payout[]> {
+    return delay(payouts.filter((p) => p.hostId === CURRENT_HOST_ID));
+  },
+  /** Approve or decline a pending booking request. */
+  respondToBooking(id: string, action: 'approve' | 'decline'): Promise<Booking | undefined> {
+    const booking = bookings.find((b) => b.id === id);
+    if (booking) booking.state = action === 'approve' ? 'confirmed' : 'declined';
+    return delay(booking);
+  },
+  /** Update owner-editable listing fields (price, blocked/personal-use dates). */
+  updateListing(
+    id: string,
+    patch: Partial<Pick<Listing, 'pricePerDayRwf' | 'blockedDates'>>,
+  ): Promise<Listing | undefined> {
+    const listing = listings.find((l) => l.id === id);
+    if (listing) Object.assign(listing, patch);
+    return delay(listing);
   },
 
   // --- Messaging ----------------------------------------------------------
