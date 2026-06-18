@@ -9,8 +9,11 @@ build plan and the single source of truth for "what stage are we on?".
 - **Stage A — Hardcoded frontend.** Every screen reads through `web/src/mocks/client.ts`
   (`mockClient`). No backend, no network. Goal: the *entire* product is clickable and
   demo-able on mock data. Parts A0–A9.
-- **Stage B — Backend & real data.** Stand up an API + database + auth, then swap
-  `mockClient` for a real HTTP client with identical method signatures. Screens don't change.
+- **Stage B — Backend & real data.** Stand up an API + database + auth, then add a real HTTP
+  client with identical method signatures. A runtime flag (`VITE_USE_MOCK`) chooses between the
+  mock and the real client. **The hardcoded mock layer is kept, not deleted** — it stays as an
+  offline/demo/dev mode for as long as you want. Going database-only is a deliberate, opt-in step
+  you take when *you* decide (Stage B step 7), not a side effect of adding the backend.
 - **Stage C — Integrations.** Payments (split rails), SMS, OCR, insurance partners.
 - **Stage D — Hardening & launch.** Tests, security, performance, deploy, mobile.
 
@@ -30,11 +33,19 @@ build plan and the single source of truth for "what stage are we on?".
 - **`@autohire/shared`** — domain types shared by web now and the API later. Keep all
   data shapes here so the stack stays in sync.
 
-**Recommended for later stages (confirm before Stage B):**
-- **Backend:** TypeScript — Hono (lightweight) or NestJS (batteries-included). Staying in TS
-  reuses `@autohire/shared` types end-to-end and keeps one language.
-- **Database:** PostgreSQL + Prisma (typed schema, migrations).
-- **Auth:** email/OTP + phone (Rwandan MSISDN); JWT or session.
+**Decided for Stage B:**
+- **Database & backend platform: Supabase** (managed PostgreSQL + Auth + Storage + auto REST/
+  Realtime). This is the source of truth once we cut over.
+- **Auth: Supabase Auth** — email/OTP + phone (Rwandan MSISDN); RLS policies for renter/owner/admin.
+- **Storage: Supabase Storage** — verification doc uploads and car photos.
+- **Data access:** the real `client` talks to Supabase via `@supabase/supabase-js` (with Row-Level
+  Security), wrapped behind the same `Client` interface as `mockClient`. A thin server (Hono in
+  `packages/api`) is added only where logic must not live in the client — notably the payment
+  split and payouts.
+
+**Recommended but not yet locked:**
+- **Schema tooling:** Supabase migrations (SQL) or Drizzle/Prisma against the Supabase Postgres
+  connection string — pick when modeling the DB.
 - **Payments:** Stripe (collection) + MTN MoMo / Airtel Money / bank transfer (payout),
   split owned by our backend — NOT Stripe Connect end-to-end (it can't pay out to RW).
 - **SMS:** treat as a primary channel (Africa's Talking or similar), alongside push.
@@ -100,12 +111,30 @@ clickable on mock data; no real network calls anywhere.
 ---
 
 ## Stage B — Backend & real data
-1. Choose & scaffold API (see stack recommendation) in `packages/api`.
-2. Model the database from `@autohire/shared` types; migrations.
-3. Auth (email/OTP + phone), roles (renter/owner/admin).
-4. Implement endpoints mirroring every `mockClient` method.
-5. Build a real HTTP client with identical signatures; swap it in for `mockClient`.
-6. `owner_type` drives verification + payout logic; business vs. individual host accounts.
+
+> **Mock-data policy:** the hardcoded layer is a feature, not scaffolding to throw away.
+> It stays selectable for as long as you want, so you can always *see* the full app with no
+> backend running. The database becomes the source of truth only when you flip the switch in
+> step 7 — and even then the mock can remain behind the flag for offline/demo/dev use.
+
+1. **Add the client seam first.** Define a `Client` interface (the shape of today's `mockClient`)
+   and have the app import a single `client` chosen at startup by `VITE_USE_MOCK`
+   (defaults to mock). No behavior changes yet — this just makes the rest of Stage B a flip.
+2. **Create the Supabase project**; model the schema from `@autohire/shared` types (tables for
+   listings, hosts, bookings, payouts, conversations, messages, reviews, verification docs,
+   flags, disputes) with Row-Level Security policies.
+3. **Seed Supabase from `web/src/mocks/data.ts`** so a fresh DB starts with the same Kigali
+   cars/hosts/bookings you already see. (The mock data migrates; it isn't lost.)
+4. **Supabase Auth** (email/OTP + phone), roles (renter/owner/admin). Replace the hardcoded
+   `currentUser` / `CURRENT_HOST_ID` with the logged-in session; the renter/host mode switch stays.
+5. Build the real client (`supabaseClient`) using `@supabase/supabase-js`, implementing every
+   `mockClient` method behind the shared `Client` interface. Move file uploads to Supabase Storage.
+6. Add a thin `packages/api` (Hono) only for logic that must not run in the browser — the
+   payment split and host payouts (Stage C wires the actual rails).
+7. **Opt-in cutover (your call).** Set `VITE_USE_MOCK=false` to run on Supabase. Keep the mock
+   behind the flag indefinitely, or delete it later once you no longer want the offline mode —
+   entirely your decision.
+8. `owner_type` drives verification + payout logic; business vs. individual host accounts.
 
 ## Stage C — Integrations
 Stripe collection; MoMo/Airtel/bank payout with platform-owned split; SMS (primary

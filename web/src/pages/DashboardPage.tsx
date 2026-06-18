@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Banknote, CalendarClock, Car, Check, Plus, X } from 'lucide-react';
 import type { Booking, Listing } from '@autohire/shared';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
 import { PAYOUT_CHANNEL_LABEL, PAYOUT_STATUS_META } from '@/lib/payouts';
@@ -20,18 +20,18 @@ type Tab = 'listings' | 'requests' | 'payouts' | 'trips';
 export function DashboardPage() {
   const [tab, setTab] = useState<Tab>('listings');
 
-  const hostQuery = useQuery({ queryKey: ['ownerHost'], queryFn: () => mockClient.getCurrentHost() });
+  const hostQuery = useQuery({ queryKey: ['ownerHost'], queryFn: () => client.getCurrentHost() });
   const listingsQuery = useQuery({
     queryKey: ['ownerListings'],
-    queryFn: () => mockClient.listOwnerListings(),
+    queryFn: () => client.listOwnerListings(),
   });
   const bookingsQuery = useQuery({
     queryKey: ['ownerBookings'],
-    queryFn: () => mockClient.listOwnerBookings(),
+    queryFn: () => client.listOwnerBookings(),
   });
   const payoutsQuery = useQuery({
     queryKey: ['ownerPayouts'],
-    queryFn: () => mockClient.listOwnerPayouts(),
+    queryFn: () => client.listOwnerPayouts(),
   });
 
   const host = hostQuery.data;
@@ -215,7 +215,7 @@ function EmptyCard({ text }: { text: string }) {
 function RequestCard({ booking, listing }: { booking: Booking; listing?: Listing }) {
   const queryClient = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (action: 'approve' | 'decline') => mockClient.respondToBooking(booking.id, action),
+    mutationFn: (action: 'approve' | 'decline') => client.respondToBooking(booking.id, action),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
@@ -264,7 +264,7 @@ function ListingManageCard({ listing }: { listing: Listing }) {
 
   const mutation = useMutation({
     mutationFn: (patch: Partial<Pick<Listing, 'pricePerDayRwf' | 'blockedDates'>>) =>
-      mockClient.updateListing(listing.id, patch),
+      client.updateListing(listing.id, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ownerListings'] });
       queryClient.invalidateQueries({ queryKey: ['listing', listing.id] });

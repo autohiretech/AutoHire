@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart3, Car, Flag, Scale, User } from 'lucide-react';
 import type { Dispute, Flag as FlagType } from '@autohire/shared';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { currentUser } from '@/mocks/data';
 import { cn } from '@/lib/cn';
 import { formatRwf, timeAgo } from '@/lib/format';
@@ -19,12 +19,12 @@ type Tab = 'moderation' | 'disputes' | 'reporting';
 export function AdminPage() {
   const [tab, setTab] = useState<Tab>('moderation');
 
-  const flagsQuery = useQuery({ queryKey: ['flags'], queryFn: () => mockClient.listFlags() });
+  const flagsQuery = useQuery({ queryKey: ['flags'], queryFn: () => client.listFlags() });
   const disputesQuery = useQuery({
     queryKey: ['disputes'],
-    queryFn: () => mockClient.listDisputes(),
+    queryFn: () => client.listDisputes(),
   });
-  const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => mockClient.listHosts() });
+  const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => client.listHosts() });
 
   const flags = flagsQuery.data ?? [];
   const disputes = disputesQuery.data ?? [];
@@ -138,7 +138,7 @@ function FlagCard({ flag, reporter }: { flag: FlagType; reporter: string }) {
   const queryClient = useQueryClient();
   const meta = MODERATION_STATUS_META[flag.status];
   const mutation = useMutation({
-    mutationFn: (status: FlagType['status']) => mockClient.resolveFlag(flag.id, status),
+    mutationFn: (status: FlagType['status']) => client.resolveFlag(flag.id, status),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['flags'] }),
   });
   const open = flag.status === 'open';
@@ -198,7 +198,7 @@ function DisputeCard({
   const queryClient = useQueryClient();
   const meta = DISPUTE_STATUS_META[dispute.status];
   const mutation = useMutation({
-    mutationFn: (status: Dispute['status']) => mockClient.resolveDispute(dispute.id, status),
+    mutationFn: (status: Dispute['status']) => client.resolveDispute(dispute.id, status),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['disputes'] }),
   });
   const actionable = dispute.status === 'open' || dispute.status === 'under_review';
@@ -248,7 +248,7 @@ function DisputeCard({
 function Reporting() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ['adminStats'],
-    queryFn: () => mockClient.getAdminStats(),
+    queryFn: () => client.getAdminStats(),
   });
 
   if (isLoading || !stats) {

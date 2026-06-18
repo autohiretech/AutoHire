@@ -10,7 +10,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { VerificationDocument, VerificationStatus } from '@autohire/shared';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { useAppMode } from '@/lib/appMode';
 import { formatDate } from '@/lib/format';
@@ -51,7 +51,7 @@ export function VerificationPage() {
 
   const { data: documents, isLoading } = useQuery({
     queryKey: ['verificationDocuments'],
-    queryFn: () => mockClient.listVerificationDocuments(),
+    queryFn: () => client.listVerificationDocuments(),
   });
 
   const configs = VERIFICATION_DOCS[role];
@@ -120,7 +120,7 @@ function DocCard({ config, doc }: { config: DocConfig; doc?: VerificationDocumen
   const meta = VERIFICATION_STATUS_META[status];
 
   const mutation = useMutation({
-    mutationFn: (fileName: string) => mockClient.uploadVerificationDocument(config.type, fileName),
+    mutationFn: (fileName: string) => client.uploadVerificationDocument(config.type, fileName),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['verificationDocuments'] }),
   });
 

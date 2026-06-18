@@ -14,7 +14,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
-import { mockClient } from '@/mocks/client';
+import { client } from '@/lib/client';
 import { formatDate, formatRwf } from '@/lib/format';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
 
@@ -24,17 +24,17 @@ export function CarDetailPage() {
 
   const { data: listing, isLoading } = useQuery({
     queryKey: ['listing', id],
-    queryFn: () => mockClient.getListing(id),
+    queryFn: () => client.getListing(id),
   });
 
   const hostQuery = useQuery({
     queryKey: ['host', listing?.hostId],
-    queryFn: () => mockClient.getHost(listing!.hostId),
+    queryFn: () => client.getHost(listing!.hostId),
     enabled: !!listing,
   });
   const reviewsQuery = useQuery({
     queryKey: ['reviews', listing?.hostId],
-    queryFn: () => mockClient.listReviews(listing!.hostId),
+    queryFn: () => client.listReviews(listing!.hostId),
     enabled: !!listing,
   });
 
