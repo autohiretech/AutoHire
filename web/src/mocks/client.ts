@@ -29,6 +29,9 @@ export interface ListingFilters {
   city?: string;
   category?: Listing['category'];
   ownerType?: Listing['ownerType'];
+  transmission?: Listing['transmission'];
+  /** Minimum seat count (e.g. 7 for "7+ seats"). */
+  minSeats?: number;
   maxPriceRwf?: number;
   query?: string;
 }
@@ -40,6 +43,9 @@ export const mockClient = {
     if (filters.city) result = result.filter((l) => l.city === filters.city);
     if (filters.category) result = result.filter((l) => l.category === filters.category);
     if (filters.ownerType) result = result.filter((l) => l.ownerType === filters.ownerType);
+    if (filters.transmission)
+      result = result.filter((l) => l.transmission === filters.transmission);
+    if (filters.minSeats) result = result.filter((l) => l.seats >= filters.minSeats!);
     if (filters.maxPriceRwf)
       result = result.filter((l) => l.pricePerDayRwf <= filters.maxPriceRwf!);
     if (filters.query) {
