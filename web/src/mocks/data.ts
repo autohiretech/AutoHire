@@ -2,12 +2,15 @@ import type {
   AppNotification,
   Booking,
   Conversation,
+  Dispute,
+  Flag,
   Host,
   Listing,
   Message,
   Payout,
   Review,
   UserProfile,
+  VerificationDocument,
 } from '@autohire/shared';
 
 // ---------------------------------------------------------------------------
@@ -360,7 +363,26 @@ export const payouts: Payout[] = [
 // ---------------------------------------------------------------------------
 // Messaging.
 // ---------------------------------------------------------------------------
+// Ordered newest-first (the list renders in array order).
 export const conversations: Conversation[] = [
+  {
+    id: 'conv-4',
+    listingId: 'car-5',
+    renterId: 'user-1',
+    hostId: 'host-3',
+    lastMessagePreview: "It's request-to-book — send a request and I'll confirm right away.",
+    lastMessageAt: '2026-06-18T09:40:00Z',
+    unread: 1,
+  },
+  {
+    id: 'conv-3',
+    listingId: 'car-4',
+    renterId: 'user-1',
+    hostId: 'host-3',
+    lastMessagePreview: 'Self-drive, but we can arrange a driver for an extra fee.',
+    lastMessageAt: '2026-06-17T15:10:00Z',
+    unread: 0,
+  },
   {
     id: 'conv-1',
     listingId: 'car-1',
@@ -375,19 +397,30 @@ export const conversations: Conversation[] = [
     listingId: 'car-2',
     renterId: 'user-1',
     hostId: 'host-2',
-    lastMessagePreview: 'Is the Prado available the first week of July?',
-    lastMessageAt: '2026-06-16T16:00:00Z',
+    lastMessagePreview: 'Also happy to do an airport pickup if useful.',
+    lastMessageAt: '2026-06-16T16:30:00Z',
+    unread: 2,
+  },
+  {
+    id: 'conv-5',
+    listingId: 'car-3',
+    renterId: 'user-1',
+    hostId: 'host-2',
+    lastMessagePreview: 'Anytime — welcome back! 🙏',
+    lastMessageAt: '2026-06-12T10:05:00Z',
     unread: 0,
   },
 ];
 
 export const messages: Message[] = [
+  // conv-1 — RAV4 / Aline (host-1)
   {
     id: 'msg-1',
     conversationId: 'conv-1',
     senderId: 'user-1',
     body: 'Hi Aline, is the RAV4 available this weekend?',
     sentAt: '2026-06-16T17:55:00Z',
+    readAt: '2026-06-16T18:00:00Z',
   },
   {
     id: 'msg-2',
@@ -395,6 +428,7 @@ export const messages: Message[] = [
     senderId: 'host-1',
     body: 'Yes it is! You can book instantly.',
     sentAt: '2026-06-16T18:05:00Z',
+    readAt: '2026-06-16T18:06:00Z',
   },
   {
     id: 'msg-3',
@@ -402,6 +436,7 @@ export const messages: Message[] = [
     senderId: 'user-1',
     body: 'Booked. What time for pickup?',
     sentAt: '2026-06-16T18:15:00Z',
+    readAt: '2026-06-16T18:18:00Z',
   },
   {
     id: 'msg-4',
@@ -409,6 +444,115 @@ export const messages: Message[] = [
     senderId: 'host-1',
     body: 'Great, see you at 8am for pickup!',
     sentAt: '2026-06-16T18:20:00Z',
+  },
+
+  // conv-2 — Prado / Jean-Paul (host-2)
+  {
+    id: 'msg-5',
+    conversationId: 'conv-2',
+    senderId: 'user-1',
+    body: 'Hi, is the Prado available the first week of July?',
+    sentAt: '2026-06-16T15:55:00Z',
+    readAt: '2026-06-16T16:00:00Z',
+  },
+  {
+    id: 'msg-6',
+    conversationId: 'conv-2',
+    senderId: 'host-2',
+    body: 'Hello! Yes, 1–5 July is open.',
+    sentAt: '2026-06-16T16:05:00Z',
+    readAt: '2026-06-16T16:06:00Z',
+  },
+  {
+    id: 'msg-7',
+    conversationId: 'conv-2',
+    senderId: 'user-1',
+    body: 'Great. Does it have a roof rack for luggage?',
+    sentAt: '2026-06-16T16:10:00Z',
+    readAt: '2026-06-16T16:12:00Z',
+  },
+  {
+    id: 'msg-8',
+    conversationId: 'conv-2',
+    senderId: 'host-2',
+    body: 'Yes, roof rack included. Want me to hold the dates for you?',
+    sentAt: '2026-06-16T16:28:00Z',
+  },
+  {
+    id: 'msg-9',
+    conversationId: 'conv-2',
+    senderId: 'host-2',
+    body: 'Also happy to do an airport pickup if useful.',
+    sentAt: '2026-06-16T16:30:00Z',
+  },
+
+  // conv-3 — Hiace / Kigali Car Rental (host-3)
+  {
+    id: 'msg-10',
+    conversationId: 'conv-3',
+    senderId: 'user-1',
+    body: 'Hi, I need the Hiace for a group tour to Musanze on the 5th.',
+    sentAt: '2026-06-17T14:30:00Z',
+    readAt: '2026-06-17T14:35:00Z',
+  },
+  {
+    id: 'msg-11',
+    conversationId: 'conv-3',
+    senderId: 'host-3',
+    body: 'Sure, the Hiace seats 14 and is available on the 5th.',
+    sentAt: '2026-06-17T14:50:00Z',
+    readAt: '2026-06-17T14:52:00Z',
+  },
+  {
+    id: 'msg-12',
+    conversationId: 'conv-3',
+    senderId: 'user-1',
+    body: 'Perfect. Is a driver included or self-drive only?',
+    sentAt: '2026-06-17T15:00:00Z',
+    readAt: '2026-06-17T15:05:00Z',
+  },
+  {
+    id: 'msg-13',
+    conversationId: 'conv-3',
+    senderId: 'host-3',
+    body: 'Self-drive, but we can arrange a driver for an extra fee.',
+    sentAt: '2026-06-17T15:10:00Z',
+    readAt: '2026-06-17T15:30:00Z',
+  },
+
+  // conv-4 — Mercedes C-Class / Kigali Car Rental (host-3)
+  {
+    id: 'msg-14',
+    conversationId: 'conv-4',
+    senderId: 'user-1',
+    body: 'Is the C-Class available this weekend?',
+    sentAt: '2026-06-18T09:20:00Z',
+    readAt: '2026-06-18T09:25:00Z',
+  },
+  {
+    id: 'msg-15',
+    conversationId: 'conv-4',
+    senderId: 'host-3',
+    body: "It's request-to-book — send a request and I'll confirm right away.",
+    sentAt: '2026-06-18T09:40:00Z',
+  },
+
+  // conv-5 — Swift / Jean-Paul (host-2), wrapped up
+  {
+    id: 'msg-16',
+    conversationId: 'conv-5',
+    senderId: 'user-1',
+    body: 'Thanks for the smooth rental last week!',
+    sentAt: '2026-06-12T09:50:00Z',
+    readAt: '2026-06-12T09:55:00Z',
+  },
+  {
+    id: 'msg-17',
+    conversationId: 'conv-5',
+    senderId: 'host-2',
+    body: 'Anytime — welcome back! 🙏',
+    sentAt: '2026-06-12T10:05:00Z',
+    readAt: '2026-06-12T10:10:00Z',
   },
 ];
 
@@ -468,5 +612,114 @@ export const notifications: AppNotification[] = [
     channels: ['sms', 'in_app'],
     createdAt: '2026-05-14T10:00:00Z',
     read: true,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Verification documents — renter identity (drivers_license, national_id) and
+// host vehicle docs (vehicle_registration, insurance_certificate). Mixed states
+// so the UI exercises verified / pending / rejected. OCR fields are placeholders.
+// ---------------------------------------------------------------------------
+export const verificationDocuments: VerificationDocument[] = [
+  {
+    id: 'vd-1',
+    type: 'drivers_license',
+    status: 'verified',
+    fileName: 'drivers-license.jpg',
+    uploadedAt: '2026-01-06',
+    extracted: {
+      Name: 'Chris Mugisha',
+      'License No.': 'RW-DL-4471288',
+      Expires: '2029-03-01',
+    },
+  },
+  {
+    id: 'vd-2',
+    type: 'national_id',
+    status: 'pending',
+    fileName: 'national-id.jpg',
+    uploadedAt: '2026-06-17',
+  },
+  {
+    id: 'vd-3',
+    type: 'vehicle_registration',
+    status: 'verified',
+    fileName: 'yellow-card-rab123a.pdf',
+    uploadedAt: '2026-05-20',
+    extracted: {
+      Plate: 'RAB 123 A',
+      Make: 'Toyota Hiace',
+      Owner: 'Kigali Car Rental Self Drive',
+    },
+  },
+  {
+    id: 'vd-4',
+    type: 'insurance_certificate',
+    status: 'rejected',
+    fileName: 'insurance-2025.pdf',
+    uploadedAt: '2026-05-20',
+    note: 'Certificate has expired. Please upload a current proof of insurance.',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Admin: moderation queue (flagged listings/users) + damage-claim disputes.
+// ---------------------------------------------------------------------------
+export const flags: Flag[] = [
+  {
+    id: 'fl-1',
+    targetType: 'listing',
+    targetId: 'car-5',
+    targetLabel: 'Mercedes-Benz C-Class — premium self-drive',
+    reason: 'inappropriate',
+    detail: 'Photos look like a stock image, not the actual car.',
+    reportedBy: 'user-1',
+    createdAt: '2026-06-17T10:15:00Z',
+    status: 'open',
+  },
+  {
+    id: 'fl-2',
+    targetType: 'user',
+    targetId: 'host-2',
+    targetLabel: 'Jean-Paul Habimana',
+    reason: 'fraud',
+    detail: 'Asked to pay outside the platform via mobile money.',
+    reportedBy: 'user-1',
+    createdAt: '2026-06-16T19:40:00Z',
+    status: 'open',
+  },
+  {
+    id: 'fl-3',
+    targetType: 'listing',
+    targetId: 'car-3',
+    targetLabel: 'Suzuki Swift — economical city car',
+    reason: 'spam',
+    detail: 'Duplicate listing reported.',
+    reportedBy: 'user-1',
+    createdAt: '2026-06-10T08:00:00Z',
+    status: 'dismissed',
+  },
+];
+
+export const disputes: Dispute[] = [
+  {
+    id: 'dp-1',
+    bookingId: 'bk-2',
+    raisedBy: 'host-3',
+    against: 'user-1',
+    reason: 'Scratch on rear bumper at return; claiming repair cost.',
+    amountRwf: 60000,
+    createdAt: '2026-05-13T09:00:00Z',
+    status: 'under_review',
+  },
+  {
+    id: 'dp-2',
+    bookingId: 'bk-1',
+    raisedBy: 'user-1',
+    against: 'host-1',
+    reason: 'Charged a cleaning fee that was not disclosed.',
+    amountRwf: 15000,
+    createdAt: '2026-06-24T12:00:00Z',
+    status: 'open',
   },
 ];

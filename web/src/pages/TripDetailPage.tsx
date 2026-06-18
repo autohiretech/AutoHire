@@ -1,12 +1,16 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CalendarDays, Camera, Check, MapPin } from 'lucide-react';
-import type { CheckPhoto, TripState } from '@autohire/shared';
+import type { Booking, CheckPhoto, Host, Review, ReviewDirection, TripState } from '@autohire/shared';
 import { mockClient } from '@/mocks/client';
+import { currentUser } from '@/mocks/data';
 import { cn } from '@/lib/cn';
+import { useAppMode } from '@/lib/appMode';
 import { formatDate, formatRwf } from '@/lib/format';
 import { TRIP_STATE_META, TRIP_TIMELINE } from '@/lib/trips';
-import { Avatar, Badge, Button, Card, CardBody, CardHeader, Spinner } from '@/components/ui';
+import { StarRatingInput } from '@/components/StarRatingInput';
+import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
 
 export function TripDetailPage() {
   const { id = '' } = useParams();
@@ -136,6 +140,8 @@ export function TripDetailPage() {
             <PhotoPanel title="Check-in" photos={booking.checkIn} state={booking.state} />
             <PhotoPanel title="Check-out" photos={booking.checkOut} state={booking.state} />
           </div>
+
+          <TripReviews booking={booking} host={host} />
         </div>
 
         {/* Summary sidebar */}
@@ -218,6 +224,104 @@ function PhotoPanel({
               Add photos
             </Button>
           </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Two-way reviews for a completed trip. The form direction follows the current
+ * app mode: in Renting mode you review the host, in Hosting mode you review the
+ * renter. Shows both submitted reviews once they exist.
+ */
+function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
+  const { mode } = useAppMode();
+  const queryClient = useQueryClient();
+  const [rating, setRating] = useState(0);
+  const [body, setBody] = useState('');
+
+  const direction: ReviewDirection = mode === 'host' ? 'host_to_renter' : 'renter_to_host';
+  const meId = mode === 'host' ? booking.hostId : booking.renterId;
+  const hostName = host?.businessName ?? host?.fullName ?? 'Host';
+  const renterName = currentUser.fullName;
+  const subjectName = direction === 'renter_to_host' ? hostName : renterName;
+
+  const { data: reviews } = useQuery({
+    queryKey: ['bookingReviews', booking.id],
+    queryFn: () => mockClient.listReviewsForBooking(booking.id),
+  });
+
+  const mine = reviews?.find((r) => r.direction === direction);
+  const completed = booking.state === 'completed';
+
+  const mutation = useMutation({
+    mutationFn: () => mockClient.createReview({ bookingId: booking.id, direction, rating, body }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookingReviews', booking.id] });
+      queryClient.invalidateQueries({ queryKey: ['reviews'] });
+      setRating(0);
+      setBody('');
+    },
+  });
+
+  function authorName(review: Review): string {
+    if (review.authorId === meId) return 'You';
+    return review.direction === 'renter_to_host' ? renterName : hostName;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="font-semibold text-ink-900">Reviews</h2>
+      </CardHeader>
+      <CardBody className="space-y-4">
+        {/* Existing reviews */}
+        {reviews && reviews.length > 0 && (
+          <ul className="space-y-4">
+            {reviews.map((r) => (
+              <li key={r.id} className="border-b border-ink-100 pb-4 last:border-0 last:pb-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-ink-900">{authorName(r)}</span>
+                  <Rating value={r.rating} />
+                </div>
+                <p className="mt-1 text-sm text-ink-700">{r.body}</p>
+                <p className="mt-1 text-xs text-ink-400">{formatDate(r.createdAt)}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Compose / status */}
+        {!completed ? (
+          <p className="text-sm text-ink-500">
+            You can leave a review once the trip is completed.
+          </p>
+        ) : mine ? (
+          reviews && reviews.length === 1 ? (
+            <p className="text-sm text-ink-500">Thanks for your review.</p>
+          ) : null
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (rating > 0 && body.trim()) mutation.mutate();
+            }}
+            className="space-y-3 rounded-lg bg-ink-50 p-3"
+          >
+            <p className="text-sm font-medium text-ink-700">Review {subjectName}</p>
+            <StarRatingInput value={rating} onChange={setRating} />
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={3}
+              placeholder="How was the experience?"
+              className="w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+            />
+            <Button type="submit" size="sm" disabled={rating === 0 || !body.trim() || mutation.isPending}>
+              {mutation.isPending ? 'Submitting…' : 'Submit review'}
+            </Button>
+          </form>
         )}
       </CardBody>
     </Card>

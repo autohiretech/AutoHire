@@ -6,9 +6,10 @@ import { mockClient } from '@/mocks/client';
 import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
 import { PAYOUT_CHANNEL_LABEL, PAYOUT_STATUS_META } from '@/lib/payouts';
+import { TripCard } from '@/components/TripCard';
 import { Badge, Button, Card, CardBody, CardHeader, Input, Spinner } from '@/components/ui';
 
-type Tab = 'listings' | 'requests' | 'payouts';
+type Tab = 'listings' | 'requests' | 'payouts' | 'trips';
 
 /**
  * A4 — Owner / host dashboard. Host-scoped view (the demo host is a fleet
@@ -45,8 +46,10 @@ export function DashboardPage() {
   const tabs: { key: Tab; label: string; badge?: number }[] = [
     { key: 'listings', label: 'My listings' },
     { key: 'requests', label: 'Requests', badge: requests.length || undefined },
+    { key: 'trips', label: 'Trips' },
     { key: 'payouts', label: 'Payouts' },
   ];
+  const listingsById = new Map(listings.map((l) => [l.id, l]));
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-8">
@@ -118,6 +121,20 @@ export function DashboardPage() {
                     booking={b}
                     listing={listings.find((l) => l.id === b.listingId)}
                   />
+                ))}
+              </div>
+            )}
+          </TabState>
+        )}
+
+        {tab === 'trips' && (
+          <TabState query={bookingsQuery}>
+            {bookings.length === 0 ? (
+              <EmptyCard text="No trips yet." />
+            ) : (
+              <div className="space-y-3">
+                {bookings.map((b) => (
+                  <TripCard key={b.id} booking={b} listing={listingsById.get(b.listingId)} />
                 ))}
               </div>
             )}
