@@ -126,7 +126,11 @@ export function DashboardPage() {
             ) : (
               <div className="space-y-4">
                 {listings.map((l) => (
-                  <ListingManageCard key={l.id} listing={l} />
+                  <ListingManageCard
+                    key={l.id}
+                    listing={l}
+                    bookings={bookings.filter((b) => b.listingId === l.id)}
+                  />
                 ))}
               </div>
             )}
@@ -280,20 +284,40 @@ function RequestCard({ booking, listing }: { booking: Booking; listing?: Listing
   );
 }
 
-/** Manage a single listing: edit price, block/unblock personal-use dates. */
-function ListingManageCard({ listing }: { listing: Listing }) {
+/** Manage a single listing: edit price, set maintenance, block personal-use dates. */
+function ListingManageCard({ listing, bookings }: { listing: Listing; bookings: Booking[] }) {
   const queryClient = useQueryClient();
   const [price, setPrice] = useState(String(listing.pricePerDayRwf));
   const [newDate, setNewDate] = useState('');
+  const [maintDate, setMaintDate] = useState(listing.maintenanceUntil ?? '');
 
   const mutation = useMutation({
-    mutationFn: (patch: Partial<Pick<Listing, 'pricePerDayRwf' | 'blockedDates'>>) =>
-      client.updateListing(listing.id, patch),
+    mutationFn: (
+      patch: Partial<Pick<Listing, 'pricePerDayRwf' | 'blockedDates' | 'status' | 'maintenanceUntil'>>,
+    ) => client.updateListing(listing.id, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ownerListings'] });
       queryClient.invalidateQueries({ queryKey: ['listing', listing.id] });
     },
   });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const inMaintenance = listing.status === 'maintenance';
+  // A car is "booked now" if a live trip covers today.
+  const bookedNow = bookings.some(
+    (b) =>
+      !['cancelled', 'declined', 'completed', 'requested'].includes(b.state) &&
+      b.startDate <= today &&
+      b.endDate > today,
+  );
+  const statusBadge = inMaintenance
+    ? {
+        tone: 'warning' as const,
+        label: `In maintenance${listing.maintenanceUntil ? ` · back ${formatDate(listing.maintenanceUntil)}` : ''}`,
+      }
+    : bookedNow
+      ? { tone: 'accent' as const, label: 'Booked now' }
+      : { tone: 'success' as const, label: 'Available' };
 
   const priceChanged = Number(price) !== listing.pricePerDayRwf && Number(price) > 0;
 
@@ -315,9 +339,12 @@ function ListingManageCard({ listing }: { listing: Listing }) {
           <p className="font-medium text-ink-900">{listing.title}</p>
           <p className="text-xs text-ink-500">{listing.location}</p>
         </div>
-        <Badge tone={listing.bookingMode === 'instant' ? 'success' : 'neutral'}>
-          {listing.bookingMode === 'instant' ? 'Instant book' : 'Request to book'}
-        </Badge>
+        <div className="flex flex-col items-end gap-1.5">
+          <Badge tone={statusBadge.tone}>{statusBadge.label}</Badge>
+          <Badge tone="neutral">
+            {listing.bookingMode === 'instant' ? 'Instant book' : 'Request to book'}
+          </Badge>
+        </div>
       </CardHeader>
       <CardBody className="space-y-5">
         {/* Pricing */}
@@ -338,6 +365,45 @@ function ListingManageCard({ listing }: { listing: Listing }) {
               Save
             </Button>
           </div>
+        </div>
+
+        {/* Maintenance */}
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-ink-700">Maintenance</p>
+          {inMaintenance ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-ink-600">
+                Off the market{listing.maintenanceUntil ? ` until ${formatDate(listing.maintenanceUntil)}` : ''}.
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={mutation.isPending}
+                onClick={() => mutation.mutate({ status: 'available' })}
+              >
+                Mark available
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-ink-600">Back in service on</span>
+              <Input
+                type="date"
+                min={today}
+                value={maintDate}
+                onChange={(e) => setMaintDate(e.target.value)}
+                className="max-w-48"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!maintDate || maintDate < today || mutation.isPending}
+                onClick={() => mutation.mutate({ status: 'maintenance', maintenanceUntil: maintDate })}
+              >
+                Put in maintenance
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Availability */}

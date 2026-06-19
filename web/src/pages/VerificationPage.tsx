@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
@@ -9,20 +9,20 @@ import {
   Upload,
   XCircle,
 } from 'lucide-react';
-import type { VerificationDocument, VerificationStatus } from '@autohire/shared';
+import type { Host, UserProfile, VerificationDocument, VerificationStatus } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { useAppMode } from '@/lib/appMode';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { formatDate } from '@/lib/format';
 import {
   VERIFICATION_DOCS,
+  VERIFICATION_ROLE_META,
   VERIFICATION_STATUS_META,
   overallStatus,
+  verificationRoleFor,
   type DocConfig,
 } from '@/lib/verification';
 import { Badge, Button, Card, CardBody, CardHeader, Spinner } from '@/components/ui';
-
-type Role = 'renter' | 'host';
 
 const STATUS_ICON: Record<VerificationStatus, React.ReactNode> = {
   unverified: <ShieldCheck size={18} />,
@@ -46,8 +46,10 @@ const BANNER_TEXT: Record<VerificationStatus, string> = {
 };
 
 export function VerificationPage() {
-  const { mode } = useAppMode();
-  const [role, setRole] = useState<Role>(mode === 'host' ? 'host' : 'renter');
+  const { data: profileData } = useCurrentUser();
+  const profile = profileData as (UserProfile & Partial<Host>) | undefined;
+  const role = verificationRoleFor({ role: profile?.role, ownerType: profile?.ownerType });
+  const roleMeta = VERIFICATION_ROLE_META[role];
 
   const { data: documents, isLoading } = useQuery({
     queryKey: ['verificationDocuments'],
@@ -61,29 +63,11 @@ export function VerificationPage() {
 
   return (
     <section className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="text-2xl font-bold text-ink-900">Verification</h1>
-      <p className="mt-1 text-sm text-ink-500">
-        Verified renters and hosts build trust and unlock bookings.
-      </p>
-
-      {/* Role tabs */}
-      <div className="mt-6 flex gap-1 border-b border-ink-200">
-        {(['renter', 'host'] as Role[]).map((r) => (
-          <button
-            key={r}
-            type="button"
-            onClick={() => setRole(r)}
-            className={cn(
-              '-mb-px border-b-2 px-4 py-2.5 text-sm font-medium capitalize transition-colors',
-              role === r
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-ink-500 hover:text-ink-800',
-            )}
-          >
-            {r === 'renter' ? 'Renter (you)' : 'Host'}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-bold text-ink-900">Verification</h1>
+        <Badge tone="brand">{roleMeta.label}</Badge>
       </div>
+      <p className="mt-1 text-sm text-ink-500">{roleMeta.blurb}</p>
 
       {isLoading ? (
         <div className="flex justify-center py-16">

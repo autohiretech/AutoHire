@@ -1,0 +1,13 @@
+project_id = "gsnoggfofbmzamxxyazc"
+
+# The account-deletion function verifies the caller's JWT itself (with the
+# service role), so the gateway's JWT check is disabled — otherwise the
+# unauthenticated CORS preflight (OPTIONS) is rejected with 401 and the browser
+# blocks the request. (Deployed via the dashboard under the slug 'dynamic-endpoint'.)
+[functions.dynamic-endpoint]
+verify_jwt = false
+
+# Stripe payment-intent creation — verifies the caller's JWT inside the function,
+# so the gateway check is off (lets the CORS preflight through).
+[functions.create-payment-intent]
+verify_jwt = false

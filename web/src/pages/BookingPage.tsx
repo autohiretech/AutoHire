@@ -1,10 +1,21 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock, ShieldCheck } from 'lucide-react';
+import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
+import { ArrowLeft, CreditCard, Lock, ShieldCheck, Smartphone } from 'lucide-react';
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { client } from '@/lib/client';
-import { formatRwf } from '@/lib/format';
+import { useIsBusinessHost } from '@/lib/account';
+import { cn } from '@/lib/cn';
+import { getSupabase } from '@/lib/supabase';
+import { getStripe } from '@/lib/stripe';
+import { formatDate, formatRwf } from '@/lib/format';
+import {
+  MastercardMark,
+  MomoMark,
+  StripeWordmark,
+  VisaMark,
+} from '@/components/PaymentBrands';
 import { Badge, Button, Card, CardBody, CardHeader, Input, Label, Spinner } from '@/components/ui';
 
 type Step = 'details' | 'payment';
@@ -12,6 +23,15 @@ type Step = 'details' | 'payment';
 function diffDays(start: string, end: string): number {
   const ms = new Date(end).getTime() - new Date(start).getTime();
   return Math.max(1, Math.round(ms / 86_400_000));
+}
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/** Add `n` days to an ISO date (yyyy-mm-dd) and return the ISO date. */
+function addDays(iso: string, n: number): string {
+  const d = new Date(iso);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 /**
@@ -23,18 +43,24 @@ export function BookingPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isBusiness = useIsBusinessHost();
 
   const [step, setStep] = useState<Step>('details');
-  const [startDate, setStartDate] = useState('2026-06-25');
-  const [endDate, setEndDate] = useState('2026-06-28');
+  const [startDate, setStartDate] = useState(() => addDays(todayISO(), 1));
+  const [endDate, setEndDate] = useState(() => addDays(todayISO(), 4));
 
   const { data: listing, isLoading } = useQuery({
     queryKey: ['listing', id],
     queryFn: () => client.getListing(id),
   });
+  const { data: bookedRanges = [] } = useQuery({
+    queryKey: ['bookedRanges', id],
+    queryFn: () => client.getBookedRanges(id),
+  });
 
   const mutation = useMutation({
-    mutationFn: () => client.createBooking({ listingId: id, startDate, endDate }),
+    mutationFn: (paymentIntentId?: string) =>
+      client.confirmBooking({ listingId: id, startDate, endDate, paymentIntentId }),
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       navigate(`/trips/${booking.id}`);
@@ -60,7 +86,34 @@ export function BookingPage() {
     );
   }
 
-  const datesValid = new Date(endDate) > new Date(startDate);
+  // Business accounts are hosts only — they can't rent.
+  if (isBusiness) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <p className="font-medium text-ink-900">Business accounts can't rent</p>
+        <p className="mt-1 text-sm text-ink-500">
+          Company accounts host vehicles. To rent a car, use a personal account.
+        </p>
+        <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+          Back to browse
+        </Link>
+      </div>
+    );
+  }
+
+  const today = todayISO();
+  const inMaintenance = listing.status === 'maintenance';
+  const maintUntil = listing.maintenanceUntil ?? undefined;
+  // Pick-up can't be in the past, or before the car is back from maintenance.
+  const pickupMin = inMaintenance && maintUntil && maintUntil > today ? maintUntil : today;
+  const afterMaintenance = !inMaintenance || (!!maintUntil && startDate >= maintUntil);
+  // Dates already taken by other live bookings.
+  const overlapsBooked = bookedRanges.some((r) => startDate < r.endDate && endDate > r.startDate);
+  const datesValid =
+    new Date(endDate) > new Date(startDate) &&
+    startDate >= today &&
+    afterMaintenance &&
+    !overlapsBooked;
   const days = diffDays(startDate, endDate);
   const subtotal = listing.pricePerDayRwf * days;
   const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
@@ -95,6 +148,7 @@ export function BookingPage() {
                     <Input
                       id="start"
                       type="date"
+                      min={pickupMin}
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                     />
@@ -104,13 +158,35 @@ export function BookingPage() {
                     <Input
                       id="end"
                       type="date"
+                      min={addDays(startDate, 1)}
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
                     />
                   </div>
                 </div>
+                {inMaintenance && maintUntil && (
+                  <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                    This car is in maintenance — available from {formatDate(maintUntil)}.
+                  </p>
+                )}
+                {bookedRanges.length > 0 && (
+                  <div className="text-xs text-ink-500">
+                    <span className="font-medium text-ink-600">Already booked:</span>{' '}
+                    {bookedRanges
+                      .map((r) => `${formatDate(r.startDate)} – ${formatDate(r.endDate)}`)
+                      .join(', ')}
+                  </div>
+                )}
                 {!datesValid && (
-                  <p className="text-sm text-red-600">Return date must be after pick-up.</p>
+                  <p className="text-sm text-red-600">
+                    {startDate < today
+                      ? 'Pick-up date cannot be in the past.'
+                      : !afterMaintenance
+                        ? `This car is in maintenance until ${formatDate(maintUntil ?? '')}.`
+                        : overlapsBooked
+                          ? 'Those dates are already booked — pick different dates.'
+                          : 'Return date must be after pick-up.'}
+                  </p>
                 )}
                 <Badge tone={instant ? 'success' : 'neutral'}>
                   {instant ? 'Instant book — confirmed immediately' : 'Request — host must approve'}
@@ -125,54 +201,15 @@ export function BookingPage() {
               </CardBody>
             </Card>
           ) : (
-            <Card>
-              <CardHeader>
-                <h2 className="flex items-center gap-2 font-semibold text-ink-900">
-                  <Lock size={16} className="text-brand-600" /> Payment details
-                </h2>
-              </CardHeader>
-              <CardBody className="space-y-4">
-                <p className="rounded-lg bg-ink-50 p-3 text-xs text-ink-500">
-                  Demo only — no real card is charged. Stage C wires Stripe collection with
-                  MoMo / Airtel / bank payout.
-                </p>
-                <div>
-                  <Label htmlFor="card">Card number</Label>
-                  <Input id="card" placeholder="4242 4242 4242 4242" defaultValue="4242 4242 4242 4242" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="exp">Expiry</Label>
-                    <Input id="exp" placeholder="MM/YY" defaultValue="12/28" />
-                  </div>
-                  <div>
-                    <Label htmlFor="cvc">CVC</Label>
-                    <Input id="cvc" placeholder="123" defaultValue="123" />
-                  </div>
-                </div>
-                {mutation.isError && (
-                  <p className="text-sm text-red-600">Something went wrong. Please try again.</p>
-                )}
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => setStep('details')}
-                    disabled={mutation.isPending}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={() => mutation.mutate()}
-                    disabled={mutation.isPending}
-                  >
-                    {mutation.isPending
-                      ? 'Processing…'
-                      : `Pay ${formatRwf(total)} & ${instant ? 'confirm' : 'request'}`}
-                  </Button>
-                </div>
-              </CardBody>
-            </Card>
+            <PaymentSection
+              listingId={id}
+              startDate={startDate}
+              endDate={endDate}
+              totalRwf={total}
+              instant={instant}
+              onBack={() => setStep('details')}
+              onPaid={(paymentIntentId) => mutation.mutateAsync(paymentIntentId)}
+            />
           )}
         </div>
 
@@ -205,5 +242,242 @@ export function BookingPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+interface PayProps {
+  listingId: string;
+  startDate: string;
+  endDate: string;
+  totalRwf: number;
+  instant: boolean;
+  onBack: () => void;
+  /**
+   * Create the booking once payment succeeds; resolves when done. In demo mode
+   * there's no PaymentIntent, so the id is omitted.
+   */
+  onPaid: (paymentIntentId?: string) => Promise<unknown>;
+}
+
+/** Checkout: pick a payment method (card via Stripe, or MTN MoMo). */
+function PaymentSection(props: PayProps) {
+  const [method, setMethod] = useState<'card' | 'momo'>('card');
+  const stripePromise = getStripe();
+  // No Stripe publishable key configured → demo checkout (no real charge).
+  const demo = !stripePromise;
+
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="flex items-center gap-2 font-semibold text-ink-900">
+          <Lock size={16} className="text-brand-600" /> Payment
+        </h2>
+      </CardHeader>
+      <CardBody className="space-y-4">
+        <div className="grid grid-cols-2 gap-2">
+          <MethodButton
+            active={method === 'card'}
+            onClick={() => setMethod('card')}
+            icon={<CreditCard size={16} />}
+            label="Card"
+          >
+            <VisaMark />
+            <MastercardMark />
+          </MethodButton>
+          <MethodButton
+            active={method === 'momo'}
+            onClick={() => setMethod('momo')}
+            icon={<Smartphone size={16} />}
+            label="Mobile Money"
+          >
+            <MomoMark />
+          </MethodButton>
+        </div>
+
+        {demo ? (
+          <DemoPayForm {...props} method={method} />
+        ) : method === 'card' ? (
+          <Elements stripe={stripePromise}>
+            <CardForm {...props} />
+          </Elements>
+        ) : (
+          <MomoForm totalRwf={props.totalRwf} onBack={props.onBack} />
+        )}
+
+        <p className="flex items-center justify-center gap-1.5 pt-1 text-xs text-ink-400">
+          Card payments secured by <StripeWordmark className="text-xs" />
+        </p>
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Demo checkout — used when no payment provider is configured. No real card or
+ * mobile-money charge: clicking pay confirms the booking instantly via the
+ * server (which still owns the price and availability).
+ */
+function DemoPayForm({ totalRwf, instant, onBack, onPaid, method }: PayProps & { method: 'card' | 'momo' }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pay() {
+    setBusy(true);
+    setError(null);
+    try {
+      await onPaid();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not confirm the booking.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+        Demo mode — no real {method === 'card' ? 'card' : 'mobile money'} charge. Clicking pay
+        confirms the booking instantly.
+      </p>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="flex gap-3">
+        <Button variant="outline" onClick={onBack} disabled={busy}>
+          Back
+        </Button>
+        <Button className="flex-1" onClick={pay} disabled={busy}>
+          {busy ? 'Processing…' : `Pay ${formatRwf(totalRwf)} & ${instant ? 'confirm' : 'request'}`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MethodButton({
+  active,
+  onClick,
+  icon,
+  label,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex flex-col gap-2 rounded-lg border p-3 text-left transition-colors',
+        active ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-200' : 'border-ink-200 hover:border-ink-300',
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-sm font-medium text-ink-900">
+        {icon} {label}
+      </span>
+      <span className="flex items-center gap-1.5">{children}</span>
+    </button>
+  );
+}
+
+/** Stripe card form — creates a PaymentIntent server-side, then confirms it. */
+function CardForm({ listingId, startDate, endDate, totalRwf, instant, onBack, onPaid }: PayProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pay() {
+    if (!stripe || !elements) return;
+    const card = elements.getElement(CardElement);
+    if (!card) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { data, error: fnErr } = await getSupabase().functions.invoke('create-payment-intent', {
+        body: { listingId, startDate, endDate },
+      });
+      if (fnErr) {
+        throw new Error(
+          fnErr.name === 'FunctionsFetchError'
+            ? "Card payments aren't deployed yet — deploy the create-payment-intent Edge Function."
+            : fnErr.message,
+        );
+      }
+      const clientSecret = (data as { clientSecret?: string; error?: string })?.clientSecret;
+      if (!clientSecret) {
+        throw new Error((data as { error?: string })?.error ?? 'Could not start the payment.');
+      }
+
+      const result = await stripe.confirmCardPayment(clientSecret, { payment_method: { card } });
+      if (result.error) throw new Error(result.error.message ?? 'Your card was declined.');
+      if (result.paymentIntent?.status !== 'succeeded') throw new Error('Payment was not completed.');
+
+      // Paid — hand the PaymentIntent to the server, which verifies it and
+      // creates the booking (navigates on success).
+      await onPaid(result.paymentIntent.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Payment failed.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-ink-200 px-3 py-3">
+        <CardElement options={{ style: { base: { fontSize: '15px', color: '#04141F' } } } } />
+      </div>
+      <p className="text-xs text-ink-400">
+        Test card: 4242 4242 4242 4242 · any future expiry · any CVC.
+      </p>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="flex gap-3">
+        <Button variant="outline" onClick={onBack} disabled={busy}>
+          Back
+        </Button>
+        <Button className="flex-1" onClick={pay} disabled={busy || !stripe}>
+          {busy ? 'Processing…' : `Pay ${formatRwf(totalRwf)} & ${instant ? 'confirm' : 'request'}`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** MTN MoMo — branded UI. Real collection needs a mobile-money PSP (see docs/payments-plan.md). */
+function MomoForm({ totalRwf, onBack }: { totalRwf: number; onBack: () => void }) {
+  const [phone, setPhone] = useState('');
+  const [note, setNote] = useState<string | null>(null);
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label htmlFor="momo-phone">MTN MoMo number</Label>
+        <Input
+          id="momo-phone"
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="+250 788 123 456"
+        />
+      </div>
+      <p className="text-xs text-ink-400">You'll get a prompt on your phone to approve the payment.</p>
+      {note && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{note}</p>}
+      <div className="flex gap-3">
+        <Button variant="outline" onClick={onBack}>
+          Back
+        </Button>
+        <Button
+          className="flex-1"
+          onClick={() =>
+            setNote(
+              "MTN MoMo isn't connected yet — it needs a mobile-money provider (see docs/payments-plan.md). Use Card for now.",
+            )
+          }
+        >
+          Pay {formatRwf(totalRwf)} with MoMo
+        </Button>
+      </div>
+    </div>
   );
 }

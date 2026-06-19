@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CalendarDays, Camera, Check, MapPin } from 'lucide-react';
-import type { Booking, CheckPhoto, Host, Review, ReviewDirection, TripState } from '@autohire/shared';
+import { ArrowLeft, CalendarDays, Check, Clock, MapPin, Upload } from 'lucide-react';
+import type { Booking, CheckPhoto, Host, Review, ReviewDirection } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
-import { useAppMode } from '@/lib/appMode';
 import { formatDate, formatRwf } from '@/lib/format';
 import { TRIP_STATE_META, TRIP_TIMELINE } from '@/lib/trips';
 import { StarRatingInput } from '@/components/StarRatingInput';
+import { LocationMap } from '@/components/map/LocationMap';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
 
 export function TripDetailPage() {
   const { id = '' } = useParams();
+  const { data: me } = useCurrentUser();
 
   const bookingQuery = useQuery({
     queryKey: ['booking', id],
@@ -135,11 +136,28 @@ export function TripDetailPage() {
             </CardBody>
           </Card>
 
-          {/* Check-in / check-out photos */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <PhotoPanel title="Check-in" photos={booking.checkIn} state={booking.state} />
-            <PhotoPanel title="Check-out" photos={booking.checkOut} state={booking.state} />
-          </div>
+          {/* Two-sided handoff — both renter and host sign off with proof. */}
+          {!isCancelled && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <HandoffPanel booking={booking} phase="pickup" meId={me?.id} />
+              <HandoffPanel booking={booking} phase="return" meId={me?.id} />
+            </div>
+          )}
+
+          {/* Pickup location */}
+          {listing?.lat != null && listing?.lng != null && (
+            <Card>
+              <CardHeader>
+                <h2 className="font-semibold text-ink-900">Pickup location</h2>
+              </CardHeader>
+              <CardBody className="space-y-2">
+                <p className="flex items-center gap-1.5 text-sm text-ink-600">
+                  <MapPin size={15} className="text-brand-600" /> {listing.location}
+                </p>
+                <LocationMap lat={listing.lat} lng={listing.lng} />
+              </CardBody>
+            </Card>
+          )}
 
           <TripReviews booking={booking} host={host} />
         </div>
@@ -190,38 +208,142 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   );
 }
 
-/** Shows captured check-in/out photos, or a placeholder when none exist yet. */
-function PhotoPanel({
-  title,
-  photos,
-  state,
+/** A small confirmed/pending row for one party's handoff sign-off. */
+function SignOffRow({ who, at }: { who: string; at?: string | null }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-ink-600">{who}</span>
+      {at ? (
+        <span className="flex items-center gap-1 font-medium text-emerald-700">
+          <Check size={14} /> Confirmed {formatDate(at)}
+        </span>
+      ) : (
+        <span className="flex items-center gap-1 text-ink-400">
+          <Clock size={14} /> Pending
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One handoff phase (pickup or return). Both the renter and host must confirm
+ * with proof photos; the trip only advances when both have signed off. The
+ * current user can confirm their own side while the phase is open.
+ */
+function HandoffPanel({
+  booking,
+  phase,
+  meId,
 }: {
-  title: string;
-  photos?: CheckPhoto[];
-  state: TripState;
+  booking: Booking;
+  phase: 'pickup' | 'return';
+  meId?: string;
 }) {
-  const active = state === 'active' || state === 'pickup' || state === 'return';
+  const queryClient = useQueryClient();
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isRenter = meId === booking.renterId;
+  const isHost = meId === booking.hostId;
+  const renterAt = phase === 'pickup' ? booking.pickupRenterAt : booking.returnRenterAt;
+  const hostAt = phase === 'pickup' ? booking.pickupHostAt : booking.returnHostAt;
+  const photos: CheckPhoto[] = (phase === 'pickup' ? booking.checkIn : booking.checkOut) ?? [];
+  const title = phase === 'pickup' ? 'Pickup handoff' : 'Return handoff';
+
+  const phaseOpen =
+    phase === 'pickup'
+      ? booking.state === 'confirmed' || booking.state === 'pickup'
+      : booking.state === 'active' || booking.state === 'return';
+  const notYet = phase === 'pickup' ? booking.state === 'requested' : !phaseOpen && !renterAt && !hostAt;
+  const myDone = (isRenter && !!renterAt) || (isHost && !!hostAt);
+  const bothDone = !!renterAt && !!hostAt;
+  const canConfirm = phaseOpen && (isRenter || isHost) && !myDone;
+
+  async function confirm() {
+    if (files.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const urls = await client.uploadPhotos(files);
+      await client.confirmHandoff(booking.id, phase, urls);
+      queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
+      queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      setFiles([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not confirm the handoff.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ink-900">{title}</h3>
+        {bothDone && (
+          <Badge tone="success">
+            <Check size={12} /> Both confirmed
+          </Badge>
+        )}
       </CardHeader>
-      <CardBody>
-        {photos && photos.length > 0 ? (
-          <div className="grid grid-cols-2 gap-2">
+      <CardBody className="space-y-3">
+        <div className="space-y-1.5">
+          <SignOffRow who="Renter" at={renterAt} />
+          <SignOffRow who="Host" at={hostAt} />
+        </div>
+
+        {photos.length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
             {photos.map((p) => (
-              <figure key={p.url}>
-                <img src={p.url} alt={p.label} className="h-20 w-full rounded-lg object-cover" />
-                <figcaption className="mt-1 text-xs text-ink-500">{p.label}</figcaption>
-              </figure>
+              <img
+                key={p.url}
+                src={p.url}
+                alt={p.label}
+                className="h-16 w-full rounded-lg border border-ink-100 object-cover"
+              />
             ))}
           </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-ink-200 py-6 text-center">
-            <Camera size={20} className="text-ink-300" />
-            <p className="text-xs text-ink-500">No photos yet</p>
-            <Button variant="outline" size="sm" disabled={!active}>
-              Add photos
+        )}
+
+        {notYet && (
+          <p className="text-xs text-ink-500">
+            {phase === 'pickup'
+              ? 'Available once the host confirms the booking.'
+              : 'Available once the trip is active.'}
+          </p>
+        )}
+
+        {myDone && !bothDone && (
+          <p className="text-xs text-ink-500">
+            You've confirmed — waiting for the other party.
+          </p>
+        )}
+
+        {canConfirm && (
+          <div className="space-y-2 rounded-lg bg-ink-50 p-3">
+            <p className="text-xs font-medium text-ink-700">
+              Confirm your side with proof photos:
+            </p>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={busy}
+              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              className="block w-full text-xs text-ink-600 file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-brand-700"
+            />
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={busy || files.length === 0}
+              onClick={confirm}
+            >
+              <Upload size={14} />
+              {busy ? 'Confirming…' : `Confirm ${phase} (${files.length} photo${files.length === 1 ? '' : 's'})`}
             </Button>
           </div>
         )}
@@ -236,16 +358,20 @@ function PhotoPanel({
  * renter. Shows both submitted reviews once they exist.
  */
 function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
-  const { mode } = useAppMode();
   const { data: me } = useCurrentUser();
   const queryClient = useQueryClient();
   const [rating, setRating] = useState(0);
   const [body, setBody] = useState('');
 
-  const direction: ReviewDirection = mode === 'host' ? 'host_to_renter' : 'renter_to_host';
-  const meId = mode === 'host' ? booking.hostId : booking.renterId;
+  // Eligibility follows actual participation in THIS booking, not the app mode:
+  // the renter reviews the host, the host reviews the renter, nobody else.
+  const myId = me?.id;
+  const isRenter = !!myId && myId === booking.renterId;
+  const isHost = !!myId && myId === booking.hostId;
+  const canReview = isRenter || isHost;
+  const direction: ReviewDirection = isHost ? 'host_to_renter' : 'renter_to_host';
   const hostName = host?.businessName ?? host?.fullName ?? 'Host';
-  const renterName = me?.fullName ?? 'You';
+  const renterName = isRenter ? me?.fullName ?? 'You' : 'the renter';
   const subjectName = direction === 'renter_to_host' ? hostName : renterName;
 
   const { data: reviews } = useQuery({
@@ -267,7 +393,7 @@ function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
   });
 
   function authorName(review: Review): string {
-    if (review.authorId === meId) return 'You';
+    if (review.authorId === myId) return 'You';
     return review.direction === 'renter_to_host' ? renterName : hostName;
   }
 
@@ -293,8 +419,12 @@ function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
           </ul>
         )}
 
-        {/* Compose / status */}
-        {!completed ? (
+        {/* Compose / status — only the renter or host of this trip can review. */}
+        {!canReview ? (
+          reviews && reviews.length > 0 ? null : (
+            <p className="text-sm text-ink-500">No reviews yet.</p>
+          )
+        ) : !completed ? (
           <p className="text-sm text-ink-500">
             You can leave a review once the trip is completed.
           </p>

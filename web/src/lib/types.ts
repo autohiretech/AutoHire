@@ -48,4 +48,11 @@ export interface CreateListingInput {
   photos: string[];
   features: string[];
   bookingMode: Listing['bookingMode'];
+  /** Availability status; defaults to 'available' when omitted. */
+  status?: Listing['status'];
+  /** Back-in-service date when status is 'maintenance' (ISO date). */
+  maintenanceUntil?: string | null;
+  /** Pickup map coordinates (optional). */
+  lat?: number | null;
+  lng?: number | null;
 }

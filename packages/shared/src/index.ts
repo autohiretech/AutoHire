@@ -17,7 +17,8 @@ export type VerificationDocType =
   | 'drivers_license'
   | 'national_id'
   | 'vehicle_registration'
-  | 'insurance_certificate';
+  | 'insurance_certificate'
+  | 'business_registration';
 
 export interface VerificationDocument {
   id: ID;
@@ -96,7 +97,17 @@ export interface Listing {
   ratingCount: number;
   /** ISO dates the owner has blocked for personal use / existing trips. */
   blockedDates: string[];
+  /** Host-set availability. 'maintenance' means out of service. */
+  status: ListingStatus;
+  /** When `status` is 'maintenance', the day the car is back in service (ISO). */
+  maintenanceUntil: string | null;
+  /** Pickup point on the map; null until the host sets it. */
+  lat: number | null;
+  lng: number | null;
 }
+
+/** Host-set availability state. "Booked" is derived from bookings, not stored. */
+export type ListingStatus = 'available' | 'maintenance';
 
 export type TripState =
   | 'requested'
@@ -127,10 +138,24 @@ export interface Booking {
   subtotalRwf: number;
   serviceFeeRwf: number;
   totalRwf: number;
+  /** Payment state, owned server-side. A booking only exists once it is 'paid'. */
+  paymentStatus: PaymentStatus;
+  /** Stripe PaymentIntent that funded this booking (server-set, never trusted from the client). */
+  paymentIntentId?: string;
   createdAt: string;
   checkIn?: CheckPhoto[];
   checkOut?: CheckPhoto[];
+  /**
+   * Two-sided handoff sign-offs. Pickup and return each need both the renter and
+   * the host to confirm (with proof photos) before the trip advances.
+   */
+  pickupRenterAt?: string | null;
+  pickupHostAt?: string | null;
+  returnRenterAt?: string | null;
+  returnHostAt?: string | null;
 }
+
+export type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
 
 export type PayoutChannel = 'mtn_momo' | 'airtel_money' | 'bank_transfer';
 export type PayoutStatus = 'scheduled' | 'processing' | 'paid' | 'failed';

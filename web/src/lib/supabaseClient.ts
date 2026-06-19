@@ -17,8 +17,6 @@ import type {
   VerificationDocument,
 } from '@autohire/shared';
 import {
-  SERVICE_FEE_RATE,
-  type CreateBookingInput,
   type CreateListingInput,
   type CreateReviewInput,
   type ListingFilters,
@@ -63,10 +61,6 @@ async function run<D>(builder: PromiseLike<{ data: D; error: { message: string }
   return data;
 }
 
-function diffDays(start: string, end: string): number {
-  return Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000));
-}
-
 export const supabaseClient = {
   // --- Listings ----------------------------------------------------------
   async listListings(filters: ListingFilters = {}): Promise<Listing[]> {
@@ -102,35 +96,111 @@ export const supabaseClient = {
   async getBooking(id: string) {
     return mapRow<Booking>(await run(sb().from('bookings').select('*').eq('id', id).maybeSingle()));
   },
-  async createBooking(input: CreateBookingInput): Promise<Booking> {
-    const listing = await run(
-      sb().from('listings').select('price_per_day_rwf, host_id, booking_mode').eq('id', input.listingId).single(),
-    );
-    if (!listing) throw new Error(`Listing ${input.listingId} not found`);
-    const days = diffDays(input.startDate, input.endDate);
-    const subtotal = (listing.price_per_day_rwf as number) * days;
-    const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
+  /**
+   * Finalise a booking. There is no client-side insert: the `confirm-booking`
+   * Edge Function recomputes the amounts and writes the row with the service
+   * role, so the renter can't set their own price, days or status.
+   *
+   * In live mode it verifies the Stripe PaymentIntent (pass `paymentIntentId`).
+   * In demo mode (no Stripe configured) it confirms instantly from the listing +
+   * dates — no real charge. listingId/startDate/endDate are sent for both.
+   */
+  async confirmBooking(input: {
+    listingId: string;
+    startDate: string;
+    endDate: string;
+    paymentIntentId?: string;
+  }): Promise<Booking> {
+    // Demo mode (no Stripe key) — skip the Edge Function entirely and create the
+    // booking straight from the browser. No real charge, no function deploy.
+    // The DB triggers (availability + status lock) still enforce the rules.
+    if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
+      const renterId = me();
+      const listing = await run(
+        sb()
+          .from('listings')
+          .select('price_per_day_rwf, host_id, booking_mode')
+          .eq('id', input.listingId)
+          .single(),
+      );
+      if (!listing) throw new Error('Listing not found.');
+      if (listing.host_id === renterId) {
+        throw new Error('You cannot book your own car.');
+      }
+      const days = Math.max(
+        1,
+        Math.round(
+          (new Date(input.endDate).getTime() - new Date(input.startDate).getTime()) / 86_400_000,
+        ),
+      );
+      const subtotal = (listing.price_per_day_rwf as number) * days;
+      const serviceFee = Math.round(subtotal * 0.1);
+      const row = await run(
+        sb()
+          .from('bookings')
+          .insert({
+            id: `bk-${Date.now()}`,
+            listing_id: input.listingId,
+            renter_id: renterId,
+            host_id: listing.host_id,
+            start_date: input.startDate,
+            end_date: input.endDate,
+            days,
+            state: listing.booking_mode === 'instant' ? 'confirmed' : 'requested',
+            subtotal_rwf: subtotal,
+            service_fee_rwf: serviceFee,
+            total_rwf: subtotal + serviceFee,
+            payment_status: 'paid',
+            payment_intent_id: `demo-${Date.now()}`,
+            created_at: new Date().toISOString(),
+          })
+          .select('*')
+          .single(),
+      );
+      return mapRow<Booking>(row) as Booking;
+    }
+
+    const { data, error } = await getSupabase().functions.invoke('confirm-booking', {
+      body: input,
+    });
+    if (error) {
+      throw new Error(
+        error.name === 'FunctionsFetchError'
+          ? "Bookings aren't deployed yet — deploy the confirm-booking Edge Function."
+          : error.message,
+      );
+    }
+    const payload = data as { booking?: Booking; error?: string };
+    if (payload?.error || !payload?.booking) {
+      throw new Error(payload?.error ?? 'Could not confirm the booking.');
+    }
+    return payload.booking;
+  },
+
+  /**
+   * Confirm one side of a handoff (pickup or return) with proof photos. The
+   * server stamps the caller's slot and only advances the trip (→ active /
+   * → completed) once BOTH the renter and host have signed off.
+   */
+  async confirmHandoff(
+    bookingId: string,
+    phase: 'pickup' | 'return',
+    photoUrls: string[],
+  ): Promise<Booking> {
+    const takenAt = new Date().toISOString();
+    const photos = photoUrls.map((url) => ({
+      url,
+      label: phase === 'pickup' ? 'Pickup' : 'Return',
+      takenAt,
+    }));
     const row = await run(
-      sb()
-        .from('bookings')
-        .insert({
-          id: `bk-${Date.now()}`,
-          listing_id: input.listingId,
-          renter_id: me(),
-          host_id: listing.host_id,
-          start_date: input.startDate,
-          end_date: input.endDate,
-          days,
-          state: listing.booking_mode === 'instant' ? 'confirmed' : 'requested',
-          subtotal_rwf: subtotal,
-          service_fee_rwf: serviceFee,
-          total_rwf: subtotal + serviceFee,
-          created_at: new Date().toISOString(),
-        })
-        .select('*')
-        .single(),
+      getSupabase().rpc('confirm_handoff', {
+        p_booking_id: bookingId,
+        p_phase: phase,
+        p_photos: photos,
+      }),
     );
-    return mapRow<Booking>(row) as Booking;
+    return mapRow<Booking>(row as Record<string, unknown>) as Booking;
   },
 
   // --- Payouts -----------------------------------------------------------
@@ -164,14 +234,56 @@ export const supabaseClient = {
     );
     return mapRow<Booking>(row);
   },
-  async updateListing(id: string, patch: Partial<Pick<Listing, 'pricePerDayRwf' | 'blockedDates'>>) {
+  async updateListing(
+    id: string,
+    patch: Partial<Pick<Listing, 'pricePerDayRwf' | 'blockedDates' | 'status' | 'maintenanceUntil'>>,
+  ) {
     const dbPatch: Record<string, unknown> = {};
     if (patch.pricePerDayRwf !== undefined) dbPatch.price_per_day_rwf = patch.pricePerDayRwf;
     if (patch.blockedDates !== undefined) dbPatch.blocked_dates = patch.blockedDates;
+    if (patch.status !== undefined) {
+      dbPatch.status = patch.status;
+      // Leaving maintenance clears the date; entering it keeps/sets it.
+      if (patch.status === 'available') dbPatch.maintenance_until = null;
+    }
+    if (patch.maintenanceUntil !== undefined) dbPatch.maintenance_until = patch.maintenanceUntil;
     const row = await run(
       sb().from('listings').update(dbPatch).eq('id', id).select('*').maybeSingle(),
     );
     return mapRow<Listing>(row);
+  },
+  /**
+   * Booked (unavailable) date ranges for a listing — start/end of every live
+   * booking, with no renter identity or amounts. Backed by a SECURITY DEFINER
+   * function so it works for browsing renters too, not just the host.
+   */
+  async getBookedRanges(listingId: string): Promise<{ startDate: string; endDate: string }[]> {
+    const rows = await run(
+      sb().rpc('listing_booked_ranges', { p_listing_id: listingId }),
+    );
+    return ((rows as { start_date: string; end_date: string }[]) ?? []).map((r) => ({
+      startDate: r.start_date,
+      endDate: r.end_date,
+    }));
+  },
+  /**
+   * Upload car photos to Supabase Storage and return their public URLs. Files
+   * are stored under the uploader's folder in the public `car-photos` bucket;
+   * the returned URLs are what gets saved in `listings.photos`.
+   */
+  async uploadPhotos(files: File[]): Promise<string[]> {
+    const userId = me();
+    const urls: string[] = [];
+    for (const file of files) {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error } = await sb()
+        .storage.from('car-photos')
+        .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
+      if (error) throw new Error(error.message);
+      urls.push(sb().storage.from('car-photos').getPublicUrl(path).data.publicUrl);
+    }
+    return urls;
   },
   /**
    * Create a listing owned by the logged-in user. The first listing promotes the
@@ -206,6 +318,10 @@ export const supabaseClient = {
           photos: input.photos,
           features: input.features,
           booking_mode: input.bookingMode,
+          status: input.status ?? 'available',
+          maintenance_until: input.status === 'maintenance' ? input.maintenanceUntil || null : null,
+          lat: input.lat ?? null,
+          lng: input.lng ?? null,
         })
         .select('*')
         .single(),

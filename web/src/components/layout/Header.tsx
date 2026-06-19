@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, Car, LogOut, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/cn';
@@ -8,22 +8,27 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { MODE_HOME, useAppMode, type AppMode } from '@/lib/appMode';
 import { useAuth } from '@/lib/auth';
 
+// Nav follows the account (set by useAppMode) — no manual mode toggle. Hosts
+// keep renter links (Explore / My trips) so they can also rent; renters get a
+// "List your car" entry to start hosting.
 const NAV_BY_MODE: Record<AppMode, { to: string; label: string; end?: boolean }[]> = {
   renter: [
     { to: '/', label: 'Explore', end: true },
     { to: '/trips', label: 'My trips' },
+    { to: '/cars/new', label: 'List your car' },
   ],
   host: [
     { to: '/dashboard', label: 'Dashboard' },
+    { to: '/', label: 'Explore', end: true },
+    { to: '/trips', label: 'My trips' },
     { to: '/verification', label: 'Verification' },
   ],
 };
 
 export function Header() {
-  const { mode, setMode } = useAppMode();
+  const { mode } = useAppMode();
   const { user, signOut } = useAuth();
   const { data: me } = useCurrentUser();
-  const navigate = useNavigate();
 
   const { data: conversations } = useQuery({
     queryKey: ['conversations'],
@@ -42,12 +47,6 @@ export function Header() {
     queryFn: () => client.getCurrentHost(),
     enabled: mode === 'host',
   });
-
-  function switchMode(next: AppMode) {
-    if (next === mode) return;
-    setMode(next);
-    navigate(MODE_HOME[next]);
-  }
 
   const navItems = NAV_BY_MODE[mode];
   const identityName =
@@ -82,23 +81,6 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
-          {/* Renting / Hosting mode switch */}
-          <div className="flex rounded-lg border border-ink-200 p-0.5 text-xs font-medium">
-            {(['renter', 'host'] as AppMode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => switchMode(m)}
-                className={cn(
-                  'rounded-md px-2.5 py-1 transition-colors',
-                  mode === m ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800',
-                )}
-              >
-                {m === 'renter' ? 'Renting' : 'Hosting'}
-              </button>
-            ))}
-          </div>
-
           <Link
             to="/messages"
             className="relative rounded-lg p-2 text-ink-500 hover:bg-ink-100"
@@ -127,7 +109,7 @@ export function Header() {
               </span>
             )}
           </Link>
-          <Link to="/verification" aria-label="Account & verification" className="ml-1">
+          <Link to="/account" aria-label="Account" className="ml-1">
             <Avatar name={identityName} src={mode === 'host' ? host?.avatarUrl : me?.avatarUrl} size="sm" />
           </Link>
 

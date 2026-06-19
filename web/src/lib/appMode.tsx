@@ -1,28 +1,23 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 export type AppMode = 'renter' | 'host';
 
-const STORAGE_KEY = 'autohire.mode';
-
 interface AppModeValue {
   mode: AppMode;
-  setMode: (mode: AppMode) => void;
 }
 
 const AppModeContext = createContext<AppModeValue | null>(null);
 
-/** Tracks whether the user is browsing as a renter or managing as a host. */
+/**
+ * The active experience — Renting vs Hosting — derived from the signed-in
+ * account, not a manual toggle. Owners (Company accounts, and Personal accounts
+ * that have listed a car) get the Hosting view; everyone else gets Renting.
+ */
 export function AppModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<AppMode>(() =>
-    localStorage.getItem(STORAGE_KEY) === 'host' ? 'host' : 'renter',
-  );
-
-  function setMode(next: AppMode) {
-    setModeState(next);
-    localStorage.setItem(STORAGE_KEY, next);
-  }
-
-  return <AppModeContext.Provider value={{ mode, setMode }}>{children}</AppModeContext.Provider>;
+  const { data: profile } = useCurrentUser();
+  const mode: AppMode = profile?.role === 'owner' ? 'host' : 'renter';
+  return <AppModeContext.Provider value={{ mode }}>{children}</AppModeContext.Provider>;
 }
 
 export function useAppMode() {

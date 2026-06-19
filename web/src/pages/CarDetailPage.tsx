@@ -15,12 +15,15 @@ import {
 } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import { client } from '@/lib/client';
+import { useIsBusinessHost } from '@/lib/account';
 import { formatDate, formatRwf } from '@/lib/format';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
+import { LocationMap } from '@/components/map/LocationMap';
 
 export function CarDetailPage() {
   const { id = '' } = useParams();
   const [activePhoto, setActivePhoto] = useState(0);
+  const isBusiness = useIsBusinessHost();
 
   const { data: listing, isLoading } = useQuery({
     queryKey: ['listing', id],
@@ -35,6 +38,11 @@ export function CarDetailPage() {
   const reviewsQuery = useQuery({
     queryKey: ['reviews', listing?.hostId],
     queryFn: () => client.listReviews(listing!.hostId),
+    enabled: !!listing,
+  });
+  const bookedQuery = useQuery({
+    queryKey: ['bookedRanges', id],
+    queryFn: () => client.getBookedRanges(id),
     enabled: !!listing,
   });
 
@@ -140,6 +148,21 @@ export function CarDetailPage() {
             </CardBody>
           </Card>
 
+          {/* Pickup location */}
+          {listing.lat != null && listing.lng != null && (
+            <Card>
+              <CardHeader>
+                <h2 className="font-semibold text-ink-900">Pickup location</h2>
+              </CardHeader>
+              <CardBody className="space-y-2">
+                <p className="flex items-center gap-1.5 text-sm text-ink-600">
+                  <MapPin size={15} className="text-brand-600" /> {listing.location}
+                </p>
+                <LocationMap lat={listing.lat} lng={listing.lng} />
+              </CardBody>
+            </Card>
+          )}
+
           {/* Host */}
           {host && (
             <Card>
@@ -212,19 +235,35 @@ export function CarDetailPage() {
                 </span>
                 <span className="text-sm text-ink-500">/ day</span>
               </div>
-              <Badge tone={instant ? 'success' : 'neutral'}>
-                {instant ? 'Instant book' : 'Request to book'}
-              </Badge>
-              <Link to={`/cars/${listing.id}/book`} className="block">
-                <Button className="w-full" size="lg">
-                  {instant ? 'Book now' : 'Request to book'}
-                </Button>
-              </Link>
-              <p className="text-center text-xs text-ink-400">You won't be charged yet</p>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone={instant ? 'success' : 'neutral'}>
+                  {instant ? 'Instant book' : 'Request to book'}
+                </Badge>
+                {listing.status === 'maintenance' && (
+                  <Badge tone="warning">
+                    In maintenance
+                    {listing.maintenanceUntil ? ` · back ${formatDate(listing.maintenanceUntil)}` : ''}
+                  </Badge>
+                )}
+              </div>
+              {isBusiness ? (
+                <p className="rounded-lg bg-ink-50 p-3 text-center text-sm text-ink-500">
+                  Business accounts host vehicles and can't rent. Switch to a personal account to book.
+                </p>
+              ) : (
+                <>
+                  <Link to={`/cars/${listing.id}/book`} className="block">
+                    <Button className="w-full" size="lg">
+                      {instant ? 'Book now' : 'Request to book'}
+                    </Button>
+                  </Link>
+                  <p className="text-center text-xs text-ink-400">You won't be charged yet</p>
+                </>
+              )}
             </CardBody>
           </Card>
 
-          <Availability blockedDates={listing.blockedDates} />
+          <Availability listing={listing} bookedRanges={bookedQuery.data ?? []} />
         </div>
       </div>
     </section>
@@ -241,18 +280,52 @@ function Spec({ icon, label, value }: { icon: React.ReactNode; label: string; va
   );
 }
 
-function Availability({ blockedDates }: { blockedDates: Listing['blockedDates'] }) {
+function Availability({
+  listing,
+  bookedRanges,
+}: {
+  listing: Listing;
+  bookedRanges: { startDate: string; endDate: string }[];
+}) {
+  const { blockedDates } = listing;
+  const maintenance = listing.status === 'maintenance';
+  const allClear = !maintenance && blockedDates.length === 0 && bookedRanges.length === 0;
+
   return (
     <Card>
       <CardHeader>
         <h2 className="font-semibold text-ink-900">Availability</h2>
       </CardHeader>
-      <CardBody>
-        {blockedDates.length === 0 ? (
+      <CardBody className="space-y-3">
+        {maintenance && (
+          <p className="flex items-center gap-1.5 text-sm text-orange-700">
+            <CalendarX size={15} /> In maintenance
+            {listing.maintenanceUntil ? ` — available from ${formatDate(listing.maintenanceUntil)}` : ''}.
+          </p>
+        )}
+
+        {allClear && (
           <p className="flex items-center gap-1.5 text-sm text-ink-600">
             <Check size={15} className="text-brand-600" /> Available on all upcoming dates.
           </p>
-        ) : (
+        )}
+
+        {bookedRanges.length > 0 && (
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-sm text-ink-600">
+              <CalendarX size={15} className="text-ink-400" /> Booked:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {bookedRanges.map((r) => (
+                <Badge key={`${r.startDate}-${r.endDate}`} tone="neutral">
+                  {formatDate(r.startDate)} – {formatDate(r.endDate)}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {blockedDates.length > 0 && (
           <div>
             <p className="mb-2 flex items-center gap-1.5 text-sm text-ink-600">
               <CalendarX size={15} className="text-ink-400" /> Unavailable on:

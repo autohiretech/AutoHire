@@ -3,36 +3,87 @@ import type { User } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase';
 import { setCurrentUserId } from '@/lib/identity';
 
+/** Account kind chosen at signup. Personal = renter (can become an individual
+ * host by listing a car); Company = a business / fleet host. */
+export type AccountType = 'personal' | 'company';
+
 /**
- * Ensure a `profiles` row exists for the logged-in user. Under the
- * "fresh signups start empty" model every auth user gets their own profile
- * (keyed by the auth uid) and starts with no listings/bookings of their own.
- * Idempotent: inserts only when the row is missing, so returning users keep
- * any edits they've made.
+ * Ensure a `profiles` row exists for the logged-in user, shaped by the account
+ * type chosen at signup (stored in auth user_metadata). Every auth user gets
+ * exactly one profile keyed by their uid. Idempotent: inserts only when the row
+ * is missing (`ignoreDuplicates`), so returning users keep any edits.
  */
 async function ensureProfile(user: User): Promise<void> {
-  const fallbackName = user.email?.split('@')[0] ?? 'New user';
-  await getSupabase()
-    .from('profiles')
-    .upsert(
-      {
-        id: user.id,
-        full_name: fallbackName,
-        email: user.email ?? '',
-        phone: user.phone ?? '',
-        role: 'renter',
-        joined_at: new Date().toISOString().slice(0, 10),
-      },
-      { onConflict: 'id', ignoreDuplicates: true },
-    );
+  const meta = (user.user_metadata ?? {}) as {
+    account_type?: string;
+    company_name?: string;
+    full_name?: string;
+    phone?: string;
+  };
+  const accountType: AccountType = meta.account_type === 'company' ? 'company' : 'personal';
+  const companyName = typeof meta.company_name === 'string' ? meta.company_name.trim() : '';
+  const emailLocal = user.email?.split('@')[0] ?? 'New user';
+  const fullName =
+    typeof meta.full_name === 'string' && meta.full_name.trim() ? meta.full_name.trim() : emailLocal;
+  const phone =
+    typeof meta.phone === 'string' && meta.phone.trim() ? meta.phone.trim() : user.phone ?? '';
+
+  const base = {
+    id: user.id,
+    email: user.email ?? '',
+    phone,
+    joined_at: new Date().toISOString().slice(0, 10),
+  };
+
+  const row: Record<string, unknown> =
+    accountType === 'company'
+      ? {
+          ...base,
+          full_name: fullName, // the contact / authorised representative
+          role: 'owner',
+          owner_type: 'business',
+          business_name: companyName || fullName,
+          payout_terms: 'net_30',
+          insurance_type: 'commercial',
+          vehicle_count: 0,
+        }
+      : {
+          ...base,
+          full_name: fullName,
+          role: 'renter',
+        };
+
+  await getSupabase().from('profiles').upsert(row, { onConflict: 'id', ignoreDuplicates: true });
+}
+
+interface SignUpDetails {
+  accountType: AccountType;
+  fullName: string;
+  phone: string;
+  companyName?: string;
 }
 
 interface AuthValue {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
+  signUp: (
+    email: string,
+    password: string,
+    details: SignUpDetails,
+  ) => Promise<{ needsConfirmation: boolean }>;
   signOut: () => Promise<void>;
+  /** Permanently delete the account (login + all data) via the Edge Function. */
+  deleteAccount: () => Promise<void>;
+  /** Send an SMS code to verify (or change to) the given phone number. */
+  sendPhoneOtp: (phone: string) => Promise<void>;
+  /** Confirm the SMS code; on success the user's phone becomes verified. */
+  verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
+}
+
+/** True when the error looks like "phone auth / SMS provider isn't set up". */
+function isPhoneProviderError(message: string): boolean {
+  return /provider|sms|phone.*(disabled|not|unsupported)|disabled/i.test(message);
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -66,8 +117,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(error.message);
   }
 
-  async function signUp(email: string, password: string) {
-    const { data, error } = await getSupabase().auth.signUp({ email, password });
+  async function signUp(email: string, password: string, details: SignUpDetails) {
+    const { data, error } = await getSupabase().auth.signUp({
+      email,
+      password,
+      options: {
+        // Persisted as user_metadata; ensureProfile reads it to shape the profile.
+        data: {
+          account_type: details.accountType,
+          full_name: details.fullName.trim(),
+          phone: details.phone.trim(),
+          company_name: details.companyName?.trim() || undefined,
+        },
+      },
+    });
     if (error) throw new Error(error.message);
     // No session means Supabase is set to require email confirmation.
     return { needsConfirmation: !data.session };
@@ -77,8 +140,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await getSupabase().auth.signOut();
   }
 
+  async function deleteAccount() {
+    const { error } = await getSupabase().functions.invoke('dynamic-endpoint');
+    if (error) {
+      // Couldn't reach the function at all (not deployed / blocked by CORS).
+      if (error.name === 'FunctionsFetchError') {
+        throw new Error(
+          "Account deletion isn't set up yet. The account-deletion Edge Function " +
+            "('dynamic-endpoint') needs to be deployed with Verify JWT turned OFF.",
+        );
+      }
+      // The function ran but returned an error — surface its message (e.g. a
+      // missing cascade migration shows up here as a delete failure).
+      let detail = error.message;
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === 'function') {
+        try {
+          const body = (await ctx.json()) as { error?: string };
+          if (body?.error) detail = body.error;
+        } catch {
+          /* response had no JSON body — keep the generic message */
+        }
+      }
+      throw new Error(detail);
+    }
+    await getSupabase().auth.signOut();
+    setCurrentUserId(null);
+    setUser(null);
+  }
+
+  async function sendPhoneOtp(phone: string) {
+    // Setting the phone on the auth user triggers an SMS confirmation code.
+    const { error } = await getSupabase().auth.updateUser({ phone });
+    if (error) {
+      throw new Error(
+        isPhoneProviderError(error.message)
+          ? "Phone verification isn't enabled yet — turn on Phone auth and connect an SMS provider (e.g. Twilio) in Supabase."
+          : error.message,
+      );
+    }
+  }
+
+  async function verifyPhoneOtp(phone: string, token: string) {
+    const { data, error } = await getSupabase().auth.verifyOtp({
+      phone,
+      token,
+      type: 'phone_change',
+    });
+    if (error) throw new Error(error.message);
+    if (data.user) setUser(data.user);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        deleteAccount,
+        sendPhoneOtp,
+        verifyPhoneOtp,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

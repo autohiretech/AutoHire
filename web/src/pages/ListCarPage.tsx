@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
@@ -6,6 +6,7 @@ import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
 import type { CreateListingInput } from '@/lib/types';
 import { Button, Card, CardBody, CardHeader, Input, Label, Select } from '@/components/ui';
+import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
 
 const CITIES = ['Kigali', 'Musanze', 'Rubavu', 'Huye', 'Rusizi'];
 
@@ -55,9 +56,34 @@ export function ListCarPage() {
   const [pricePerDay, setPricePerDay] = useState('40000');
   const [city, setCity] = useState('Kigali');
   const [location, setLocation] = useState('');
+  const [coords, setCoords] = useState<LatLng | null>(null);
   const [bookingMode, setBookingMode] = useState<'instant' | 'request'>('instant');
-  const [photos, setPhotos] = useState('');
+  const [status, setStatus] = useState<'available' | 'maintenance'>('available');
+  const [maintenanceUntil, setMaintenanceUntil] = useState('');
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [features, setFeatures] = useState('');
+
+  async function onPickPhotos(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // allow re-picking the same file
+    if (files.length === 0) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const urls = await client.uploadPhotos(files);
+      setPhotoUrls((prev) => [...prev, ...urls]);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Could not upload the photos.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  // In maintenance requires a valid back-in-service date (today or later).
+  const statusValid = status === 'available' || (!!maintenanceUntil && maintenanceUntil >= today);
 
   const mutation = useMutation({
     mutationFn: (input: CreateListingInput) => client.createListing(input),
@@ -69,7 +95,6 @@ export function ListCarPage() {
     },
   });
 
-  const photoList = toList(photos);
   const valid =
     title.trim() &&
     make.trim() &&
@@ -78,7 +103,9 @@ export function ListCarPage() {
     Number(year) > 1980 &&
     Number(seats) > 0 &&
     Number(pricePerDay) > 0 &&
-    photoList.length > 0;
+    photoUrls.length > 0 &&
+    !uploading &&
+    statusValid;
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -95,9 +122,13 @@ export function ListCarPage() {
       pricePerDayRwf: Number(pricePerDay),
       location: location.trim(),
       city,
-      photos: photoList,
+      photos: photoUrls,
       features: toList(features),
       bookingMode,
+      status,
+      maintenanceUntil: status === 'maintenance' ? maintenanceUntil : null,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
     });
   }
 
@@ -220,6 +251,17 @@ export function ListCarPage() {
                 />
               </div>
             </div>
+            <div>
+              <Label>Pickup point on the map</Label>
+              <LocationPicker
+                value={coords}
+                onChange={setCoords}
+                onAddress={(address) => {
+                  // Fill the pickup-area text from the search if it's still empty.
+                  if (!location.trim()) setLocation(address.split(',').slice(0, 2).join(',').trim());
+                }}
+              />
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="price">Price per day (RWF)</Label>
@@ -242,6 +284,39 @@ export function ListCarPage() {
                 </Select>
               </div>
             </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="status">Availability</Label>
+                <Select
+                  id="status"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as 'available' | 'maintenance')}
+                >
+                  <option value="available">Available — ready to rent</option>
+                  <option value="maintenance">In maintenance — temporarily off</option>
+                </Select>
+              </div>
+              {status === 'maintenance' && (
+                <div>
+                  <Label htmlFor="maintenance-until">Back in service on</Label>
+                  <Input
+                    id="maintenance-until"
+                    type="date"
+                    min={today}
+                    value={maintenanceUntil}
+                    onChange={(e) => setMaintenanceUntil(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-ink-400">
+              {status === 'maintenance'
+                ? 'Renters can only book trips that start on or after this date.'
+                : 'The car is bookable on any free date. Booked dates fill in automatically.'}
+            </p>
+            {!statusValid && (
+              <p className="text-sm text-red-600">Pick a back-in-service date (today or later).</p>
+            )}
           </CardBody>
         </Card>
 
@@ -250,29 +325,39 @@ export function ListCarPage() {
             <h2 className="font-semibold text-ink-900">Photos</h2>
           </CardHeader>
           <CardBody className="space-y-3">
-            <Label htmlFor="photos">Photo URLs</Label>
-            <textarea
+            <Label htmlFor="photos">Upload photos</Label>
+            <input
               id="photos"
-              value={photos}
-              onChange={(e) => setPhotos(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-              placeholder="https://images.example.com/car-front.jpg
-https://images.example.com/car-side.jpg"
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={uploading}
+              onChange={onPickPhotos}
+              className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100 disabled:opacity-60"
             />
             <p className="text-xs text-ink-400">
-              One URL per line (or comma-separated). Direct file uploads come with Supabase
-              Storage — not wired yet.
+              JPG or PNG, up to a few photos. You can add more in several goes.
             </p>
-            {photoList.length > 0 && (
+            {uploading && <p className="text-xs text-ink-500">Uploading…</p>}
+            {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
+            {photoUrls.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {photoList.map((url) => (
-                  <img
-                    key={url}
-                    src={url}
-                    alt=""
-                    className="h-16 w-24 rounded-lg border border-ink-100 object-cover"
-                  />
+                {photoUrls.map((url) => (
+                  <div key={url} className="relative">
+                    <img
+                      src={url}
+                      alt=""
+                      className="h-16 w-24 rounded-lg border border-ink-100 object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPhotoUrls((prev) => prev.filter((u) => u !== url))}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink-900/80 text-xs text-white hover:bg-ink-900"
+                      aria-label="Remove photo"
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
