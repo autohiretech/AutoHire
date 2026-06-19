@@ -28,6 +28,10 @@ export function MessagesPage() {
     queryFn: () => client.listConversations(),
   });
   const { data: hosts } = useQuery({ queryKey: ['hosts'], queryFn: () => client.listHosts() });
+  const { data: unreadMap } = useQuery({
+    queryKey: ['unreadByConversation'],
+    queryFn: () => client.getUnreadByConversation(),
+  });
 
   const hostsById = useMemo(() => new Map((hosts ?? []).map((h) => [h.id, h])), [hosts]);
 
@@ -84,6 +88,7 @@ export function MessagesPage() {
                   conversation={c}
                   host={hostsById.get(c.hostId)}
                   active={c.id === id}
+                  unread={unreadMap?.[c.id] ?? 0}
                 />
               ))}
             </ul>
@@ -115,13 +120,15 @@ function ConversationRow({
   conversation,
   host,
   active,
+  unread: unreadCount,
 }: {
   conversation: Conversation;
   host?: Host;
   active: boolean;
+  unread: number;
 }) {
   const name = hostName(host);
-  const unread = conversation.unread > 0;
+  const unread = unreadCount > 0;
 
   return (
     <li>
@@ -153,7 +160,7 @@ function ConversationRow({
         </div>
         {unread && (
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
-            {conversation.unread}
+            {unreadCount}
           </span>
         )}
       </Link>
@@ -186,17 +193,23 @@ function Thread({ conversation, host }: { conversation: Conversation; host?: Hos
 
   const readMutation = useMutation({
     mutationFn: () => client.markConversationRead(conversation.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+      queryClient.invalidateQueries({ queryKey: ['unreadMessages'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadByConversation'] });
+    },
   });
-
-  // Mark as read when the thread is opened or new unread arrives.
-  const { mutate: markRead } = readMutation;
-  useEffect(() => {
-    if (conversation.unread > 0) markRead();
-  }, [conversation.id, conversation.unread, markRead]);
 
   // Auto-scroll to the newest message.
   const messages = messagesQuery.data;
+
+  // Mark unread messages addressed to me as read once the thread is open.
+  const { mutate: markRead } = readMutation;
+  useEffect(() => {
+    const hasUnread = (messages ?? []).some((m) => m.senderId !== me?.id && !m.readAt);
+    if (hasUnread) markRead();
+  }, [messages, me?.id, markRead]);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);

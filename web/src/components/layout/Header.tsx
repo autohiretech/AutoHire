@@ -32,11 +32,10 @@ export function Header() {
   const { user, signOut } = useAuth();
   const { data: me } = useCurrentUser();
 
-  const { data: conversations } = useQuery({
-    queryKey: ['conversations'],
-    queryFn: () => client.listConversations(),
+  const { data: unread = 0 } = useQuery({
+    queryKey: ['unreadMessages'],
+    queryFn: () => client.getUnreadMessageCount(),
   });
-  const unread = (conversations ?? []).reduce((sum, c) => sum + c.unread, 0);
 
   const { data: notifications } = useQuery({
     queryKey: ['notifications'],

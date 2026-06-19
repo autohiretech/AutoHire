@@ -31,8 +31,10 @@ export function useRealtime() {
           if (row?.conversation_id) {
             queryClient.invalidateQueries({ queryKey: ['messages', row.conversation_id] });
           }
-          // Unread count + last-message preview live in the conversation row.
+          // Conversation previews + unread counts (derived from messages).
           queryClient.invalidateQueries({ queryKey: ['conversations'] });
+          queryClient.invalidateQueries({ queryKey: ['unreadMessages'] });
+          queryClient.invalidateQueries({ queryKey: ['unreadByConversation'] });
         },
       )
       .on(

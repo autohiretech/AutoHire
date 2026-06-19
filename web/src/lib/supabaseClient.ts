@@ -407,6 +407,26 @@ export const supabaseClient = {
       ),
     );
   },
+  /** Total messages addressed to me that I haven't read — drives the header badge. */
+  async getUnreadMessageCount(): Promise<number> {
+    const { count } = await sb()
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .is('read_at', null)
+      .neq('sender_id', me());
+    return count ?? 0;
+  },
+  /** Unread count per conversation (messages from the other party, unread). */
+  async getUnreadByConversation(): Promise<Record<string, number>> {
+    const rows = await run(
+      sb().from('messages').select('conversation_id').is('read_at', null).neq('sender_id', me()),
+    );
+    const map: Record<string, number> = {};
+    for (const r of (rows as { conversation_id: string }[]) ?? []) {
+      map[r.conversation_id] = (map[r.conversation_id] ?? 0) + 1;
+    }
+    return map;
+  },
   async markConversationRead(conversationId: string): Promise<void> {
     await run(sb().from('conversations').update({ unread: 0 }).eq('id', conversationId).select('id'));
     await run(
