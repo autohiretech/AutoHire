@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -9,6 +9,7 @@ import {
   Cog,
   Fuel,
   MapPin,
+  MessageSquare,
   Star,
   User,
   Users,
@@ -16,6 +17,7 @@ import {
 import type { Listing } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useIsHost } from '@/lib/account';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { formatDate, formatRwf } from '@/lib/format';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
 import { LocationMap } from '@/components/map/LocationMap';
@@ -23,8 +25,11 @@ import { LocationLinks } from '@/components/map/LocationLinks';
 
 export function CarDetailPage() {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const [activePhoto, setActivePhoto] = useState(0);
+  const [messaging, setMessaging] = useState(false);
   const isHost = useIsHost();
+  const { data: me } = useCurrentUser();
 
   const { data: listing, isLoading } = useQuery({
     queryKey: ['listing', id],
@@ -69,6 +74,19 @@ export function CarDetailPage() {
   const host = hostQuery.data;
   const reviews = reviewsQuery.data ?? [];
   const instant = listing.bookingMode === 'instant';
+  // You can message the host unless you ARE the host or you're in host mode.
+  const canMessage = !isHost && !!me && me.id !== listing.hostId;
+
+  async function messageHost() {
+    if (!listing) return;
+    setMessaging(true);
+    try {
+      const conv = await client.getOrCreateConversation(listing.id, me!.id, listing.hostId);
+      navigate(`/messages/${conv.id}`);
+    } finally {
+      setMessaging(false);
+    }
+  }
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-8">
@@ -271,6 +289,17 @@ export function CarDetailPage() {
                   </Link>
                   <p className="text-center text-xs text-ink-400">You won't be charged yet</p>
                 </>
+              )}
+              {canMessage && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={messaging}
+                  onClick={messageHost}
+                >
+                  <MessageSquare size={16} />
+                  {messaging ? 'Opening…' : 'Message host'}
+                </Button>
               )}
             </CardBody>
           </Card>

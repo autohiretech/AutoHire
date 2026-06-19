@@ -59,10 +59,28 @@ export function BookingPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: (paymentIntentId?: string) =>
-      client.confirmBooking({ listingId: id, startDate, endDate, paymentIntentId }),
+    mutationFn: async (paymentIntentId?: string) => {
+      const booking = await client.confirmBooking({ listingId: id, startDate, endDate, paymentIntentId });
+      // Auto-text the owner so the renter and host have a thread from the start.
+      try {
+        const conv = await client.getOrCreateConversation(
+          booking.listingId,
+          booking.renterId,
+          booking.hostId,
+        );
+        await client.sendMessage(
+          conv.id,
+          `Hi! I just ${instant ? 'booked' : 'requested'} ${listing?.title ?? 'your car'} for ` +
+            `${startDate} to ${endDate}.`,
+        );
+      } catch {
+        /* messaging is best-effort — never block the booking on it */
+      }
+      return booking;
+    },
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
       navigate(`/trips/${booking.id}`);
     },
   });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CalendarDays, Check, Clock, MapPin, Upload } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, Clock, MapPin, MessageSquare, Upload } from 'lucide-react';
 import type { Booking, CheckPhoto, Host, Review, ReviewDirection } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -16,6 +16,8 @@ import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } fr
 export function TripDetailPage() {
   const { id = '' } = useParams();
   const { data: me } = useCurrentUser();
+  const navigate = useNavigate();
+  const [messaging, setMessaging] = useState(false);
 
   const bookingQuery = useQuery({
     queryKey: ['booking', id],
@@ -58,19 +60,43 @@ export function TripDetailPage() {
   const state = TRIP_STATE_META[booking.state];
   const isCancelled = booking.state === 'cancelled' || booking.state === 'declined';
   const currentStep = TRIP_TIMELINE.indexOf(booking.state);
+  const amHost = me?.id === booking.hostId;
+  const isParticipant = me?.id === booking.renterId || amHost;
+
+  async function messageOther() {
+    setMessaging(true);
+    try {
+      const conv = await client.getOrCreateConversation(
+        booking!.listingId,
+        booking!.renterId,
+        booking!.hostId,
+      );
+      navigate(`/messages/${conv.id}`);
+    } finally {
+      setMessaging(false);
+    }
+  }
 
   return (
     <section className="mx-auto max-w-4xl px-4 py-8">
       <Link
-        to="/trips"
+        to={amHost ? '/dashboard' : '/trips'}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
       >
-        <ArrowLeft size={16} /> My trips
+        <ArrowLeft size={16} /> {amHost ? 'Dashboard' : 'My trips'}
       </Link>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-ink-900">{listing?.title ?? 'Trip'}</h1>
-        <Badge tone={state.tone}>{state.label}</Badge>
+        <div className="flex items-center gap-2">
+          {isParticipant && (
+            <Button variant="outline" size="sm" disabled={messaging} onClick={messageOther}>
+              <MessageSquare size={15} />
+              {messaging ? 'Opening…' : amHost ? 'Message renter' : 'Message host'}
+            </Button>
+          )}
+          <Badge tone={state.tone}>{state.label}</Badge>
+        </div>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-500">
         {listing && (

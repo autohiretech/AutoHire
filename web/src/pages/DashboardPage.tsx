@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Banknote, CalendarClock, Car, Check, Plus, X } from 'lucide-react';
+import { Banknote, CalendarClock, Car, Check, MessageSquare, Plus, X } from 'lucide-react';
 import type { Booking, Listing } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
@@ -242,6 +242,8 @@ function EmptyCard({ text }: { text: string }) {
 /** Incoming booking request with approve / decline actions. */
 function RequestCard({ booking, listing }: { booking: Booking; listing?: Listing }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [messaging, setMessaging] = useState(false);
   const mutation = useMutation({
     mutationFn: (action: 'approve' | 'decline') => client.respondToBooking(booking.id, action),
     onSuccess: () => {
@@ -249,6 +251,20 @@ function RequestCard({ booking, listing }: { booking: Booking; listing?: Listing
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
     },
   });
+
+  async function messageRenter() {
+    setMessaging(true);
+    try {
+      const conv = await client.getOrCreateConversation(
+        booking.listingId,
+        booking.renterId,
+        booking.hostId,
+      );
+      navigate(`/messages/${conv.id}`);
+    } finally {
+      setMessaging(false);
+    }
+  }
 
   return (
     <Card>
@@ -267,6 +283,9 @@ function RequestCard({ booking, listing }: { booking: Booking; listing?: Listing
           <p className="mt-0.5 text-sm font-semibold text-ink-900">{formatRwf(booking.totalRwf)}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={messageRenter} disabled={messaging}>
+            <MessageSquare size={15} /> {messaging ? '…' : 'Message'}
+          </Button>
           <Button
             variant="outline"
             size="sm"

@@ -50,8 +50,8 @@ export function LocationPicker({
   const [error, setError] = useState<string | null>(null);
   const center = value ?? DEFAULT_CENTER;
 
-  async function search(e: React.SyntheticEvent) {
-    e.preventDefault();
+  async function search(e?: React.SyntheticEvent) {
+    e?.preventDefault();
     if (!query.trim()) return;
     setSearching(true);
     setError(null);
@@ -77,16 +77,23 @@ export function LocationPicker({
 
   return (
     <div className="space-y-2">
-      <form onSubmit={search} className="flex gap-2">
+      {/* A plain div, not a <form> — this sits inside the listing <form>. */}
+      <div className="flex gap-2">
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void search();
+            }
+          }}
           placeholder="Search a place or address"
         />
-        <Button type="button" variant="outline" onClick={search} disabled={searching}>
+        <Button type="button" variant="outline" onClick={() => void search()} disabled={searching}>
           {searching ? '…' : 'Search'}
         </Button>
-      </form>
+      </div>
       <MapContainer center={[center.lat, center.lng]} zoom={13} className="h-56 w-full rounded-lg">
         <TileLayer url={OSM_URL} attribution={OSM_ATTR} />
         <ClickToPlace onPick={onChange} />

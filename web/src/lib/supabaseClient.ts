@@ -350,6 +350,46 @@ export const supabaseClient = {
   },
 
   // --- Messaging ---------------------------------------------------------
+  /**
+   * Find the renter↔host thread for a listing, or start one. Either participant
+   * may call it (RLS lets you create a row you're part of), so it powers the
+   * car-page "Message host", the booking auto-text, and the trip "Message" button
+   * for both sides.
+   */
+  async getOrCreateConversation(
+    listingId: string,
+    renterId: string,
+    hostId: string,
+  ): Promise<Conversation> {
+    const existing = await run(
+      sb()
+        .from('conversations')
+        .select('*')
+        .eq('listing_id', listingId)
+        .eq('renter_id', renterId)
+        .eq('host_id', hostId)
+        .maybeSingle(),
+    );
+    if (existing) return mapRow<Conversation>(existing) as Conversation;
+
+    const now = new Date().toISOString();
+    const row = await run(
+      sb()
+        .from('conversations')
+        .insert({
+          id: `conv-${Date.now()}`,
+          listing_id: listingId,
+          renter_id: renterId,
+          host_id: hostId,
+          last_message_preview: '',
+          last_message_at: now,
+          unread: 0,
+        })
+        .select('*')
+        .single(),
+    );
+    return mapRow<Conversation>(row) as Conversation;
+  },
   async listConversations() {
     return mapRows<Conversation>(
       await run(sb().from('conversations').select('*').order('last_message_at', { ascending: false })),
