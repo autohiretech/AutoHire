@@ -15,15 +15,16 @@ import {
 } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import { client } from '@/lib/client';
-import { useIsBusinessHost } from '@/lib/account';
+import { useIsHost } from '@/lib/account';
 import { formatDate, formatRwf } from '@/lib/format';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
 import { LocationMap } from '@/components/map/LocationMap';
+import { LocationLinks } from '@/components/map/LocationLinks';
 
 export function CarDetailPage() {
   const { id = '' } = useParams();
   const [activePhoto, setActivePhoto] = useState(0);
-  const isBusiness = useIsBusinessHost();
+  const isHost = useIsHost();
 
   const { data: listing, isLoading } = useQuery({
     queryKey: ['listing', id],
@@ -149,19 +150,26 @@ export function CarDetailPage() {
           </Card>
 
           {/* Pickup location */}
-          {listing.lat != null && listing.lng != null && (
+          {(listing.lat != null && listing.lng != null) || listing.locationUrl ? (
             <Card>
               <CardHeader>
                 <h2 className="font-semibold text-ink-900">Pickup location</h2>
               </CardHeader>
-              <CardBody className="space-y-2">
+              <CardBody className="space-y-3">
                 <p className="flex items-center gap-1.5 text-sm text-ink-600">
                   <MapPin size={15} className="text-brand-600" /> {listing.location}
                 </p>
-                <LocationMap lat={listing.lat} lng={listing.lng} />
+                {listing.lat != null && listing.lng != null && (
+                  <LocationMap lat={listing.lat} lng={listing.lng} />
+                )}
+                <LocationLinks
+                  url={listing.locationUrl}
+                  lat={listing.lat}
+                  lng={listing.lng}
+                />
               </CardBody>
             </Card>
-          )}
+          ) : null}
 
           {/* Host */}
           {host && (
@@ -246,9 +254,13 @@ export function CarDetailPage() {
                   </Badge>
                 )}
               </div>
-              {isBusiness ? (
+              {isHost ? (
                 <p className="rounded-lg bg-ink-50 p-3 text-center text-sm text-ink-500">
-                  Business accounts host vehicles and can't rent. Switch to a personal account to book.
+                  You're viewing as a host — booking is off. Switch to renting in your{' '}
+                  <Link to="/account" className="text-brand-600 hover:underline">
+                    profile
+                  </Link>{' '}
+                  to book.
                 </p>
               ) : (
                 <>

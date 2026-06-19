@@ -5,7 +5,7 @@ import { CardElement, Elements, useElements, useStripe } from '@stripe/react-str
 import { ArrowLeft, CreditCard, Lock, ShieldCheck, Smartphone } from 'lucide-react';
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { client } from '@/lib/client';
-import { useIsBusinessHost } from '@/lib/account';
+import { useIsHost } from '@/lib/account';
 import { cn } from '@/lib/cn';
 import { getSupabase } from '@/lib/supabase';
 import { getStripe } from '@/lib/stripe';
@@ -43,7 +43,7 @@ export function BookingPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isBusiness = useIsBusinessHost();
+  const isHost = useIsHost();
 
   const [step, setStep] = useState<Step>('details');
   const [startDate, setStartDate] = useState(() => addDays(todayISO(), 1));
@@ -86,13 +86,17 @@ export function BookingPage() {
     );
   }
 
-  // Business accounts are hosts only — they can't rent.
-  if (isBusiness) {
+  // Host accounts are host-only — they can't rent while in Hosting mode.
+  if (isHost) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Business accounts can't rent</p>
+        <p className="font-medium text-ink-900">Host accounts can't rent</p>
         <p className="mt-1 text-sm text-ink-500">
-          Company accounts host vehicles. To rent a car, use a personal account.
+          You're on a host account. To rent a car, switch back to renting from your{' '}
+          <Link to="/account" className="text-brand-600 hover:underline">
+            profile
+          </Link>
+          . Companies host only.
         </p>
         <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
           Back to browse

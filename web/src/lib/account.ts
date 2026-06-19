@@ -11,3 +11,13 @@ export function useIsBusinessHost(): boolean {
   const profile = data as (UserProfile & Partial<Host>) | undefined;
   return profile?.ownerType === 'business';
 }
+
+/**
+ * True when the signed-in account is in the Hosting experience (role 'owner') —
+ * either a company or a personal account that became a host. Hosts are host-only
+ * and rent by switching back to a renter account from their profile.
+ */
+export function useIsHost(): boolean {
+  const { data } = useCurrentUser();
+  return data?.role === 'owner';
+}

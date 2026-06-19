@@ -7,6 +7,7 @@ import { client } from '@/lib/client';
 import type { CreateListingInput } from '@/lib/types';
 import { Button, Card, CardBody, CardHeader, Input, Label, Select } from '@/components/ui';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
+import { isLikelyUrl, normalizeUrl } from '@/lib/location';
 
 const CITIES = ['Kigali', 'Musanze', 'Rubavu', 'Huye', 'Rusizi'];
 
@@ -57,6 +58,7 @@ export function ListCarPage() {
   const [city, setCity] = useState('Kigali');
   const [location, setLocation] = useState('');
   const [coords, setCoords] = useState<LatLng | null>(null);
+  const [locationUrl, setLocationUrl] = useState('');
   const [bookingMode, setBookingMode] = useState<'instant' | 'request'>('instant');
   const [status, setStatus] = useState<'available' | 'maintenance'>('available');
   const [maintenanceUntil, setMaintenanceUntil] = useState('');
@@ -105,7 +107,8 @@ export function ListCarPage() {
     Number(pricePerDay) > 0 &&
     photoUrls.length > 0 &&
     !uploading &&
-    statusValid;
+    statusValid &&
+    (!locationUrl.trim() || isLikelyUrl(locationUrl));
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -129,6 +132,7 @@ export function ListCarPage() {
       maintenanceUntil: status === 'maintenance' ? maintenanceUntil : null,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
+      locationUrl: locationUrl.trim() ? normalizeUrl(locationUrl) : null,
     });
   }
 
@@ -261,6 +265,22 @@ export function ListCarPage() {
                   if (!location.trim()) setLocation(address.split(',').slice(0, 2).join(',').trim());
                 }}
               />
+            </div>
+            <div>
+              <Label htmlFor="location-url">Location link (optional)</Label>
+              <Input
+                id="location-url"
+                value={locationUrl}
+                onChange={(e) => setLocationUrl(e.target.value)}
+                placeholder="https://maps.google.com/…  or a directions/instructions link"
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                A Google Maps share link, What3Words, or any page with arrival instructions.
+                Renters can open it when heading to pickup.
+              </p>
+              {locationUrl.trim() && !isLikelyUrl(locationUrl) && (
+                <p className="mt-1 text-sm text-red-600">That doesn't look like a valid link.</p>
+              )}
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>

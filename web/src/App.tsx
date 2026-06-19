@@ -33,9 +33,26 @@ export default function App() {
             </RequireRole>
           }
         />
-        <Route path="trips" element={<TripsPage />} />
+        {/* "My trips" is a renter page; hosts see trips from their dashboard. */}
+        <Route
+          path="trips"
+          element={
+            <RequireRole roles={['renter', 'admin']}>
+              <TripsPage />
+            </RequireRole>
+          }
+        />
+        {/* Trip detail stays open to both participants (host needs it for handoff). */}
         <Route path="trips/:id" element={<TripDetailPage />} />
-        <Route path="cars/new" element={<ListCarPage />} />
+        {/* Only hosts can list a car — a renter becomes a host first. */}
+        <Route
+          path="cars/new"
+          element={
+            <RequireRole roles={['owner', 'admin']}>
+              <ListCarPage />
+            </RequireRole>
+          }
+        />
         <Route path="cars/:id" element={<CarDetailPage />} />
         <Route path="cars/:id/book" element={<BookingPage />} />
         <Route path="messages" element={<MessagesPage />} />

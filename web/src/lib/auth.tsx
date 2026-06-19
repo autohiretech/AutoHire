@@ -19,8 +19,10 @@ async function ensureProfile(user: User): Promise<void> {
     company_name?: string;
     full_name?: string;
     phone?: string;
+    wants_to_host?: boolean;
   };
   const accountType: AccountType = meta.account_type === 'company' ? 'company' : 'personal';
+  const wantsToHost = meta.wants_to_host === true;
   const companyName = typeof meta.company_name === 'string' ? meta.company_name.trim() : '';
   const emailLocal = user.email?.split('@')[0] ?? 'New user';
   const fullName =
@@ -47,11 +49,22 @@ async function ensureProfile(user: User): Promise<void> {
           insurance_type: 'commercial',
           vehicle_count: 0,
         }
-      : {
-          ...base,
-          full_name: fullName,
-          role: 'renter',
-        };
+      : wantsToHost
+        ? {
+            // Personal account that opted to host at signup — an individual host.
+            ...base,
+            full_name: fullName,
+            role: 'owner',
+            owner_type: 'individual',
+            payout_terms: 'per_trip',
+            insurance_type: 'platform_provided',
+            vehicle_count: 0,
+          }
+        : {
+            ...base,
+            full_name: fullName,
+            role: 'renter',
+          };
 
   await getSupabase().from('profiles').upsert(row, { onConflict: 'id', ignoreDuplicates: true });
 }
@@ -61,6 +74,8 @@ interface SignUpDetails {
   fullName: string;
   phone: string;
   companyName?: string;
+  /** Personal accounts can opt to be a host from the start. */
+  wantsToHost?: boolean;
 }
 
 interface AuthValue {
@@ -128,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           full_name: details.fullName.trim(),
           phone: details.phone.trim(),
           company_name: details.companyName?.trim() || undefined,
+          wants_to_host: details.wantsToHost === true,
         },
       },
     });

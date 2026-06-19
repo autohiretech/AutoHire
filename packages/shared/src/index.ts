@@ -104,6 +104,8 @@ export interface Listing {
   /** Pickup point on the map; null until the host sets it. */
   lat: number | null;
   lng: number | null;
+  /** Optional host-provided link for directions / arrival info. */
+  locationUrl: string | null;
 }
 
 /** Host-set availability state. "Booked" is derived from bookings, not stored. */

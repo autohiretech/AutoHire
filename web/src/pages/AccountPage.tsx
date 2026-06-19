@@ -1,11 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Building2, CheckCircle2, Phone, ShieldAlert, ShieldCheck, User } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowLeftRight,
+  Building2,
+  Camera,
+  CheckCircle2,
+  Phone,
+  ShieldAlert,
+  ShieldCheck,
+  User,
+} from 'lucide-react';
 import type { Host, UserProfile } from '@autohire/shared';
+import { client } from '@/lib/client';
 import { useAuth } from '@/lib/auth';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { normalizePhone } from '@/lib/phone';
-import { Badge, Button, Card, CardBody, CardHeader, Input, Label, Modal, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, CardHeader, Input, Label, Modal, Spinner } from '@/components/ui';
 
 /** Account settings: shows who you are and lets you permanently delete the account. */
 export function AccountPage() {
@@ -39,43 +50,15 @@ export function AccountPage() {
       <h1 className="text-2xl font-bold text-ink-900">Account</h1>
       <p className="mt-1 text-sm text-ink-500">Manage your AutoHire account.</p>
 
-      <Card className="mt-6">
-        <CardHeader>
-          <h2 className="font-semibold text-ink-900">Profile</h2>
-        </CardHeader>
-        <CardBody>
-          {isLoading ? (
-            <div className="flex justify-center py-6">
-              <Spinner size={22} />
-            </div>
-          ) : (
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Account type">
-                <Badge tone={isCompany ? 'brand' : 'neutral'}>
-                  {isCompany ? (
-                    <span className="flex items-center gap-1">
-                      <Building2 size={13} /> Company
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <User size={13} /> Personal
-                    </span>
-                  )}
-                </Badge>
-              </Field>
-              <Field label="Name">{profile?.businessName ?? profile?.fullName ?? '—'}</Field>
-              <Field label="Email">{user?.email ?? '—'}</Field>
-              <Field label="Phone">{profile?.phone || 'Not set'}</Field>
-            </dl>
-          )}
-          <Link
-            to="/verification"
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
-          >
-            <ShieldCheck size={15} /> Verification & documents
-          </Link>
-        </CardBody>
-      </Card>
+      {isLoading || !profile ? (
+        <Card className="mt-6">
+          <CardBody className="flex justify-center py-6">
+            <Spinner size={22} />
+          </CardBody>
+        </Card>
+      ) : (
+        <ProfileCard profile={profile} email={user?.email ?? ''} />
+      )}
 
       {/* Phone verification */}
       <PhoneVerification defaultPhone={profile?.phone ?? ''} />
@@ -124,6 +107,179 @@ export function AccountPage() {
         </div>
       </Modal>
     </section>
+  );
+}
+
+/** Editable profile: avatar + name, plus the host/renter role switch. */
+function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>; email: string }) {
+  const queryClient = useQueryClient();
+  const isCompany = profile.ownerType === 'business';
+  const isHost = profile.role === 'owner';
+  const displayName = profile.businessName ?? profile.fullName;
+
+  const currentName = (isCompany ? profile.businessName : profile.fullName) ?? '';
+  const [name, setName] = useState(currentName);
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => setName(currentName), [currentName]);
+
+  const nameChanged = name.trim().length > 0 && name.trim() !== currentName;
+
+  function refresh() {
+    queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+    queryClient.invalidateQueries({ queryKey: ['ownerHost'] });
+  }
+
+  async function saveName() {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await client.updateProfile(
+        isCompany ? { businessName: name.trim() } : { fullName: name.trim() },
+      );
+      refresh();
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save your name.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onPickAvatar(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const url = await client.uploadAvatar(file);
+      await client.updateProfile({ avatarUrl: url });
+      refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not upload the picture.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function toggleRole() {
+    setBusy(true);
+    setError(null);
+    try {
+      await client.updateProfile(
+        isHost ? { role: 'renter' } : { role: 'owner', ownerType: 'individual' },
+      );
+      // Mode, nav and host/renter pages all key off the role — refresh broadly.
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      queryClient.invalidateQueries({ queryKey: ['ownerHost'] });
+      queryClient.invalidateQueries({ queryKey: ['ownerListings'] });
+      queryClient.invalidateQueries({ queryKey: ['listings'] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not switch your account.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <h2 className="font-semibold text-ink-900">Profile</h2>
+      </CardHeader>
+      <CardBody className="space-y-5">
+        {/* Avatar + change photo */}
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <Avatar name={displayName} src={profile.avatarUrl} size="lg" />
+            <label className="absolute -bottom-1 -right-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-ink-200 bg-white text-ink-600 shadow-sm hover:bg-ink-50">
+              <Camera size={14} />
+              <input
+                type="file"
+                accept="image/*"
+                disabled={uploading}
+                onChange={onPickAvatar}
+                className="hidden"
+              />
+            </label>
+          </div>
+          <div>
+            <p className="font-medium text-ink-900">{displayName}</p>
+            <Badge tone={isCompany ? 'brand' : 'neutral'}>
+              {isCompany ? (
+                <span className="flex items-center gap-1">
+                  <Building2 size={13} /> Company {isHost ? '· host' : ''}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <User size={13} /> Personal {isHost ? '· host' : '· renter'}
+                </span>
+              )}
+            </Badge>
+            {uploading && <p className="mt-1 text-xs text-ink-500">Uploading photo…</p>}
+          </div>
+        </div>
+
+        {/* Editable name */}
+        <div>
+          <Label htmlFor="display-name">{isCompany ? 'Company name' : 'Full name'}</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="display-name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setSaved(false);
+              }}
+              className="max-w-sm"
+            />
+            <Button size="sm" disabled={!nameChanged || busy} onClick={saveName}>
+              {busy ? 'Saving…' : 'Save'}
+            </Button>
+            {saved && !nameChanged && (
+              <span className="flex items-center gap-1 text-sm text-emerald-700">
+                <CheckCircle2 size={14} /> Saved
+              </span>
+            )}
+          </div>
+        </div>
+
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Email">{email || '—'}</Field>
+          <Field label="Phone">{profile.phone || 'Not set'}</Field>
+        </dl>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        {/* Host / renter switch — companies are host-only. */}
+        {!isCompany && (
+          <div className="rounded-lg bg-ink-50 p-3">
+            <p className="text-sm font-medium text-ink-800">
+              {isHost ? 'Hosting account' : 'Renter account'}
+            </p>
+            <p className="mt-0.5 text-sm text-ink-600">
+              {isHost
+                ? 'You manage listings. Switch to renting to book cars (your listings are kept).'
+                : 'You rent cars. Become a host to list your own vehicle.'}
+            </p>
+            <Button variant="outline" size="sm" className="mt-2" disabled={busy} onClick={toggleRole}>
+              <ArrowLeftRight size={14} /> {isHost ? 'Switch to renting' : 'Become a host'}
+            </Button>
+          </div>
+        )}
+
+        <Link
+          to="/verification"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
+        >
+          <ShieldCheck size={15} /> Verification & documents
+        </Link>
+      </CardBody>
+    </Card>
   );
 }
 

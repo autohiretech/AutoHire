@@ -322,6 +322,7 @@ export const supabaseClient = {
           maintenance_until: input.status === 'maintenance' ? input.maintenanceUntil || null : null,
           lat: input.lat ?? null,
           lng: input.lng ?? null,
+          location_url: input.locationUrl || null,
         })
         .select('*')
         .single(),
@@ -550,5 +551,35 @@ export const supabaseClient = {
     return mapRow<UserProfile>(
       await run(sb().from('profiles').select('*').eq('id', me()).maybeSingle()),
     ) as UserProfile;
+  },
+  /** Update the signed-in user's own profile (RLS allows id = auth.uid()). */
+  async updateProfile(patch: {
+    fullName?: string;
+    businessName?: string;
+    avatarUrl?: string;
+    role?: UserProfile['role'];
+    ownerType?: 'individual' | 'business';
+  }): Promise<UserProfile> {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.fullName !== undefined) dbPatch.full_name = patch.fullName;
+    if (patch.businessName !== undefined) dbPatch.business_name = patch.businessName;
+    if (patch.avatarUrl !== undefined) dbPatch.avatar_url = patch.avatarUrl;
+    if (patch.role !== undefined) dbPatch.role = patch.role;
+    if (patch.ownerType !== undefined) dbPatch.owner_type = patch.ownerType;
+    const row = await run(
+      sb().from('profiles').update(dbPatch).eq('id', me()).select('*').single(),
+    );
+    return mapRow<UserProfile>(row) as UserProfile;
+  },
+  /** Upload a profile picture to the public `avatars` bucket; returns its URL. */
+  async uploadAvatar(file: File): Promise<string> {
+    const userId = me();
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${userId}/avatar-${Date.now()}.${ext}`;
+    const { error } = await sb()
+      .storage.from('avatars')
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (error) throw new Error(error.message);
+    return sb().storage.from('avatars').getPublicUrl(path).data.publicUrl;
   },
 };

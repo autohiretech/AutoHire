@@ -80,7 +80,9 @@ create table listings (
   maintenance_until date,
   -- Pickup point on the map (set via the listing form's map picker).
   lat               numeric,
-  lng               numeric
+  lng               numeric,
+  -- Optional host-provided link renters can open for directions / arrival info.
+  location_url      text
 );
 
 create table bookings (
@@ -247,16 +249,31 @@ create or replace function is_admin() returns boolean
   );
 $$;
 
+-- is_host(): true when the logged-in user's profile is a host (role 'owner').
+-- Gate for creating listings — a renter must become a host first.
+create or replace function is_host() returns boolean
+  language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from profiles p
+    where p.id = auth.uid()::text and p.role = 'owner'
+  );
+$$;
+
 -- profiles: anyone can read (public host/renter pages); you may insert/update
 -- only your own row.
 create policy profiles_read   on profiles for select using (true);
 create policy profiles_insert on profiles for insert with check (id = auth.uid()::text);
 create policy profiles_update on profiles for update using (id = auth.uid()::text) with check (id = auth.uid()::text);
 
--- listings: public browse; only the owning host can write their listings.
+-- listings: public browse; only the owning host can manage their listings, and
+-- only a host account (role 'owner') may create one — renters can't list.
 create policy listings_read   on listings for select using (true);
-create policy listings_write  on listings for all
+create policy listings_insert on listings for insert
+  with check (host_id = auth.uid()::text and (is_host() or is_admin()));
+create policy listings_update on listings for update
   using (host_id = auth.uid()::text) with check (host_id = auth.uid()::text);
+create policy listings_delete on listings for delete
+  using (host_id = auth.uid()::text);
 
 -- bookings: visible to the renter or the host on the booking. There is NO
 -- client insert policy on purpose — bookings are created only by the

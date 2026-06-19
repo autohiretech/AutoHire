@@ -55,4 +55,6 @@ export interface CreateListingInput {
   /** Pickup map coordinates (optional). */
   lat?: number | null;
   lng?: number | null;
+  /** Optional host-provided directions / arrival link. */
+  locationUrl?: string | null;
 }

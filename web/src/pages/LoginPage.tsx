@@ -17,6 +17,7 @@ export function LoginPage() {
   const [mode, setMode] = useState<Mode>('signin');
   const [accountType, setAccountType] = useState<AccountType>('personal');
   const [companyName, setCompanyName] = useState('');
+  const [wantsToHost, setWantsToHost] = useState(false);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -59,13 +60,14 @@ export function LoginPage() {
           companyName,
           fullName,
           phone: normalizePhone(phone) ?? phone,
+          wantsToHost: accountType === 'personal' && wantsToHost,
         });
         if (needsConfirmation) {
           setInfo('Check your email to confirm your account, then sign in.');
           setMode('signin');
-        } else if (accountType === 'company') {
-          // A company is a host first — land them on the dashboard (the account
-          // type already puts them in the Hosting experience).
+        } else if (accountType === 'company' || wantsToHost) {
+          // Hosts (companies, or personal accounts that opted to host) land on
+          // the dashboard — their Hosting experience.
           navigate('/dashboard', { replace: true });
         } else {
           navigate(from, { replace: true });
@@ -130,6 +132,21 @@ export function LoginPage() {
                   ))}
                 </div>
               </div>
+            )}
+
+            {mode === 'signup' && accountType === 'personal' && (
+              <label className="flex items-start gap-2 rounded-lg border border-ink-200 p-3 text-sm text-ink-600">
+                <input
+                  type="checkbox"
+                  checked={wantsToHost}
+                  onChange={(e) => setWantsToHost(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>
+                  <span className="font-medium text-ink-900">I want to host my car</span> — start as a
+                  host. You can switch between hosting and renting anytime from your profile.
+                </span>
+              </label>
             )}
 
             {mode === 'signup' && accountType === 'company' && (

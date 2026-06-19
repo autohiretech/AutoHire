@@ -8,19 +8,21 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { MODE_HOME, useAppMode, type AppMode } from '@/lib/appMode';
 import { useAuth } from '@/lib/auth';
 
-// Nav follows the account (set by useAppMode) — no manual mode toggle. Hosts
-// keep renter links (Explore / My trips) so they can also rent; renters get a
-// "List your car" entry to start hosting.
+// Nav follows the account (set by useAppMode) — no manual mode toggle. Host
+// accounts manage listings and can browse the market to analyze it (Explore),
+// but get no renter actions (no "My trips", and booking is disabled). A personal
+// host switches back to renting from their profile. Renters get a "List your
+// car" entry to start hosting.
 const NAV_BY_MODE: Record<AppMode, { to: string; label: string; end?: boolean }[]> = {
   renter: [
     { to: '/', label: 'Explore', end: true },
     { to: '/trips', label: 'My trips' },
-    { to: '/cars/new', label: 'List your car' },
+    // Renters can't list cars directly — they become a host first.
+    { to: '/account', label: 'Become a host' },
   ],
   host: [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/', label: 'Explore', end: true },
-    { to: '/trips', label: 'My trips' },
     { to: '/verification', label: 'Verification' },
   ],
 };

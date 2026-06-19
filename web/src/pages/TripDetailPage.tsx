@@ -10,6 +10,7 @@ import { formatDate, formatRwf } from '@/lib/format';
 import { TRIP_STATE_META, TRIP_TIMELINE } from '@/lib/trips';
 import { StarRatingInput } from '@/components/StarRatingInput';
 import { LocationMap } from '@/components/map/LocationMap';
+import { LocationLinks } from '@/components/map/LocationLinks';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
 
 export function TripDetailPage() {
@@ -145,16 +146,19 @@ export function TripDetailPage() {
           )}
 
           {/* Pickup location */}
-          {listing?.lat != null && listing?.lng != null && (
+          {listing && ((listing.lat != null && listing.lng != null) || listing.locationUrl) && (
             <Card>
               <CardHeader>
                 <h2 className="font-semibold text-ink-900">Pickup location</h2>
               </CardHeader>
-              <CardBody className="space-y-2">
+              <CardBody className="space-y-3">
                 <p className="flex items-center gap-1.5 text-sm text-ink-600">
                   <MapPin size={15} className="text-brand-600" /> {listing.location}
                 </p>
-                <LocationMap lat={listing.lat} lng={listing.lng} />
+                {listing.lat != null && listing.lng != null && (
+                  <LocationMap lat={listing.lat} lng={listing.lng} />
+                )}
+                <LocationLinks url={listing.locationUrl} lat={listing.lat} lng={listing.lng} />
               </CardBody>
             </Card>
           )}
