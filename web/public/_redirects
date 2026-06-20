@@ -1,0 +1,3 @@
+# SPA fallback — let React Router handle client-side routes so deep links
+# (e.g. /cars/:id, /dashboard) don't 404 on Cloudflare Pages.
+/*    /index.html   200
