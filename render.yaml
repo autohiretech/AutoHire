@@ -1,0 +1,27 @@
+# Render Blueprint — deploys the AutoHire frontend as a static site.
+#
+# This app has NO Node backend: the backend is Supabase (database, auth,
+# storage) plus Supabase Edge Functions. Render only hosts the built Vite SPA.
+# Set the VITE_* values in the Render dashboard (Environment) — they are build
+# time variables that Vite inlines into the bundle.
+services:
+  - type: web
+    name: autohire-web
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./web/dist
+    pullRequestPreviewsEnabled: true
+    # SPA fallback so client-side routes (/cars/:id, /dashboard, …) don't 404.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_STRIPE_PUBLISHABLE_KEY
+        sync: false
