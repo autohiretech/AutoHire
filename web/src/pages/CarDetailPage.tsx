@@ -172,7 +172,7 @@ export function CarDetailPage() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl px-4 py-6">
+    <section className="mx-auto max-w-5xl px-4 py-6 pb-28 lg:pb-6">
       <Link
         to="/"
         className="mb-3 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
@@ -509,6 +509,34 @@ export function CarDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Mobile sticky booking bar — keeps price + reserve reachable without
+          scrolling to the card at the bottom of the page. Desktop uses the
+          sticky sidebar card instead. */}
+      {!isHost && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-ink-200 bg-white/95 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <div className="min-w-0">
+              {datesChosen ? (
+                <>
+                  <p className="truncate text-base font-bold text-ink-900">{formatRwf(total)}</p>
+                  <p className="text-xs text-ink-500">
+                    total · {nights} night{nights === 1 ? '' : 's'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-base font-bold text-ink-900">{formatRwf(listing.pricePerDayRwf)}</p>
+                  <p className="text-xs text-ink-500">per day</p>
+                </>
+              )}
+            </div>
+            <Button size="lg" className="shrink-0" onClick={reserve}>
+              {datesChosen ? (instant ? 'Reserve' : 'Request to book') : 'Choose dates'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {lightbox !== null && (
         <Lightbox photos={photos} index={lightbox} onClose={() => setLightbox(null)} title={listing.title} />
