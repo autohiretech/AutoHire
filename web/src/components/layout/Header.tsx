@@ -1,6 +1,7 @@
-import { Link, NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Car, LogOut, MessageSquare } from 'lucide-react';
+import { Bell, Car, LogOut, Menu, MessageSquare, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar, Button } from '@/components/ui';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
@@ -32,6 +33,14 @@ export function Header() {
   const { mode } = useAppMode();
   const { user, signOut } = useAuth();
   const { data: me } = useCurrentUser();
+  const { pathname } = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close the mobile menu whenever the route changes.
+  const closeMenu = () => setMenuOpen(false);
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   const { data: unread = 0 } = useQuery({
     queryKey: ['unreadMessages'],
@@ -120,21 +129,95 @@ export function Header() {
             <button
               type="button"
               onClick={() => signOut()}
-              className="ml-1 rounded-lg p-2 text-ink-500 hover:bg-ink-100"
+              className="ml-1 hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 md:block"
               aria-label="Sign out"
               title={user.email ?? 'Sign out'}
             >
               <LogOut size={18} />
             </button>
           ) : (
-            <Link to="/login" className="ml-1">
+            <Link to="/login" className="ml-1 hidden md:block">
               <Button size="sm" variant="outline">
                 Sign in
               </Button>
             </Link>
           )}
+
+          {/* Mobile menu toggle */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            className="ml-1 rounded-lg p-2 text-ink-500 hover:bg-ink-100 md:hidden"
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav"
+          >
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
       </div>
+
+      {/* Mobile nav panel */}
+      {menuOpen && (
+        <nav id="mobile-nav" className="border-t border-ink-200 bg-white px-4 py-2 md:hidden">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={closeMenu}
+              className={({ isActive }) =>
+                cn(
+                  'block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                  isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
+                )
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+          <NavLink
+            to="/notifications"
+            onClick={closeMenu}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
+              )
+            }
+          >
+            <span className="flex items-center gap-2">
+              <Bell size={16} /> Notifications
+            </span>
+            {unreadNotifications > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-semibold text-white">
+                {unreadNotifications}
+              </span>
+            )}
+          </NavLink>
+          <div className="my-2 border-t border-ink-100" />
+          {user ? (
+            <button
+              type="button"
+              onClick={() => {
+                closeMenu();
+                signOut();
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-ink-700 hover:bg-ink-100"
+            >
+              <LogOut size={16} /> Sign out
+            </button>
+          ) : (
+            <Link
+              to="/login"
+              onClick={closeMenu}
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-700 hover:bg-ink-100"
+            >
+              Sign in
+            </Link>
+          )}
+        </nav>
+      )}
     </header>
   );
 }

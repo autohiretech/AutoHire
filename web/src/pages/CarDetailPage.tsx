@@ -561,12 +561,13 @@ function PhotoMosaic({
   const [big, ...rest] = photos;
   return (
     <div className="relative mt-5">
-      <div className="grid h-[300px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl sm:h-[420px]">
-        <button type="button" onClick={() => onOpen(0)} className="col-span-2 row-span-2">
+      <div className="grid h-[260px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl sm:h-[420px]">
+        {/* On mobile the hero image fills the frame; the thumbnail collage shows from sm up. */}
+        <button type="button" onClick={() => onOpen(0)} className="col-span-4 row-span-2 sm:col-span-2">
           <img src={big} alt={title} className="h-full w-full object-cover transition hover:brightness-95" />
         </button>
         {rest.slice(0, 4).map((p, i) => (
-          <button key={p} type="button" onClick={() => onOpen(i + 1)}>
+          <button key={p} type="button" onClick={() => onOpen(i + 1)} className="hidden sm:block">
             <img src={p} alt="" className="h-full w-full object-cover transition hover:brightness-95" />
           </button>
         ))}
