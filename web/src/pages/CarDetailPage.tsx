@@ -689,10 +689,14 @@ function Lightbox({
 
 function Spec({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
-    <div>
-      <Icon size={20} className="text-ink-500" />
-      <p className="mt-1 text-xs text-ink-500">{label}</p>
-      <p className="font-medium capitalize text-ink-900">{value}</p>
+    <div className="flex items-center gap-3 rounded-xl border border-ink-200 bg-white p-3 sm:flex-col sm:items-start sm:gap-0">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ink-50 text-ink-600 sm:h-auto sm:w-auto sm:bg-transparent sm:p-0">
+        <Icon size={20} />
+      </span>
+      <div className="min-w-0 sm:mt-2">
+        <p className="text-xs text-ink-500">{label}</p>
+        <p className="truncate font-medium capitalize text-ink-900">{value}</p>
+      </div>
     </div>
   );
 }
