@@ -1,11 +1,11 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
 import type { CreateListingInput } from '@/lib/types';
-import { Button, Card, CardBody, CardHeader, Input, Label, Select } from '@/components/ui';
+import { Button, Card, CardBody, CardHeader, Input, Label, Select, Spinner } from '@/components/ui';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
 import { isLikelyUrl, normalizeUrl } from '@/lib/location';
 
@@ -45,6 +45,15 @@ function toList(raw: string): string[] {
 export function ListCarPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { id: editId } = useParams();
+  const editing = !!editId;
+
+  // In edit mode, load the existing listing to prefill the form.
+  const existingQuery = useQuery({
+    queryKey: ['listing', editId],
+    queryFn: () => client.getListing(editId!),
+    enabled: editing,
+  });
 
   const [title, setTitle] = useState('');
   const [make, setMake] = useState('');
@@ -83,17 +92,43 @@ export function ListCarPage() {
     }
   }
 
+  // Prefill once when editing and the listing has loaded.
+  const existing = existingQuery.data;
+  useEffect(() => {
+    if (!existing) return;
+    setTitle(existing.title);
+    setMake(existing.make);
+    setModel(existing.model);
+    setYear(String(existing.year));
+    setCategory(existing.category);
+    setSeats(String(existing.seats));
+    setTransmission(existing.transmission);
+    setFuel(existing.fuel);
+    setPricePerDay(String(existing.pricePerDayRwf));
+    setCity(existing.city);
+    setLocation(existing.location);
+    setCoords(existing.lat != null && existing.lng != null ? { lat: existing.lat, lng: existing.lng } : null);
+    setLocationUrl(existing.locationUrl ?? '');
+    setBookingMode(existing.bookingMode);
+    setStatus(existing.status);
+    setMaintenanceUntil(existing.maintenanceUntil ?? '');
+    setPhotoUrls(existing.photos);
+    setFeatures(existing.features.join(', '));
+  }, [existing]);
+
   const today = new Date().toISOString().slice(0, 10);
   // In maintenance requires a valid back-in-service date (today or later).
   const statusValid = status === 'available' || (!!maintenanceUntil && maintenanceUntil >= today);
 
   const mutation = useMutation({
-    mutationFn: (input: CreateListingInput) => client.createListing(input),
+    mutationFn: (input: CreateListingInput) =>
+      editing ? client.updateListing(editId!, input) : client.createListing(input),
     onSuccess: (listing) => {
       queryClient.invalidateQueries({ queryKey: ['ownerListings'] });
       queryClient.invalidateQueries({ queryKey: ['ownerHost'] });
       queryClient.invalidateQueries({ queryKey: ['listings'] });
-      navigate(`/cars/${listing.id}`);
+      queryClient.invalidateQueries({ queryKey: ['listing', editId] });
+      navigate(`/cars/${editing ? editId : listing?.id}`);
     },
   });
 
@@ -145,11 +180,18 @@ export function ListCarPage() {
         <ArrowLeft size={16} /> Back to dashboard
       </Link>
 
-      <h1 className="text-2xl font-bold text-ink-900">List your car</h1>
+      <h1 className="text-2xl font-bold text-ink-900">{editing ? 'Edit your car' : 'List your car'}</h1>
       <p className="mt-1 text-sm text-ink-500">
-        Add a vehicle to rent out. Your first listing turns your account into a host.
+        {editing
+          ? 'Update your car’s details, photos, location and availability.'
+          : 'Add a vehicle to rent out. Your first listing turns your account into a host.'}
       </p>
 
+      {editing && existingQuery.isLoading ? (
+        <div className="flex justify-center py-20">
+          <Spinner size={28} />
+        </div>
+      ) : (
       <form onSubmit={onSubmit} className="mt-6 space-y-6">
         <Card>
           <CardHeader>
@@ -386,19 +428,28 @@ export function ListCarPage() {
 
         {mutation.isError && (
           <p className="text-sm text-red-600">
-            {mutation.error instanceof Error ? mutation.error.message : 'Could not create the listing.'}
+            {mutation.error instanceof Error
+              ? mutation.error.message
+              : `Could not ${editing ? 'save the changes' : 'create the listing'}.`}
           </p>
         )}
 
         <div className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => navigate('/dashboard')}>
+          <Button type="button" variant="outline" onClick={() => navigate(editing ? `/cars/${editId}` : '/dashboard')}>
             Cancel
           </Button>
           <Button type="submit" disabled={!valid || mutation.isPending}>
-            {mutation.isPending ? 'Publishing…' : 'Publish listing'}
+            {mutation.isPending
+              ? editing
+                ? 'Saving…'
+                : 'Publishing…'
+              : editing
+                ? 'Save changes'
+                : 'Publish listing'}
           </Button>
         </div>
       </form>
+      )}
     </section>
   );
 }

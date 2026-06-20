@@ -36,6 +36,16 @@ export function TripDetailPage() {
     enabled: !!booking,
   });
 
+  const queryClient = useQueryClient();
+  const cancelMutation = useMutation({
+    mutationFn: () => client.cancelBooking(booking!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', booking!.id] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
+    },
+  });
+
   if (bookingQuery.isLoading) {
     return (
       <div className="flex justify-center py-20">
@@ -62,6 +72,16 @@ export function TripDetailPage() {
   const currentStep = TRIP_TIMELINE.indexOf(booking.state);
   const amHost = me?.id === booking.hostId;
   const isParticipant = me?.id === booking.renterId || amHost;
+  // Renter cancels before the trip starts; host cancels a confirmed/pickup trip.
+  const canCancel = amHost
+    ? ['confirmed', 'pickup'].includes(booking.state)
+    : me?.id === booking.renterId && ['requested', 'confirmed'].includes(booking.state);
+
+  function onCancel() {
+    if (window.confirm('Cancel this booking? The renter will be refunded and the dates freed.')) {
+      cancelMutation.mutate();
+    }
+  }
 
   async function messageOther() {
     setMessaging(true);
@@ -93,6 +113,17 @@ export function TripDetailPage() {
             <Button variant="outline" size="sm" disabled={messaging} onClick={messageOther}>
               <MessageSquare size={15} />
               {messaging ? 'Opening…' : amHost ? 'Message renter' : 'Message host'}
+            </Button>
+          )}
+          {canCancel && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-700 hover:bg-red-50"
+              disabled={cancelMutation.isPending}
+              onClick={onCancel}
+            >
+              {cancelMutation.isPending ? 'Cancelling…' : 'Cancel & refund'}
             </Button>
           )}
           <Badge tone={state.tone}>{state.label}</Badge>

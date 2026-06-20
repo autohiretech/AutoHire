@@ -108,7 +108,9 @@ create table bookings (
   pickup_renter_at timestamptz,
   pickup_host_at   timestamptz,
   return_renter_at timestamptz,
-  return_host_at   timestamptz
+  return_host_at   timestamptz,
+  -- Set once an "overdue return" notification has been sent for this booking.
+  overdue_notified_at timestamptz
 );
 
 -- One booking per Stripe PaymentIntent (idempotent confirm, no double-spend).
@@ -143,7 +145,13 @@ create table messages (
   sender_id       text not null references profiles(id) on delete cascade,
   body            text not null,
   sent_at         timestamptz not null,
-  read_at         timestamptz
+  read_at         timestamptz,
+  -- Optional shared file/image, a quoted message, and emoji reactions.
+  attachment_url  text,
+  attachment_type text,
+  attachment_name text,
+  reply_to        text references messages(id) on delete set null,
+  reactions       jsonb not null default '{}'::jsonb
 );
 
 create table reviews (
@@ -311,6 +319,8 @@ create policy messages_update on messages for update
     where c.id = messages.conversation_id
       and (c.renter_id = auth.uid()::text or c.host_id = auth.uid()::text)
   ));
+create policy messages_delete on messages for delete
+  using (sender_id = auth.uid()::text);
 
 -- reviews: public read (shown on listings/profiles); you author as yourself.
 create policy reviews_read   on reviews for select using (true);
@@ -331,6 +341,13 @@ create policy disputes_update on disputes for update using (is_admin()) with che
 -- can read all (verification review queue / support).
 create policy vdocs_read   on verification_documents for select
   using (profile_id = auth.uid()::text or is_admin());
+-- A host may review the documents of a renter who has a booking on their car.
+create policy vdocs_host_read on verification_documents for select
+  using (exists (
+    select 1 from bookings b
+    where b.renter_id = verification_documents.profile_id
+      and b.host_id = auth.uid()::text
+  ));
 create policy vdocs_write  on verification_documents for all
   using (profile_id = auth.uid()::text) with check (profile_id = auth.uid()::text);
 create policy notifications_read  on notifications for select
@@ -417,10 +434,16 @@ create or replace function booking_enforce_update() returns trigger
   language plpgsql security definer set search_path = public as $$
 declare
   uid text := auth.uid()::text;
+  refund_ok boolean;
 begin
   if uid is null or is_admin() then
     return new;
   end if;
+
+  -- A paid booking may be refunded, but only as part of a cancellation/decline.
+  refund_ok := old.payment_status = 'paid'
+    and new.payment_status = 'refunded'
+    and new.state in ('cancelled', 'declined');
 
   if new.listing_id      is distinct from old.listing_id
      or new.renter_id    is distinct from old.renter_id
@@ -431,7 +454,7 @@ begin
      or new.subtotal_rwf is distinct from old.subtotal_rwf
      or new.service_fee_rwf is distinct from old.service_fee_rwf
      or new.total_rwf    is distinct from old.total_rwf
-     or new.payment_status    is distinct from old.payment_status
+     or (new.payment_status is distinct from old.payment_status and not refund_ok)
      or new.payment_intent_id is distinct from old.payment_intent_id
      or new.created_at   is distinct from old.created_at then
     raise exception 'Booking amounts, dates and payment cannot be changed.';
@@ -580,29 +603,9 @@ create trigger listing_block_dates
   before update of blocked_dates on listings
   for each row execute function listing_block_dates_guard();
 
--- Auto-notify the other participant on a new message, and the host on a new
--- booking. SECURITY DEFINER so they can write the recipient's notification row
--- (notifications RLS only allows self-inserts).
-create or replace function notify_on_message() returns trigger
-  language plpgsql security definer set search_path = public as $$
-declare
-  c conversations;
-  recipient text;
-begin
-  select * into c from conversations where id = new.conversation_id;
-  if c.id is null then return new; end if;
-  recipient := case when new.sender_id = c.renter_id then c.host_id else c.renter_id end;
-  if recipient is null or recipient = new.sender_id then return new; end if;
-  insert into notifications (id, profile_id, kind, title, body, channels, created_at, read)
-  values ('ntf-' || gen_random_uuid(), recipient, 'message', 'New message',
-          left(new.body, 120), '{in_app}', now(), false);
-  return new;
-end $$;
-
-drop trigger if exists message_notify on messages;
-create trigger message_notify after insert on messages
-  for each row execute function notify_on_message();
-
+-- Notify the host on a new booking. (Messages are intentionally NOT notified
+-- here — they have their own unread badge + chime.) SECURITY DEFINER so it can
+-- write the recipient's notification row, which RLS otherwise forbids.
 create or replace function notify_on_booking() returns trigger
   language plpgsql security definer set search_path = public as $$
 begin
@@ -684,3 +687,28 @@ end $$;
 drop trigger if exists booking_update_notify on bookings;
 create trigger booking_update_notify after update on bookings
   for each row execute function notify_on_booking_update();
+
+-- Overdue returns: notify host + renter when a trip's end date passed but the
+-- car isn't returned/completed. Fires once per booking. Called by pg_cron
+-- (uid null = all bookings) and on dashboard load (scoped to the caller's own).
+create or replace function notify_overdue_returns() returns void
+  language plpgsql security definer set search_path = public as $$
+declare
+  uid text := auth.uid()::text;
+  r record;
+begin
+  for r in
+    select * from bookings b
+    where b.state in ('confirmed', 'pickup', 'active', 'return')
+      and b.end_date < current_date
+      and b.overdue_notified_at is null
+      and (uid is null or b.host_id = uid or b.renter_id = uid)
+  loop
+    perform create_notification(r.host_id, 'return_reminder', 'Car overdue',
+      'A trip on your car was due back on ' || r.end_date || ' but is not completed yet.');
+    perform create_notification(r.renter_id, 'return_reminder', 'Return overdue',
+      'Your rental was due back on ' || r.end_date || '. Please return the car and confirm.');
+    update bookings set overdue_notified_at = now() where id = r.id;
+  end loop;
+end $$;
+grant execute on function notify_overdue_returns() to authenticated;

@@ -1,5 +1,12 @@
 project_id = "gsnoggfofbmzamxxyazc"
 
+# Email verification is OFF — new accounts are signed in immediately, no "confirm
+# your email" step. NOTE: this only affects the local CLI stack (`supabase start`)
+# and `supabase config push`. The HOSTED project is controlled in the dashboard:
+# Authentication → Sign In / Providers → Email → turn OFF "Confirm email".
+[auth.email]
+enable_confirmations = false
+
 # The account-deletion function verifies the caller's JWT itself (with the
 # service role), so the gateway's JWT check is disabled — otherwise the
 # unauthenticated CORS preflight (OPTIONS) is rejected with 401 and the browser

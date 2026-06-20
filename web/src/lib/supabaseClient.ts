@@ -77,6 +77,28 @@ export const supabaseClient = {
     }
     return mapRows<Listing>(await run(q));
   },
+  /**
+   * AI Mode search: send a natural-language query to the `ai-search` Edge
+   * Function, which uses Claude (server-side) to turn it into ListingFilters.
+   * Returns the filters so the caller runs the normal `listListings` query.
+   * Throws a friendly message when the function isn't deployed or AI isn't
+   * configured, so the UI can fall back to plain keyword search.
+   */
+  async aiSearch(query: string): Promise<ListingFilters> {
+    const { data, error } = await getSupabase().functions.invoke('ai-search', {
+      body: { query },
+    });
+    if (error) {
+      throw new Error(
+        error.name === 'FunctionsFetchError'
+          ? "AI search isn't deployed yet — deploy the ai-search Edge Function."
+          : error.message,
+      );
+    }
+    const payload = data as { filters?: ListingFilters; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return payload?.filters ?? {};
+  },
   async getListing(id: string) {
     return mapRow<Listing>(await run(sb().from('listings').select('*').eq('id', id).maybeSingle()));
   },
@@ -220,33 +242,105 @@ export const supabaseClient = {
   async listOwnerBookings() {
     return mapRows<Booking>(await run(sb().from('bookings').select('*').eq('host_id', me())));
   },
+  /** Create any pending "overdue return" notifications for my trips (idempotent). */
+  async checkOverdueReturns(): Promise<void> {
+    await run(getSupabase().rpc('notify_overdue_returns'));
+  },
   async listOwnerPayouts() {
     return mapRows<Payout>(await run(sb().from('payouts').select('*').eq('host_id', me())));
   },
   async respondToBooking(id: string, action: 'approve' | 'decline') {
+    // Declining a paid request refunds it in the same update.
+    const patch =
+      action === 'approve'
+        ? { state: 'confirmed' }
+        : { state: 'declined', payment_status: 'refunded' };
+    const row = await run(sb().from('bookings').update(patch).eq('id', id).select('*').maybeSingle());
+    return mapRow<Booking>(row);
+  },
+  /** Cancel a booking and refund it (host: confirmed/pickup; renter: requested/confirmed). */
+  async cancelBooking(id: string): Promise<Booking> {
     const row = await run(
       sb()
         .from('bookings')
-        .update({ state: action === 'approve' ? 'confirmed' : 'declined' })
+        .update({ state: 'cancelled', payment_status: 'refunded' })
         .eq('id', id)
         .select('*')
-        .maybeSingle(),
+        .single(),
     );
-    return mapRow<Booking>(row);
+    return mapRow<Booking>(row) as Booking;
+  },
+  /** A single profile by id (renter or host). */
+  async getProfile(id: string): Promise<(UserProfile & Partial<Host>) | undefined> {
+    return mapRow<UserProfile & Partial<Host>>(
+      await run(sb().from('profiles').select('*').eq('id', id).maybeSingle()),
+    );
+  },
+  /** Verification documents for a profile (host can read a requester's via RLS). */
+  async listVerificationDocumentsFor(profileId: string): Promise<VerificationDocument[]> {
+    return mapRows<VerificationDocument>(
+      await run(sb().from('verification_documents').select('*').eq('profile_id', profileId)),
+    );
   },
   async updateListing(
     id: string,
-    patch: Partial<Pick<Listing, 'pricePerDayRwf' | 'blockedDates' | 'status' | 'maintenanceUntil'>>,
+    patch: Partial<
+      Pick<
+        Listing,
+        | 'title'
+        | 'category'
+        | 'make'
+        | 'model'
+        | 'year'
+        | 'seats'
+        | 'transmission'
+        | 'fuel'
+        | 'pricePerDayRwf'
+        | 'location'
+        | 'city'
+        | 'photos'
+        | 'features'
+        | 'bookingMode'
+        | 'blockedDates'
+        | 'status'
+        | 'maintenanceUntil'
+        | 'lat'
+        | 'lng'
+        | 'locationUrl'
+      >
+    >,
   ) {
+    const map: Record<string, string> = {
+      title: 'title',
+      category: 'category',
+      make: 'make',
+      model: 'model',
+      year: 'year',
+      seats: 'seats',
+      transmission: 'transmission',
+      fuel: 'fuel',
+      pricePerDayRwf: 'price_per_day_rwf',
+      location: 'location',
+      city: 'city',
+      photos: 'photos',
+      features: 'features',
+      bookingMode: 'booking_mode',
+      blockedDates: 'blocked_dates',
+      maintenanceUntil: 'maintenance_until',
+      lat: 'lat',
+      lng: 'lng',
+      locationUrl: 'location_url',
+    };
     const dbPatch: Record<string, unknown> = {};
-    if (patch.pricePerDayRwf !== undefined) dbPatch.price_per_day_rwf = patch.pricePerDayRwf;
-    if (patch.blockedDates !== undefined) dbPatch.blocked_dates = patch.blockedDates;
-    if (patch.status !== undefined) {
-      dbPatch.status = patch.status;
-      // Leaving maintenance clears the date; entering it keeps/sets it.
-      if (patch.status === 'available') dbPatch.maintenance_until = null;
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) continue;
+      if (k === 'status') {
+        dbPatch.status = v;
+        if (v === 'available') dbPatch.maintenance_until = null; // leaving maintenance clears the date
+      } else if (map[k]) {
+        dbPatch[map[k]] = v;
+      }
     }
-    if (patch.maintenanceUntil !== undefined) dbPatch.maintenance_until = patch.maintenanceUntil;
     const row = await run(
       sb().from('listings').update(dbPatch).eq('id', id).select('*').maybeSingle(),
     );
@@ -390,6 +484,17 @@ export const supabaseClient = {
     );
     return mapRow<Conversation>(row) as Conversation;
   },
+  /** Delete a conversation (its messages cascade). Removes it for both parties. */
+  async deleteConversation(id: string): Promise<void> {
+    await run(sb().from('conversations').delete().eq('id', id).select('id'));
+  },
+  /** Delete every conversation I'm part of. */
+  async deleteAllConversations(): Promise<void> {
+    const uid = me();
+    await run(
+      sb().from('conversations').delete().or(`renter_id.eq.${uid},host_id.eq.${uid}`).select('id'),
+    );
+  },
   async listConversations() {
     return mapRows<Conversation>(
       await run(sb().from('conversations').select('*').order('last_message_at', { ascending: false })),
@@ -439,7 +544,16 @@ export const supabaseClient = {
         .select('id'),
     );
   },
-  async sendMessage(conversationId: string, body: string): Promise<Message> {
+  async sendMessage(
+    conversationId: string,
+    body: string,
+    opts?: {
+      attachmentUrl?: string;
+      attachmentType?: string;
+      attachmentName?: string;
+      replyTo?: string;
+    },
+  ): Promise<Message> {
     const sentAt = new Date().toISOString();
     const row = await run(
       sb()
@@ -450,18 +564,61 @@ export const supabaseClient = {
           sender_id: me(),
           body,
           sent_at: sentAt,
+          attachment_url: opts?.attachmentUrl ?? null,
+          attachment_type: opts?.attachmentType ?? null,
+          attachment_name: opts?.attachmentName ?? null,
+          reply_to: opts?.replyTo ?? null,
         })
         .select('*')
         .single(),
     );
+    const preview = body.trim() || (opts?.attachmentType === 'image' ? '📷 Photo' : '📎 Attachment');
     await run(
       sb()
         .from('conversations')
-        .update({ last_message_preview: body, last_message_at: sentAt, unread: 0 })
+        .update({ last_message_preview: preview, last_message_at: sentAt, unread: 0 })
         .eq('id', conversationId)
         .select('id'),
     );
     return mapRow<Message>(row) as Message;
+  },
+  /** Delete one of my own messages. */
+  async deleteMessage(id: string): Promise<void> {
+    await run(sb().from('messages').delete().eq('id', id).eq('sender_id', me()).select('id'));
+  },
+  /** Toggle my emoji reaction on a message. */
+  async toggleReaction(messageId: string, emoji: string): Promise<void> {
+    const uid = me();
+    const current = await run(sb().from('messages').select('reactions').eq('id', messageId).single());
+    const reactions: Record<string, string[]> = { ...((current?.reactions as Record<string, string[]>) ?? {}) };
+    const users = new Set(reactions[emoji] ?? []);
+    if (users.has(uid)) users.delete(uid);
+    else users.add(uid);
+    if (users.size === 0) delete reactions[emoji];
+    else reactions[emoji] = [...users];
+    await run(sb().from('messages').update({ reactions }).eq('id', messageId).select('id'));
+  },
+  /** Upload a chat attachment; returns the public URL + a coarse type. */
+  async uploadChatFile(file: File): Promise<{ url: string; type: 'image' | 'file'; name: string }> {
+    const userId = me();
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+    const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await sb()
+      .storage.from('chat-files')
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) throw new Error(error.message);
+    const url = sb().storage.from('chat-files').getPublicUrl(path).data.publicUrl;
+    return { url, type: file.type.startsWith('image/') ? 'image' : 'file', name: file.name };
+  },
+  /** Profiles by id (any role) — used to label chat threads by the other party. */
+  async getProfilesByIds(ids: string[]): Promise<Record<string, UserProfile & Partial<Host>>> {
+    if (ids.length === 0) return {};
+    const rows = await run(sb().from('profiles').select('*').in('id', [...new Set(ids)]));
+    const map: Record<string, UserProfile & Partial<Host>> = {};
+    for (const r of mapRows<UserProfile & Partial<Host>>(rows as Record<string, unknown>[])) {
+      map[r.id] = r;
+    }
+    return map;
   },
 
   // --- Reviews -----------------------------------------------------------
@@ -506,6 +663,8 @@ export const supabaseClient = {
           .from('notifications')
           .select('*')
           .eq('profile_id', me())
+          // Messages live in the chat with their own unread badge — keep them out.
+          .neq('kind', 'message')
           .order('created_at', { ascending: false }),
       ),
     );

@@ -53,6 +53,14 @@ export default function App() {
             </RequireRole>
           }
         />
+        <Route
+          path="cars/:id/edit"
+          element={
+            <RequireRole roles={['owner', 'admin']}>
+              <ListCarPage />
+            </RequireRole>
+          }
+        />
         <Route path="cars/:id" element={<CarDetailPage />} />
         <Route path="cars/:id/book" element={<BookingPage />} />
         <Route path="messages" element={<MessagesPage />} />

@@ -1,12 +1,35 @@
 import { Link } from 'react-router-dom';
-import { CalendarDays } from 'lucide-react';
+import { ArrowRight, CalendarDays } from 'lucide-react';
 import type { Booking, Listing } from '@autohire/shared';
+import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
 import { TRIP_STATE_META } from '@/lib/trips';
 import { Badge, Card, CardBody } from '@/components/ui';
 
-/** A single trip in the "My trips" list. Links to the trip detail page. */
-export function TripCard({ booking, listing }: { booking: Booking; listing?: Listing }) {
+type Tone = 'brand' | 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
+
+const HINT_COLOR: Record<Tone, string> = {
+  brand: 'text-brand-700',
+  danger: 'text-red-600',
+  warning: 'text-orange-700',
+  neutral: 'text-ink-500',
+  accent: 'text-amber-700',
+  success: 'text-emerald-700',
+};
+
+/**
+ * A single trip in the "My trips" list. Links to the trip detail page. An
+ * optional `hint` surfaces the viewer's next step (e.g. host "Confirm pickup").
+ */
+export function TripCard({
+  booking,
+  listing,
+  hint,
+}: {
+  booking: Booking;
+  listing?: Listing;
+  hint?: { label: string; tone: Tone } | null;
+}) {
   const state = TRIP_STATE_META[booking.state];
 
   return (
@@ -30,9 +53,14 @@ export function TripCard({ booking, listing }: { booking: Booking; listing?: Lis
               {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
               <span className="text-ink-400">· {booking.days} day{booking.days === 1 ? '' : 's'}</span>
             </p>
-            <p className="mt-auto pt-3 font-semibold text-ink-900">
-              {formatRwf(booking.totalRwf)}
-            </p>
+            <div className="mt-auto flex items-end justify-between gap-2 pt-3">
+              <p className="font-semibold text-ink-900">{formatRwf(booking.totalRwf)}</p>
+              {hint && (
+                <span className={cn('inline-flex items-center gap-1 text-sm font-medium', HINT_COLOR[hint.tone])}>
+                  {hint.label} <ArrowRight size={14} />
+                </span>
+              )}
+            </div>
           </CardBody>
         </div>
       </Card>

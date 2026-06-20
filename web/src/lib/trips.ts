@@ -1,6 +1,29 @@
-import type { TripState } from '@autohire/shared';
+import type { Booking, TripState } from '@autohire/shared';
 
 type BadgeTone = 'brand' | 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * The host's next step on a live trip, from the booking's handoff timestamps —
+ * used to surface a "what to do next" hint instead of just a status badge.
+ * Returns null when the ball is not in the host's court.
+ */
+export function hostTripHint(b: Booking): { label: string; tone: BadgeTone } | null {
+  const overdue = ['confirmed', 'pickup', 'active', 'return'].includes(b.state) && b.endDate < todayISO();
+  if (b.state === 'confirmed' || b.state === 'pickup') {
+    if (!b.pickupHostAt) return { label: 'Confirm pickup', tone: 'brand' };
+    if (!b.pickupRenterAt) return { label: 'Waiting on renter to confirm pickup', tone: 'neutral' };
+    return null;
+  }
+  if (b.state === 'active' || b.state === 'return') {
+    if (overdue && !b.returnHostAt) return { label: 'Overdue — confirm return', tone: 'danger' };
+    if (b.state === 'return' && !b.returnHostAt) return { label: 'Confirm return', tone: 'brand' };
+    if (overdue) return { label: 'Return overdue', tone: 'danger' };
+    return null;
+  }
+  return null;
+}
 
 /** Display label + badge tone for each trip state. */
 export const TRIP_STATE_META: Record<TripState, { label: string; tone: BadgeTone }> = {

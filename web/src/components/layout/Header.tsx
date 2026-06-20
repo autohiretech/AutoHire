@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bell, Car, LogOut, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar, Button } from '@/components/ui';
+import { CountrySelector } from '@/components/marketplace/CountrySelector';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { MODE_HOME, useAppMode, type AppMode } from '@/lib/appMode';
@@ -82,6 +83,7 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <CountrySelector />
           <Link
             to="/messages"
             className="relative rounded-lg p-2 text-ink-500 hover:bg-ink-100"

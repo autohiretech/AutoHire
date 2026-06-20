@@ -36,6 +36,30 @@ export function MastercardMark() {
   );
 }
 
+export function AmexMark() {
+  return (
+    <span
+      className="rounded px-1.5 py-0.5 text-xs font-bold text-white"
+      style={{ backgroundColor: '#2E77BC' }}
+      aria-label="American Express"
+    >
+      AMEX
+    </span>
+  );
+}
+
+export function DiscoverMark() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded bg-white px-1.5 py-0.5 text-xs font-bold"
+      style={{ color: '#1A1F36', border: '1px solid #E5E7EB' }}
+      aria-label="Discover"
+    >
+      DISC<span style={{ color: '#FF6000' }}>●</span>VER
+    </span>
+  );
+}
+
 /** MTN MoMo — MTN brand yellow pill. */
 export function MomoMark() {
   return (
@@ -45,6 +69,42 @@ export function MomoMark() {
       aria-label="MTN Mobile Money"
     >
       MTN MoMo
+    </span>
+  );
+}
+
+/** Airtel Money — Airtel brand red pill. */
+export function AirtelMark() {
+  return (
+    <span
+      className="rounded-md px-2 py-0.5 text-xs font-extrabold text-white"
+      style={{ backgroundColor: '#E40000' }}
+      aria-label="Airtel Money"
+    >
+      Airtel
+    </span>
+  );
+}
+
+export function PayPalMark() {
+  return (
+    <span className="text-sm font-bold italic" aria-label="PayPal">
+      <span style={{ color: '#003087' }}>Pay</span>
+      <span style={{ color: '#0070E0' }}>Pal</span>
+    </span>
+  );
+}
+
+export function GooglePayMark() {
+  return (
+    <span className="inline-flex items-center text-sm font-medium" aria-label="Google Pay">
+      <span style={{ color: '#4285F4' }}>G</span>
+      <span style={{ color: '#EA4335' }}>o</span>
+      <span style={{ color: '#FBBC05' }}>o</span>
+      <span style={{ color: '#4285F4' }}>g</span>
+      <span style={{ color: '#34A853' }}>l</span>
+      <span style={{ color: '#EA4335' }}>e</span>
+      <span className="ml-1 text-ink-700">Pay</span>
     </span>
   );
 }

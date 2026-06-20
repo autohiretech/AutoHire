@@ -18,23 +18,30 @@ async function ensureProfile(user: User): Promise<void> {
     account_type?: string;
     company_name?: string;
     full_name?: string;
+    name?: string;
     phone?: string;
     wants_to_host?: boolean;
+    avatar_url?: string;
+    picture?: string;
   };
   const accountType: AccountType = meta.account_type === 'company' ? 'company' : 'personal';
   const wantsToHost = meta.wants_to_host === true;
   const companyName = typeof meta.company_name === 'string' ? meta.company_name.trim() : '';
   const emailLocal = user.email?.split('@')[0] ?? 'New user';
-  const fullName =
-    typeof meta.full_name === 'string' && meta.full_name.trim() ? meta.full_name.trim() : emailLocal;
+  // Google sign-in puts the name in `full_name`/`name` and the photo in
+  // `avatar_url`/`picture`.
+  const metaName = meta.full_name?.trim() || meta.name?.trim() || '';
+  const fullName = metaName || emailLocal;
   const phone =
     typeof meta.phone === 'string' && meta.phone.trim() ? meta.phone.trim() : user.phone ?? '';
+  const avatarUrl = meta.avatar_url?.trim() || meta.picture?.trim() || undefined;
 
   const base = {
     id: user.id,
     email: user.email ?? '',
     phone,
     joined_at: new Date().toISOString().slice(0, 10),
+    ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
   };
 
   const row: Record<string, unknown> =
@@ -82,6 +89,8 @@ interface AuthValue {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  /** Start the Google OAuth flow — redirects out, then back into the app. */
+  signInWithGoogle: () => Promise<void>;
   signUp: (
     email: string,
     password: string,
@@ -130,6 +139,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signIn(email: string, password: string) {
     const { error } = await getSupabase().auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message);
+  }
+
+  async function signInWithGoogle() {
+    const { error } = await getSupabase().auth.signInWithOAuth({
+      provider: 'google',
+      // Supabase returns the session in the URL on this page; the JS client picks
+      // it up automatically and `onAuthStateChange` signs the user in.
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) {
+      throw new Error(
+        /provider|not enabled|unsupported|disabled/i.test(error.message)
+          ? "Google sign-in isn't enabled yet — turn on the Google provider in Supabase (Authentication → Providers)."
+          : error.message,
+      );
+    }
   }
 
   async function signUp(email: string, password: string, details: SignUpDetails) {
@@ -213,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         signIn,
+        signInWithGoogle,
         signUp,
         signOut,
         deleteAccount,

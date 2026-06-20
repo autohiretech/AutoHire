@@ -181,6 +181,14 @@ export interface Message {
   sentAt: string;
   /** When the recipient read the message. Undefined = delivered but unread. */
   readAt?: string;
+  /** Optional shared file/image. */
+  attachmentUrl?: string | null;
+  attachmentType?: string | null; // 'image' | 'file'
+  attachmentName?: string | null;
+  /** Id of the message this one quotes/replies to. */
+  replyTo?: string | null;
+  /** Emoji -> list of user ids who reacted. */
+  reactions?: Record<string, string[]>;
 }
 
 export interface Conversation {
