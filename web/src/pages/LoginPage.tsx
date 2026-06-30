@@ -39,10 +39,19 @@ export function LoginPage() {
     }
   }
 
-  async function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setInfo(null);
+    // Read credentials straight from the form so browser-autofilled values are
+    // captured even when React's onChange hasn't fired yet. Without this the
+    // first click submits empty credentials (which fails) and the user has to
+    // click "Sign in" twice.
+    const data = new FormData(e.currentTarget);
+    const emailValue = ((data.get('email') as string | null) ?? email).trim();
+    const passwordValue = (data.get('password') as string | null) ?? password;
+    if (emailValue !== email) setEmail(emailValue);
+    if (passwordValue !== password) setPassword(passwordValue);
     if (mode === 'signup') {
       if (accountType === 'company' && !companyName.trim()) {
         setError('Please enter your company name.');
@@ -64,10 +73,10 @@ export function LoginPage() {
     setBusy(true);
     try {
       if (mode === 'signin') {
-        await signIn(email, password);
+        await signIn(emailValue, passwordValue);
         navigate(from, { replace: true });
       } else {
-        const { needsConfirmation } = await signUp(email, password, {
+        const { needsConfirmation } = await signUp(emailValue, passwordValue, {
           accountType,
           companyName,
           fullName,
@@ -201,6 +210,7 @@ export function LoginPage() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 autoComplete="email"
                 value={email}
@@ -231,6 +241,7 @@ export function LoginPage() {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                 value={password}
