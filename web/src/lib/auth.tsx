@@ -137,8 +137,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function signIn(email: string, password: string) {
-    const { error } = await getSupabase().auth.signInWithPassword({ email, password });
+    const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message);
+    // Adopt the session synchronously here (the same steps as the
+    // onAuthStateChange handler) so a navigate() immediately after sign-in
+    // doesn't race the async auth listener. Without this the user is still null
+    // when the AppLayout guard renders, so the first click bounces back to
+    // /login and only the second click gets through.
+    if (data.user) {
+      setCurrentUserId(data.user.id);
+      await ensureProfile(data.user);
+      setUser(data.user);
+    }
   }
 
   async function signInWithGoogle() {
@@ -173,6 +183,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (error) throw new Error(error.message);
+    // When the account is auto-confirmed (no email step), adopt the session
+    // synchronously so the navigate() after sign-up doesn't race the auth
+    // listener and bounce off the AppLayout guard — same fix as signIn.
+    if (data.session && data.user) {
+      setCurrentUserId(data.user.id);
+      await ensureProfile(data.user);
+      setUser(data.user);
+    }
     // No session means Supabase is set to require email confirmation.
     return { needsConfirmation: !data.session };
   }
