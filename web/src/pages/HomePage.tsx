@@ -21,6 +21,8 @@ import { formatRwf } from '@/lib/format';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { Spinner, toast } from '@/components/ui';
 import { ListingCard } from '@/components/ListingCard';
+import { AiMode } from '@/components/marketplace/AiMode';
+import { useAppMode } from '@/lib/appMode';
 
 const CITIES = ['Kigali', 'Musanze', 'Rubavu', 'Huye', 'Rusizi'];
 
@@ -42,6 +44,7 @@ export function HomePage() {
   const [tab, setTab] = useState<Tab>('cars');
   const [topRanked, setTopRanked] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const { mode } = useAppMode();
 
   // Stable, unfiltered pull that feeds the showcase cards + host discovery.
   const { data: featured } = useQuery({
@@ -103,7 +106,7 @@ export function HomePage() {
   return (
     <div className="bg-gradient-to-b from-brand-50 to-white">
       {/* ── Tab bar + AI Mode ─────────────────────────────────────────────── */}
-      <div className="mx-auto max-w-6xl px-4 pt-8">
+      <div className="mx-auto max-w-[1500px] px-4 pt-8">
         <div className="flex items-center justify-center gap-5 text-lg font-semibold sm:gap-7">
           <button
             type="button"
@@ -127,23 +130,25 @@ export function HomePage() {
               key={t.key}
               type="button"
               onClick={() => {
+                setAiMode(false);
                 setTab(t.key);
                 scrollToResults();
               }}
               className={cn(
                 'relative pb-1 transition-colors',
-                tab === t.key ? 'text-brand-600' : 'text-ink-700 hover:text-ink-900',
+                tab === t.key && !aiMode ? 'text-brand-600' : 'text-ink-700 hover:text-ink-900',
               )}
             >
               {t.label}
-              {tab === t.key && (
+              {tab === t.key && !aiMode && (
                 <span className="absolute inset-x-0 -bottom-0.5 mx-auto h-0.5 w-6 rounded-full bg-brand-600" />
               )}
             </button>
           ))}
         </div>
 
-        {/* ── Fused search box ────────────────────────────────────────────── */}
+        {/* ── Fused search box (standard mode only) ────────────────────────── */}
+        {!aiMode && (
         <div className="mx-auto mt-5 max-w-3xl">
           <div
             className={cn(
@@ -199,10 +204,15 @@ export function HomePage() {
             </form>
           </div>
         </div>
+        )}
       </div>
 
+      {aiMode && <AiMode />}
+
+      {!aiMode && (
+        <>
       {/* ── Welcome strip ─────────────────────────────────────────────────── */}
-      <div className="mx-auto mt-8 max-w-6xl px-4">
+      <div className="mx-auto mt-8 max-w-[1500px] px-4">
         <div className="flex flex-wrap items-center justify-between gap-4 border-y border-ink-100 py-4">
           <h2 className="text-lg font-bold text-ink-900">Welcome to AutoHire</h2>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium text-ink-700">
@@ -229,15 +239,21 @@ export function HomePage() {
               <TrendingUp size={16} className="text-brand-600" /> Top ranked cars
             </button>
             <span className="hidden h-4 w-px bg-ink-200 sm:block" />
-            <Link to="/cars/new" className="flex items-center gap-1.5 hover:text-brand-600">
-              <PlusCircle size={16} className="text-brand-600" /> List your car
-            </Link>
+            {mode === 'host' ? (
+              <Link to="/cars/new" className="flex items-center gap-1.5 hover:text-brand-600">
+                <PlusCircle size={16} className="text-brand-600" /> List your car
+              </Link>
+            ) : (
+              <Link to="/account" className="flex items-center gap-1.5 hover:text-brand-600">
+                <PlusCircle size={16} className="text-brand-600" /> Become a host
+              </Link>
+            )}
           </div>
         </div>
       </div>
 
       {/* ── Console grid: categories · showcase · discover ────────────────── */}
-      <div className="mx-auto mt-5 max-w-6xl px-4">
+      <div className="mx-auto mt-5 max-w-[1500px] px-4">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
           {/* Category sidebar */}
           <aside className="rounded-2xl border border-ink-100 bg-white p-2 shadow-sm">
@@ -290,7 +306,7 @@ export function HomePage() {
       </div>
 
       {/* ── Recommended (tab-driven) ──────────────────────────────────────── */}
-      <section ref={resultsRef} className="mx-auto max-w-6xl scroll-mt-4 px-4 py-8">
+      <section ref={resultsRef} className="mx-auto max-w-[1500px] scroll-mt-4 px-4 py-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold text-ink-900">
             {tab === 'hosts'
@@ -363,7 +379,7 @@ export function HomePage() {
             <Spinner size={28} />
           </div>
         ) : results.length > 0 ? (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {results.map((listing) => (
               <ListingCard key={listing.id} listing={listing} compact />
             ))}
@@ -385,6 +401,8 @@ export function HomePage() {
           />
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }

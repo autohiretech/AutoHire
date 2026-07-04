@@ -14,17 +14,24 @@ import { BookingPage } from '@/pages/BookingPage';
 import { ListCarPage } from '@/pages/ListCarPage';
 import { AccountPage } from '@/pages/AccountPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import { RequireAuth } from '@/components/RequireAuth';
 import { RequireRole } from '@/components/RequireRole';
 
 export default function App() {
   return (
     <Routes>
-      {/* Public — outside the gated layout */}
+      {/* Public — outside the app shell */}
       <Route path="login" element={<LoginPage />} />
 
-      {/* Everything else requires a Supabase session */}
+      {/* The app shell. Guests can browse it; account-only routes are gated
+          individually with RequireAuth / RequireRole so a logged-out visitor
+          can see what's on offer and decide to create an account after. */}
       <Route element={<AppLayout />}>
+        {/* Public browse — no account needed */}
         <Route index element={<HomePage />} />
+        <Route path="cars/:id" element={<CarDetailPage />} />
+
+        {/* Account-only routes — signing in required */}
         <Route
           path="dashboard"
           element={
@@ -43,7 +50,14 @@ export default function App() {
           }
         />
         {/* Trip detail stays open to both participants (host needs it for handoff). */}
-        <Route path="trips/:id" element={<TripDetailPage />} />
+        <Route
+          path="trips/:id"
+          element={
+            <RequireAuth>
+              <TripDetailPage />
+            </RequireAuth>
+          }
+        />
         {/* Only hosts can list a car — a renter becomes a host first. */}
         <Route
           path="cars/new"
@@ -61,13 +75,54 @@ export default function App() {
             </RequireRole>
           }
         />
-        <Route path="cars/:id" element={<CarDetailPage />} />
-        <Route path="cars/:id/book" element={<BookingPage />} />
-        <Route path="messages" element={<MessagesPage />} />
-        <Route path="messages/:id" element={<MessagesPage />} />
-        <Route path="verification" element={<VerificationPage />} />
-        <Route path="account" element={<AccountPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
+        <Route
+          path="cars/:id/book"
+          element={
+            <RequireAuth>
+              <BookingPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="messages"
+          element={
+            <RequireAuth>
+              <MessagesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="messages/:id"
+          element={
+            <RequireAuth>
+              <MessagesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="verification"
+          element={
+            <RequireAuth>
+              <VerificationPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="account"
+          element={
+            <RequireAuth>
+              <AccountPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="notifications"
+          element={
+            <RequireAuth>
+              <NotificationsPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="admin"
           element={

@@ -28,7 +28,7 @@ export function Footer() {
 
   return (
     <footer className="mt-12 border-t border-ink-200 bg-ink-50/40">
-      <div className="mx-auto max-w-6xl px-4 py-10">
+      <div className="mx-auto max-w-[1500px] px-4 py-10">
         <div className="flex flex-col gap-10 lg:flex-row lg:justify-between">
           {/* Brand */}
           <div className="max-w-xs">

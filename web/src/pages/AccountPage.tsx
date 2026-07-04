@@ -46,39 +46,45 @@ export function AccountPage() {
   }
 
   return (
-    <section className="mx-auto max-w-2xl px-4 py-8">
+    <section className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="text-2xl font-bold text-ink-900">Account</h1>
       <p className="mt-1 text-sm text-ink-500">Manage your AutoHire account.</p>
 
-      {isLoading || !profile ? (
-        <Card className="mt-6">
-          <CardBody className="flex justify-center py-6">
-            <Spinner size={22} />
-          </CardBody>
-        </Card>
-      ) : (
-        <ProfileCard profile={profile} email={user?.email ?? ''} />
-      )}
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <div>
+          {isLoading || !profile ? (
+            <Card className="mt-6">
+              <CardBody className="flex justify-center py-6">
+                <Spinner size={22} />
+              </CardBody>
+            </Card>
+          ) : (
+            <ProfileCard profile={profile} email={user?.email ?? ''} />
+          )}
+        </div>
 
-      {/* Phone verification */}
-      <PhoneVerification defaultPhone={profile?.phone ?? ''} />
+        <div>
+          {/* Phone verification */}
+          <PhoneVerification defaultPhone={profile?.phone ?? ''} />
 
-      {/* Danger zone */}
-      <Card className="mt-6 border-red-200">
-        <CardHeader className="flex items-center gap-2">
-          <ShieldAlert size={18} className="text-red-600" />
-          <h2 className="font-semibold text-red-700">Delete account</h2>
-        </CardHeader>
-        <CardBody className="space-y-3">
-          <p className="text-sm text-ink-600">
-            Permanently deletes your login and all of your data — {isCompany ? 'fleet listings' : 'listings'},
-            bookings, messages, reviews, documents, and notifications. This cannot be undone.
-          </p>
-          <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmOpen(true)}>
-            Delete my account
-          </Button>
-        </CardBody>
-      </Card>
+          {/* Danger zone */}
+          <Card className="mt-6 border-red-200">
+            <CardHeader className="flex items-center gap-2">
+              <ShieldAlert size={18} className="text-red-600" />
+              <h2 className="font-semibold text-red-700">Delete account</h2>
+            </CardHeader>
+            <CardBody className="space-y-3">
+              <p className="text-sm text-ink-600">
+                Permanently deletes your login and all of your data — {isCompany ? 'fleet listings' : 'listings'},
+                bookings, messages, reviews, documents, and notifications. This cannot be undone.
+              </p>
+              <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmOpen(true)}>
+                Delete my account
+              </Button>
+            </CardBody>
+          </Card>
+        </div>
+      </div>
 
       <Modal open={confirmOpen} onClose={() => !busy && setConfirmOpen(false)} title="Delete account?">
         <div className="space-y-4">
