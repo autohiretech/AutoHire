@@ -61,11 +61,11 @@ export function Header() {
     enabled: mode === 'host',
   });
 
-  // Guests get a browse-only nav — no account actions dangled in front of them;
-  // they sign in / sign up when they're ready.
+  // Guests get no nav links — the logo already goes home, so "Explore" is
+  // redundant, and account actions are gated. They sign in / sign up when ready.
   const navItems: { to: string; label: string; end?: boolean }[] = user
     ? NAV_BY_MODE[mode]
-    : [{ to: '/', label: 'Explore', end: true }];
+    : [];
   const identityName =
     mode === 'host' ? host?.businessName ?? host?.fullName ?? 'Host' : me?.fullName ?? 'You';
 

@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AdminPage } from '@/pages/AdminPage';
 import { HomePage } from '@/pages/HomePage';
+import { SearchResultsPage } from '@/pages/SearchResultsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { CarDetailPage } from '@/pages/CarDetailPage';
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -29,6 +30,7 @@ export default function App() {
       <Route element={<AppLayout />}>
         {/* Public browse — no account needed */}
         <Route index element={<HomePage />} />
+        <Route path="search" element={<SearchResultsPage />} />
         <Route path="cars/:id" element={<CarDetailPage />} />
 
         {/* Account-only routes — signing in required */}

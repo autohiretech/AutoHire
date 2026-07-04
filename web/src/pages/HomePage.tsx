@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -38,12 +39,24 @@ type Tab = 'cars' | 'hosts' | 'cities';
  */
 export function HomePage() {
   const [filters, setFilters] = useState<ListingFilters>({});
-  const [aiMode, setAiMode] = useState(false);
+  // AI Mode lives in the URL (?view=ai) so navigating "home" (the logo → "/")
+  // clears it and returns to the dashboard, instead of getting stuck because
+  // the route didn't change.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const aiMode = searchParams.get('view') === 'ai';
+  const setAiMode = (next: boolean | ((v: boolean) => boolean)) => {
+    const on = typeof next === 'function' ? next(aiMode) : next;
+    const params = new URLSearchParams(searchParams);
+    if (on) params.set('view', 'ai');
+    else params.delete('view');
+    setSearchParams(params, { replace: true });
+  };
   const [aiBusy, setAiBusy] = useState(false);
   const [text, setText] = useState('');
   const [tab, setTab] = useState<Tab>('cars');
   const [topRanked, setTopRanked] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const { mode } = useAppMode();
 
   // Stable, unfiltered pull that feeds the showcase cards + host discovery.
@@ -84,7 +97,11 @@ export function HomePage() {
         setAiBusy(false);
       }
     } else {
-      setFilter('query', q || undefined);
+      // A plain search opens the dedicated results page (Alibaba "Products"
+      // style) rather than filtering inline on the dashboard.
+      if (!q) return;
+      navigate(`/search?q=${encodeURIComponent(q)}`);
+      return;
     }
     setTab('cars');
     scrollToResults();
