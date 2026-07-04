@@ -2,12 +2,10 @@ import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
-  Bell,
   CarFront,
   ChevronRight,
   FileText,
   MapPin,
-  MessageSquare,
   PlusCircle,
   Search,
   ShieldCheck,
@@ -244,7 +242,7 @@ export function HomePage() {
           {/* Category sidebar */}
           <aside className="rounded-2xl border border-ink-100 bg-white p-2 shadow-sm">
             <p className="px-3 py-2 text-sm font-semibold text-ink-900">Categories for you</p>
-            <ul className="max-h-80 overflow-y-auto">
+            <ul>
               {CAR_CATEGORIES.map(({ value, label, icon: Icon }) => {
                 const active = filters.category === value;
                 return (
@@ -387,8 +385,6 @@ export function HomePage() {
           />
         )}
       </section>
-
-      <FloatingRail />
     </div>
   );
 }
@@ -410,11 +406,11 @@ function ShowcaseCard({
     >
       <p className="text-sm font-semibold text-ink-900">{eyebrow}</p>
       <p className="mt-0.5 line-clamp-1 text-xs text-ink-500">{listing.title}</p>
-      <div className="mt-3 flex flex-1 items-center justify-center">
+      <div className="mt-3 min-h-[7rem] flex-1 overflow-hidden rounded-lg">
         <img
           src={listing.photos[0]}
           alt={listing.title}
-          className="h-28 w-full rounded-lg object-cover"
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
       </div>
       <div className="mt-3 flex items-center justify-between">
@@ -435,17 +431,24 @@ function ShowcaseCard({
 /** The green "Discover new hosts" promo (mirrors Alibaba's manufacturers card). */
 function DiscoverHostsCard({ count, onView }: { count?: number; onView: () => void }) {
   return (
-    <div className="flex flex-col justify-between rounded-2xl bg-gradient-to-br from-brand-100 to-brand-50 p-5">
-      <div>
-        <h3 className="text-lg font-bold text-brand-800">Discover verified hosts</h3>
-        <p className="mt-1 text-sm text-brand-700/80">
-          {count ? `${count} host${count === 1 ? '' : 's'} ready to rent` : 'Individuals & agencies you can trust'}
+    <div className="relative flex flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-5 text-white">
+      <ShieldCheck
+        size={150}
+        className="pointer-events-none absolute -bottom-6 -right-6 text-white/10"
+        strokeWidth={1.25}
+      />
+      <div className="relative">
+        <h3 className="text-lg font-bold leading-snug">Discover verified hosts</h3>
+        <p className="mt-1.5 text-sm text-brand-50/90">
+          {count
+            ? `${count} host${count === 1 ? '' : 's'} ready to rent — individuals & agencies you can trust.`
+            : 'Individuals & agencies you can trust.'}
         </p>
       </div>
       <button
         type="button"
         onClick={onView}
-        className="mt-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        className="relative mt-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-medium text-brand-700 shadow-sm hover:bg-brand-50"
       >
         View more <ChevronRight size={15} />
       </button>
@@ -490,30 +493,6 @@ function EmptyState({ label, action }: { label: string; action?: React.ReactNode
       <CarFront size={30} className="text-ink-300" />
       <p className="font-medium text-ink-700">{label}</p>
       {action}
-    </div>
-  );
-}
-
-/** Fixed vertical rail of shortcuts, echoing Alibaba's right-edge tools. */
-function FloatingRail() {
-  const items = [
-    { to: '/messages', label: 'Messages', icon: MessageSquare },
-    { to: '/trips', label: 'Trips', icon: CarFront },
-    { to: '/notifications', label: 'Alerts', icon: Bell },
-    { to: '/cars/new', label: 'List car', icon: PlusCircle },
-  ];
-  return (
-    <div className="fixed right-3 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-1 rounded-2xl border border-ink-100 bg-white/95 p-1.5 shadow-lg backdrop-blur lg:flex">
-      {items.map(({ to, label, icon: Icon }) => (
-        <Link
-          key={to}
-          to={to}
-          className="flex w-16 flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium text-ink-600 transition-colors hover:bg-brand-50 hover:text-brand-700"
-        >
-          <Icon size={20} />
-          {label}
-        </Link>
-      ))}
     </div>
   );
 }
