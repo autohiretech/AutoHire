@@ -60,6 +60,7 @@ export interface Host extends UserProfile {
 }
 
 export type CarCategory =
+  // Vehicles
   | 'sedan'
   | 'suv'
   | '4x4'
@@ -67,7 +68,17 @@ export type CarCategory =
   | 'pickup'
   | 'van'
   | 'minibus'
-  | 'luxury';
+  | 'luxury'
+  // Cultivating (agricultural machinery)
+  | 'tractor'
+  | 'harvester'
+  | 'tiller'
+  // Building (construction machinery)
+  | 'excavator'
+  | 'bulldozer'
+  | 'loader'
+  | 'crane'
+  | 'forklift';
 
 export type Transmission = 'automatic' | 'manual';
 export type FuelType = 'petrol' | 'diesel' | 'hybrid' | 'electric';
@@ -86,8 +97,16 @@ export interface Listing {
   seats: number;
   transmission: Transmission;
   fuel: FuelType;
-  /** Daily price in RWF. */
+  /**
+   * Daily price, expressed in `priceCurrency`. (Named `…Rwf` for legacy reasons
+   * — Rwanda was the only market — but the amount is now whatever `priceCurrency`
+   * says; a Nairobi car holds KES, a Dubai car holds AED.)
+   */
   pricePerDayRwf: number;
+  /** ISO 4217 currency the car is priced + charged in. Defaults to 'RWF'. */
+  priceCurrency: string;
+  /** ISO 3166-1 alpha-2 market this car belongs to, e.g. 'RW', 'KE', 'AE'. */
+  country: string;
   location: string; // e.g. "Kimihurura, Kigali"
   city: string; // e.g. "Kigali"
   photos: string[];

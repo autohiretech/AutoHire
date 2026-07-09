@@ -171,8 +171,9 @@ export function LoginPage() {
                   className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
                 />
                 <span>
-                  <span className="font-medium text-ink-900">I want to host my car</span> — start as a
-                  host. You can switch between hosting and renting anytime from your profile.
+                  <span className="font-medium text-ink-900">I want to rent out my vehicle or machine</span>{' '}
+                  — start as a host. You can switch between hosting and renting anytime from your
+                  profile.
                 </span>
               </label>
             )}

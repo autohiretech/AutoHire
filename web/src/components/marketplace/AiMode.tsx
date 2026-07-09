@@ -19,15 +19,23 @@ import { cn } from '@/lib/cn';
 import { formatRwf } from '@/lib/format';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { buildSummary, describeThought, interpretQuery } from '@/lib/demoAi';
+import { useCountry } from '@/lib/country';
+import { citiesFor, countryOfCity } from '@/lib/cities';
+import { Img } from '@/components/Img';
 
-/** Quick-start prompts, shown under the hero box (AutoHire-flavoured). */
-const SUGGESTIONS = [
-  { emoji: '🔥', text: 'Automatic SUV for 5 people' },
-  { emoji: '✨', text: 'Cheapest cars in Kigali' },
-  { emoji: '🛬', text: 'Car for airport pickup' },
-  { emoji: '🏢', text: 'Verified business hosts' },
-  { emoji: '👨‍👩‍👧', text: '7-seater for a family trip' },
-];
+/**
+ * Quick-start prompts, shown under the hero box. The city follows the selected
+ * market so a shopper browsing the US isn't invited to search Kigali.
+ */
+function suggestionsFor(city: string) {
+  return [
+    { emoji: '🔥', text: 'Automatic SUV for 5 people' },
+    { emoji: '✨', text: `Cheapest cars in ${city}` },
+    { emoji: '🚜', text: 'Electric tractor for a farm' },
+    { emoji: '🏢', text: 'Verified business hosts' },
+    { emoji: '👨‍👩‍👧', text: '7-seater for a family trip' },
+  ];
+}
 
 type Turn = {
   id: number;
@@ -46,6 +54,7 @@ type Turn = {
  * first ask it shows a hero prompt; after, a chat transcript + follow-up box.
  */
 export function AiMode() {
+  const { country } = useCountry();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -70,7 +79,12 @@ export function AiMode() {
     setInput('');
     setBusy(true);
     const id = nextId.current++;
-    const filters = interpretQuery(query);
+    const parsed = interpretQuery(query);
+    // Answer within the selected market, unless the question names a city elsewhere.
+    const filters: ListingFilters = {
+      ...parsed,
+      country: countryOfCity(parsed.city) ?? country.code,
+    };
     // Show the user's turn + a "thinking" placeholder immediately.
     setTurns((t) => [
       ...t,
@@ -114,7 +128,7 @@ export function AiMode() {
           />
         </div>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
-          {SUGGESTIONS.map((s) => (
+          {suggestionsFor(citiesFor(country.code)[0] ?? 'Kigali').map((s) => (
             <button
               key={s.text}
               type="button"
@@ -355,7 +369,7 @@ function AiCarCard({ listing }: { listing: Listing }) {
       className="group flex flex-col overflow-hidden rounded-xl border border-ink-100 bg-white shadow-sm transition-shadow hover:shadow-md"
     >
       <div className="h-32 overflow-hidden bg-ink-50">
-        <img
+        <Img
           src={listing.photos[0]}
           alt={listing.title}
           className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"

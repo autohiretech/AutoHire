@@ -4,6 +4,7 @@ import type { Booking, Listing } from '@autohire/shared';
 import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
 import { TRIP_STATE_META } from '@/lib/trips';
+import { Img } from '@/components/Img';
 import { Badge, Card, CardBody } from '@/components/ui';
 
 type Tone = 'brand' | 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
@@ -36,7 +37,7 @@ export function TripCard({
     <Link to={`/trips/${booking.id}`} className="group block focus:outline-none">
       <Card className="overflow-hidden transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40">
         <div className="flex">
-          <img
+          <Img
             src={listing?.photos[0]}
             alt={listing?.title ?? 'Car'}
             className="h-28 w-28 shrink-0 object-cover sm:h-32 sm:w-40"

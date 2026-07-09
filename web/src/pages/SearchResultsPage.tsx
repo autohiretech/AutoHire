@@ -14,14 +14,22 @@ import type { Host, Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { formatRwf } from '@/lib/format';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { buildSummary, interpretQuery } from '@/lib/demoAi';
 import { useAuth } from '@/lib/auth';
 import { ListingCard } from '@/components/ListingCard';
+import { Img } from '@/components/Img';
+import { Price } from '@/components/Price';
 import { Avatar, Spinner, toast } from '@/components/ui';
+import { useCountry } from '@/lib/country';
+import { citiesFor, countryOfCity } from '@/lib/cities';
 
-const CITIES = ['Kigali', 'Musanze', 'Rubavu', 'Huye', 'Rusizi'];
+/**
+ * Listing grid: 2 / 3 / 4 fixed columns. A short final row leaves empty cells rather
+ * than stretching its cards — under flex `grow` a row of one card blew up to full
+ * width and no longer matched the cards above it.
+ */
+const CARD_GRID = 'grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4';
 
 /** "Select by" refinement chips → the ListingFilters patch each one applies. */
 const SELECT_BY: { label: string; patch: ListingFilters }[] = [
@@ -45,6 +53,7 @@ export function SearchResultsPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { country } = useCountry();
   const q = params.get('q') ?? '';
   const [text, setText] = useState(q);
   const [extra, setExtra] = useState<ListingFilters>({});
@@ -73,17 +82,24 @@ export function SearchResultsPage() {
     }
   }
 
+  // Chips are per-market, so drop them when the query or the market changes.
   useEffect(() => {
     setText(q);
     setExtra({});
-  }, [q]);
+  }, [q, country.code]);
 
   const aiFilters = useMemo(() => interpretQuery(q), [q]);
   const base = useMemo<ListingFilters>(
     () => (Object.keys(aiFilters).length ? aiFilters : q ? { query: q } : {}),
     [aiFilters, q],
   );
-  const filters = useMemo<ListingFilters>(() => ({ ...base, ...extra }), [base, extra]);
+  // Results are scoped to the selected market. If the query itself names a city in a
+  // different market ("SUVs in Dubai" while browsing Rwanda), follow the city instead
+  // of returning an empty grid.
+  const filters = useMemo<ListingFilters>(() => {
+    const merged = { ...base, ...extra };
+    return { ...merged, country: countryOfCity(merged.city) ?? country.code };
+  }, [base, extra, country.code]);
 
   const { data: listings, isLoading } = useQuery({
     queryKey: ['search', filters],
@@ -203,7 +219,7 @@ export function SearchResultsPage() {
       {/* More filters — cities */}
       {showMore && (
         <ChipRow label="City:">
-          {CITIES.map((c) => (
+          {citiesFor(country.code).map((c) => (
             <Chip
               key={c}
               active={extra.city === c}
@@ -252,7 +268,7 @@ export function SearchResultsPage() {
             <p className="mb-3 text-sm text-ink-500">
               {results.length} car{results.length === 1 ? '' : 's'} found
             </p>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <div className={CARD_GRID}>
               {results.map((l) => (
                 <ListingCard key={l.id} listing={l} compact />
               ))}
@@ -291,7 +307,7 @@ function FeaturedSupplier({
       <div className="flex flex-col gap-4 lg:flex-row">
         {/* Hero image */}
         <Link to={`/cars/${lead.id}`} className="shrink-0 lg:w-64">
-          <img
+          <Img
             src={lead.photos[0]}
             alt={name}
             className="h-40 w-full rounded-xl object-cover lg:h-full"
@@ -341,14 +357,16 @@ function FeaturedSupplier({
             {cars.slice(0, 6).map((c) => (
               <Link key={c.id} to={`/cars/${c.id}`} className="group block">
                 <div className="overflow-hidden rounded-lg bg-ink-50">
-                  <img
+                  <Img
                     src={c.photos[0]}
                     alt={c.title}
                     className="h-24 w-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 </div>
                 <p className="mt-1 line-clamp-1 text-xs text-ink-600">{c.title}</p>
-                <p className="text-sm font-semibold text-ink-900">{formatRwf(c.pricePerDayRwf)}</p>
+                <p className="text-sm font-semibold text-ink-900">
+                  <Price amount={c.pricePerDayRwf} currency={c.priceCurrency} />
+                </p>
               </Link>
             ))}
           </div>

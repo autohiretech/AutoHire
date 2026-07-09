@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { Building2, User } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import { cn } from '@/lib/cn';
-import { formatRwf } from '@/lib/format';
+import { Img } from '@/components/Img';
+import { Price } from '@/components/Price';
 import { Badge, Card, CardBody, Rating } from '@/components/ui';
 
 /**
@@ -10,13 +11,19 @@ import { Badge, Card, CardBody, Rating } from '@/components/ui';
  * page (A2), whose CTA continues into the booking flow (A3). The `compact`
  * variant shrinks the image and padding for the denser marketplace grid.
  */
-export function ListingCard({ listing, compact = false }: { listing: Listing; compact?: boolean }) {
+export function ListingCard({
+  listing,
+  compact = false,
+}: {
+  listing: Listing;
+  compact?: boolean;
+}) {
   const isBusiness = listing.ownerType === 'business';
 
   return (
-    <Link to={`/cars/${listing.id}`} className="group block focus:outline-none">
-      <Card className="overflow-hidden transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40">
-        <img
+    <Link to={`/cars/${listing.id}`} className="group block h-full min-w-0 focus:outline-none">
+      <Card className="h-full overflow-hidden transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40">
+        <Img
           src={listing.photos[0]}
           alt={listing.title}
           className={cn('w-full object-cover', compact ? 'h-32' : 'h-44')}
@@ -47,7 +54,7 @@ export function ListingCard({ listing, compact = false }: { listing: Listing; co
           )}
           <div className={cn('flex items-center justify-between', compact ? 'mt-2' : 'mt-3')}>
             <span className={cn('font-semibold text-ink-900', compact && 'text-sm')}>
-              {formatRwf(listing.pricePerDayRwf)}
+              <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} />
               <span className="font-normal text-ink-500"> / day</span>
             </span>
             {!compact && (

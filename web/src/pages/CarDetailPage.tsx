@@ -14,6 +14,7 @@ import {
   Grid3x3,
   MapPin,
   MessageSquare,
+  Share2,
   ShieldCheck,
   Snowflake,
   Star,
@@ -25,10 +26,14 @@ import {
 } from 'lucide-react';
 import type { Booking } from '@autohire/shared';
 import { client } from '@/lib/client';
+import { cn } from '@/lib/cn';
 import { useIsHost } from '@/lib/account';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { formatDate, formatRwf } from '@/lib/format';
+import { isMachine } from '@/lib/categories';
+import { Img } from '@/components/Img';
+import { Price } from '@/components/Price';
 import { Avatar, Badge, Button, Card, CardBody, Rating, Spinner, toast } from '@/components/ui';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
@@ -55,6 +60,14 @@ function hostingDuration(joinedAt: string): string {
 export function CarDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  // Return to the browse list the user came from — <ScrollMemory> + the saved
+  // browse state put them back on the same page/scroll. Fall back to home if
+  // they opened this car directly (no in-app history to go back to).
+  const backToBrowse = () => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    if (idx > 0) navigate(-1);
+    else navigate('/');
+  };
   const [messaging, setMessaging] = useState(false);
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
@@ -94,7 +107,7 @@ export function CarDetailPage() {
   if (!listing) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Car not found</p>
+        <p className="font-medium text-ink-900">Listing not found</p>
         <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
           Back to browse
         </Link>
@@ -172,33 +185,53 @@ export function CarDetailPage() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl px-4 py-6 pb-28 lg:pb-6">
-      <Link
-        to="/"
+    <section className="mx-auto max-w-7xl px-4 py-6 pb-28 lg:pb-6">
+      <button
+        type="button"
+        onClick={backToBrowse}
         className="mb-3 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
       >
         <ArrowLeft size={16} /> Back to browse
-      </Link>
+      </button>
 
-      {/* Title + summary line */}
-      <h1 className="text-2xl font-bold text-ink-900">{listing.title}</h1>
-      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-600">
-        {listing.ratingCount ? (
-          <span className="inline-flex items-center gap-1 font-medium text-ink-900">
-            <Star size={14} className="fill-ink-900" /> {listing.ratingAvg?.toFixed(2)}
-            <span className="font-normal text-ink-500">· {listing.ratingCount} reviews</span>
-          </span>
-        ) : (
-          <span className="text-ink-500">New listing</span>
-        )}
-        <span className="text-ink-300">·</span>
-        <span className="inline-flex items-center gap-1 text-ink-600">
-          <MapPin size={14} /> {listing.location}
-        </span>
+      {/* Header — title + status badge, with Watch / Share actions (BaT style) */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink-900 sm:text-[28px]">{listing.title}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <span
+              className={cn(
+                'inline-flex items-center rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white',
+                instant ? 'bg-brand-600' : 'bg-accent-600',
+              )}
+            >
+              {instant ? 'Instant book' : 'Request to book'}
+            </span>
+            <p className="capitalize text-sm text-ink-600">{subtitle}</p>
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            {listing.ratingCount ? (
+              <span className="inline-flex items-center gap-1 font-medium text-ink-900">
+                <Star size={14} className="fill-ink-900" /> {listing.ratingAvg?.toFixed(2)}
+                <span className="font-normal text-ink-500">· {listing.ratingCount} reviews</span>
+              </span>
+            ) : (
+              <span className="text-ink-500">New listing</span>
+            )}
+            <span className="text-ink-300">·</span>
+            <span className="inline-flex items-center gap-1 text-ink-600">
+              <MapPin size={14} /> {listing.location}
+            </span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <WatchButton id={listing.id} />
+          <ShareButton title={listing.title} />
+        </div>
       </div>
 
-      {/* Photo mosaic */}
-      <PhotoMosaic photos={photos} title={listing.title} onOpen={(i) => setLightbox(i)} />
+      {/* Photo gallery — big hero + thumbnail mosaic (BaT style) */}
+      <PhotoGallery photos={photos} title={listing.title} onOpen={(i) => setLightbox(i)} />
 
       <div className="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_360px]">
         {/* Left: content */}
@@ -246,7 +279,9 @@ export function CarDetailPage() {
           {/* What this car offers */}
           {listing.features.length > 0 && (
             <div className="border-t border-ink-200 py-6">
-              <h2 className="mb-4 text-lg font-semibold text-ink-900">What this car offers</h2>
+              <h2 className="mb-4 text-lg font-semibold text-ink-900">
+                What this {isMachine(listing.category) ? 'machine' : 'car'} offers
+              </h2>
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {listing.features.map((f) => {
                   const Icon = featureIcon(f);
@@ -313,7 +348,7 @@ export function CarDetailPage() {
                     </div>
                     <div className="px-1">
                       <p className="text-lg font-bold text-ink-900">{host.vehicleCount}</p>
-                      <p className="text-[11px] text-ink-500">Cars</p>
+                      <p className="text-[11px] text-ink-500">Listings</p>
                     </div>
                   </div>
                 </div>
@@ -430,7 +465,9 @@ export function CarDetailPage() {
           <Card className="lg:sticky lg:top-20">
             <CardBody className="space-y-4">
               <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-ink-900">{formatRwf(listing.pricePerDayRwf)}</span>
+                <span className="text-2xl font-bold text-ink-900">
+                  <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} showNative />
+                </span>
                 <span className="text-ink-500">/ day</span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -510,12 +547,24 @@ export function CarDetailPage() {
         </div>
       </div>
 
+      {/* Continue browsing — jump back to the list without losing your place. */}
+      <div className="mt-8 flex flex-col items-center gap-2 border-t border-ink-100 pt-6 text-center">
+        <p className="text-sm text-ink-500">Not the one? Keep looking.</p>
+        <button
+          type="button"
+          onClick={backToBrowse}
+          className="inline-flex items-center gap-1.5 rounded-full border border-brand-300 bg-brand-50 px-5 py-2.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-100"
+        >
+          <ArrowLeft size={16} /> Continue browsing cars
+        </button>
+      </div>
+
       {/* Mobile sticky booking bar — keeps price + reserve reachable without
           scrolling to the card at the bottom of the page. Desktop uses the
           sticky sidebar card instead. */}
       {!isHost && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-ink-200 bg-white/95 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur lg:hidden">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
             <div className="min-w-0">
               {datesChosen ? (
                 <>
@@ -526,7 +575,9 @@ export function CarDetailPage() {
                 </>
               ) : (
                 <>
-                  <p className="text-base font-bold text-ink-900">{formatRwf(listing.pricePerDayRwf)}</p>
+                  <p className="text-base font-bold text-ink-900">
+                    <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} />
+                  </p>
                   <p className="text-xs text-ink-500">per day</p>
                 </>
               )}
@@ -545,8 +596,14 @@ export function CarDetailPage() {
   );
 }
 
-/** Airbnb-style photo grid: one big photo + up to four small ones, with a "show all" button. */
-function PhotoMosaic({
+/**
+ * Bring-a-Trailer–style gallery: a large hero on the left and a mosaic of
+ * thumbnails on the right, with an "All photos (N)" overlay on the last tile
+ * when there are more than fit. Adapts to how many photos a listing has — a
+ * richer 2×2 thumbnail block for 5+ photos, a slimmer 2-tile column otherwise —
+ * and collapses to a single hero + "All photos" button on mobile.
+ */
+function PhotoGallery({
   photos,
   title,
   onOpen,
@@ -557,57 +614,147 @@ function PhotoMosaic({
 }) {
   if (photos.length === 0) return null;
 
-  if (photos.length < 5) {
-    // Not enough for the mosaic — big image + a thumbnail strip.
-    return (
-      <div className="mt-5">
+  const [hero, ...rest] = photos;
+  const rich = photos.length >= 5;
+  const tiles = rest.slice(0, rich ? 4 : 2);
+  // Photos reachable only through the lightbox (not the hero or a visible tile).
+  const moreCount = photos.length - 1 - tiles.length;
+
+  return (
+    <div className="mt-4">
+      {/* Mobile — hero only, with a show-all button */}
+      <div className="relative sm:hidden">
         <button type="button" onClick={() => onOpen(0)} className="block w-full">
-          <img
-            src={photos[0]}
-            alt={title}
-            className="h-64 w-full rounded-2xl object-cover sm:h-96"
-          />
+          <Img src={hero} alt={title} loading="eager" className="h-64 w-full rounded-2xl object-cover" />
         </button>
         {photos.length > 1 && (
-          <div className="mt-3 flex gap-3">
-            {photos.slice(1).map((p, i) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => onOpen(i + 1)}
-                className="h-16 w-24 overflow-hidden rounded-lg border border-ink-200 hover:opacity-90"
-              >
-                <img src={p} alt="" className="h-full w-full object-cover" />
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => onOpen(0)}
+            className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg border border-ink-900/15 bg-white/95 px-3 py-1.5 text-sm font-medium text-ink-900 shadow-sm backdrop-blur hover:bg-white"
+          >
+            <Grid3x3 size={15} /> All photos ({photos.length})
+          </button>
         )}
       </div>
-    );
-  }
 
-  const [big, ...rest] = photos;
-  return (
-    <div className="relative mt-5">
-      <div className="grid h-[260px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl sm:h-[420px]">
-        {/* On mobile the hero image fills the frame; the thumbnail collage shows from sm up. */}
-        <button type="button" onClick={() => onOpen(0)} className="col-span-4 row-span-2 sm:col-span-2">
-          <img src={big} alt={title} className="h-full w-full object-cover transition hover:brightness-95" />
-        </button>
-        {rest.slice(0, 4).map((p, i) => (
-          <button key={p} type="button" onClick={() => onOpen(i + 1)} className="hidden sm:block">
-            <img src={p} alt="" className="h-full w-full object-cover transition hover:brightness-95" />
-          </button>
-        ))}
-      </div>
-      <button
-        type="button"
-        onClick={() => onOpen(0)}
-        className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg border border-ink-900/20 bg-white px-3 py-1.5 text-sm font-medium text-ink-900 shadow-sm hover:bg-ink-50"
+      {/* Desktop — hero + thumbnail mosaic */}
+      <div
+        className={cn(
+          'hidden gap-2 sm:grid sm:h-[340px] lg:h-[460px]',
+          rich ? 'grid-cols-4 grid-rows-2' : 'grid-cols-3 grid-rows-2',
+        )}
       >
-        <Grid3x3 size={15} /> Show all photos
-      </button>
+        <button
+          type="button"
+          onClick={() => onOpen(0)}
+          className="group col-span-2 row-span-2 overflow-hidden rounded-2xl"
+        >
+          <Img
+            src={hero}
+            alt={title}
+            loading="eager"
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+          />
+        </button>
+        {tiles.map((p, i) => {
+          const showMore = i === tiles.length - 1 && moreCount > 0;
+          return (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onOpen(i + 1)}
+              className="group relative overflow-hidden rounded-xl"
+            >
+              <Img
+                src={p}
+                alt=""
+                className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+              />
+              {showMore && (
+                <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-ink-900/60 text-white">
+                  <Grid3x3 size={22} />
+                  <span className="text-sm font-semibold">All photos ({photos.length})</span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
+  );
+}
+
+/** Local, persisted "watchlist" toggle — echoes BaT's Watch (follow) action. */
+const WATCH_KEY = 'autohire.watchlist';
+function readWatchlist(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(WATCH_KEY) || '[]') as string[];
+  } catch {
+    return [];
+  }
+}
+
+function WatchButton({ id }: { id: string }) {
+  const [watched, setWatched] = useState(() => readWatchlist().includes(id));
+  const toggle = () => {
+    const list = new Set(readWatchlist());
+    const next = !list.has(id);
+    if (next) list.add(id);
+    else list.delete(id);
+    try {
+      localStorage.setItem(WATCH_KEY, JSON.stringify([...list]));
+    } catch {
+      /* storage disabled — the button still reflects the click */
+    }
+    setWatched(next);
+    toast.success(next ? 'Saved to your watchlist' : 'Removed from your watchlist');
+  };
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-pressed={watched}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+        watched
+          ? 'border-brand-300 bg-brand-50 text-brand-700'
+          : 'border-ink-200 text-ink-700 hover:bg-ink-50',
+      )}
+    >
+      <Star size={16} className={watched ? 'fill-brand-500 text-brand-500' : ''} />
+      <span className="hidden sm:inline">{watched ? 'Watching' : 'Watch'}</span>
+    </button>
+  );
+}
+
+/** Share the listing via the Web Share sheet, falling back to copying the link. */
+function ShareButton({ title }: { title: string }) {
+  const share = async () => {
+    const url = window.location.href;
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ title, url });
+      } catch {
+        /* user dismissed the share sheet */
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard');
+    } catch {
+      toast.error('Could not copy the link');
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={share}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-50"
+    >
+      <Share2 size={16} /> <span className="hidden sm:inline">Share</span>
+    </button>
   );
 }
 
@@ -661,9 +808,10 @@ function Lightbox({
           <ChevronLeft size={26} />
         </button>
       )}
-      <img
+      <Img
         src={photos[i]}
         alt={title}
+        loading="eager"
         className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
         onClick={(e) => e.stopPropagation()}
       />

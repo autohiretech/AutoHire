@@ -18,3 +18,8 @@ verify_jwt = false
 # so the gateway check is off (lets the CORS preflight through).
 [functions.create-payment-intent]
 verify_jwt = false
+
+# Daily FX-rate refresh — called by a scheduler (Dashboard cron / pg_cron), not a
+# signed-in user, so the gateway JWT check is off. It writes with the service role.
+[functions.refresh-fx-rates]
+verify_jwt = false

@@ -4,6 +4,8 @@ import { useRealtime } from '@/lib/useRealtime';
 import { Header } from './Header';
 import { Footer } from './Footer';
 import { RightRail } from './RightRail';
+import { LocationPrompt } from '@/components/marketplace/LocationPrompt';
+import { ScrollMemory } from '@/components/ScrollMemory';
 
 export function AppLayout() {
   const { pathname } = useLocation();
@@ -20,7 +22,9 @@ export function AppLayout() {
 
   return (
     <div className={cn('flex flex-col', fullBleed ? 'h-full overflow-hidden' : 'min-h-full')}>
+      <ScrollMemory />
       <Header />
+      {!fullBleed && <LocationPrompt />}
       <main className={cn('flex-1', fullBleed && 'min-h-0 overflow-hidden')}>
         <Outlet />
       </main>

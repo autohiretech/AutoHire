@@ -6,21 +6,12 @@ import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
 import type { CreateListingInput } from '@/lib/types';
 import { Button, Card, CardBody, CardHeader, Input, Label, Select, Spinner } from '@/components/ui';
+import { Img } from '@/components/Img';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
 import { isLikelyUrl, normalizeUrl } from '@/lib/location';
-
-const CITIES = ['Kigali', 'Musanze', 'Rubavu', 'Huye', 'Rusizi'];
-
-const CATEGORIES: { value: CarCategory; label: string }[] = [
-  { value: 'sedan', label: 'Sedan' },
-  { value: 'suv', label: 'SUV' },
-  { value: '4x4', label: '4x4' },
-  { value: 'hatchback', label: 'Hatchback' },
-  { value: 'pickup', label: 'Pickup' },
-  { value: 'van', label: 'Van' },
-  { value: 'minibus', label: 'Minibus' },
-  { value: 'luxury', label: 'Luxury' },
-];
+import { useCountry } from '@/lib/country';
+import { citiesFor } from '@/lib/cities';
+import { CAR_CATEGORIES, CATEGORY_GROUPS, isMachine } from '@/lib/categories';
 
 const FUELS: { value: FuelType; label: string }[] = [
   { value: 'petrol', label: 'Petrol' },
@@ -48,6 +39,10 @@ export function ListCarPage() {
   const { id: editId } = useParams();
   const editing = !!editId;
 
+  // A car is registered in a country — defaults to the host's current country
+  // (the one picked in the header). The currency follows the country.
+  const { country: userCountry, countries } = useCountry();
+
   // In edit mode, load the existing listing to prefill the form.
   const existingQuery = useQuery({
     queryKey: ['listing', editId],
@@ -64,7 +59,8 @@ export function ListCarPage() {
   const [transmission, setTransmission] = useState<Transmission>('automatic');
   const [fuel, setFuel] = useState<FuelType>('petrol');
   const [pricePerDay, setPricePerDay] = useState('40000');
-  const [city, setCity] = useState('Kigali');
+  const [country, setCountry] = useState<string>(userCountry.code);
+  const [city, setCity] = useState<string>(citiesFor(userCountry.code)[0] ?? 'Kigali');
   const [location, setLocation] = useState('');
   const [coords, setCoords] = useState<LatLng | null>(null);
   const [locationUrl, setLocationUrl] = useState('');
@@ -105,6 +101,7 @@ export function ListCarPage() {
     setTransmission(existing.transmission);
     setFuel(existing.fuel);
     setPricePerDay(String(existing.pricePerDayRwf));
+    setCountry(existing.country ?? 'RW');
     setCity(existing.city);
     setLocation(existing.location);
     setCoords(existing.lat != null && existing.lng != null ? { lat: existing.lat, lng: existing.lng } : null);
@@ -115,6 +112,21 @@ export function ListCarPage() {
     setPhotoUrls(existing.photos);
     setFeatures(existing.features.join(', '));
   }, [existing]);
+
+  // Country drives the currency (RW→RWF, AE→AED, CN→CNY, US→USD) and the city list.
+  const selectedCountry = countries.find((c) => c.code === country) ?? countries[0];
+  const currency = selectedCountry.currency;
+  const cities = citiesFor(country);
+
+  // A tractor has a cab, not seats, and runs on power, not fuel — relabel the shared
+  // fields rather than maintaining a second form for machinery.
+  const machine = isMachine(category);
+
+  function onCountryChange(next: string) {
+    setCountry(next);
+    const list = citiesFor(next);
+    if (!list.includes(city)) setCity(list[0] ?? '');
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   // In maintenance requires a valid back-in-service date (today or later).
@@ -158,6 +170,8 @@ export function ListCarPage() {
       transmission,
       fuel,
       pricePerDayRwf: Number(pricePerDay),
+      priceCurrency: currency,
+      country,
       location: location.trim(),
       city,
       photos: photoUrls,
@@ -180,11 +194,13 @@ export function ListCarPage() {
         <ArrowLeft size={16} /> Back to dashboard
       </Link>
 
-      <h1 className="text-2xl font-bold text-ink-900">{editing ? 'Edit your car' : 'List your car'}</h1>
+      <h1 className="text-2xl font-bold text-ink-900">
+        {editing ? 'Edit your listing' : 'List your vehicle or machine'}
+      </h1>
       <p className="mt-1 text-sm text-ink-500">
         {editing
-          ? 'Update your car’s details, photos, location and availability.'
-          : 'Add a vehicle to rent out. Your first listing turns your account into a host.'}
+          ? 'Update the details, photos, location and availability.'
+          : 'Rent out a car, a tractor or an excavator. Your first listing turns your account into a host.'}
       </p>
 
       {editing && existingQuery.isLoading ? (
@@ -195,7 +211,7 @@ export function ListCarPage() {
       <form onSubmit={onSubmit} className="mt-6 space-y-6">
         <Card>
           <CardHeader>
-            <h2 className="font-semibold text-ink-900">The car</h2>
+            <h2 className="font-semibold text-ink-900">{machine ? 'The machine' : 'The car'}</h2>
           </CardHeader>
           <CardBody className="space-y-4">
             <div>
@@ -204,17 +220,31 @@ export function ListCarPage() {
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Toyota RAV4 — great for Kigali & trips"
+                placeholder={
+                  machine
+                    ? 'Kubota T1400 — tiller for hire near Kigali'
+                    : 'Toyota RAV4 — great for Kigali & trips'
+                }
               />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
                 <Label htmlFor="make">Make</Label>
-                <Input id="make" value={make} onChange={(e) => setMake(e.target.value)} placeholder="Toyota" />
+                <Input
+                  id="make"
+                  value={make}
+                  onChange={(e) => setMake(e.target.value)}
+                  placeholder={machine ? 'Kubota' : 'Toyota'}
+                />
               </div>
               <div>
                 <Label htmlFor="model">Model</Label>
-                <Input id="model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="RAV4" />
+                <Input
+                  id="model"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder={machine ? 'T1400' : 'RAV4'}
+                />
               </div>
               <div>
                 <Label htmlFor="year">Year</Label>
@@ -225,19 +255,23 @@ export function ListCarPage() {
               <div>
                 <Label htmlFor="category">Category</Label>
                 <Select id="category" value={category} onChange={(e) => setCategory(e.target.value as CarCategory)}>
-                  {CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
+                  {CATEGORY_GROUPS.map((group) => (
+                    <optgroup key={group} label={group}>
+                      {CAR_CATEGORIES.filter((c) => c.group === group).map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </Select>
               </div>
               <div>
-                <Label htmlFor="seats">Seats</Label>
+                <Label htmlFor="seats">{machine ? 'Cab seats' : 'Seats'}</Label>
                 <Input id="seats" type="number" value={seats} onChange={(e) => setSeats(e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="transmission">Transmission</Label>
+                <Label htmlFor="transmission">{machine ? 'Drive' : 'Transmission'}</Label>
                 <Select
                   id="transmission"
                   value={transmission}
@@ -248,7 +282,7 @@ export function ListCarPage() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="fuel">Fuel</Label>
+                <Label htmlFor="fuel">{machine ? 'Power' : 'Fuel'}</Label>
                 <Select id="fuel" value={fuel} onChange={(e) => setFuel(e.target.value as FuelType)}>
                   {FUELS.map((f) => (
                     <option key={f.value} value={f.value}>
@@ -276,11 +310,24 @@ export function ListCarPage() {
             <h2 className="font-semibold text-ink-900">Location & pricing</h2>
           </CardHeader>
           <CardBody className="space-y-4">
+            <div>
+              <Label htmlFor="country">Country</Label>
+              <Select id="country" value={country} onChange={(e) => onCountryChange(e.target.value)}>
+                {countries.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.flag} {c.name}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-xs text-ink-400">
+                Where the car is located. It's priced in {currency}. Defaults to your country.
+              </p>
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="city">City</Label>
                 <Select id="city" value={city} onChange={(e) => setCity(e.target.value)}>
-                  {CITIES.map((c) => (
+                  {cities.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
@@ -326,7 +373,7 @@ export function ListCarPage() {
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label htmlFor="price">Price per day (RWF)</Label>
+                <Label htmlFor="price">Price per day ({currency})</Label>
                 <Input
                   id="price"
                   type="number"
@@ -406,7 +453,7 @@ export function ListCarPage() {
               <div className="flex flex-wrap gap-2">
                 {photoUrls.map((url) => (
                   <div key={url} className="relative">
-                    <img
+                    <Img
                       src={url}
                       alt=""
                       className="h-16 w-24 rounded-lg border border-ink-100 object-cover"

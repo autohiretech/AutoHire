@@ -29,6 +29,7 @@ import { formatDate, formatRwf } from '@/lib/format';
 import { PAYOUT_CHANNEL_LABEL, PAYOUT_STATUS_META } from '@/lib/payouts';
 import { hostTripHint } from '@/lib/trips';
 import { TripCard } from '@/components/TripCard';
+import { Img } from '@/components/Img';
 import { RequesterModal } from '@/components/RequesterModal';
 import {
   Badge,
@@ -244,7 +245,7 @@ export function DashboardPage() {
         </div>
         <Link to="/cars/new">
           <Button>
-            <Plus size={16} /> List a car
+            <Plus size={16} /> Add a listing
           </Button>
         </Link>
       </div>
@@ -339,7 +340,7 @@ export function DashboardPage() {
             <div className="relative mb-3">
               <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
               <Input
-                placeholder="Search your cars"
+                placeholder="Search your listings"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
@@ -416,7 +417,7 @@ export function DashboardPage() {
               <Card>
                 <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-ink-400">
                   <Car size={26} />
-                  <p className="text-sm">Select a car to manage its requests and trips.</p>
+                  <p className="text-sm">Select a listing to manage its requests and trips.</p>
                 </CardBody>
               </Card>
             )}
@@ -578,7 +579,7 @@ function EmptyFleet() {
         </ol>
         <Link to="/cars/new">
           <Button size="lg">
-            <Plus size={16} /> List a car
+            <Plus size={16} /> Add a listing
           </Button>
         </Link>
       </CardBody>
@@ -616,7 +617,7 @@ function CarListRow({
           active ? 'border-brand-300 bg-brand-50 ring-1 ring-brand-200' : 'border-ink-200 bg-white hover:border-ink-300',
         )}
       >
-        <img src={listing.photos[0]} alt={listing.title} className="h-14 w-20 shrink-0 rounded-lg object-cover" />
+        <Img src={listing.photos[0]} alt={listing.title} className="h-14 w-20 shrink-0 rounded-lg object-cover" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium text-ink-900">{listing.title}</p>
           <p className="truncate text-xs text-ink-500">
@@ -674,7 +675,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
           <ChevronLeft size={16} /> Cars
         </button>
         <div className="flex items-start gap-3">
-          <img src={listing.photos[0]} alt={listing.title} className="h-16 w-24 shrink-0 rounded-lg object-cover" />
+          <Img src={listing.photos[0]} alt={listing.title} className="h-16 w-24 shrink-0 rounded-lg object-cover" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-semibold text-ink-900">{listing.title}</h2>
@@ -739,7 +740,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
         {/* Content */}
         {tab === 'requests' &&
           (requests.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-500">No pending requests for this car.</p>
+            <p className="py-6 text-center text-sm text-ink-500">No pending requests for this listing.</p>
           ) : (
             <div className="space-y-3">
               {requests.map((b) => (
@@ -750,7 +751,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
 
         {tab === 'trips' &&
           (trips.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-500">No trips for this car yet.</p>
+            <p className="py-6 text-center text-sm text-ink-500">No trips for this listing yet.</p>
           ) : (
             <div className="space-y-3">
               {trips.map((b) => (
@@ -1002,7 +1003,12 @@ function SetupChecklist({ host, listingCount }: { host: Host; listingCount: numb
       cta: verifyCta,
       muted: host.verification === 'pending',
     },
-    { label: 'List your first car', done: listingCount > 0, to: '/cars/new', cta: 'List a car' },
+    {
+      label: 'List your first vehicle or machine',
+      done: listingCount > 0,
+      to: '/cars/new',
+      cta: 'Add a listing',
+    },
   ];
   const doneCount = steps.filter((s) => s.done).length;
   if (doneCount === steps.length) return null;
@@ -1118,7 +1124,7 @@ function ActionRow({
 
   return (
     <li className="flex items-center gap-3 py-3">
-      <img src={listing?.photos[0]} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" />
+      <Img src={listing?.photos[0]} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" />
       <div className="min-w-0 flex-1">
         <p className={cn('flex items-center gap-1.5 text-sm font-medium', overdue ? 'text-red-600' : 'text-ink-900')}>
           <Icon size={15} /> {label}

@@ -65,6 +65,7 @@ export const supabaseClient = {
   // --- Listings ----------------------------------------------------------
   async listListings(filters: ListingFilters = {}): Promise<Listing[]> {
     let q = sb().from('listings').select('*');
+    if (filters.country) q = q.eq('country', filters.country);
     if (filters.city) q = q.eq('city', filters.city);
     if (filters.category) q = q.eq('category', filters.category);
     if (filters.ownerType) q = q.eq('owner_type', filters.ownerType);
@@ -76,6 +77,61 @@ export const supabaseClient = {
       q = q.or(`title.ilike.${t},make.ilike.${t},model.ilike.${t}`);
     }
     return mapRows<Listing>(await run(q));
+  },
+  /**
+   * Paginated listings — same filters as `listListings`, but returns one page
+   * plus the total match count so the browse grid can show page controls instead
+   * of every car at once. `sort: 'rating'` ranks by rating (highest first);
+   * otherwise results are ordered by id for stable paging.
+   */
+  async listListingsPage(
+    filters: ListingFilters = {},
+    page = 0,
+    pageSize = 24,
+    sort?: 'rating',
+  ): Promise<{ items: Listing[]; total: number }> {
+    let base = sb().from('listings').select('*', { count: 'exact' });
+    if (filters.country) base = base.eq('country', filters.country);
+    if (filters.city) base = base.eq('city', filters.city);
+    if (filters.category) base = base.eq('category', filters.category);
+    if (filters.ownerType) base = base.eq('owner_type', filters.ownerType);
+    if (filters.transmission) base = base.eq('transmission', filters.transmission);
+    if (filters.minSeats) base = base.gte('seats', filters.minSeats);
+    if (filters.maxPriceRwf) base = base.lte('price_per_day_rwf', filters.maxPriceRwf);
+    if (filters.query) {
+      const t = `%${filters.query}%`;
+      base = base.or(`title.ilike.${t},make.ilike.${t},model.ilike.${t}`);
+    }
+    const ordered =
+      sort === 'rating'
+        ? base.order('rating_avg', { ascending: false }).order('id', { ascending: true })
+        : base.order('id', { ascending: true });
+    const from = page * pageSize;
+    const { data, error, count } = await ordered.range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    return { items: mapRows<Listing>(data as Record<string, unknown>[]), total: count ?? 0 };
+  },
+  /**
+   * Live foreign-exchange rates (quoted against USD) from the `fx_rates` table,
+   * refreshed daily by the `refresh-fx-rates` Edge Function. Returns the newest
+   * snapshot so the app can convert prices into the shopper's currency. Rows are
+   * one per currency: { code, rate } where rate = units per 1 USD.
+   */
+  async getFxRates(): Promise<{ base: string; asOf: string; rates: Record<string, number> }> {
+    const rows = (await run(
+      sb()
+        .from('fx_rates')
+        .select('quote, rate, as_of')
+        .eq('base', 'USD')
+        .order('as_of', { ascending: false }),
+    )) as { quote: string; rate: number; as_of: string }[] | null;
+    const list = rows ?? [];
+    const asOf = list[0]?.as_of ?? new Date().toISOString().slice(0, 10);
+    // Keep only the newest as_of per currency (the query is date-desc ordered).
+    const rates: Record<string, number> = {};
+    for (const r of list) if (!(r.quote in rates)) rates[r.quote] = Number(r.rate);
+    rates.USD = 1;
+    return { base: 'USD', asOf, rates };
   },
   /**
    * AI Mode search: send a natural-language query to the `ai-search` Edge
@@ -296,6 +352,8 @@ export const supabaseClient = {
         | 'transmission'
         | 'fuel'
         | 'pricePerDayRwf'
+        | 'priceCurrency'
+        | 'country'
         | 'location'
         | 'city'
         | 'photos'
@@ -320,6 +378,8 @@ export const supabaseClient = {
       transmission: 'transmission',
       fuel: 'fuel',
       pricePerDayRwf: 'price_per_day_rwf',
+      priceCurrency: 'price_currency',
+      country: 'country',
       location: 'location',
       city: 'city',
       photos: 'photos',
@@ -407,6 +467,8 @@ export const supabaseClient = {
           transmission: input.transmission,
           fuel: input.fuel,
           price_per_day_rwf: input.pricePerDayRwf,
+          price_currency: input.priceCurrency ?? 'RWF',
+          country: input.country ?? 'RW',
           location: input.location,
           city: input.city,
           photos: input.photos,

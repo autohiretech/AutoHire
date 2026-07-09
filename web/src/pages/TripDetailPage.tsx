@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
 import { TRIP_STATE_META, TRIP_TIMELINE } from '@/lib/trips';
 import { StarRatingInput } from '@/components/StarRatingInput';
+import { Img } from '@/components/Img';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
@@ -144,7 +145,7 @@ export function TripDetailPage() {
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {listing && (
-            <img
+            <Img
               src={listing.photos[0]}
               alt={listing.title}
               className="h-56 w-full rounded-[var(--radius-card)] object-cover"

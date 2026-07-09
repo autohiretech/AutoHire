@@ -1,23 +1,27 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import type { CurrencyCode } from '@/lib/currency';
 
 export interface Country {
-  /** ISO 3166-1 alpha-2 code. */
+  /** ISO 3166-1 alpha-2 code. Also the value stored on `Listing.country`. */
   code: string;
   name: string;
   /** Emoji flag for the selector. */
   flag: string;
-  /** ISO 4217 currency, kept for when listings become multi-currency. */
-  currency: string;
+  /** Local currency listings in this country are priced + charged in. */
+  currency: CurrencyCode;
 }
 
-/** Markets AutoHire serves. Rwanda is the default; renters pick their country. */
+/**
+ * Markets AutoHire serves. Selecting a country filters the catalogue to cars in
+ * that country and switches the *display* currency (prices convert via live FX).
+ * Rwanda is the default (the home market). Currencies without a market of their
+ * own (e.g. EUR) still live in `CURRENCIES` for conversion.
+ */
 export const COUNTRIES: Country[] = [
   { code: 'RW', name: 'Rwanda', flag: '🇷🇼', currency: 'RWF' },
-  { code: 'KE', name: 'Kenya', flag: '🇰🇪', currency: 'KES' },
-  { code: 'UG', name: 'Uganda', flag: '🇺🇬', currency: 'UGX' },
-  { code: 'TZ', name: 'Tanzania', flag: '🇹🇿', currency: 'TZS' },
-  { code: 'BI', name: 'Burundi', flag: '🇧🇮', currency: 'BIF' },
-  { code: 'CD', name: 'DR Congo', flag: '🇨🇩', currency: 'CDF' },
+  { code: 'AE', name: 'UAE (Dubai)', flag: '🇦🇪', currency: 'AED' },
+  { code: 'CN', name: 'China', flag: '🇨🇳', currency: 'CNY' },
+  { code: 'US', name: 'United States', flag: '🇺🇸', currency: 'USD' },
 ];
 
 const DEFAULT_CODE = 'RW';

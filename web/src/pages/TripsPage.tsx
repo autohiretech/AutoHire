@@ -44,7 +44,7 @@ export function TripsPage() {
               </p>
             </div>
             <Link to="/">
-              <Button size="sm">Explore cars</Button>
+              <Button size="sm">Explore listings</Button>
             </Link>
           </CardBody>
         </Card>

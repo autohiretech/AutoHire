@@ -2,6 +2,7 @@ import type { CarCategory } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
 import type { Listing } from '@autohire/shared';
 import { formatRwf } from '@/lib/format';
+import { ALL_CITIES } from '@/lib/cities';
 
 /**
  * Demo "AI" for AI Mode — a local stand-in for the ai-search Edge Function so
@@ -11,9 +12,21 @@ import { formatRwf } from '@/lib/format';
  * network / model calls: everything here is deterministic string matching.
  */
 
-const CITIES = ['Kigali', 'Musanze', 'Rubavu', 'Huye', 'Rusizi'];
-
+/**
+ * Machinery is matched before vehicles: "forklift truck" is a forklift, not a pickup,
+ * and the pickup rule claims the bare word "truck".
+ */
 const CATEGORY_WORDS: { match: RegExp; value: CarCategory }[] = [
+  // Cultivating + building machinery
+  { match: /\b(tractor)\b/i, value: 'tractor' },
+  { match: /\b(harvester|combine)\b/i, value: 'harvester' },
+  { match: /\b(tiller|cultivator|rotavator)\b/i, value: 'tiller' },
+  { match: /\b(excavator|digger|backhoe)\b/i, value: 'excavator' },
+  { match: /\b(bulldozer|dozer)\b/i, value: 'bulldozer' },
+  { match: /\b(wheel[-\s]?loader|loader)\b/i, value: 'loader' },
+  { match: /\b(crane)\b/i, value: 'crane' },
+  { match: /\b(forklift|fork[-\s]?lift)\b/i, value: 'forklift' },
+  // Road vehicles
   { match: /\bsuv\b/i, value: 'suv' },
   { match: /\b(4x4|4wd|off[-\s]?road|land ?cruiser|prado)\b/i, value: '4x4' },
   { match: /\b(sedan|saloon|corolla)\b/i, value: 'sedan' },
@@ -23,6 +36,9 @@ const CATEGORY_WORDS: { match: RegExp; value: CarCategory }[] = [
   { match: /\b(van|caravan)\b/i, value: 'van' },
   { match: /\b(luxury|premium|range rover|prestige|vip)\b/i, value: 'luxury' },
 ];
+
+/** Longest first so a two-word city ("New York") wins over any shorter substring. */
+const CITY_MATCHES = [...ALL_CITIES].sort((a, b) => b.length - a.length);
 
 /** Turn a natural-language request into listing filters (best-effort). */
 export function interpretQuery(query: string): ListingFilters {
@@ -38,7 +54,7 @@ export function interpretQuery(query: string): ListingFilters {
   if (/\b(company|business|agency|fleet)\b/.test(q)) filters.ownerType = 'business';
   else if (/\b(individual|private|person)\b/.test(q)) filters.ownerType = 'individual';
 
-  const city = CITIES.find((c) => q.includes(c.toLowerCase()));
+  const city = CITY_MATCHES.find((c) => q.includes(c.toLowerCase()));
   if (city) filters.city = city;
 
   // Seats: "7 people", "5 seats", "family" (5+), "group" (7+).

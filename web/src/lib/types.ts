@@ -10,6 +10,8 @@ import type { Listing, ReviewDirection } from '@autohire/shared';
 export const SERVICE_FEE_RATE = 0.1;
 
 export interface ListingFilters {
+  /** ISO 3166-1 alpha-2 market, e.g. 'RW'. Set from the header country selector. */
+  country?: string;
   city?: string;
   category?: Listing['category'];
   ownerType?: Listing['ownerType'];
@@ -43,6 +45,10 @@ export interface CreateListingInput {
   transmission: Listing['transmission'];
   fuel: Listing['fuel'];
   pricePerDayRwf: number;
+  /** Currency the price is in; defaults to the host's country currency ('RWF'). */
+  priceCurrency?: string;
+  /** ISO country the car sits in; defaults to the host's country ('RW'). */
+  country?: string;
   location: string;
   city: string;
   photos: string[];

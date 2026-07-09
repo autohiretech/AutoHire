@@ -22,6 +22,7 @@ import {
   StripeWordmark,
   VisaMark,
 } from '@/components/PaymentBrands';
+import { Img } from '@/components/Img';
 import { Badge, Button, Card, CardBody, Input, Label, Select, Spinner } from '@/components/ui';
 
 type Method = 'card' | 'momo';
@@ -101,7 +102,7 @@ export function BookingPage() {
   if (!listing) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Car not found</p>
+        <p className="font-medium text-ink-900">Listing not found</p>
         <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
           Back to browse
         </Link>
@@ -243,7 +244,7 @@ export function BookingPage() {
           <Card className="lg:sticky lg:top-20">
             <CardBody className="space-y-4">
               <div className="flex gap-3">
-                <img
+                <Img
                   src={listing.photos[0]}
                   alt={listing.title}
                   className="h-16 w-24 shrink-0 rounded-lg object-cover"

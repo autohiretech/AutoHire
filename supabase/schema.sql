@@ -10,7 +10,9 @@
 create type owner_type        as enum ('individual', 'business');
 create type user_role         as enum ('renter', 'owner', 'admin');
 create type verification_status as enum ('unverified', 'pending', 'verified', 'rejected');
-create type car_category      as enum ('sedan', 'suv', '4x4', 'hatchback', 'pickup', 'van', 'minibus', 'luxury');
+create type car_category      as enum ('sedan', 'suv', '4x4', 'hatchback', 'pickup', 'van', 'minibus', 'luxury',
+  -- machinery: cultivating (agriculture) + building (construction)
+  'tractor', 'harvester', 'tiller', 'excavator', 'bulldozer', 'loader', 'crane', 'forklift');
 create type transmission      as enum ('automatic', 'manual');
 create type fuel_type         as enum ('petrol', 'diesel', 'hybrid', 'electric');
 create type booking_mode      as enum ('instant', 'request');
@@ -65,6 +67,10 @@ create table listings (
   transmission      transmission not null,
   fuel              fuel_type not null,
   price_per_day_rwf integer not null,
+  -- Currency the car is priced + charged in (ISO 4217). Kigali=RWF, Dubai=AED…
+  price_currency    char(3) not null default 'RWF',
+  -- Market the car sits in (ISO 3166-1 alpha-2). The country selector filters on this.
+  country           char(2) not null default 'RW',
   location          text not null,
   city              text not null,
   photos            text[] not null default '{}',
