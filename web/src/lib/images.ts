@@ -148,6 +148,52 @@ const POOLS = {
     // Mitsubishi Pajero Sport (3rd generation) 1X7A0410.jpg
     'upload.wikimedia.org/wikipedia/commons/thumb/b/bf/Mitsubishi_Pajero_Sport_%283rd_generation%29_1X7A0410.jpg/960px-Mitsubishi_Pajero_Sport_%283rd_generation%29_1X7A0410.jpg',
   ],
+  // Models carried by the original `car-N` fixture rows (migration 028) — keyed by
+  // model, not make, because a Hiace must not render as a RAV4.
+  rav4: [
+    // Toyota RAV4 Hybrid, GIMS 2019, Le Grand-Saconnex (GIMS0518).jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/7/73/Toyota_RAV4_Hybrid%2C_GIMS_2019%2C_Le_Grand-Saconnex_%28GIMS0518%29.jpg/960px-Toyota_RAV4_Hybrid%2C_GIMS_2019%2C_Le_Grand-Saconnex_%28GIMS0518%29.jpg',
+    // Toyota Rav4, Oghuz (P1090310).jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Toyota_Rav4%2C_Oghuz_%28P1090310%29.jpg/960px-Toyota_Rav4%2C_Oghuz_%28P1090310%29.jpg',
+    // 2019 Toyota RAV4 Hybrid 02.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/6/66/2019_Toyota_RAV4_Hybrid_02.jpg/960px-2019_Toyota_RAV4_Hybrid_02.jpg',
+  ],
+  prado: [
+    // Toyota Land Cruiser Prado, Baku (P1090223).jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/2/28/Toyota_Land_Cruiser_Prado%2C_Baku_%28P1090223%29.jpg/960px-Toyota_Land_Cruiser_Prado%2C_Baku_%28P1090223%29.jpg',
+    // Алматы, Toyota Land Cruiser на Толе би-Брусиловского.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/6/6f/%D0%90%D0%BB%D0%BC%D0%B0%D1%82%D1%8B%2C_Toyota_Land_Cruiser_%D0%BD%D0%B0_%D0%A2%D0%BE%D0%BB%D0%B5_%D0%B1%D0%B8-%D0%91%D1%80%D1%83%D1%81%D0%B8%D0%BB%D0%BE%D0%B2%D1%81%D0%BA%D0%BE%D0%B3%D0%BE.jpg/960px-%D0%90%D0%BB%D0%BC%D0%B0%D1%82%D1%8B%2C_Toyota_Land_Cruiser_%D0%BD%D0%B0_%D0%A2%D0%BE%D0%BB%D0%B5_%D0%B1%D0%B8-%D0%91%D1%80%D1%83%D1%81%D0%B8%D0%BB%D0%BE%D0%B2%D1%81%D0%BA%D0%BE%D0%B3%D0%BE.jpg',
+  ],
+  swift: [
+    // 2020 Suzuki Swift Facelift IMG 1884.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/2/2c/2020_Suzuki_Swift_Facelift_IMG_1884.jpg/960px-2020_Suzuki_Swift_Facelift_IMG_1884.jpg',
+    // 2020 Suzuki Swift Facelift IMG 1880.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/0/08/2020_Suzuki_Swift_Facelift_IMG_1880.jpg/960px-2020_Suzuki_Swift_Facelift_IMG_1880.jpg',
+    // 2020 Suzuki Swift Facelift IMG 1881.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/0/08/2020_Suzuki_Swift_Facelift_IMG_1881.jpg/960px-2020_Suzuki_Swift_Facelift_IMG_1881.jpg',
+  ],
+  hiace: [
+    // 2017 Toyota HiAce (TRH201R) LWB van (2018-10-01) 01.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/0/03/2017_Toyota_HiAce_%28TRH201R%29_LWB_van_%282018-10-01%29_01.jpg/960px-2017_Toyota_HiAce_%28TRH201R%29_LWB_van_%282018-10-01%29_01.jpg',
+    // Toyota HiAce H100 facelift Sanming 01 2022-06-30.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/3/34/Toyota_HiAce_H100_facelift_Sanming_01_2022-06-30.jpg/960px-Toyota_HiAce_H100_facelift_Sanming_01_2022-06-30.jpg',
+  ],
+  cclass: [
+    // Münster, Beresa, Mercedes-Benz C-Klasse Cabrio -- 2018 -- 1757.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/9/92/M%C3%BCnster%2C_Beresa%2C_Mercedes-Benz_C-Klasse_Cabrio_--_2018_--_1757.jpg/960px-M%C3%BCnster%2C_Beresa%2C_Mercedes-Benz_C-Klasse_Cabrio_--_2018_--_1757.jpg',
+    // Mercedes C-Class, TWB 2018, Friedrichshafen (OW1A0629).jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/7/78/Mercedes_C-Class%2C_TWB_2018%2C_Friedrichshafen_%28OW1A0629%29.jpg/960px-Mercedes_C-Class%2C_TWB_2018%2C_Friedrichshafen_%28OW1A0629%29.jpg',
+    // 2016 Mercedes-Benz C-Class, Windsor, Ontario, 2025-07-01.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/e/ed/2016_Mercedes-Benz_C-Class%2C_Windsor%2C_Ontario%2C_2025-07-01.jpg/960px-2016_Mercedes-Benz_C-Class%2C_Windsor%2C_Ontario%2C_2025-07-01.jpg',
+  ],
+  hilux: [
+    // 2021 Toyota Hilux Revo Prerunner Double-Cab 2.4 Entry.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/c/cc/2021_Toyota_Hilux_Revo_Prerunner_Double-Cab_2.4_Entry.jpg/960px-2021_Toyota_Hilux_Revo_Prerunner_Double-Cab_2.4_Entry.jpg',
+    // 2020 Toyota Hilux Revo 4x4 Double-Cab 2.8 Rocco.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/f/fd/2020_Toyota_Hilux_Revo_4x4_Double-Cab_2.8_Rocco.jpg/960px-2020_Toyota_Hilux_Revo_4x4_Double-Cab_2.8_Rocco.jpg',
+    // 2021 Toyota Hilux Revo Prerunner Double-Cab 2.4 Mid.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/f/f4/2021_Toyota_Hilux_Revo_Prerunner_Double-Cab_2.4_Mid.jpg/960px-2021_Toyota_Hilux_Revo_Prerunner_Double-Cab_2.4_Mid.jpg',
+  ],
   interior: [
     // Tesla Model 3 interior.jpg
     'upload.wikimedia.org/wikipedia/commons/thumb/1/13/Tesla_Model_3_interior.jpg/960px-Tesla_Model_3_interior.jpg',

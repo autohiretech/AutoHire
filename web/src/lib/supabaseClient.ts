@@ -63,6 +63,12 @@ async function run<D>(builder: PromiseLike<{ data: D; error: { message: string }
 
 export const supabaseClient = {
   // --- Listings ----------------------------------------------------------
+  /**
+   * Every matching listing, best-rated first. The order matters: the home page's
+   * "Featured" slideshow takes the first five of these, and without an ORDER BY
+   * PostgREST returns rows in whatever order Postgres pleases (in practice, insertion
+   * order) — so the six oldest fixture rows permanently occupied the hero.
+   */
   async listListings(filters: ListingFilters = {}): Promise<Listing[]> {
     let q = sb().from('listings').select('*');
     if (filters.country) q = q.eq('country', filters.country);
@@ -76,7 +82,9 @@ export const supabaseClient = {
       const t = `%${filters.query}%`;
       q = q.or(`title.ilike.${t},make.ilike.${t},model.ilike.${t}`);
     }
-    return mapRows<Listing>(await run(q));
+    // Ordering goes last: `.order()` returns a transform builder with no `.eq()`.
+    const ordered = q.order('rating_avg', { ascending: false }).order('id', { ascending: true });
+    return mapRows<Listing>(await run(ordered));
   },
   /**
    * Paginated listings — same filters as `listListings`, but returns one page
