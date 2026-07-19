@@ -260,8 +260,8 @@ function AutoApproveToggle() {
           </div>
           <p className="mt-0.5 text-sm text-ink-500">
             {active
-              ? 'New documents are verified instantly — no manual review.'
-              : 'New documents wait in the queue for you to review.'}
+              ? 'Documents are verified instantly — turning this on also cleared the pending queue.'
+              : 'New documents wait in the queue for you to review. Turning this on verifies the whole queue.'}
           </p>
         </div>
 
