@@ -13,7 +13,7 @@
 // Deploy:  supabase functions deploy refresh-fx-rates
 //   (JWT verification is off so the scheduler can call it — see config.toml.)
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 // Currencies AutoHire prices/displays in. Keep in sync with web/src/lib/currency.ts.
 const CURRENCIES = ['USD', 'RWF', 'AED', 'CNY'];

@@ -11,3 +11,4 @@ dist-ssr/
 npm-debug.log*
 .vite/
 coverage/
+supabase/.temp/
