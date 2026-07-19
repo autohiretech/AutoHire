@@ -64,7 +64,7 @@ export function ModelCombobox({ onSelect }: { onSelect: (m: CarModel) => void })
             setOpen(false);
           }
         }}
-        placeholder={`Search ${CAR_MODELS.length}+ models — electric shown first…`}
+        placeholder={`Search ${CAR_MODELS.length}+ car models…`}
         className="w-full rounded-lg border border-ink-200 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none"
         role="combobox"
         aria-expanded={open}

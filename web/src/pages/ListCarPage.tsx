@@ -250,8 +250,8 @@ export function ListCarPage() {
                   }}
                 />
                 <p className="mt-1 flex items-center gap-1 text-xs text-ink-400">
-                  <Zap size={12} className="text-brand-600" /> Electric models are shown first. Pick
-                  one to fill make, model and fuel — or type them in below.
+                  <Zap size={12} className="text-brand-600" /> Pick a model to fill in make, model
+                  and fuel — electric cars are badged. Or type them in below.
                 </p>
               </div>
             )}

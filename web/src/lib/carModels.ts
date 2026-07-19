@@ -80,22 +80,20 @@ export const CAR_MODELS: CarModel[] = [
   { make: 'Mitsubishi', model: 'Pajero', fuel: 'diesel', category: '4x4' },
 ];
 
-/** Search the model list by make or model (electric results first). */
+/**
+ * Search the model list by make or model. All fuel types are included and
+ * sorted alphabetically by make/model, so the picker shows the full range of
+ * cars (electric models are badged in the UI, not filtered to the top).
+ */
 export function searchCarModels(query: string, limit = 8): CarModel[] {
   const q = query.trim().toLowerCase();
-  const scored = CAR_MODELS.filter(
+  const matches = CAR_MODELS.filter(
     (m) =>
       !q ||
       m.model.toLowerCase().includes(q) ||
       m.make.toLowerCase().includes(q) ||
       `${m.make} ${m.model}`.toLowerCase().includes(q),
   );
-  // Electric first, then alphabetical by make/model.
-  scored.sort((a, b) => {
-    const ae = a.fuel === 'electric' ? 0 : 1;
-    const be = b.fuel === 'electric' ? 0 : 1;
-    if (ae !== be) return ae - be;
-    return `${a.make} ${a.model}`.localeCompare(`${b.make} ${b.model}`);
-  });
-  return scored.slice(0, limit);
+  matches.sort((a, b) => `${a.make} ${a.model}`.localeCompare(`${b.make} ${b.model}`));
+  return matches.slice(0, limit);
 }
