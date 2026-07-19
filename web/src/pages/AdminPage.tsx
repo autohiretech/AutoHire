@@ -211,6 +211,66 @@ const SCOPE_FILTERS: { key: 'pending' | 'all'; label: string }[] = [
 
 const PAGE_SIZE = 20;
 
+/** Platform switch: verify new submissions instantly, or hold them for review. */
+function AutoApproveToggle() {
+  const queryClient = useQueryClient();
+  const { data: on, isLoading } = useQuery({
+    queryKey: ['kycAutoApprove'],
+    queryFn: () => client.getKycAutoApprove(),
+  });
+  const toggle = useMutation({
+    mutationFn: (next: boolean) => client.setKycAutoApprove(next),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kycAutoApprove'] });
+      queryClient.invalidateQueries({ queryKey: ['verificationProfiles'] });
+    },
+  });
+  const active = Boolean(on);
+
+  return (
+    <Card>
+      <CardBody className="flex flex-wrap items-center gap-3">
+        <span
+          className={cn(
+            'flex h-9 w-9 items-center justify-center rounded-lg',
+            active ? 'bg-emerald-50 text-emerald-600' : 'bg-brand-50 text-brand-600',
+          )}
+        >
+          {active ? <CheckCircle2 size={18} /> : <ShieldCheck size={18} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-ink-900">
+            {active ? 'Auto-approving new submissions' : 'Manual review'}
+          </p>
+          <p className="text-xs text-ink-500">
+            {active
+              ? 'New documents are verified instantly — no manual review.'
+              : 'New documents wait here for you to approve or reject.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={active}
+          disabled={isLoading || toggle.isPending}
+          onClick={() => toggle.mutate(!active)}
+          className={cn(
+            'relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50',
+            active ? 'bg-emerald-500' : 'bg-ink-300',
+          )}
+        >
+          <span
+            className={cn(
+              'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+              active ? 'translate-x-[22px]' : 'translate-x-0.5',
+            )}
+          />
+        </button>
+      </CardBody>
+    </Card>
+  );
+}
+
 /** KYC review queue — grouped by PERSON. Expand a person to review their docs. */
 function VerificationTab() {
   const [scope, setScope] = useState<'pending' | 'all'>('pending');
@@ -227,6 +287,8 @@ function VerificationTab() {
 
   return (
     <div className="space-y-4">
+      <AutoApproveToggle />
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-lg border border-ink-200 p-0.5">
           {SCOPE_FILTERS.map((s) => (

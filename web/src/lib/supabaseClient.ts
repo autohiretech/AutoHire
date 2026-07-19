@@ -945,6 +945,17 @@ export const supabaseClient = {
   async clearVerificationOverride(profileId: string): Promise<void> {
     await run(sb().rpc('admin_clear_verification_override', { p_profile_id: profileId }));
   },
+  /** Whether new KYC submissions are auto-approved (vs. manual review). */
+  async getKycAutoApprove(): Promise<boolean> {
+    const row = await run(
+      sb().from('app_settings').select('kyc_auto_approve').eq('id', 1).maybeSingle(),
+    );
+    return Boolean((row as { kyc_auto_approve?: boolean } | null)?.kyc_auto_approve);
+  },
+  /** Turn auto-approve on/off (admin only). */
+  async setKycAutoApprove(on: boolean): Promise<void> {
+    await run(sb().rpc('admin_set_kyc_auto_approve', { p_on: on }));
+  },
   /**
    * KYC activity feed — every submit/approve/reject, newest first, paginated.
    * verification_events has no FK to profiles (history outlives a deleted
