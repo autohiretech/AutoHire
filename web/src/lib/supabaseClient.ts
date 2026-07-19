@@ -115,6 +115,7 @@ export const supabaseClient = {
     if (filters.category) q = q.eq('category', filters.category);
     if (filters.ownerType) q = q.eq('owner_type', filters.ownerType);
     if (filters.transmission) q = q.eq('transmission', filters.transmission);
+    if (filters.fuel) q = q.eq('fuel', filters.fuel);
     if (filters.minSeats) q = q.gte('seats', filters.minSeats);
     if (filters.maxPriceRwf) q = q.lte('price_per_day_rwf', filters.maxPriceRwf);
     if (filters.query) {
@@ -143,6 +144,7 @@ export const supabaseClient = {
     if (filters.category) base = base.eq('category', filters.category);
     if (filters.ownerType) base = base.eq('owner_type', filters.ownerType);
     if (filters.transmission) base = base.eq('transmission', filters.transmission);
+    if (filters.fuel) base = base.eq('fuel', filters.fuel);
     if (filters.minSeats) base = base.gte('seats', filters.minSeats);
     if (filters.maxPriceRwf) base = base.lte('price_per_day_rwf', filters.maxPriceRwf);
     if (filters.query) {
