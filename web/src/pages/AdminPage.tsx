@@ -46,7 +46,7 @@ import {
   MODERATION_STATUS_META,
 } from '@/lib/admin';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, Spinner } from '@/components/ui';
-import { Img } from '@/components/Img';
+import { PhotoCarousel } from '@/components/PhotoCarousel';
 
 type Tab = 'overview' | 'users' | 'verification' | 'activity' | 'moderation' | 'disputes';
 
@@ -634,54 +634,58 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
     queryFn: () => client.listListingBookings(l.id),
   });
   return (
-    <div className="space-y-3 border-t border-ink-100 px-3 py-3">
-      {l.photos.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto">
-          {l.photos.map((src) => (
-            <Img
-              key={src}
-              src={src}
-              alt={l.title}
-              className="h-24 w-32 shrink-0 rounded-lg object-cover"
-            />
-          ))}
-        </div>
-      )}
-      <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-        <Detail label="Category" value={l.category} />
-        <Detail label="Seats" value={`${l.seats}`} />
-        <Detail label="Transmission" value={l.transmission} />
-        <Detail label="Fuel" value={l.fuel} />
-        <Detail label="Price/day" value={`${l.priceCurrency} ${l.pricePerDayRwf.toLocaleString()}`} />
-        <Detail label="Booking" value={l.bookingMode} />
-        <Detail label="Rating" value={l.ratingCount ? `${l.ratingAvg} (${l.ratingCount})` : '—'} />
-        <Detail label="Country" value={l.country} />
+    <div className="space-y-4 border-t border-ink-100 bg-ink-50/50 px-3 py-4">
+      <PhotoCarousel photos={l.photos} alt={l.title} heightClass="h-52" />
+
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-ink-200 bg-ink-200 text-sm sm:grid-cols-4">
+        <Spec label="Category" value={l.category} />
+        <Spec label="Seats" value={`${l.seats}`} />
+        <Spec label="Transmission" value={l.transmission} />
+        <Spec label="Fuel" value={l.fuel} highlight={l.fuel === 'electric'} />
+        <Spec label="Price / day" value={`${l.priceCurrency} ${l.pricePerDayRwf.toLocaleString()}`} />
+        <Spec label="Booking" value={l.bookingMode} />
+        <Spec label="Rating" value={l.ratingCount ? `${l.ratingAvg} (${l.ratingCount})` : '—'} />
+        <Spec label="Country" value={l.country} />
       </dl>
+
       <div className="text-sm">
-        <dt className="text-xs text-ink-500">Location</dt>
-        <dd className="text-ink-800">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Location</p>
+        <p className="mt-0.5 text-ink-800">
           {l.location}
           {l.locationUrl && (
             <>
               {' · '}
-              <a href={l.locationUrl} target="_blank" rel="noreferrer noopener" className="text-brand-700 hover:underline">
+              <a
+                href={l.locationUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-brand-700 hover:underline"
+              >
                 map link
               </a>
             </>
           )}
-        </dd>
+        </p>
       </div>
+
       {l.features.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {l.features.map((f) => (
-            <span key={f} className="rounded-full bg-ink-100 px-2 py-0.5 text-xs text-ink-600">
-              {f}
-            </span>
-          ))}
+        <div>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-500">Features</p>
+          <div className="flex flex-wrap gap-1.5">
+            {l.features.map((f) => (
+              <span
+                key={f}
+                className="rounded-full border border-ink-200 bg-white px-2.5 py-0.5 text-xs capitalize text-ink-700"
+              >
+                {f}
+              </span>
+            ))}
+          </div>
         </div>
       )}
+
       <div>
-        <p className="mb-1 text-xs font-medium text-ink-500">
+        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-500">
           Bookings on this car {bookings ? `(${bookings.length})` : ''}
         </p>
         {isLoading ? (
@@ -691,17 +695,31 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
         ) : (
           <div className="space-y-1.5">
             {(bookings ?? []).map((b) => (
-              <div key={b.id} className="flex items-center gap-2 text-xs">
+              <div
+                key={b.id}
+                className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs"
+              >
                 <Badge tone={BOOKING_TONE[b.state] ?? 'neutral'}>{b.state}</Badge>
                 <span className="text-ink-600">
                   {formatDate(b.startDate)} → {formatDate(b.endDate)}
                 </span>
-                <span className="ml-auto text-ink-500">{formatRwf(b.totalRwf)}</span>
+                <span className="ml-auto font-medium text-ink-700">{formatRwf(b.totalRwf)}</span>
               </div>
             ))}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function Spec({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="bg-white px-3 py-2">
+      <dt className="text-xs text-ink-500">{label}</dt>
+      <dd className={cn('font-medium capitalize', highlight ? 'text-brand-700' : 'text-ink-800')}>
+        {value}
+      </dd>
     </div>
   );
 }
