@@ -227,93 +227,73 @@ function AutoApproveToggle() {
     },
   });
   const active = Boolean(on);
-
   const busy = isLoading || toggle.isPending;
-  const options = [
-    {
-      value: false,
-      label: 'Manual review',
-      desc: 'You approve or reject each one',
-      icon: ShieldCheck,
-      accent: 'text-brand-600',
-    },
-    {
-      value: true,
-      label: 'Auto-approve',
-      desc: 'Verified instantly on upload',
-      icon: Zap,
-      accent: 'text-accent-600',
-    },
-  ] as const;
 
   return (
-    <Card>
-      <CardBody className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink-900">New KYC submissions</p>
-            <p className="text-xs text-ink-500">How documents are verified when someone uploads.</p>
-          </div>
-          <span
-            className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-              active ? 'bg-accent-400/20 text-accent-600' : 'bg-brand-50 text-brand-700',
-            )}
-          >
+    <Card
+      className={cn(
+        'border-2 transition-colors',
+        active ? 'border-accent-400 bg-accent-400/5' : 'border-ink-200',
+      )}
+    >
+      <CardBody className="flex items-center gap-4">
+        <span
+          className={cn(
+            'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors',
+            active ? 'bg-accent-400/20 text-accent-600' : 'bg-brand-50 text-brand-600',
+          )}
+        >
+          {active ? <Zap size={24} /> : <ShieldCheck size={24} />}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-base font-semibold text-ink-900">Auto-approve KYC</p>
             <span
               className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                active ? 'bg-accent-500' : 'bg-brand-500',
-                busy && 'animate-pulse',
+                'rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide',
+                active ? 'bg-accent-500 text-white' : 'bg-ink-200 text-ink-600',
               )}
-            />
-            {active ? 'Auto-approving' : 'Manual'}
-          </span>
+            >
+              {active ? 'On' : 'Off'}
+            </span>
+          </div>
+          <p className="mt-0.5 text-sm text-ink-500">
+            {active
+              ? 'New documents are verified instantly — no manual review.'
+              : 'New documents wait in the queue for you to review.'}
+          </p>
         </div>
 
-        <div
-          role="radiogroup"
-          aria-label="KYC verification mode"
-          className="grid grid-cols-2 gap-1.5 rounded-xl bg-ink-100 p-1"
+        <button
+          type="button"
+          role="switch"
+          aria-checked={active}
+          aria-label="Toggle auto-approve KYC"
+          disabled={busy}
+          onClick={() => toggle.mutate(!active)}
+          className={cn(
+            'relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+            active
+              ? 'bg-accent-500 focus-visible:ring-accent-500'
+              : 'bg-ink-300 focus-visible:ring-ink-400',
+            busy ? 'cursor-wait opacity-70' : 'cursor-pointer',
+          )}
         >
-          {options.map((o) => {
-            const selected = active === o.value;
-            const Icon = o.icon;
-            return (
-              <button
-                key={String(o.value)}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                disabled={busy || selected}
-                onClick={() => toggle.mutate(o.value)}
-                className={cn(
-                  'flex items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-all',
-                  selected
-                    ? 'bg-white shadow-sm ring-1 ring-ink-200'
-                    : 'hover:bg-white/60 disabled:hover:bg-transparent',
-                  busy && !selected && 'opacity-60',
-                )}
-              >
-                <Icon
-                  size={16}
-                  className={cn('mt-0.5 shrink-0', selected ? o.accent : 'text-ink-400')}
-                />
-                <span className="min-w-0">
-                  <span
-                    className={cn(
-                      'block text-sm font-medium',
-                      selected ? 'text-ink-900' : 'text-ink-600',
-                    )}
-                  >
-                    {o.label}
-                  </span>
-                  <span className="block text-xs text-ink-400">{o.desc}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
+          <span
+            className={cn(
+              'absolute top-1 grid h-6 w-6 place-items-center rounded-full bg-white shadow-md transition-transform duration-200',
+              active ? 'translate-x-7' : 'translate-x-1',
+            )}
+          >
+            {active ? (
+              <Zap size={12} className="text-accent-600" />
+            ) : (
+              <ShieldCheck size={12} className="text-ink-400" />
+            )}
+          </span>
+        </button>
       </CardBody>
     </Card>
   );
