@@ -119,6 +119,17 @@ export interface AdminUser {
   bookingCount: number;
 }
 
+/** One recorded admin action taken on a user. */
+export interface AdminAction {
+  id: number;
+  adminId?: ID;
+  targetId: ID;
+  action: string;
+  detail?: string;
+  createdAt: string; // ISO
+  adminName?: string;
+}
+
 /** Platform electric-car quota snapshot (cars only; machinery is exempt). */
 export interface ElectricQuota {
   minPercent: number;

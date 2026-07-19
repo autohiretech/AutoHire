@@ -24,6 +24,7 @@ import type {
   Page,
   ElectricQuota,
   AdminUser,
+  AdminAction,
 } from '@autohire/shared';
 import {
   type CreateListingInput,
@@ -1015,6 +1016,49 @@ export const supabaseClient = {
     await run(
       sb().rpc('admin_send_message', { p_profile_id: profileId, p_title: title, p_body: body }),
     );
+  },
+  /** Send a warning to a user (notification + recorded action; admin only). */
+  async warnUser(profileId: string, message: string): Promise<void> {
+    await run(sb().rpc('admin_warn_user', { p_profile_id: profileId, p_message: message }));
+  },
+  /** A user's listings (cars/machines they host). */
+  async listUserListings(hostId: string): Promise<Listing[]> {
+    return mapRows<Listing>(
+      await run(sb().from('listings').select('*').eq('host_id', hostId).order('id')),
+    );
+  },
+  /** A user's bookings as renter or host, with the car title (admin reads all). */
+  async listUserBookings(userId: string): Promise<(Booking & { carTitle?: string })[]> {
+    const rows = await run(
+      sb()
+        .from('bookings')
+        .select('*, listing:listings(title, make, model)')
+        .or(`renter_id.eq.${userId},host_id.eq.${userId}`)
+        .order('created_at', { ascending: false }),
+    );
+    return (rows as Record<string, unknown>[] ?? []).map((r) => {
+      const listing = r.listing as { title?: string } | null;
+      const b = mapRow<Booking>({ ...r, listing: undefined }) as Booking;
+      return { ...b, carTitle: listing?.title };
+    });
+  },
+  /** Recorded admin actions taken on a user (admin only). */
+  async listUserActions(profileId: string): Promise<AdminAction[]> {
+    const rows = (await run(
+      sb().from('admin_actions').select('*').eq('target_id', profileId).order('created_at', { ascending: false }),
+    )) as Record<string, unknown>[] | null;
+    const list = rows ?? [];
+    const adminIds = [...new Set(list.map((r) => r.admin_id).filter(Boolean) as string[])];
+    const admins = adminIds.length ? await this.getProfilesByIds(adminIds) : {};
+    return list.map((r) => ({
+      id: Number(r.id),
+      adminId: (r.admin_id as string) ?? undefined,
+      targetId: r.target_id as string,
+      action: r.action as string,
+      detail: (r.detail as string) ?? undefined,
+      createdAt: r.created_at as string,
+      adminName: r.admin_id ? admins[r.admin_id as string]?.fullName : undefined,
+    }));
   },
   /**
    * KYC activity feed — every submit/approve/reject, newest first, paginated.

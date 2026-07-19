@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   Ban,
   BarChart3,
   Car,
@@ -22,11 +23,13 @@ import {
   Zap,
 } from 'lucide-react';
 import type {
+  AdminAction,
   AdminUser,
   Dispute,
   Flag as FlagType,
   KycMetrics,
   KycProfile,
+  Listing,
   VerificationEvent,
   VerificationEventKind,
   VerificationReviewItem,
@@ -356,21 +359,28 @@ const ROLE_LABEL: Record<string, string> = { renter: 'Renter', owner: 'Host', ad
 function UserCard({ user }: { user: AdminUser }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [messaging, setMessaging] = useState(false);
+  const [compose, setCompose] = useState<null | 'message' | 'warn'>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+  const refreshUsers = () => queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
   const suspend = useMutation({
     mutationFn: (next: boolean) => client.setUserSuspended(user.id, next),
-    onSuccess: invalidate,
-  });
-  const message = useMutation({
-    mutationFn: () => client.sendUserMessage(user.id, title, body),
     onSuccess: () => {
-      setMessaging(false);
+      refreshUsers();
+      queryClient.invalidateQueries({ queryKey: ['userActions', user.id] });
+    },
+  });
+  const send = useMutation({
+    mutationFn: () =>
+      compose === 'warn'
+        ? client.warnUser(user.id, body)
+        : client.sendUserMessage(user.id, title, body),
+    onSuccess: () => {
+      setCompose(null);
       setTitle('');
       setBody('');
+      queryClient.invalidateQueries({ queryKey: ['userActions', user.id] });
     },
   });
 
@@ -397,7 +407,7 @@ function UserCard({ user }: { user: AdminUser }) {
       </button>
 
       {open && (
-        <div className="space-y-3 border-t border-ink-100 px-4 py-3">
+        <div className="space-y-5 border-t border-ink-100 px-4 py-4">
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <Detail label="Phone" value={user.phone || '—'} />
             <Detail label="Joined" value={user.joinedAt ? formatDate(user.joinedAt) : '—'} />
@@ -405,65 +415,243 @@ function UserCard({ user }: { user: AdminUser }) {
             <Detail label="Bookings" value={`${user.bookingCount}`} />
           </dl>
 
-          {messaging ? (
+          {/* Actions */}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setCompose('message'); setBody(''); }}>
+              <Send size={14} /> Message
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setCompose('warn'); setBody(''); }}>
+              <AlertTriangle size={14} /> Warn
+            </Button>
+            {user.suspended ? (
+              <Button size="sm" disabled={suspend.isPending} onClick={() => suspend.mutate(false)}>
+                Reinstate
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={suspend.isPending || user.role === 'admin'}
+                onClick={() => suspend.mutate(true)}
+              >
+                <Ban size={14} /> Suspend
+              </Button>
+            )}
+          </div>
+
+          {compose && (
             <div className="space-y-2 rounded-lg bg-ink-50 p-3">
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Subject (optional)"
-                className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-              />
+              {compose === 'message' && (
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Subject (optional)"
+                  className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                />
+              )}
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={3}
-                placeholder="Message to this user…"
+                placeholder={compose === 'warn' ? 'Warning to this user…' : 'Message to this user…'}
                 className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
               />
-              {message.isError && (
+              {send.isError && (
                 <p className="text-sm text-red-600">
-                  {message.error instanceof Error ? message.error.message : 'Could not send.'}
+                  {send.error instanceof Error ? send.error.message : 'Could not send.'}
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" disabled={message.isPending || !body.trim()} onClick={() => message.mutate()}>
-                  {message.isPending ? 'Sending…' : 'Send message'}
+                <Button
+                  size="sm"
+                  variant={compose === 'warn' ? 'danger' : 'primary'}
+                  disabled={send.isPending || !body.trim()}
+                  onClick={() => send.mutate()}
+                >
+                  {send.isPending ? 'Sending…' : compose === 'warn' ? 'Send warning' : 'Send message'}
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setMessaging(false)}>
+                <Button variant="outline" size="sm" onClick={() => setCompose(null)}>
                   Cancel
                 </Button>
               </div>
             </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => setMessaging(true)}>
-                <Send size={14} /> Message
-              </Button>
-              {user.suspended ? (
-                <Button size="sm" disabled={suspend.isPending} onClick={() => suspend.mutate(false)}>
-                  Reinstate
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={suspend.isPending || user.role === 'admin'}
-                  onClick={() => suspend.mutate(true)}
-                >
-                  <Ban size={14} /> Suspend
-                </Button>
-              )}
-              {message.isSuccess && <span className="self-center text-xs text-brand-700">Message sent ✓</span>}
-            </div>
           )}
           {user.role === 'admin' && !user.suspended && (
-            <p className="text-xs text-ink-400">Admins can’t be suspended from here.</p>
+            <p className="-mt-3 text-xs text-ink-400">Admins can’t be suspended from here.</p>
           )}
+
+          <UserVerificationSection user={user} />
+          <UserListingsSection hostId={user.id} count={user.listingCount} />
+          <UserActivitySection userId={user.id} count={user.bookingCount} />
+          <UserAdminLogSection userId={user.id} />
         </div>
       )}
     </Card>
   );
 }
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">{children}</h3>;
+}
+
+/** Verification: override the overall status (incl. Unverify) + review documents. */
+function UserVerificationSection({ user }: { user: AdminUser }) {
+  const queryClient = useQueryClient();
+  const { data: docs, isLoading } = useQuery({
+    queryKey: ['profileDocs', user.id],
+    queryFn: () => client.listVerificationsForProfile(user.id),
+  });
+  const override = useMutation({
+    mutationFn: (status: VerificationStatus) => client.overrideProfileVerification(user.id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['userActions', user.id] });
+    },
+  });
+
+  return (
+    <div>
+      <SectionTitle>Verification &amp; documents</SectionTitle>
+      <div className="mb-3 flex flex-wrap gap-2">
+        <Button size="sm" disabled={override.isPending} onClick={() => override.mutate('verified')}>
+          Verify
+        </Button>
+        <Button size="sm" variant="danger" disabled={override.isPending} onClick={() => override.mutate('rejected')}>
+          Reject
+        </Button>
+        <Button size="sm" variant="outline" disabled={override.isPending} onClick={() => override.mutate('unverified')}>
+          Unverify
+        </Button>
+      </div>
+      {isLoading ? (
+        <Spinner size={16} />
+      ) : (docs ?? []).length === 0 ? (
+        <p className="text-sm text-ink-400">No documents uploaded.</p>
+      ) : (
+        <div className="space-y-3">
+          {(docs ?? []).map((d) => (
+            <DocumentRow key={d.id} doc={d} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The user's listings (cars/machines they host). */
+function UserListingsSection({ hostId, count }: { hostId: string; count: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['userListings', hostId],
+    queryFn: () => client.listUserListings(hostId),
+    enabled: count > 0,
+  });
+  if (count === 0) return null;
+  return (
+    <div>
+      <SectionTitle>Listings ({count})</SectionTitle>
+      {isLoading ? (
+        <Spinner size={16} />
+      ) : (
+        <div className="space-y-2">
+          {(data ?? []).map((l: Listing) => (
+            <div key={l.id} className="flex items-center gap-3 rounded-lg border border-ink-200 px-3 py-2 text-sm">
+              <Car size={15} className="shrink-0 text-ink-400" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-ink-800">{l.title}</p>
+                <p className="truncate text-xs text-ink-400">
+                  {l.make} {l.model} · {l.year} · {l.fuel} · {l.city}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs text-ink-500">{formatRwf(l.pricePerDayRwf)}/day</span>
+              <Badge tone={l.status === 'available' ? 'success' : 'neutral'}>{l.status}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** What the user is doing — their bookings as renter or host. */
+function UserActivitySection({ userId, count }: { userId: string; count: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['userBookings', userId],
+    queryFn: () => client.listUserBookings(userId),
+    enabled: count > 0,
+  });
+  if (count === 0) return null;
+  return (
+    <div>
+      <SectionTitle>Bookings ({count})</SectionTitle>
+      {isLoading ? (
+        <Spinner size={16} />
+      ) : (
+        <div className="space-y-2">
+          {(data ?? []).map((b) => (
+            <div key={b.id} className="flex items-center gap-3 rounded-lg border border-ink-200 px-3 py-2 text-sm">
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-ink-800">{b.carTitle ?? b.listingId}</p>
+                <p className="truncate text-xs text-ink-400">
+                  {b.renterId === userId ? 'As renter' : 'As host'} · {formatDate(b.startDate)} →{' '}
+                  {formatDate(b.endDate)}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs text-ink-500">{formatRwf(b.totalRwf)}</span>
+              <Badge tone={BOOKING_TONE[b.state] ?? 'neutral'}>{b.state}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BOOKING_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral' | 'accent'> = {
+  requested: 'warning',
+  confirmed: 'accent',
+  active: 'accent',
+  completed: 'success',
+  cancelled: 'neutral',
+  declined: 'danger',
+};
+
+/** Every recorded admin action taken on this user. */
+function UserAdminLogSection({ userId }: { userId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['userActions', userId],
+    queryFn: () => client.listUserActions(userId),
+  });
+  return (
+    <div>
+      <SectionTitle>Admin action log</SectionTitle>
+      {isLoading ? (
+        <Spinner size={16} />
+      ) : (data ?? []).length === 0 ? (
+        <p className="text-sm text-ink-400">No admin actions recorded.</p>
+      ) : (
+        <ol className="space-y-1.5 border-l-2 border-ink-100 pl-3 text-xs">
+          {(data ?? []).map((a: AdminAction) => (
+            <li key={a.id} className="flex flex-wrap items-center gap-x-2">
+              <span className="font-medium text-ink-700">{ACTION_LABEL[a.action] ?? a.action}</span>
+              {a.detail && <span className="text-ink-500">— {a.detail}</span>}
+              {a.adminName && <span className="text-ink-400">by {a.adminName}</span>}
+              <span className="ml-auto text-ink-400">{timeAgo(a.createdAt)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  suspend: 'Suspended',
+  reinstate: 'Reinstated',
+  warn: 'Warning sent',
+  message: 'Message sent',
+  verification_override: 'Verification override',
+  clear_override: 'Override cleared',
+};
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
