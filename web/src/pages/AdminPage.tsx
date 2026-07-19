@@ -4,8 +4,10 @@ import {
   BarChart3,
   Car,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock,
   ExternalLink,
   Flag,
@@ -20,6 +22,7 @@ import type {
   Dispute,
   Flag as FlagType,
   KycMetrics,
+  KycProfile,
   VerificationEvent,
   VerificationEventKind,
   VerificationReviewItem,
@@ -201,23 +204,23 @@ function OverviewTab({ kyc }: { kyc?: KycMetrics }) {
 // ---------------------------------------------------------------------------
 // Verification queue
 // ---------------------------------------------------------------------------
-const STATUS_FILTERS: { key: VerificationStatus | 'pending'; label: string }[] = [
-  { key: 'pending', label: 'Pending' },
-  { key: 'verified', label: 'Verified' },
-  { key: 'rejected', label: 'Rejected' },
+const SCOPE_FILTERS: { key: 'pending' | 'all'; label: string }[] = [
+  { key: 'pending', label: 'Needs review' },
+  { key: 'all', label: 'All' },
 ];
 
 const PAGE_SIZE = 20;
 
+/** KYC review queue — grouped by PERSON. Expand a person to review their docs. */
 function VerificationTab() {
-  const [status, setStatus] = useState<'pending' | 'verified' | 'rejected'>('pending');
+  const [scope, setScope] = useState<'pending' | 'all'>('pending');
   const [search, setSearch] = useState('');
   const [term, setTerm] = useState('');
   const [page, setPage] = useState(0);
 
   const query = useQuery({
-    queryKey: ['verifications', status, term, page],
-    queryFn: () => client.listVerifications({ status, search: term, page, pageSize: PAGE_SIZE }),
+    queryKey: ['verificationProfiles', scope, term, page],
+    queryFn: () => client.listVerificationProfiles({ scope, search: term, page, pageSize: PAGE_SIZE }),
     placeholderData: keepPreviousData,
   });
   const data = query.data;
@@ -226,17 +229,17 @@ function VerificationTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-lg border border-ink-200 p-0.5">
-          {STATUS_FILTERS.map((s) => (
+          {SCOPE_FILTERS.map((s) => (
             <button
               key={s.key}
               type="button"
               onClick={() => {
-                setStatus(s.key as 'pending' | 'verified' | 'rejected');
+                setScope(s.key);
                 setPage(0);
               }}
               className={cn(
                 'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                status === s.key ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800',
+                scope === s.key ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800',
               )}
             >
               {s.label}
@@ -266,12 +269,12 @@ function VerificationTab() {
           <Spinner size={24} />
         </div>
       ) : !data || data.items.length === 0 ? (
-        <Empty text={`No ${status} documents.`} />
+        <Empty text={scope === 'pending' ? 'Nobody is awaiting review.' : 'No one has uploaded documents.'} />
       ) : (
         <>
-          <div className="space-y-4">
-            {data.items.map((v) => (
-              <VerificationCard key={v.id} item={v} />
+          <div className="space-y-3">
+            {data.items.map((p) => (
+              <PersonCard key={p.id} person={p} />
             ))}
           </div>
           <Pagination
@@ -287,139 +290,211 @@ function VerificationTab() {
   );
 }
 
-/** One KYC document: preview the file, see history, then approve or reject. */
-function VerificationCard({ item }: { item: VerificationReviewItem }) {
-  const queryClient = useQueryClient();
-  const [rejecting, setRejecting] = useState(false);
-  const [note, setNote] = useState('');
-  const [showHistory, setShowHistory] = useState(false);
+const invalidateKyc = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['verificationProfiles'] });
+  qc.invalidateQueries({ queryKey: ['kycMetrics'] });
+  qc.invalidateQueries({ queryKey: ['kycEvents'] });
+  qc.invalidateQueries({ queryKey: ['adminStats'] });
+  qc.invalidateQueries({ queryKey: ['profileDocs'] });
+};
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['verifications'] });
-    queryClient.invalidateQueries({ queryKey: ['kycMetrics'] });
-    queryClient.invalidateQueries({ queryKey: ['kycEvents'] });
-    queryClient.invalidateQueries({ queryKey: ['adminStats'] });
-  };
-  const decide = useMutation({
-    mutationFn: (v: { status: 'verified' | 'rejected'; note?: string }) =>
-      client.reviewVerificationDocument(item.id, v.status, v.note),
-    onSuccess: invalidate,
-  });
-
-  async function openDocument() {
-    if (!item.storagePath) return;
-    const url = await client.getKycDocumentUrl(item.storagePath);
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
-
-  const meta = STATUS_META[item.status];
-
+/** One PERSON in the queue. Collapsed by default; expand to review their docs. */
+function PersonCard({ person }: { person: KycProfile }) {
+  const [open, setOpen] = useState(false);
+  const meta = STATUS_META[person.verification];
   return (
     <Card>
-      <CardHeader className="flex items-center gap-2">
-        <Avatar name={item.owner.fullName} src={item.owner.avatarUrl} size="sm" />
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+      >
+        <Avatar name={person.fullName} src={person.avatarUrl} size="sm" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-ink-900">{item.owner.fullName}</p>
-          <p className="truncate text-xs text-ink-400">{item.owner.email}</p>
+          <p className="truncate font-medium text-ink-900">{person.fullName}</p>
+          <p className="truncate text-xs text-ink-400">{person.email}</p>
         </div>
-        <Badge tone={meta.tone}>{DOC_TYPE_LABEL[item.type] ?? item.type}</Badge>
-      </CardHeader>
-      <CardBody className="space-y-3">
-        <div className="flex items-center justify-between gap-2 rounded-lg bg-ink-50 px-3 py-2 text-sm">
-          <span className="flex items-center gap-2 text-ink-700">
-            <ShieldCheck size={15} className="text-ink-400" />
-            <span className="truncate">{item.fileName ?? 'Document'}</span>
-          </span>
-          {item.storagePath ? (
-            <button
-              type="button"
-              onClick={openDocument}
-              className="inline-flex shrink-0 items-center gap-1 text-brand-700 hover:underline"
-            >
-              View <ExternalLink size={13} />
-            </button>
-          ) : (
-            <span className="text-xs text-ink-400">No file</span>
+        <div className="flex shrink-0 items-center gap-2">
+          {person.pendingCount > 0 && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+              {person.pendingCount} to review
+            </span>
           )}
+          <Badge tone={meta.tone}>
+            {person.verification}
+            {person.verificationOverride ? ' (override)' : ''}
+          </Badge>
+          {open ? <ChevronUp size={16} className="text-ink-400" /> : <ChevronDown size={16} className="text-ink-400" />}
         </div>
-
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-400">
-          {item.uploadedAt && <span>Uploaded {timeAgo(item.uploadedAt)}</span>}
-          {item.reviewedAt && <span>· Reviewed {timeAgo(item.reviewedAt)}</span>}
-          <button
-            type="button"
-            onClick={() => setShowHistory((s) => !s)}
-            className="text-brand-700 hover:underline"
-          >
-            {showHistory ? 'Hide history' : 'History'}
-          </button>
-        </div>
-
-        {item.status === 'rejected' && item.note && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{item.note}</p>
-        )}
-
-        {showHistory && <DocumentHistory profileId={item.owner.id} docType={item.type} />}
-
-        {item.status === 'pending' &&
-          (rejecting ? (
-            <div className="space-y-2">
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={2}
-                placeholder="Reason shown to the applicant (e.g. photo is blurry)…"
-                className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="danger"
-                  size="sm"
-                  disabled={decide.isPending || !note.trim()}
-                  onClick={() => decide.mutate({ status: 'rejected', note: note.trim() })}
-                >
-                  Confirm rejection
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setRejecting(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ status: 'verified' })}>
-                Approve
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setRejecting(true)}>
-                Reject
-              </Button>
-            </div>
-          ))}
-      </CardBody>
+      </button>
+      {open && <PersonReview person={person} />}
     </Card>
   );
 }
 
-/** Inline per-document event history, loaded on demand. */
-function DocumentHistory({ profileId, docType }: { profileId: string; docType: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['kycEvents', profileId],
-    queryFn: () => client.listKycEvents({ profileId, pageSize: 50 }),
+/** Expanded review area: the person's documents + a profile-level override. */
+function PersonReview({ person }: { person: KycProfile }) {
+  const queryClient = useQueryClient();
+  const { data: docs, isLoading } = useQuery({
+    queryKey: ['profileDocs', person.id],
+    queryFn: () => client.listVerificationsForProfile(person.id),
   });
-  if (isLoading) return <Spinner size={16} />;
-  const events = (data?.items ?? []).filter((e) => e.docType === docType);
-  if (events.length === 0) return <p className="text-xs text-ink-400">No history.</p>;
+
+  const override = useMutation({
+    mutationFn: (v: { status: VerificationStatus }) =>
+      client.overrideProfileVerification(person.id, v.status),
+    onSuccess: () => invalidateKyc(queryClient),
+  });
+  const clearOverride = useMutation({
+    mutationFn: () => client.clearVerificationOverride(person.id),
+    onSuccess: () => invalidateKyc(queryClient),
+  });
+
   return (
-    <ol className="space-y-1.5 border-l-2 border-ink-100 pl-3 text-xs">
-      {events.map((e) => (
-        <li key={e.id} className="flex items-center gap-2">
-          <EventDot kind={e.event} />
-          <span className="font-medium text-ink-700">{EVENT_LABEL[e.event]}</span>
-          {e.actorName && <span className="text-ink-400">by {e.actorName}</span>}
-          <span className="ml-auto text-ink-400">{timeAgo(e.createdAt)}</span>
-        </li>
-      ))}
-    </ol>
+    <div className="space-y-3 border-t border-ink-100 px-4 py-3">
+      {isLoading ? (
+        <Spinner size={18} />
+      ) : (
+        (docs ?? []).map((d) => <DocumentRow key={d.id} doc={d} />)
+      )}
+
+      <div className="rounded-lg bg-ink-50 px-3 py-2.5">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
+          Override overall status
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            disabled={override.isPending}
+            onClick={() => override.mutate({ status: 'verified' })}
+          >
+            Force verified
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={override.isPending}
+            onClick={() => override.mutate({ status: 'rejected' })}
+          >
+            Force rejected
+          </Button>
+          {person.verificationOverride && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={clearOverride.isPending}
+              onClick={() => clearOverride.mutate()}
+            >
+              Clear override
+            </Button>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-ink-400">
+          An override sticks — it won’t be recomputed when the user changes documents.
+          {person.verificationOverride ? ' This user is currently overridden.' : ''}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** One document row inside a person's review: view + approve/reject at any status. */
+function DocumentRow({ doc }: { doc: VerificationReviewItem }) {
+  const queryClient = useQueryClient();
+  const [rejecting, setRejecting] = useState(false);
+  const [note, setNote] = useState('');
+  const decide = useMutation({
+    mutationFn: (v: { status: 'verified' | 'rejected'; note?: string }) =>
+      client.reviewVerificationDocument(doc.id, v.status, v.note),
+    onSuccess: () => {
+      invalidateKyc(queryClient);
+      setRejecting(false);
+      setNote('');
+    },
+  });
+
+  async function openDocument() {
+    if (!doc.storagePath) return;
+    const url = await client.getKycDocumentUrl(doc.storagePath);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  const meta = STATUS_META[doc.status];
+
+  return (
+    <div className="rounded-lg border border-ink-200 p-3">
+      <div className="flex items-center gap-2">
+        <span className="flex-1 truncate text-sm font-medium text-ink-800">
+          {DOC_TYPE_LABEL[doc.type] ?? doc.type}
+        </span>
+        <Badge tone={meta.tone}>{doc.status}</Badge>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-ink-50 px-3 py-2 text-sm">
+        <span className="flex min-w-0 items-center gap-2 text-ink-700">
+          <ShieldCheck size={15} className="shrink-0 text-ink-400" />
+          <span className="truncate">{doc.fileName ?? 'Document'}</span>
+        </span>
+        {doc.storagePath ? (
+          <button
+            type="button"
+            onClick={openDocument}
+            className="inline-flex shrink-0 items-center gap-1 text-brand-700 hover:underline"
+          >
+            View <ExternalLink size={13} />
+          </button>
+        ) : (
+          <span className="shrink-0 text-xs text-ink-400">No file (legacy)</span>
+        )}
+      </div>
+
+      <p className="mt-1.5 text-xs text-ink-400">
+        {doc.uploadedAt && <>Uploaded {timeAgo(doc.uploadedAt)}</>}
+        {doc.reviewedAt && <> · Reviewed {timeAgo(doc.reviewedAt)}</>}
+      </p>
+
+      {doc.status === 'rejected' && doc.note && (
+        <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{doc.note}</p>
+      )}
+
+      {rejecting ? (
+        <div className="mt-2 space-y-2">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="Reason shown to the applicant (e.g. photo is blurry)…"
+            className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={decide.isPending || !note.trim()}
+              onClick={() => decide.mutate({ status: 'rejected', note: note.trim() })}
+            >
+              Confirm rejection
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setRejecting(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {doc.status !== 'verified' && (
+            <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ status: 'verified' })}>
+              Approve
+            </Button>
+          )}
+          {doc.status !== 'rejected' && (
+            <Button variant="outline" size="sm" onClick={() => setRejecting(true)}>
+              Reject
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -474,7 +549,10 @@ function ActivityRow({ event }: { event: VerificationEvent }) {
       <div className="min-w-0 flex-1">
         <p className="text-ink-800">
           <span className="font-medium">{event.owner?.fullName ?? event.profileId}</span>
-          <span className="text-ink-500"> · {DOC_TYPE_LABEL[event.docType] ?? event.docType}</span>
+          <span className="text-ink-500">
+            {' · '}
+            {event.docType ? DOC_TYPE_LABEL[event.docType] ?? event.docType : 'Overall status'}
+          </span>
         </p>
         <p className="text-xs text-ink-400">
           {EVENT_LABEL[event.event]}
@@ -492,6 +570,7 @@ const EVENT_LABEL: Record<VerificationEventKind, string> = {
   resubmitted: 'Resubmitted',
   approved: 'Approved',
   rejected: 'Rejected',
+  override: 'Admin override',
   updated: 'Updated',
 };
 
@@ -500,6 +579,7 @@ const EVENT_TONE: Record<VerificationEventKind, string> = {
   resubmitted: 'bg-amber-400',
   approved: 'bg-emerald-500',
   rejected: 'bg-red-500',
+  override: 'bg-brand-500',
   updated: 'bg-ink-300',
 };
 

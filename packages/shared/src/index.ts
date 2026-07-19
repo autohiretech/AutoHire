@@ -60,13 +60,15 @@ export type VerificationEventKind =
   | 'resubmitted'
   | 'approved'
   | 'rejected'
+  | 'override'
   | 'updated';
 
 export interface VerificationEvent {
   id: number;
-  documentId: ID;
+  /** Null for profile-level events such as an admin override. */
+  documentId?: ID;
   profileId: ID;
-  docType: VerificationDocType;
+  docType?: VerificationDocType;
   event: VerificationEventKind;
   status: VerificationStatus;
   actorId?: ID;
@@ -75,6 +77,14 @@ export interface VerificationEvent {
   /** Filled in by the client for display. */
   owner?: KycOwner;
   actorName?: string;
+}
+
+/** One person in the grouped KYC review queue, with document counts. */
+export interface KycProfile extends KycOwner {
+  verification: VerificationStatus;
+  verificationOverride: boolean;
+  pendingCount: number;
+  docCount: number;
 }
 
 /** Aggregate KYC counts for the admin overview. */
