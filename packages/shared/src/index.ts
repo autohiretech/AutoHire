@@ -103,6 +103,22 @@ export interface Page<T> {
   total: number;
 }
 
+/** A user row in the admin user directory. */
+export interface AdminUser {
+  id: ID;
+  fullName: string;
+  email: string;
+  phone?: string;
+  avatarUrl?: string;
+  role: UserRole;
+  ownerType?: OwnerType;
+  verification: VerificationStatus;
+  suspended: boolean;
+  joinedAt?: string; // ISO date
+  listingCount: number;
+  bookingCount: number;
+}
+
 /** Platform electric-car quota snapshot (cars only; machinery is exempt). */
 export interface ElectricQuota {
   minPercent: number;

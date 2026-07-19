@@ -23,6 +23,7 @@ import type {
   KycProfile,
   Page,
   ElectricQuota,
+  AdminUser,
 } from '@autohire/shared';
 import {
   type CreateListingInput,
@@ -973,6 +974,47 @@ export const supabaseClient = {
   /** Set the minimum electric-car percentage (admin only). */
   async setElectricMinPercent(percent: number): Promise<void> {
     await run(sb().rpc('admin_set_electric_min_percent', { p_pct: percent }));
+  },
+  /** Paginated, searchable user directory (admin only). */
+  async listUsers(opts: { search?: string; page?: number; pageSize?: number } = {}): Promise<
+    Page<AdminUser>
+  > {
+    const page = opts.page ?? 0;
+    const pageSize = opts.pageSize ?? 20;
+    const rows = (await run(
+      sb().rpc('admin_list_users', {
+        p_search: opts.search?.trim() ?? '',
+        p_limit: pageSize,
+        p_offset: page * pageSize,
+      }),
+    )) as Record<string, unknown>[] | null;
+    const list = rows ?? [];
+    const total = list.length ? Number(list[0].total_count ?? 0) : 0;
+    const items: AdminUser[] = list.map((r) => ({
+      id: r.id as string,
+      fullName: r.full_name as string,
+      email: r.email as string,
+      phone: (r.phone as string) ?? undefined,
+      avatarUrl: (r.avatar_url as string) ?? undefined,
+      role: r.role as AdminUser['role'],
+      ownerType: (r.owner_type as AdminUser['ownerType']) ?? undefined,
+      verification: r.verification as AdminUser['verification'],
+      suspended: Boolean(r.suspended),
+      joinedAt: (r.joined_at as string) ?? undefined,
+      listingCount: Number(r.listing_count ?? 0),
+      bookingCount: Number(r.booking_count ?? 0),
+    }));
+    return { items, total };
+  },
+  /** Suspend or reinstate a user (admin only). */
+  async setUserSuspended(profileId: string, suspended: boolean): Promise<void> {
+    await run(sb().rpc('admin_set_suspended', { p_profile_id: profileId, p_suspended: suspended }));
+  },
+  /** Send a message (delivered as a notification) to a user (admin only). */
+  async sendUserMessage(profileId: string, title: string, body: string): Promise<void> {
+    await run(
+      sb().rpc('admin_send_message', { p_profile_id: profileId, p_title: title, p_body: body }),
+    );
   },
   /**
    * KYC activity feed — every submit/approve/reject, newest first, paginated.

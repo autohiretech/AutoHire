@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
+  Ban,
   BarChart3,
   Car,
   CheckCircle2,
@@ -14,12 +15,14 @@ import {
   RefreshCw,
   Scale,
   Search,
+  Send,
   ShieldCheck,
   User,
   XCircle,
   Zap,
 } from 'lucide-react';
 import type {
+  AdminUser,
   Dispute,
   Flag as FlagType,
   KycMetrics,
@@ -32,7 +35,7 @@ import type {
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
-import { formatRwf, timeAgo } from '@/lib/format';
+import { formatDate, formatRwf, timeAgo } from '@/lib/format';
 import {
   DISPUTE_STATUS_META,
   FLAG_REASON_LABEL,
@@ -40,7 +43,7 @@ import {
 } from '@/lib/admin';
 import { Avatar, Badge, Button, Card, CardBody, CardHeader, Spinner } from '@/components/ui';
 
-type Tab = 'overview' | 'verification' | 'activity' | 'moderation' | 'disputes';
+type Tab = 'overview' | 'users' | 'verification' | 'activity' | 'moderation' | 'disputes';
 
 const DOC_TYPE_LABEL: Record<string, string> = {
   drivers_license: "Driver's license",
@@ -77,6 +80,7 @@ export function AdminPage() {
 
   const tabs: { key: Tab; label: string; badge?: number }[] = [
     { key: 'overview', label: 'Overview' },
+    { key: 'users', label: 'Users' },
     { key: 'verification', label: 'Verification', badge: kycQuery.data?.pendingDocs || undefined },
     { key: 'activity', label: 'KYC activity' },
     { key: 'moderation', label: 'Moderation', badge: openFlags || undefined },
@@ -115,6 +119,7 @@ export function AdminPage() {
 
       <div className="mt-6">
         {tab === 'overview' && <OverviewTab kyc={kycQuery.data} />}
+        {tab === 'users' && <UsersTab />}
         {tab === 'verification' && <VerificationTab />}
         {tab === 'activity' && <ActivityTab />}
         {tab === 'moderation' && (
@@ -282,6 +287,190 @@ function ElectricQuotaCard() {
         </div>
       </CardBody>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+const VERIF_TONE: Record<VerificationStatus, 'success' | 'warning' | 'danger' | 'neutral'> = {
+  verified: 'success',
+  pending: 'warning',
+  rejected: 'danger',
+  unverified: 'neutral',
+};
+
+function UsersTab() {
+  const [search, setSearch] = useState('');
+  const [term, setTerm] = useState('');
+  const [page, setPage] = useState(0);
+
+  const query = useQuery({
+    queryKey: ['adminUsers', term, page],
+    queryFn: () => client.listUsers({ search: term, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData,
+  });
+  const data = query.data;
+
+  return (
+    <div className="space-y-4">
+      <form
+        className="relative"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setTerm(search);
+          setPage(0);
+        }}
+      >
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search users by name or email…"
+          className="w-full rounded-lg border border-ink-200 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none"
+        />
+      </form>
+
+      {query.isLoading ? (
+        <div className="flex justify-center py-16">
+          <Spinner size={24} />
+        </div>
+      ) : !data || data.items.length === 0 ? (
+        <Empty text="No users found." />
+      ) : (
+        <>
+          <div className="space-y-3">
+            {data.items.map((u) => (
+              <UserCard key={u.id} user={u} />
+            ))}
+          </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} busy={query.isFetching} />
+        </>
+      )}
+    </div>
+  );
+}
+
+const ROLE_LABEL: Record<string, string> = { renter: 'Renter', owner: 'Host', admin: 'Admin' };
+
+function UserCard({ user }: { user: AdminUser }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [messaging, setMessaging] = useState(false);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+  const suspend = useMutation({
+    mutationFn: (next: boolean) => client.setUserSuspended(user.id, next),
+    onSuccess: invalidate,
+  });
+  const message = useMutation({
+    mutationFn: () => client.sendUserMessage(user.id, title, body),
+    onSuccess: () => {
+      setMessaging(false);
+      setTitle('');
+      setBody('');
+    },
+  });
+
+  return (
+    <Card className={cn(user.suspended && 'border-red-200 bg-red-50/40')}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+      >
+        <Avatar name={user.fullName} src={user.avatarUrl} size="sm" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-ink-900">{user.fullName}</p>
+          <p className="truncate text-xs text-ink-400">{user.email}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {user.suspended && <Badge tone="danger">Suspended</Badge>}
+          <span className="hidden rounded-full bg-ink-100 px-2 py-0.5 text-xs font-medium text-ink-600 sm:inline">
+            {ROLE_LABEL[user.role] ?? user.role}
+          </span>
+          <Badge tone={VERIF_TONE[user.verification]}>{user.verification}</Badge>
+          {open ? <ChevronUp size={16} className="text-ink-400" /> : <ChevronDown size={16} className="text-ink-400" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="space-y-3 border-t border-ink-100 px-4 py-3">
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <Detail label="Phone" value={user.phone || '—'} />
+            <Detail label="Joined" value={user.joinedAt ? formatDate(user.joinedAt) : '—'} />
+            <Detail label="Listings" value={`${user.listingCount}`} />
+            <Detail label="Bookings" value={`${user.bookingCount}`} />
+          </dl>
+
+          {messaging ? (
+            <div className="space-y-2 rounded-lg bg-ink-50 p-3">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Subject (optional)"
+                className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+              />
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={3}
+                placeholder="Message to this user…"
+                className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+              />
+              {message.isError && (
+                <p className="text-sm text-red-600">
+                  {message.error instanceof Error ? message.error.message : 'Could not send.'}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" disabled={message.isPending || !body.trim()} onClick={() => message.mutate()}>
+                  {message.isPending ? 'Sending…' : 'Send message'}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setMessaging(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => setMessaging(true)}>
+                <Send size={14} /> Message
+              </Button>
+              {user.suspended ? (
+                <Button size="sm" disabled={suspend.isPending} onClick={() => suspend.mutate(false)}>
+                  Reinstate
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={suspend.isPending || user.role === 'admin'}
+                  onClick={() => suspend.mutate(true)}
+                >
+                  <Ban size={14} /> Suspend
+                </Button>
+              )}
+              {message.isSuccess && <span className="self-center text-xs text-brand-700">Message sent ✓</span>}
+            </div>
+          )}
+          {user.role === 'admin' && !user.suspended && (
+            <p className="text-xs text-ink-400">Admins can’t be suspended from here.</p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-ink-500">{label}</dt>
+      <dd className="font-medium text-ink-800">{value}</dd>
+    </div>
   );
 }
 
