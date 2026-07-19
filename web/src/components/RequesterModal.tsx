@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { FileText, ShieldCheck, Star } from 'lucide-react';
+import { ShieldCheck, Star } from 'lucide-react';
 import { client } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import { Avatar, Badge, Button, Modal, Spinner } from '@/components/ui';
@@ -12,9 +12,10 @@ export const VERIF_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neut
 };
 
 /**
- * Review a requester (profile + verification documents) before deciding on their
- * booking. Used by hosts — individuals and companies alike — wherever a pending
- * request is acted on (dashboard and car detail).
+ * Review a requester before deciding on their booking. Used by hosts —
+ * individuals and companies alike — wherever a pending request is acted on
+ * (dashboard and car detail). Hosts see the platform's verification decision,
+ * not the renter's raw ID documents (those stay private to the renter + admins).
  */
 export function RequesterModal({
   open,
@@ -34,13 +35,7 @@ export function RequesterModal({
     queryFn: () => client.getProfile(renterId),
     enabled: open,
   });
-  const docsQuery = useQuery({
-    queryKey: ['verificationDocs', renterId],
-    queryFn: () => client.listVerificationDocumentsFor(renterId),
-    enabled: open,
-  });
   const p = profileQuery.data;
-  const docs = docsQuery.data ?? [];
 
   return (
     <Modal open={open} onClose={onClose} title="Review requester">
@@ -83,29 +78,17 @@ export function RequesterModal({
             </div>
           </dl>
 
-          <div>
-            <p className="mb-1.5 text-sm font-medium text-ink-700">Documents</p>
-            {docsQuery.isLoading ? (
-              <Spinner size={18} />
-            ) : docs.length === 0 ? (
-              <p className="text-sm text-ink-500">No documents uploaded.</p>
-            ) : (
-              <ul className="space-y-2">
-                {docs.map((d) => (
-                  <li
-                    key={d.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-ink-200 px-3 py-2 text-sm"
-                  >
-                    <span className="flex items-center gap-2 text-ink-800">
-                      <FileText size={15} className="text-ink-400" />
-                      <span className="capitalize">{String(d.type).replace(/_/g, ' ')}</span>
-                      {d.fileName && <span className="text-xs text-ink-400">· {d.fileName}</span>}
-                    </span>
-                    <Badge tone={VERIF_TONE[d.status] ?? 'neutral'}>{d.status}</Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="rounded-lg border border-ink-200 px-3 py-2.5 text-sm">
+            <p className="font-medium text-ink-700">Identity verification</p>
+            <p className="mt-0.5 text-ink-500">
+              {p.verification === 'verified'
+                ? 'AutoHire has verified this renter’s identity documents.'
+                : p.verification === 'pending'
+                  ? 'Documents submitted — verification is still in review.'
+                  : p.verification === 'rejected'
+                    ? 'Verification was not passed. Consider declining or requesting resubmission.'
+                    : 'This renter has not completed identity verification yet.'}
+            </p>
           </div>
 
           <div className="flex justify-end gap-2 border-t border-ink-100 pt-3">

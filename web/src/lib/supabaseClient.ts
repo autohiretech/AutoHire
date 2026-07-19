@@ -15,6 +15,7 @@ import type {
   UserProfile,
   VerificationDocType,
   VerificationDocument,
+  VerificationReviewItem,
 } from '@autohire/shared';
 import {
   type CreateListingInput,
@@ -809,25 +810,42 @@ export const supabaseClient = {
       await run(sb().from('verification_documents').select('*').eq('profile_id', me())),
     );
   },
+  /**
+   * Upload a real KYC document to the private `kyc-documents` bucket and record
+   * it for review. Stores the storage path (not a public URL) — admins view it
+   * through a short-lived signed URL. Re-uploading a type replaces the file and
+   * resets it to pending.
+   */
   async uploadVerificationDocument(
     type: VerificationDocType,
-    fileName: string,
+    file: File,
   ): Promise<VerificationDocument> {
+    const uid = me();
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+    const path = `${uid}/${type}-${Date.now()}.${ext}`;
+    const { error: upErr } = await sb()
+      .storage.from('kyc-documents')
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (upErr) throw new Error(upErr.message);
+
     const existing = await run(
       sb()
         .from('verification_documents')
-        .select('id')
-        .eq('profile_id', me())
+        .select('id, storage_path')
+        .eq('profile_id', uid)
         .eq('type', type)
         .maybeSingle(),
     );
     const fields = {
-      profile_id: me(),
+      profile_id: uid,
       type,
       status: 'pending' as const,
-      file_name: fileName,
+      file_name: file.name,
+      storage_path: path,
       uploaded_at: new Date().toISOString().slice(0, 10),
       note: null,
+      reviewed_by: null,
+      reviewed_at: null,
       extracted: null,
     };
     const row = existing
@@ -839,10 +857,59 @@ export const supabaseClient = {
             .select('*')
             .single(),
         );
+    // Best-effort cleanup of the file this one replaced.
+    const oldPath = (existing as { storage_path?: string } | null)?.storage_path;
+    if (oldPath && oldPath !== path) {
+      await sb().storage.from('kyc-documents').remove([oldPath]);
+    }
     return mapRow<VerificationDocument>(row) as VerificationDocument;
   },
 
   // --- Admin -------------------------------------------------------------
+  /** Documents awaiting manual review, each with its owner (admin-only via RLS). */
+  async listPendingVerifications(): Promise<VerificationReviewItem[]> {
+    const rows = await run(
+      sb()
+        .from('verification_documents')
+        .select('*, owner:profiles!verification_documents_profile_id_fkey(id, full_name, email, avatar_url, role, owner_type)')
+        .eq('status', 'pending')
+        .order('uploaded_at', { ascending: true }),
+    );
+    return (rows as Record<string, unknown>[] ?? []).map((r) => {
+      const owner = mapRow<VerificationReviewItem['owner']>(r.owner as Record<string, unknown>);
+      const doc = mapRow<VerificationReviewItem>({ ...r, owner: undefined });
+      return { ...(doc as VerificationReviewItem), owner: owner as VerificationReviewItem['owner'] };
+    });
+  },
+  /** Approve or reject a document; the DB trigger re-derives profiles.verification. */
+  async reviewVerificationDocument(
+    id: string,
+    status: 'verified' | 'rejected',
+    note?: string,
+  ): Promise<VerificationDocument> {
+    const row = await run(
+      sb()
+        .from('verification_documents')
+        .update({
+          status,
+          note: note ?? null,
+          reviewed_by: me(),
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select('*')
+        .single(),
+    );
+    return mapRow<VerificationDocument>(row) as VerificationDocument;
+  },
+  /** Short-lived signed URL to view a KYC document (admin reads the private bucket). */
+  async getKycDocumentUrl(storagePath: string): Promise<string> {
+    const { data, error } = await sb()
+      .storage.from('kyc-documents')
+      .createSignedUrl(storagePath, 300);
+    if (error) throw new Error(error.message);
+    return data.signedUrl;
+  },
   async listFlags(): Promise<Flag[]> {
     return mapRows<Flag>(await run(sb().from('flags').select('*').order('created_at', { ascending: false })));
   },

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, Car, Flag, Scale, User } from 'lucide-react';
-import type { Dispute, Flag as FlagType } from '@autohire/shared';
+import { BarChart3, Car, ExternalLink, Flag, Scale, ShieldCheck, User } from 'lucide-react';
+import type { Dispute, Flag as FlagType, VerificationReviewItem } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
@@ -11,9 +11,9 @@ import {
   FLAG_REASON_LABEL,
   MODERATION_STATUS_META,
 } from '@/lib/admin';
-import { Badge, Button, Card, CardBody, CardHeader, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, CardHeader, Spinner } from '@/components/ui';
 
-type Tab = 'moderation' | 'disputes' | 'reporting';
+type Tab = 'moderation' | 'verification' | 'disputes' | 'reporting';
 
 /** A9 — Admin panel: moderation queue, dispute resolution, and reporting. */
 export function AdminPage() {
@@ -25,10 +25,15 @@ export function AdminPage() {
     queryKey: ['disputes'],
     queryFn: () => client.listDisputes(),
   });
+  const verificationsQuery = useQuery({
+    queryKey: ['pendingVerifications'],
+    queryFn: () => client.listPendingVerifications(),
+  });
   const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => client.listHosts() });
 
   const flags = flagsQuery.data ?? [];
   const disputes = disputesQuery.data ?? [];
+  const verifications = verificationsQuery.data ?? [];
   const hostsById = new Map((hostsQuery.data ?? []).map((h) => [h.id, h]));
 
   function nameOf(id: string): string {
@@ -44,6 +49,7 @@ export function AdminPage() {
 
   const tabs: { key: Tab; label: string; badge?: number }[] = [
     { key: 'moderation', label: 'Moderation', badge: openFlags || undefined },
+    { key: 'verification', label: 'Verification', badge: verifications.length || undefined },
     { key: 'disputes', label: 'Disputes', badge: openDisputes || undefined },
     { key: 'reporting', label: 'Reporting' },
   ];
@@ -91,6 +97,20 @@ export function AdminPage() {
           </TabState>
         )}
 
+        {tab === 'verification' && (
+          <TabState query={verificationsQuery}>
+            {verifications.length === 0 ? (
+              <Empty text="No documents awaiting review." />
+            ) : (
+              <div className="space-y-4">
+                {verifications.map((v) => (
+                  <VerificationCard key={v.id} item={v} />
+                ))}
+              </div>
+            )}
+          </TabState>
+        )}
+
         {tab === 'disputes' && (
           <TabState query={disputesQuery}>
             {disputes.length === 0 ? (
@@ -131,6 +151,110 @@ function Empty({ text }: { text: string }) {
   return (
     <Card>
       <CardBody className="py-12 text-center text-sm text-ink-500">{text}</CardBody>
+    </Card>
+  );
+}
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  drivers_license: "Driver's license",
+  national_id: 'National ID / passport',
+  vehicle_registration: 'Vehicle registration',
+  insurance_certificate: 'Proof of insurance',
+  business_registration: 'Business registration',
+};
+
+/** One pending KYC document: preview the file, then approve or reject with a reason. */
+function VerificationCard({ item }: { item: VerificationReviewItem }) {
+  const queryClient = useQueryClient();
+  const [rejecting, setRejecting] = useState(false);
+  const [note, setNote] = useState('');
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['pendingVerifications'] });
+    queryClient.invalidateQueries({ queryKey: ['adminStats'] });
+  };
+  const decide = useMutation({
+    mutationFn: (v: { status: 'verified' | 'rejected'; note?: string }) =>
+      client.reviewVerificationDocument(item.id, v.status, v.note),
+    onSuccess: invalidate,
+  });
+
+  async function openDocument() {
+    if (!item.storagePath) return;
+    const url = await client.getKycDocumentUrl(item.storagePath);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex items-center gap-2">
+        <Avatar name={item.owner.fullName} src={item.owner.avatarUrl} size="sm" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-ink-900">{item.owner.fullName}</p>
+          <p className="truncate text-xs text-ink-400">{item.owner.email}</p>
+        </div>
+        <Badge tone="warning">{DOC_TYPE_LABEL[item.type] ?? item.type}</Badge>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-ink-50 px-3 py-2 text-sm">
+          <span className="flex items-center gap-2 text-ink-700">
+            <ShieldCheck size={15} className="text-ink-400" />
+            <span className="truncate">{item.fileName ?? 'Document'}</span>
+          </span>
+          {item.storagePath ? (
+            <button
+              type="button"
+              onClick={openDocument}
+              className="inline-flex shrink-0 items-center gap-1 text-brand-700 hover:underline"
+            >
+              View <ExternalLink size={13} />
+            </button>
+          ) : (
+            <span className="text-xs text-ink-400">No file</span>
+          )}
+        </div>
+        {item.uploadedAt && (
+          <p className="text-xs text-ink-400">Uploaded {timeAgo(item.uploadedAt)}</p>
+        )}
+
+        {rejecting ? (
+          <div className="space-y-2">
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              placeholder="Reason shown to the applicant (e.g. photo is blurry)…"
+              className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={decide.isPending || !note.trim()}
+                onClick={() => decide.mutate({ status: 'rejected', note: note.trim() })}
+              >
+                Confirm rejection
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setRejecting(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              disabled={decide.isPending}
+              onClick={() => decide.mutate({ status: 'verified' })}
+            >
+              Approve
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setRejecting(true)}>
+              Reject
+            </Button>
+          </div>
+        )}
+      </CardBody>
     </Card>
   );
 }

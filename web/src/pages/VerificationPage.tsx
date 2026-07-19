@@ -104,8 +104,11 @@ function DocCard({ config, doc }: { config: DocConfig; doc?: VerificationDocumen
   const meta = VERIFICATION_STATUS_META[status];
 
   const mutation = useMutation({
-    mutationFn: (fileName: string) => client.uploadVerificationDocument(config.type, fileName),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['verificationDocuments'] }),
+    mutationFn: (file: File) => client.uploadVerificationDocument(config.type, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['verificationDocuments'] });
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+    },
   });
 
   return (
@@ -143,7 +146,7 @@ function DocCard({ config, doc }: { config: DocConfig; doc?: VerificationDocumen
 
         {status === 'pending' && !doc?.extracted && (
           <p className="flex items-center gap-1.5 text-sm text-orange-700">
-            <ScanLine size={15} /> Scanning document (OCR)…
+            <ScanLine size={15} /> Uploaded — awaiting review.
           </p>
         )}
 
@@ -158,7 +161,7 @@ function DocCard({ config, doc }: { config: DocConfig; doc?: VerificationDocumen
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) mutation.mutate(file.name);
+            if (file) mutation.mutate(file);
             e.target.value = '';
           }}
         />
