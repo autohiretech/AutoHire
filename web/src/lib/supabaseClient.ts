@@ -15,6 +15,11 @@ import type {
   UserProfile,
   VerificationDocType,
   VerificationDocument,
+  VerificationReviewItem,
+  VerificationEvent,
+  KycMetrics,
+  KycOwner,
+  Page,
 } from '@autohire/shared';
 import {
   type CreateListingInput,
@@ -809,25 +814,42 @@ export const supabaseClient = {
       await run(sb().from('verification_documents').select('*').eq('profile_id', me())),
     );
   },
+  /**
+   * Upload a real KYC document to the private `kyc-documents` bucket and record
+   * it for review. Stores the storage path (not a public URL) — admins view it
+   * through a short-lived signed URL. Re-uploading a type replaces the file and
+   * resets it to pending.
+   */
   async uploadVerificationDocument(
     type: VerificationDocType,
-    fileName: string,
+    file: File,
   ): Promise<VerificationDocument> {
+    const uid = me();
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+    const path = `${uid}/${type}-${Date.now()}.${ext}`;
+    const { error: upErr } = await sb()
+      .storage.from('kyc-documents')
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (upErr) throw new Error(upErr.message);
+
     const existing = await run(
       sb()
         .from('verification_documents')
-        .select('id')
-        .eq('profile_id', me())
+        .select('id, storage_path')
+        .eq('profile_id', uid)
         .eq('type', type)
         .maybeSingle(),
     );
     const fields = {
-      profile_id: me(),
+      profile_id: uid,
       type,
       status: 'pending' as const,
-      file_name: fileName,
+      file_name: file.name,
+      storage_path: path,
       uploaded_at: new Date().toISOString().slice(0, 10),
       note: null,
+      reviewed_by: null,
+      reviewed_at: null,
       extracted: null,
     };
     const row = existing
@@ -839,10 +861,147 @@ export const supabaseClient = {
             .select('*')
             .single(),
         );
+    // Best-effort cleanup of the file this one replaced.
+    const oldPath = (existing as { storage_path?: string } | null)?.storage_path;
+    if (oldPath && oldPath !== path) {
+      await sb().storage.from('kyc-documents').remove([oldPath]);
+    }
     return mapRow<VerificationDocument>(row) as VerificationDocument;
   },
 
   // --- Admin -------------------------------------------------------------
+  /**
+   * KYC documents for the review queue — paginated + filterable by status and a
+   * free-text search over the owner's name/email. Admin-only via RLS.
+   */
+  async listVerifications(opts: {
+    status?: 'pending' | 'verified' | 'rejected';
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  } = {}): Promise<Page<VerificationReviewItem>> {
+    const page = opts.page ?? 0;
+    const pageSize = opts.pageSize ?? 20;
+    let q = sb()
+      .from('verification_documents')
+      .select(
+        '*, owner:profiles!verification_documents_profile_id_fkey!inner(id, full_name, email, avatar_url, role, owner_type)',
+        { count: 'exact' },
+      );
+    if (opts.status) q = q.eq('status', opts.status);
+    if (opts.search?.trim()) {
+      const t = `%${opts.search.trim()}%`;
+      q = q.or(`full_name.ilike.${t},email.ilike.${t}`, {
+        referencedTable: 'owner',
+      });
+    }
+    const from = page * pageSize;
+    const { data, error, count } = await q
+      .order('uploaded_at', { ascending: opts.status === 'pending' })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const items = (data as Record<string, unknown>[] ?? []).map((r) => {
+      const owner = mapRow<VerificationReviewItem['owner']>(r.owner as Record<string, unknown>);
+      const doc = mapRow<VerificationReviewItem>({ ...r, owner: undefined });
+      return { ...(doc as VerificationReviewItem), owner: owner as VerificationReviewItem['owner'] };
+    });
+    return { items, total: count ?? 0 };
+  },
+  /**
+   * KYC activity feed — every submit/approve/reject, newest first, paginated.
+   * verification_events has no FK to profiles (history outlives a deleted
+   * profile), so owner + actor names are resolved in one batch lookup here.
+   */
+  async listKycEvents(opts: { profileId?: string; page?: number; pageSize?: number } = {}): Promise<
+    Page<VerificationEvent>
+  > {
+    const page = opts.page ?? 0;
+    const pageSize = opts.pageSize ?? 30;
+    let q = sb().from('verification_events').select('*', { count: 'exact' });
+    if (opts.profileId) q = q.eq('profile_id', opts.profileId);
+    const from = page * pageSize;
+    const { data, error, count } = await q
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data as Record<string, unknown>[]) ?? [];
+    const ids = [
+      ...new Set(
+        rows.flatMap((r) => [r.profile_id, r.actor_id]).filter(Boolean) as string[],
+      ),
+    ];
+    const profiles = ids.length ? await this.getProfilesByIds(ids) : {};
+    const toOwner = (p?: UserProfile & Partial<Host>): KycOwner | undefined =>
+      p && {
+        id: p.id,
+        fullName: p.fullName,
+        email: p.email,
+        avatarUrl: p.avatarUrl,
+        role: p.role,
+        ownerType: p.ownerType,
+      };
+    const items = rows.map((r) => {
+      const ev = mapRow<VerificationEvent>(r) as VerificationEvent;
+      return {
+        ...ev,
+        owner: toOwner(profiles[ev.profileId]),
+        actorName: ev.actorId ? profiles[ev.actorId]?.fullName : undefined,
+      };
+    });
+    return { items, total: count ?? 0 };
+  },
+  /** Aggregate KYC counts for the admin overview (cheap head/count queries). */
+  async getKycMetrics(): Promise<KycMetrics> {
+    const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const countOf = (
+      builder: PromiseLike<{ count: number | null; error: { message: string } | null }>,
+    ) => builder.then(({ count }) => count ?? 0);
+    const [pendingDocs, verified, pending, rejected, unverified, decisions7d] = await Promise.all([
+      countOf(sb().from('verification_documents').select('id', { count: 'exact', head: true }).eq('status', 'pending')),
+      countOf(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('verification', 'verified')),
+      countOf(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('verification', 'pending')),
+      countOf(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('verification', 'rejected')),
+      countOf(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('verification', 'unverified')),
+      countOf(sb().from('verification_events').select('id', { count: 'exact', head: true }).in('event', ['approved', 'rejected']).gte('created_at', weekAgo)),
+    ]);
+    return {
+      pendingDocs,
+      verifiedUsers: verified,
+      pendingUsers: pending,
+      rejectedUsers: rejected,
+      unverifiedUsers: unverified,
+      decisions7d,
+    };
+  },
+  /** Approve or reject a document; the DB trigger re-derives profiles.verification. */
+  async reviewVerificationDocument(
+    id: string,
+    status: 'verified' | 'rejected',
+    note?: string,
+  ): Promise<VerificationDocument> {
+    const row = await run(
+      sb()
+        .from('verification_documents')
+        .update({
+          status,
+          note: note ?? null,
+          reviewed_by: me(),
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select('*')
+        .single(),
+    );
+    return mapRow<VerificationDocument>(row) as VerificationDocument;
+  },
+  /** Short-lived signed URL to view a KYC document (admin reads the private bucket). */
+  async getKycDocumentUrl(storagePath: string): Promise<string> {
+    const { data, error } = await sb()
+      .storage.from('kyc-documents')
+      .createSignedUrl(storagePath, 300);
+    if (error) throw new Error(error.message);
+    return data.signedUrl;
+  },
   async listFlags(): Promise<Flag[]> {
     return mapRows<Flag>(await run(sb().from('flags').select('*').order('created_at', { ascending: false })));
   },

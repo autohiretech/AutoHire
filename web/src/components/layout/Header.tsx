@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Car, LogOut, Menu, MessageSquare, X } from 'lucide-react';
+import { Bell, Car, LogOut, Menu, MessageSquare, ShieldCheck, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar, Button } from '@/components/ui';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
@@ -101,6 +101,15 @@ export function Header() {
           <CountrySelector />
           {user ? (
             <>
+              {me?.role === 'admin' && (
+                <Link
+                  to="/admin"
+                  className="rounded-lg p-2 text-ink-500 hover:bg-ink-100"
+                  aria-label="Admin panel"
+                >
+                  <ShieldCheck size={20} />
+                </Link>
+              )}
               <Link
                 to="/messages"
                 className="relative rounded-lg p-2 text-ink-500 hover:bg-ink-100"
