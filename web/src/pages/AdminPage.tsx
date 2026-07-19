@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   User,
   XCircle,
+  Zap,
 } from 'lucide-react';
 import type {
   Dispute,
@@ -227,45 +228,92 @@ function AutoApproveToggle() {
   });
   const active = Boolean(on);
 
+  const busy = isLoading || toggle.isPending;
+  const options = [
+    {
+      value: false,
+      label: 'Manual review',
+      desc: 'You approve or reject each one',
+      icon: ShieldCheck,
+      accent: 'text-brand-600',
+    },
+    {
+      value: true,
+      label: 'Auto-approve',
+      desc: 'Verified instantly on upload',
+      icon: Zap,
+      accent: 'text-accent-600',
+    },
+  ] as const;
+
   return (
     <Card>
-      <CardBody className="flex flex-wrap items-center gap-3">
-        <span
-          className={cn(
-            'flex h-9 w-9 items-center justify-center rounded-lg',
-            active ? 'bg-emerald-50 text-emerald-600' : 'bg-brand-50 text-brand-600',
-          )}
-        >
-          {active ? <CheckCircle2 size={18} /> : <ShieldCheck size={18} />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-ink-900">
-            {active ? 'Auto-approving new submissions' : 'Manual review'}
-          </p>
-          <p className="text-xs text-ink-500">
-            {active
-              ? 'New documents are verified instantly — no manual review.'
-              : 'New documents wait here for you to approve or reject.'}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={active}
-          disabled={isLoading || toggle.isPending}
-          onClick={() => toggle.mutate(!active)}
-          className={cn(
-            'relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50',
-            active ? 'bg-emerald-500' : 'bg-ink-300',
-          )}
-        >
+      <CardBody className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink-900">New KYC submissions</p>
+            <p className="text-xs text-ink-500">How documents are verified when someone uploads.</p>
+          </div>
           <span
             className={cn(
-              'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
-              active ? 'translate-x-[22px]' : 'translate-x-0.5',
+              'inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
+              active ? 'bg-accent-400/20 text-accent-600' : 'bg-brand-50 text-brand-700',
             )}
-          />
-        </button>
+          >
+            <span
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                active ? 'bg-accent-500' : 'bg-brand-500',
+                busy && 'animate-pulse',
+              )}
+            />
+            {active ? 'Auto-approving' : 'Manual'}
+          </span>
+        </div>
+
+        <div
+          role="radiogroup"
+          aria-label="KYC verification mode"
+          className="grid grid-cols-2 gap-1.5 rounded-xl bg-ink-100 p-1"
+        >
+          {options.map((o) => {
+            const selected = active === o.value;
+            const Icon = o.icon;
+            return (
+              <button
+                key={String(o.value)}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={busy || selected}
+                onClick={() => toggle.mutate(o.value)}
+                className={cn(
+                  'flex items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-all',
+                  selected
+                    ? 'bg-white shadow-sm ring-1 ring-ink-200'
+                    : 'hover:bg-white/60 disabled:hover:bg-transparent',
+                  busy && !selected && 'opacity-60',
+                )}
+              >
+                <Icon
+                  size={16}
+                  className={cn('mt-0.5 shrink-0', selected ? o.accent : 'text-ink-400')}
+                />
+                <span className="min-w-0">
+                  <span
+                    className={cn(
+                      'block text-sm font-medium',
+                      selected ? 'text-ink-900' : 'text-ink-600',
+                    )}
+                  >
+                    {o.label}
+                  </span>
+                  <span className="block text-xs text-ink-400">{o.desc}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </CardBody>
     </Card>
   );
