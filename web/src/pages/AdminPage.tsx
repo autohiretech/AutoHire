@@ -18,6 +18,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  Trash2,
   User,
   XCircle,
   Zap,
@@ -44,7 +45,8 @@ import {
   FLAG_REASON_LABEL,
   MODERATION_STATUS_META,
 } from '@/lib/admin';
-import { Avatar, Badge, Button, Card, CardBody, CardHeader, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, Spinner } from '@/components/ui';
+import { Img } from '@/components/Img';
 
 type Tab = 'overview' | 'users' | 'verification' | 'activity' | 'moderation' | 'disputes';
 
@@ -360,6 +362,7 @@ function UserCard({ user }: { user: AdminUser }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [compose, setCompose] = useState<null | 'message' | 'warn'>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
 
@@ -369,6 +372,13 @@ function UserCard({ user }: { user: AdminUser }) {
     onSuccess: () => {
       refreshUsers();
       queryClient.invalidateQueries({ queryKey: ['userActions', user.id] });
+    },
+  });
+  const remove = useMutation({
+    mutationFn: () => client.deleteUser(user.id),
+    onSuccess: () => {
+      setConfirmDelete(false);
+      refreshUsers();
     },
   });
   const send = useMutation({
@@ -437,7 +447,36 @@ function UserCard({ user }: { user: AdminUser }) {
                 <Ban size={14} /> Suspend
               </Button>
             )}
+            {user.role !== 'admin' && (
+              <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(true)}>
+                <Trash2 size={14} /> Delete
+              </Button>
+            )}
           </div>
+
+          <ConfirmDialog
+            open={confirmDelete}
+            tone="danger"
+            title="Delete this user?"
+            confirmLabel="Delete permanently"
+            busy={remove.isPending}
+            onClose={() => setConfirmDelete(false)}
+            onConfirm={() => remove.mutate()}
+            body={
+              <>
+                <p>
+                  This permanently deletes <span className="font-medium">{user.fullName}</span> and
+                  everything they own — listings, bookings, messages, reviews and documents. This
+                  cannot be undone.
+                </p>
+                {remove.isError && (
+                  <p className="mt-2 text-red-600">
+                    {remove.error instanceof Error ? remove.error.message : 'Could not delete.'}
+                  </p>
+                )}
+              </>
+            }
+          />
 
           {compose && (
             <div className="space-y-2 rounded-lg bg-ink-50 p-3">
@@ -538,7 +577,7 @@ function UserVerificationSection({ user }: { user: AdminUser }) {
   );
 }
 
-/** The user's listings (cars/machines they host). */
+/** The user's listings (cars/machines they host) — click one for full details. */
 function UserListingsSection({ hostId, count }: { hostId: string; count: number }) {
   const { data, isLoading } = useQuery({
     queryKey: ['userListings', hostId],
@@ -554,20 +593,115 @@ function UserListingsSection({ hostId, count }: { hostId: string; count: number 
       ) : (
         <div className="space-y-2">
           {(data ?? []).map((l: Listing) => (
-            <div key={l.id} className="flex items-center gap-3 rounded-lg border border-ink-200 px-3 py-2 text-sm">
-              <Car size={15} className="shrink-0 text-ink-400" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-ink-800">{l.title}</p>
-                <p className="truncate text-xs text-ink-400">
-                  {l.make} {l.model} · {l.year} · {l.fuel} · {l.city}
-                </p>
-              </div>
-              <span className="shrink-0 text-xs text-ink-500">{formatRwf(l.pricePerDayRwf)}/day</span>
-              <Badge tone={l.status === 'available' ? 'success' : 'neutral'}>{l.status}</Badge>
-            </div>
+            <ListingRow key={l.id} listing={l} />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** One listing: collapsed summary; click to expand its full details + bookings. */
+function ListingRow({ listing: l }: { listing: Listing }) {
+  const [open, setOpen] = useState(false);
+  const price = `${formatRwf(l.pricePerDayRwf)}/day`;
+  return (
+    <div className="rounded-lg border border-ink-200">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm"
+      >
+        <Car size={15} className="shrink-0 text-ink-400" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-ink-800">{l.title}</p>
+          <p className="truncate text-xs text-ink-400">
+            {l.make} {l.model} · {l.year} · {l.fuel} · {l.city}
+          </p>
+        </div>
+        <span className="hidden shrink-0 text-xs text-ink-500 sm:inline">{price}</span>
+        <Badge tone={l.status === 'available' ? 'success' : 'neutral'}>{l.status}</Badge>
+        {open ? <ChevronUp size={15} className="text-ink-400" /> : <ChevronDown size={15} className="text-ink-400" />}
+      </button>
+      {open && <ListingDetail listing={l} />}
+    </div>
+  );
+}
+
+function ListingDetail({ listing: l }: { listing: Listing }) {
+  const { data: bookings, isLoading } = useQuery({
+    queryKey: ['listingBookings', l.id],
+    queryFn: () => client.listListingBookings(l.id),
+  });
+  return (
+    <div className="space-y-3 border-t border-ink-100 px-3 py-3">
+      {l.photos.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto">
+          {l.photos.map((src) => (
+            <Img
+              key={src}
+              src={src}
+              alt={l.title}
+              className="h-24 w-32 shrink-0 rounded-lg object-cover"
+            />
+          ))}
+        </div>
+      )}
+      <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+        <Detail label="Category" value={l.category} />
+        <Detail label="Seats" value={`${l.seats}`} />
+        <Detail label="Transmission" value={l.transmission} />
+        <Detail label="Fuel" value={l.fuel} />
+        <Detail label="Price/day" value={`${l.priceCurrency} ${l.pricePerDayRwf.toLocaleString()}`} />
+        <Detail label="Booking" value={l.bookingMode} />
+        <Detail label="Rating" value={l.ratingCount ? `${l.ratingAvg} (${l.ratingCount})` : '—'} />
+        <Detail label="Country" value={l.country} />
+      </dl>
+      <div className="text-sm">
+        <dt className="text-xs text-ink-500">Location</dt>
+        <dd className="text-ink-800">
+          {l.location}
+          {l.locationUrl && (
+            <>
+              {' · '}
+              <a href={l.locationUrl} target="_blank" rel="noreferrer noopener" className="text-brand-700 hover:underline">
+                map link
+              </a>
+            </>
+          )}
+        </dd>
+      </div>
+      {l.features.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {l.features.map((f) => (
+            <span key={f} className="rounded-full bg-ink-100 px-2 py-0.5 text-xs text-ink-600">
+              {f}
+            </span>
+          ))}
+        </div>
+      )}
+      <div>
+        <p className="mb-1 text-xs font-medium text-ink-500">
+          Bookings on this car {bookings ? `(${bookings.length})` : ''}
+        </p>
+        {isLoading ? (
+          <Spinner size={14} />
+        ) : (bookings ?? []).length === 0 ? (
+          <p className="text-xs text-ink-400">No bookings yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {(bookings ?? []).map((b) => (
+              <div key={b.id} className="flex items-center gap-2 text-xs">
+                <Badge tone={BOOKING_TONE[b.state] ?? 'neutral'}>{b.state}</Badge>
+                <span className="text-ink-600">
+                  {formatDate(b.startDate)} → {formatDate(b.endDate)}
+                </span>
+                <span className="ml-auto text-ink-500">{formatRwf(b.totalRwf)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

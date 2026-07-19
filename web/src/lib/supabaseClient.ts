@@ -1027,6 +1027,27 @@ export const supabaseClient = {
       await run(sb().from('listings').select('*').eq('host_id', hostId).order('id')),
     );
   },
+  /** Bookings placed on a specific listing (admin reads all via RLS). */
+  async listListingBookings(listingId: string): Promise<Booking[]> {
+    return mapRows<Booking>(
+      await run(
+        sb()
+          .from('bookings')
+          .select('*')
+          .eq('listing_id', listingId)
+          .order('created_at', { ascending: false }),
+      ),
+    );
+  },
+  /** Permanently delete a user (admin only) via the admin-delete-user function. */
+  async deleteUser(profileId: string): Promise<void> {
+    const { data, error } = await getSupabase().functions.invoke('admin-delete-user', {
+      body: { profileId },
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as { error?: string } | null;
+    if (payload?.error) throw new Error(payload.error);
+  },
   /** A user's bookings as renter or host, with the car title (admin reads all). */
   async listUserBookings(userId: string): Promise<(Booking & { carTitle?: string })[]> {
     const rows = await run(
