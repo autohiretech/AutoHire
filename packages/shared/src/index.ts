@@ -103,6 +103,15 @@ export interface Page<T> {
   total: number;
 }
 
+/** Platform electric-car quota snapshot (cars only; machinery is exempt). */
+export interface ElectricQuota {
+  minPercent: number;
+  totalCars: number;
+  electricCars: number;
+  /** Whether a non-electric car may be listed right now without breaking the quota. */
+  canAddNonElectric: boolean;
+}
+
 export interface UserProfile {
   id: ID;
   fullName: string;

@@ -198,7 +198,90 @@ function OverviewTab({ kyc }: { kyc?: KycMetrics }) {
           <Stat icon={<RefreshCw size={18} />} label="Decisions (7d)" value={`${kyc?.decisions7d ?? '—'}`} />
         </div>
       </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-ink-700">Electric fleet rule</h2>
+        <ElectricQuotaCard />
+      </div>
     </div>
+  );
+}
+
+/** Admin control for the platform's minimum electric-car percentage. */
+function ElectricQuotaCard() {
+  const queryClient = useQueryClient();
+  const { data: quota } = useQuery({
+    queryKey: ['electricQuota'],
+    queryFn: () => client.getElectricQuota(),
+  });
+  const [pct, setPct] = useState<string>('');
+  const save = useMutation({
+    mutationFn: (p: number) => client.setElectricMinPercent(p),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['electricQuota'] }),
+  });
+
+  const current = quota?.minPercent ?? 95;
+  const value = pct === '' ? String(current) : pct;
+  const share =
+    quota && quota.totalCars > 0 ? Math.round((quota.electricCars / quota.totalCars) * 100) : 0;
+
+  return (
+    <Card>
+      <CardBody className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+            <Zap size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-ink-900">Minimum electric cars</p>
+            <p className="text-xs text-ink-500">
+              Non-electric cars can’t be listed if it would drop the fleet below this. Machinery is
+              exempt.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <Stat icon={<Zap size={16} />} label="Electric cars" value={`${quota?.electricCars ?? '—'}`} />
+          <Stat icon={<Car size={16} />} label="Total cars" value={`${quota?.totalCars ?? '—'}`} />
+          <Stat icon={<BarChart3 size={16} />} label="Currently electric" value={`${share}%`} />
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-ink-600" htmlFor="electric-pct">
+              Required electric %
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="electric-pct"
+                type="number"
+                min={0}
+                max={100}
+                value={value}
+                onChange={(e) => setPct(e.target.value)}
+                className="w-24 rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+              />
+              <span className="text-sm text-ink-500">%</span>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            disabled={
+              save.isPending ||
+              value === '' ||
+              Number(value) === current ||
+              Number(value) < 0 ||
+              Number(value) > 100
+            }
+            onClick={() => save.mutate(Number(value))}
+          >
+            {save.isPending ? 'Saving…' : 'Save'}
+          </Button>
+          <span className="text-xs text-ink-400">Set 0 to turn the rule off.</span>
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 

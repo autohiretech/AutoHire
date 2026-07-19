@@ -22,6 +22,7 @@ import type {
   KycOwner,
   KycProfile,
   Page,
+  ElectricQuota,
 } from '@autohire/shared';
 import {
   type CreateListingInput,
@@ -955,6 +956,21 @@ export const supabaseClient = {
   /** Turn auto-approve on/off (admin only). */
   async setKycAutoApprove(on: boolean): Promise<void> {
     await run(sb().rpc('admin_set_kyc_auto_approve', { p_on: on }));
+  },
+  /** Current electric-car quota + whether a non-electric car may be listed now. */
+  async getElectricQuota(): Promise<ElectricQuota> {
+    const rows = (await run(sb().rpc('electric_quota_status'))) as Record<string, unknown>[] | null;
+    const r = rows?.[0];
+    return {
+      minPercent: Number(r?.min_percent ?? 95),
+      totalCars: Number(r?.total_cars ?? 0),
+      electricCars: Number(r?.electric_cars ?? 0),
+      canAddNonElectric: Boolean(r?.can_add_non_electric),
+    };
+  },
+  /** Set the minimum electric-car percentage (admin only). */
+  async setElectricMinPercent(percent: number): Promise<void> {
+    await run(sb().rpc('admin_set_electric_min_percent', { p_pct: percent }));
   },
   /**
    * KYC activity feed — every submit/approve/reject, newest first, paginated.
