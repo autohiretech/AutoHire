@@ -15,6 +15,7 @@ import {
   Sparkles,
   Star,
   TrendingUp,
+  Zap,
 } from 'lucide-react';
 import type { Host, Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
@@ -416,6 +417,19 @@ export function HomePage() {
               <span className="hidden items-center gap-1 text-sm text-ink-500 sm:flex">
                 <ShieldCheck size={16} className="text-brand-600" /> Verified hosts
               </span>
+              <button
+                type="button"
+                onClick={() => setFilter('fuel', filters.fuel === 'electric' ? undefined : 'electric')}
+                aria-pressed={filters.fuel === 'electric'}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                  filters.fuel === 'electric'
+                    ? 'border-brand-300 bg-brand-50 text-brand-700'
+                    : 'border-ink-200 text-ink-600 hover:bg-ink-50',
+                )}
+              >
+                <Zap size={15} /> Electric
+              </button>
               <button
                 type="button"
                 onClick={() => setTopRanked((v) => !v)}

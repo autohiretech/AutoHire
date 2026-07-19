@@ -33,6 +33,7 @@ const CARD_GRID = 'grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4';
 
 /** "Select by" refinement chips → the ListingFilters patch each one applies. */
 const SELECT_BY: { label: string; patch: ListingFilters }[] = [
+  { label: '⚡ Electric', patch: { fuel: 'electric' } },
   { label: 'Automatic', patch: { transmission: 'automatic' } },
   { label: 'Manual', patch: { transmission: 'manual' } },
   { label: 'Business host', patch: { ownerType: 'business' } },

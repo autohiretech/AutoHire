@@ -16,6 +16,8 @@ export interface ListingFilters {
   category?: Listing['category'];
   ownerType?: Listing['ownerType'];
   transmission?: Listing['transmission'];
+  /** Fuel/power type, e.g. 'electric' for the electric-only filter. */
+  fuel?: Listing['fuel'];
   /** Minimum seat count (e.g. 7 for "7+ seats"). */
   minSeats?: number;
   maxPriceRwf?: number;
