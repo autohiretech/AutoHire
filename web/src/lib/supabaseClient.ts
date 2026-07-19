@@ -17,9 +17,12 @@ import type {
   VerificationDocument,
   VerificationReviewItem,
   VerificationEvent,
+  VerificationStatus,
   KycMetrics,
   KycOwner,
+  KycProfile,
   Page,
+  ElectricQuota,
 } from '@autohire/shared';
 import {
   type CreateListingInput,
@@ -871,41 +874,103 @@ export const supabaseClient = {
 
   // --- Admin -------------------------------------------------------------
   /**
-   * KYC documents for the review queue — paginated + filterable by status and a
-   * free-text search over the owner's name/email. Admin-only via RLS.
+   * Grouped KYC review queue — one row per PERSON who has documents (not one
+   * per document), with pending/total counts. `scope: 'pending'` shows only
+   * people with something awaiting review; 'all' shows everyone who uploaded.
+   * Paginated + searchable by name/email. Admin-only (RPC checks is_admin()).
    */
-  async listVerifications(opts: {
-    status?: 'pending' | 'verified' | 'rejected';
+  async listVerificationProfiles(opts: {
+    scope?: 'pending' | 'all';
     search?: string;
     page?: number;
     pageSize?: number;
-  } = {}): Promise<Page<VerificationReviewItem>> {
+  } = {}): Promise<Page<KycProfile>> {
     const page = opts.page ?? 0;
     const pageSize = opts.pageSize ?? 20;
-    let q = sb()
-      .from('verification_documents')
-      .select(
-        '*, owner:profiles!verification_documents_profile_id_fkey!inner(id, full_name, email, avatar_url, role, owner_type)',
-        { count: 'exact' },
-      );
-    if (opts.status) q = q.eq('status', opts.status);
-    if (opts.search?.trim()) {
-      const t = `%${opts.search.trim()}%`;
-      q = q.or(`full_name.ilike.${t},email.ilike.${t}`, {
-        referencedTable: 'owner',
-      });
-    }
-    const from = page * pageSize;
-    const { data, error, count } = await q
-      .order('uploaded_at', { ascending: opts.status === 'pending' })
-      .range(from, from + pageSize - 1);
-    if (error) throw new Error(error.message);
-    const items = (data as Record<string, unknown>[] ?? []).map((r) => {
+    const rows = (await run(
+      sb().rpc('admin_kyc_profiles', {
+        p_scope: opts.scope ?? 'pending',
+        p_search: opts.search?.trim() ?? '',
+        p_limit: pageSize,
+        p_offset: page * pageSize,
+      }),
+    )) as Record<string, unknown>[] | null;
+    const list = rows ?? [];
+    const total = list.length ? Number(list[0].total_count ?? 0) : 0;
+    const items: KycProfile[] = list.map((r) => ({
+      id: r.id as string,
+      fullName: r.full_name as string,
+      email: r.email as string,
+      avatarUrl: (r.avatar_url as string) ?? undefined,
+      role: r.role as KycProfile['role'],
+      ownerType: (r.owner_type as KycProfile['ownerType']) ?? undefined,
+      verification: r.verification as KycProfile['verification'],
+      verificationOverride: Boolean(r.verification_override),
+      pendingCount: Number(r.pending_count ?? 0),
+      docCount: Number(r.doc_count ?? 0),
+    }));
+    return { items, total };
+  },
+  /** All KYC documents for one person, for the expanded review card. */
+  async listVerificationsForProfile(profileId: string): Promise<VerificationReviewItem[]> {
+    const rows = await run(
+      sb()
+        .from('verification_documents')
+        .select(
+          '*, owner:profiles!verification_documents_profile_id_fkey(id, full_name, email, avatar_url, role, owner_type)',
+        )
+        .eq('profile_id', profileId)
+        .order('type'),
+    );
+    return (rows as Record<string, unknown>[] ?? []).map((r) => {
       const owner = mapRow<VerificationReviewItem['owner']>(r.owner as Record<string, unknown>);
       const doc = mapRow<VerificationReviewItem>({ ...r, owner: undefined });
       return { ...(doc as VerificationReviewItem), owner: owner as VerificationReviewItem['owner'] };
     });
-    return { items, total: count ?? 0 };
+  },
+  /** Force a user's verification to a value (sticky admin override). */
+  async overrideProfileVerification(
+    profileId: string,
+    status: VerificationStatus,
+    note?: string,
+  ): Promise<void> {
+    await run(
+      sb().rpc('admin_set_verification', {
+        p_profile_id: profileId,
+        p_status: status,
+        p_note: note ?? null,
+      }),
+    );
+  },
+  /** Remove an override and resume automatic status from the documents. */
+  async clearVerificationOverride(profileId: string): Promise<void> {
+    await run(sb().rpc('admin_clear_verification_override', { p_profile_id: profileId }));
+  },
+  /** Whether new KYC submissions are auto-approved (vs. manual review). */
+  async getKycAutoApprove(): Promise<boolean> {
+    const row = await run(
+      sb().from('app_settings').select('kyc_auto_approve').eq('id', 1).maybeSingle(),
+    );
+    return Boolean((row as { kyc_auto_approve?: boolean } | null)?.kyc_auto_approve);
+  },
+  /** Turn auto-approve on/off (admin only). */
+  async setKycAutoApprove(on: boolean): Promise<void> {
+    await run(sb().rpc('admin_set_kyc_auto_approve', { p_on: on }));
+  },
+  /** Current electric-car quota + whether a non-electric car may be listed now. */
+  async getElectricQuota(): Promise<ElectricQuota> {
+    const rows = (await run(sb().rpc('electric_quota_status'))) as Record<string, unknown>[] | null;
+    const r = rows?.[0];
+    return {
+      minPercent: Number(r?.min_percent ?? 95),
+      totalCars: Number(r?.total_cars ?? 0),
+      electricCars: Number(r?.electric_cars ?? 0),
+      canAddNonElectric: Boolean(r?.can_add_non_electric),
+    };
+  },
+  /** Set the minimum electric-car percentage (admin only). */
+  async setElectricMinPercent(percent: number): Promise<void> {
+    await run(sb().rpc('admin_set_electric_min_percent', { p_pct: percent }));
   },
   /**
    * KYC activity feed — every submit/approve/reject, newest first, paginated.

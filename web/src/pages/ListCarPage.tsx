@@ -1,12 +1,13 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Zap } from 'lucide-react';
 import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
 import type { CreateListingInput } from '@/lib/types';
 import { Button, Card, CardBody, CardHeader, Input, Label, Select, Spinner } from '@/components/ui';
 import { Img } from '@/components/Img';
+import { ModelCombobox } from '@/components/ModelCombobox';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
 import { isLikelyUrl, normalizeUrl } from '@/lib/location';
 import { useCountry } from '@/lib/country';
@@ -122,6 +123,15 @@ export function ListCarPage() {
   // fields rather than maintaining a second form for machinery.
   const machine = isMachine(category);
 
+  // Platform electric quota: a non-electric CAR can only be listed while the
+  // fleet stays at/above the threshold. Machinery + electric cars are exempt.
+  const { data: quota } = useQuery({
+    queryKey: ['electricQuota'],
+    queryFn: () => client.getElectricQuota(),
+  });
+  const blockedNonElectric =
+    !machine && fuel !== 'electric' && !!quota && !quota.canAddNonElectric;
+
   function onCountryChange(next: string) {
     setCountry(next);
     const list = citiesFor(next);
@@ -155,6 +165,7 @@ export function ListCarPage() {
     photoUrls.length > 0 &&
     !uploading &&
     statusValid &&
+    !blockedNonElectric &&
     (!locationUrl.trim() || isLikelyUrl(locationUrl));
 
   function onSubmit(e: FormEvent) {
@@ -227,6 +238,23 @@ export function ListCarPage() {
                 }
               />
             </div>
+            {!machine && (
+              <div>
+                <Label>Find your model</Label>
+                <ModelCombobox
+                  onSelect={(m) => {
+                    setMake(m.make);
+                    setModel(m.model);
+                    setFuel(m.fuel);
+                    setCategory(m.category);
+                  }}
+                />
+                <p className="mt-1 flex items-center gap-1 text-xs text-ink-400">
+                  <Zap size={12} className="text-brand-600" /> Electric models are shown first. Pick
+                  one to fill make, model and fuel — or type them in below.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
                 <Label htmlFor="make">Make</Label>
@@ -472,6 +500,23 @@ export function ListCarPage() {
             )}
           </CardBody>
         </Card>
+
+        {blockedNonElectric && quota && (
+          <div className="flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+            <Zap size={18} className="mt-0.5 shrink-0 text-brand-600" />
+            <div className="text-sm">
+              <p className="font-semibold text-brand-800">Only electric cars can be listed right now</p>
+              <p className="mt-0.5 text-brand-700">
+                AutoHire keeps at least {quota.minPercent}% of its cars electric. The fleet is at{' '}
+                {quota.totalCars > 0
+                  ? Math.round((quota.electricCars / quota.totalCars) * 100)
+                  : 0}
+                % ({quota.electricCars}/{quota.totalCars}), so a {fuel} car can’t be added yet.
+                Choose an electric model above, or set the fuel to Electric.
+              </p>
+            </div>
+          </div>
+        )}
 
         {mutation.isError && (
           <p className="text-sm text-red-600">
