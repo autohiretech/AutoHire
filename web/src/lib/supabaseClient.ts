@@ -61,6 +61,37 @@ async function run<D>(builder: PromiseLike<{ data: D; error: { message: string }
   return data;
 }
 
+/**
+ * chat-files is a private bucket: messages store the storage path (or, for
+ * rows from before the bucket went private, its old public URL), and rendering
+ * goes through short-lived signed URLs minted here in one batch.
+ */
+async function signChatAttachments(msgs: Message[]): Promise<Message[]> {
+  const toPath = (v: string): string | null => {
+    if (!v.startsWith('http')) return v;
+    const i = v.indexOf('/chat-files/');
+    return i === -1 ? null : decodeURIComponent(v.slice(i + '/chat-files/'.length));
+  };
+  const pathByMessage = new Map<string, string>();
+  for (const m of msgs) {
+    const p = m.attachmentUrl ? toPath(m.attachmentUrl) : null;
+    if (p) pathByMessage.set(m.id, p);
+  }
+  if (pathByMessage.size === 0) return msgs;
+  const { data } = await sb()
+    .storage.from('chat-files')
+    .createSignedUrls([...new Set(pathByMessage.values())], 3600);
+  const urlByPath = new Map<string, string>();
+  for (const item of data ?? []) {
+    if (item.path && item.signedUrl) urlByPath.set(item.path, item.signedUrl);
+  }
+  return msgs.map((m) => {
+    const p = pathByMessage.get(m.id);
+    const url = p ? urlByPath.get(p) : undefined;
+    return url ? { ...m, attachmentUrl: url } : m;
+  });
+}
+
 export const supabaseClient = {
   // --- Listings ----------------------------------------------------------
   /**
@@ -167,10 +198,14 @@ export const supabaseClient = {
     return mapRow<Listing>(await run(sb().from('listings').select('*').eq('id', id).maybeSingle()));
   },
   async getHost(id: string) {
-    return mapRow<Host>(await run(sb().from('profiles').select('*').eq('id', id).maybeSingle()));
+    // Full row only for self / admins / booking or conversation counterparties
+    // (RLS filters it out otherwise) — everyone else gets the PII-free view.
+    const full = await run(sb().from('profiles').select('*').eq('id', id).maybeSingle());
+    if (full) return mapRow<Host>(full);
+    return mapRow<Host>(await run(sb().from('public_profiles').select('*').eq('id', id).maybeSingle()));
   },
   async listHosts(): Promise<Host[]> {
-    return mapRows<Host>(await run(sb().from('profiles').select('*').not('owner_type', 'is', null)));
+    return mapRows<Host>(await run(sb().from('public_profiles').select('*').not('owner_type', 'is', null)));
   },
 
   // --- Bookings ----------------------------------------------------------
@@ -336,8 +371,10 @@ export const supabaseClient = {
   },
   /** A single profile by id (renter or host). */
   async getProfile(id: string): Promise<(UserProfile & Partial<Host>) | undefined> {
+    const full = await run(sb().from('profiles').select('*').eq('id', id).maybeSingle());
+    if (full) return mapRow<UserProfile & Partial<Host>>(full);
     return mapRow<UserProfile & Partial<Host>>(
-      await run(sb().from('profiles').select('*').eq('id', id).maybeSingle()),
+      await run(sb().from('public_profiles').select('*').eq('id', id).maybeSingle()),
     );
   },
   /** Verification documents for a profile (host can read a requester's via RLS). */
@@ -576,11 +613,12 @@ export const supabaseClient = {
     );
   },
   async listMessages(conversationId: string) {
-    return mapRows<Message>(
+    const msgs = mapRows<Message>(
       await run(
         sb().from('messages').select('*').eq('conversation_id', conversationId).order('sent_at'),
       ),
     );
+    return signChatAttachments(msgs);
   },
   /** Total messages addressed to me that I haven't read — drives the header badge. */
   async getUnreadMessageCount(): Promise<number> {
@@ -668,7 +706,11 @@ export const supabaseClient = {
     else reactions[emoji] = [...users];
     await run(sb().from('messages').update({ reactions }).eq('id', messageId).select('id'));
   },
-  /** Upload a chat attachment; returns the public URL + a coarse type. */
+  /**
+   * Upload a chat attachment to the private chat-files bucket. Returns the
+   * storage path — messages store the path, and `listMessages` swaps it for a
+   * signed URL when rendering.
+   */
   async uploadChatFile(file: File): Promise<{ url: string; type: 'image' | 'file'; name: string }> {
     const userId = me();
     const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
@@ -677,16 +719,24 @@ export const supabaseClient = {
       .storage.from('chat-files')
       .upload(path, file, { contentType: file.type, upsert: false });
     if (error) throw new Error(error.message);
-    const url = sb().storage.from('chat-files').getPublicUrl(path).data.publicUrl;
-    return { url, type: file.type.startsWith('image/') ? 'image' : 'file', name: file.name };
+    return { url: path, type: file.type.startsWith('image/') ? 'image' : 'file', name: file.name };
   },
   /** Profiles by id (any role) — used to label chat threads by the other party. */
   async getProfilesByIds(ids: string[]): Promise<Record<string, UserProfile & Partial<Host>>> {
     if (ids.length === 0) return {};
-    const rows = await run(sb().from('profiles').select('*').in('id', [...new Set(ids)]));
+    const unique = [...new Set(ids)];
+    const rows = await run(sb().from('profiles').select('*').in('id', unique));
     const map: Record<string, UserProfile & Partial<Host>> = {};
     for (const r of mapRows<UserProfile & Partial<Host>>(rows as Record<string, unknown>[])) {
       map[r.id] = r;
+    }
+    // Ids RLS filtered out (not a counterparty) still need a name/avatar label.
+    const missing = unique.filter((id) => !map[id]);
+    if (missing.length > 0) {
+      const pub = await run(sb().from('public_profiles').select('*').in('id', missing));
+      for (const r of mapRows<UserProfile & Partial<Host>>(pub as Record<string, unknown>[])) {
+        map[r.id] = r;
+      }
     }
     return map;
   },
@@ -814,7 +864,7 @@ export const supabaseClient = {
       run(sb().from('bookings').select('service_fee_rwf, total_rwf')),
       run(sb().from('payouts').select('amount_rwf, status')),
       sb().from('listings').select('id', { count: 'exact', head: true }),
-      sb().from('profiles').select('id', { count: 'exact', head: true }).not('owner_type', 'is', null),
+      sb().from('public_profiles').select('id', { count: 'exact', head: true }).not('owner_type', 'is', null),
       sb().from('flags').select('id', { count: 'exact', head: true }).eq('status', 'open'),
       sb().from('disputes').select('id', { count: 'exact', head: true }).in('status', ['open', 'under_review']),
     ]);

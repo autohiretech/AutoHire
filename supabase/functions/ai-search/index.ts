@@ -11,10 +11,17 @@
 // Deploy:  supabase functions deploy ai-search
 //   (JWT verification stays ON — only signed-in app users can call it.)
 
-import Anthropic from 'https://esm.sh/@anthropic-ai/sdk?target=deno';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1';
+import { createClient } from 'npm:@supabase/supabase-js@2';
+
+// Per-user throttle: this many ai-search calls per window (each is an Anthropic
+// request, so this caps how fast one account can spend the budget).
+const RATE_LIMIT = 20;
+const RATE_WINDOW_SECONDS = 60;
 
 const cors = {
-  'Access-Control-Allow-Origin': '*',
+  // Set the ALLOWED_ORIGIN secret to your web app's origin in production.
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
@@ -63,6 +70,25 @@ Deno.serve(async (req: Request) => {
     const { query } = await req.json().catch(() => ({ query: '' }));
     if (!query || typeof query !== 'string' || !query.trim()) {
       return json({ error: 'A search query is required.' }, 400);
+    }
+
+    // Throttle per user (JWT verification is on, so a caller is always present).
+    // Fail open only if the identity/limit lookup itself errors — never on a hit.
+    const token = (req.headers.get('Authorization') ?? '').replace('Bearer ', '').trim();
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    const { data: userData } = await admin.auth.getUser(token);
+    const identity = userData?.user?.id ?? 'anon';
+    const { data: allowed } = await admin.rpc('rate_limit_hit', {
+      p_key: `ai-search:${identity}`,
+      p_limit: RATE_LIMIT,
+      p_window_seconds: RATE_WINDOW_SECONDS,
+    });
+    if (allowed === false) {
+      return json({ error: 'Too many searches. Please wait a moment and try again.' }, 429);
     }
 
     const anthropic = new Anthropic({ apiKey });

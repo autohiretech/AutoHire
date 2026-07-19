@@ -18,11 +18,12 @@
 //
 // Deploy:  supabase functions deploy confirm-booking
 
-import Stripe from 'https://esm.sh/stripe@16.12.0?target=deno';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import Stripe from 'npm:stripe@16.12.0';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
-  'Access-Control-Allow-Origin': '*',
+  // Set the ALLOWED_ORIGIN secret to your web app's origin in production.
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
