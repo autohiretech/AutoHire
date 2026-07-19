@@ -39,16 +39,58 @@ export interface VerificationDocument {
   extracted?: Record<string, string>;
 }
 
+/** Owner summary embedded in admin KYC views. */
+export interface KycOwner {
+  id: ID;
+  fullName: string;
+  email: string;
+  avatarUrl?: string;
+  role: UserRole;
+  ownerType?: OwnerType;
+}
+
 /** A verification document joined with its owner, for the admin review queue. */
 export interface VerificationReviewItem extends VerificationDocument {
-  owner: {
-    id: ID;
-    fullName: string;
-    email: string;
-    avatarUrl?: string;
-    role: UserRole;
-    ownerType?: OwnerType;
-  };
+  owner: KycOwner;
+}
+
+/** One entry in the KYC activity log. */
+export type VerificationEventKind =
+  | 'submitted'
+  | 'resubmitted'
+  | 'approved'
+  | 'rejected'
+  | 'updated';
+
+export interface VerificationEvent {
+  id: number;
+  documentId: ID;
+  profileId: ID;
+  docType: VerificationDocType;
+  event: VerificationEventKind;
+  status: VerificationStatus;
+  actorId?: ID;
+  note?: string;
+  createdAt: string; // ISO
+  /** Filled in by the client for display. */
+  owner?: KycOwner;
+  actorName?: string;
+}
+
+/** Aggregate KYC counts for the admin overview. */
+export interface KycMetrics {
+  pendingDocs: number;
+  verifiedUsers: number;
+  pendingUsers: number;
+  rejectedUsers: number;
+  unverifiedUsers: number;
+  decisions7d: number;
+}
+
+/** A page of results plus the total match count, for scalable admin lists. */
+export interface Page<T> {
+  items: T[];
+  total: number;
 }
 
 export interface UserProfile {
