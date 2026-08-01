@@ -132,6 +132,9 @@ Deno.serve(async (req: Request) => {
     const intent = await stripe.paymentIntents.create({
       amount,
       currency: chargeCurrency,
+      // Escrow: authorise now, capture when the trip starts (see capture-payment).
+      // The renter's money is held, not taken, until pickup.
+      capture_method: 'manual',
       automatic_payment_methods: { enabled: true },
       metadata: {
         uid,

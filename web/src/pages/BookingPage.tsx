@@ -13,14 +13,13 @@ import { getSupabase } from '@/lib/supabase';
 import { getStripe } from '@/lib/stripe';
 import { formatDate } from '@/lib/format';
 import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
+import { PAYMENTS_LIVE, isAfricanMarket } from '@/lib/payments';
 import {
   AirtelMark,
   AmexMark,
   DiscoverMark,
-  GooglePayMark,
   MastercardMark,
   MomoMark,
-  PayPalMark,
   StripeWordmark,
   VisaMark,
 } from '@/components/PaymentBrands';
@@ -93,6 +92,24 @@ export function BookingPage() {
       navigate(`/trips/${booking.id}`);
     },
   });
+
+  // Returned from Flutterwave's hosted payment — the webhook creates the trip.
+  if (new URLSearchParams(location.search).get('flw')) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+          <ShieldCheck size={22} />
+        </span>
+        <p className="mt-4 font-semibold text-ink-900">Payment received</p>
+        <p className="mt-1 text-sm text-ink-500">
+          We're confirming your payment and creating your trip — it'll appear in My trips shortly.
+        </p>
+        <Link to="/trips" className="mt-5 inline-block">
+          <Button size="lg">Go to My trips</Button>
+        </Link>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -181,6 +198,11 @@ export function BookingPage() {
   const instant = listing.bookingMode === 'instant';
   const superhost = host?.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5;
 
+  // African-market cars accept mobile money and route to Flutterwave; others are
+  // card-only via Stripe. `africanLive` is the real hosted-Flutterwave checkout.
+  const isAfrican = isAfricanMarket(listing.country);
+  const africanLive = PAYMENTS_LIVE && isAfrican;
+
   const stripePromise = getStripe();
   const demo = !stripePromise;
   const payProps: PayProps = {
@@ -223,6 +245,16 @@ export function BookingPage() {
                 </p>
               )}
 
+              {africanLive ? (
+                <FlutterwavePay
+                  listingId={id}
+                  startDate={startDate}
+                  endDate={endDate}
+                  label={money(total)}
+                  disabled={!datesValid}
+                  onDemoFallback={() => mutation.mutateAsync(undefined)}
+                />
+              ) : (
               <div>
                 {/* Card */}
                 <MethodRow
@@ -248,34 +280,42 @@ export function BookingPage() {
                   )}
                 </MethodRow>
 
-                {/* Mobile money */}
-                <MethodRow
-                  selected={method === 'momo'}
-                  onSelect={() => setMethod('momo')}
-                  icon={<Smartphone size={20} />}
-                  label="Mobile Money"
-                  marks={
-                    <>
-                      <MomoMark />
-                      <AirtelMark />
-                    </>
-                  }
-                >
-                  {demo ? (
-                    <DemoPayForm {...payProps} method="momo" disabled={!datesValid} />
-                  ) : (
-                    <MomoForm totalRwf={total} currency={cur} />
-                  )}
-                </MethodRow>
-
-                {/* Not connected yet — shown for parity, disabled */}
-                <MethodRow disabled icon={<PayPalMark />} label="PayPal" />
-                <MethodRow disabled icon={<GooglePayMark />} label="Google Pay" />
+                {/* Mobile money — only where it's actually settled (African markets). */}
+                {isAfrican && (
+                  <MethodRow
+                    selected={method === 'momo'}
+                    onSelect={() => setMethod('momo')}
+                    icon={<Smartphone size={20} />}
+                    label="Mobile Money"
+                    marks={
+                      <>
+                        <MomoMark />
+                        <AirtelMark />
+                      </>
+                    }
+                  >
+                    {demo ? (
+                      <DemoPayForm {...payProps} method="momo" disabled={!datesValid} />
+                    ) : (
+                      <MomoForm totalRwf={total} currency={cur} />
+                    )}
+                  </MethodRow>
+                )}
               </div>
+              )}
 
-              <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-ink-400">
-                Card payments secured by <StripeWordmark className="text-xs" />
-              </p>
+              {/* Provider attribution — Flutterwave for African markets, Stripe otherwise. */}
+              {!africanLive && (
+                isAfrican ? (
+                  <p className="mt-4 text-center text-xs text-ink-400">
+                    Payments secured — card, MTN MoMo &amp; Airtel Money.
+                  </p>
+                ) : (
+                  <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+                    Card payments secured by <StripeWordmark className="text-xs" />
+                  </p>
+                )
+              )}
             </CardBody>
           </Card>
         </div>
@@ -453,6 +493,63 @@ function BillingFields({
         <Label htmlFor="bill-zip">ZIP / postal code</Label>
         <Input id="bill-zip" value={zip} onChange={(e) => setZip(e.target.value)} placeholder="Optional" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Flutterwave checkout for African-market cars — one button that starts a hosted
+ * card/mobile-money payment and redirects. If the server has no Flutterwave key,
+ * it falls back to the demo confirm so the flow still completes.
+ */
+function FlutterwavePay({
+  listingId,
+  startDate,
+  endDate,
+  label,
+  disabled,
+  onDemoFallback,
+}: {
+  listingId: string;
+  startDate: string;
+  endDate: string;
+  label: string;
+  disabled: boolean;
+  onDemoFallback: () => Promise<unknown>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pay() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await client.startFlutterwaveCollection({ listingId, startDate, endDate });
+      if (res.link) {
+        window.location.href = res.link;
+        return;
+      }
+      await onDemoFallback(); // server in demo mode — no hosted link
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not start the payment.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 rounded-lg border border-ink-200 p-3">
+        <Smartphone size={20} className="text-brand-600" />
+        <CreditCard size={20} className="text-brand-600" />
+        <p className="text-sm text-ink-600">Pay with your card, MTN MoMo or Airtel Money.</p>
+      </div>
+      <p className="text-xs text-ink-400">
+        You'll be taken to our secure payment partner to complete payment, then brought back here.
+      </p>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <Button className="w-full" size="lg" onClick={pay} disabled={busy || disabled}>
+        {busy ? 'Redirecting…' : `Pay ${label}`}
+      </Button>
     </div>
   );
 }

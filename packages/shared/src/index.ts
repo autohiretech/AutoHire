@@ -285,7 +285,13 @@ export interface Booking {
   totalRwf: number;
   /** Payment state, owned server-side. A booking only exists once it is 'paid'. */
   paymentStatus: PaymentStatus;
-  /** Stripe PaymentIntent that funded this booking (server-set, never trusted from the client). */
+  /** Rail that collected this booking — routed from the car's market. */
+  provider?: PayoutProvider;
+  /** Currency the renter was actually charged in (may differ from the car's price currency). */
+  chargeCurrency?: string;
+  /** Escrow state: funds are 'held' until the trip, then 'released' to the host. */
+  holdStatus?: 'held' | 'released' | 'refunded';
+  /** Provider payment reference (Stripe PaymentIntent / Flutterwave tx ref) — server-set. */
   paymentIntentId?: string;
   createdAt: string;
   checkIn?: CheckPhoto[];
@@ -312,6 +318,8 @@ export interface Payout {
   amountRwf: number;
   channel: PayoutChannel;
   status: PayoutStatus;
+  /** Rail used to disburse — Flutterwave (MoMo/bank in Africa) or Stripe. */
+  provider?: PayoutProvider;
   scheduledFor: string;
   paidAt?: string;
 }

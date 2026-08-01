@@ -265,6 +265,55 @@ export const supabaseClient = {
   },
 
   /**
+   * Start a Flutterwave collection for an African-market car (card or mobile
+   * money). Returns a hosted-payment `link` to redirect to in live mode, or
+   * `{ demo: true }` when no provider is configured (the caller then falls back
+   * to the demo confirm-booking path).
+   */
+  async startFlutterwaveCollection(input: {
+    listingId: string;
+    startDate: string;
+    endDate: string;
+  }): Promise<{ link?: string; demo?: boolean; txRef?: string }> {
+    const { data, error } = await getSupabase().functions.invoke('flutterwave-collect', { body: input });
+    if (error) throw new Error(error.message);
+    const payload = data as { link?: string; demo?: boolean; txRef?: string; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return payload;
+  },
+
+  /**
+   * Register a host's raw payout destination with Flutterwave (live) and store
+   * only the returned beneficiary token + masked label. Used by payout setup in
+   * live mode; the demo path uses `setPayoutMethod` instead.
+   */
+  async connectPayoutBeneficiary(input: {
+    method: 'momo' | 'bank';
+    destination: string;
+    accountBank?: string;
+  }): Promise<UserProfile> {
+    const { data, error } = await getSupabase().functions.invoke('flutterwave-beneficiary', { body: input });
+    if (error) throw new Error(error.message);
+    const payload = data as { profile?: Record<string, unknown>; error?: string };
+    if (payload?.error || !payload?.profile) throw new Error(payload?.error ?? 'Could not save destination.');
+    return mapRow<UserProfile>(payload.profile) as UserProfile;
+  },
+
+  /** Capture the held Stripe authorisation when a trip starts (no-op for Flutterwave). */
+  async capturePayment(bookingId: string): Promise<void> {
+    await getSupabase().functions.invoke('capture-payment', { body: { bookingId } });
+  },
+
+  /** Admin: disburse a scheduled host payout via its provider. */
+  async disbursePayout(payoutId: string): Promise<unknown> {
+    const { data, error } = await getSupabase().functions.invoke('flutterwave-transfer', {
+      body: { payoutId },
+    });
+    if (error) throw new Error(error.message);
+    return data;
+  },
+
+  /**
    * Confirm one side of a handoff (pickup or return) with proof photos. The
    * server stamps the caller's slot and only advances the trip (→ active /
    * → completed) once BOTH the renter and host have signed off.
@@ -287,7 +336,13 @@ export const supabaseClient = {
         p_photos: photos,
       }),
     );
-    return mapRow<Booking>(row as Record<string, unknown>) as Booking;
+    const booking = mapRow<Booking>(row as Record<string, unknown>) as Booking;
+    // Trip just started (both sides signed pickup) → capture the escrow hold.
+    // Best-effort: a failed/undeployed capture must never block the handoff.
+    if (booking.state === 'active') {
+      supabaseClient.capturePayment(booking.id).catch(() => {});
+    }
+    return booking;
   },
 
   // --- Payouts -----------------------------------------------------------

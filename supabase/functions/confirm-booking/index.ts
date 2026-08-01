@@ -105,7 +105,11 @@ Deno.serve(async (req: Request) => {
         apiVersion: '2024-06-20',
       });
       const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
-      if (intent.status !== 'succeeded') return json({ error: 'Payment has not been completed.' }, 402);
+      // With manual capture the money is authorised & held ('requires_capture')
+      // until the trip starts; 'succeeded' means already captured. Both are valid.
+      if (intent.status !== 'requires_capture' && intent.status !== 'succeeded') {
+        return json({ error: 'Payment has not been authorised.' }, 402);
+      }
       const m = intent.metadata ?? {};
       if (m.uid !== uid) return json({ error: 'This payment does not belong to you.' }, 403);
       if (!m.listingId || !m.startDate || !m.endDate) {
@@ -137,11 +141,16 @@ Deno.serve(async (req: Request) => {
 
     const { data: listing, error: listErr } = await admin
       .from('listings')
-      .select('price_per_day_rwf, host_id, booking_mode')
+      .select('price_per_day_rwf, price_currency, country, host_id, booking_mode')
       .eq('id', listingId)
       .single();
     if (listErr || !listing) return json({ error: 'Listing not found.' }, 404);
     if (listing.host_id === uid) return json({ error: 'You cannot book your own car.' }, 403);
+
+    // Route the whole booking to one rail by the CAR's market: Flutterwave for
+    // African markets (money lands as local currency / MoMo), Stripe otherwise.
+    const AFRICA = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CI']);
+    const provider = AFRICA.has(String(listing.country ?? 'RW').toUpperCase()) ? 'flutterwave' : 'stripe';
 
     const days = diffDays(startDate, endDate);
     const subtotal = (listing.price_per_day_rwf as number) * days;
@@ -163,6 +172,9 @@ Deno.serve(async (req: Request) => {
         service_fee_rwf: serviceFee,
         total_rwf: subtotal + serviceFee,
         payment_status: 'paid',
+        provider,
+        charge_currency: listing.price_currency ?? 'RWF',
+        hold_status: 'held',
         payment_intent_id: paymentRef,
         created_at: new Date().toISOString(),
       })

@@ -8,25 +8,35 @@ import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
  * to the user — it's an implementation detail routed on method + country.
  */
 
+/**
+ * Live payments on? When false (default) the app uses the demo checkout / payout
+ * flows. Set `VITE_PAYMENTS_LIVE=true` once the provider Edge Functions + secrets
+ * (Flutterwave / Stripe) are deployed.
+ */
+export const PAYMENTS_LIVE = import.meta.env.VITE_PAYMENTS_LIVE === 'true';
+
 /** Markets Flutterwave settles locally (MoMo + bank). Extend as you add markets. */
 const FLUTTERWAVE_COUNTRIES = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CI']);
 
-/** Which provider handles a host PAYOUT for a given method + country. */
+/** Is this an African market whose money lands as a local currency (MoMo/bank)? */
+export function isAfricanMarket(countryCode: string): boolean {
+  return FLUTTERWAVE_COUNTRIES.has(countryCode);
+}
+
+/**
+ * THE routing rule. One provider handles a whole booking — collection, hold and
+ * payout — decided by the CAR's market (where the money must land), NOT where the
+ * renter is. A US renter paying a Rwandan car still goes through Flutterwave.
+ */
+export function providerForBooking(carCountryCode: string): PayoutProvider {
+  return isAfricanMarket(carCountryCode) ? 'flutterwave' : 'stripe';
+}
+
+/** Which provider a host's payout method routes to (matches their market). */
 export function payoutProviderFor(method: PayoutMethodType, countryCode: string): PayoutProvider {
   if (method === 'momo') return 'flutterwave'; // mobile money is African → Flutterwave
   if (method === 'card') return 'stripe'; // push-to-card / international → Stripe
-  // bank: Flutterwave locally in Africa, Stripe for everywhere else.
-  return FLUTTERWAVE_COUNTRIES.has(countryCode) ? 'flutterwave' : 'stripe';
-}
-
-/** Which provider collects a renter PAYMENT for a method + the card's/payer's country. */
-export function collectionProviderFor(
-  method: 'card' | 'momo',
-  countryCode: string,
-): PayoutProvider {
-  if (method === 'momo') return 'flutterwave';
-  // Cards: Flutterwave for African cards, Stripe for international.
-  return FLUTTERWAVE_COUNTRIES.has(countryCode) ? 'flutterwave' : 'stripe';
+  return isAfricanMarket(countryCode) ? 'flutterwave' : 'stripe';
 }
 
 /** The payout methods offered in a given market (MoMo only where it exists). */

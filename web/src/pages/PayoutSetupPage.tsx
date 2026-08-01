@@ -18,6 +18,7 @@ import { cn } from '@/lib/cn';
 import { useCountry } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
+  PAYMENTS_LIVE,
   PAYOUT_METHOD_META,
   maskDestination,
   payoutLabel,
@@ -58,13 +59,20 @@ export function PayoutSetupPage() {
   };
 
   const connect = useMutation({
-    mutationFn: (method: PayoutMethodType) =>
-      client.setPayoutMethod({
+    mutationFn: (method: PayoutMethodType) => {
+      const provider = payoutProviderFor(method, country.code);
+      // Live + Flutterwave: register the raw destination as a beneficiary server-
+      // side (only a token is stored). Otherwise store the masked method directly.
+      if (PAYMENTS_LIVE && provider === 'flutterwave' && (method === 'momo' || method === 'bank')) {
+        return client.connectPayoutBeneficiary({ method, destination: dest.trim() });
+      }
+      return client.setPayoutMethod({
         method,
-        provider: payoutProviderFor(method, country.code),
+        provider,
         destinationMasked: maskDestination(dest),
         label: payoutLabel(method, dest),
-      }),
+      });
+    },
     onSuccess: () => {
       refresh();
       setSelected(null);
