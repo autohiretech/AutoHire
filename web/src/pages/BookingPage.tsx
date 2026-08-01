@@ -6,11 +6,13 @@ import { ArrowLeft, Award, CreditCard, ShieldCheck, Smartphone, Star } from 'luc
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { client } from '@/lib/client';
 import { useIsHost } from '@/lib/account';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry, COUNTRIES } from '@/lib/country';
 import { cn } from '@/lib/cn';
 import { getSupabase } from '@/lib/supabase';
 import { getStripe } from '@/lib/stripe';
-import { formatDate, formatRwf } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
 import {
   AirtelMark,
   AmexMark,
@@ -53,6 +55,7 @@ export function BookingPage() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const isHost = useIsHost();
+  const { data: me } = useCurrentUser();
 
   const picked = location.state as { startDate?: string; endDate?: string } | null;
   const [startDate] = useState(() => picked?.startDate ?? addDays(todayISO(), 1));
@@ -128,6 +131,39 @@ export function BookingPage() {
     );
   }
 
+  // Only identity-verified renters can rent. The car detail page blocks earlier,
+  // but this guards a direct link to the checkout, and the server enforces it too.
+  if (me && me.verification !== 'verified') {
+    const underReview = me.verification === 'pending';
+    return (
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+          <ShieldCheck size={22} />
+        </span>
+        <p className="mt-4 font-semibold text-ink-900">
+          {underReview ? 'Verification in review' : 'Verify your identity to rent'}
+        </p>
+        <p className="mt-1 text-sm text-ink-500">
+          {underReview
+            ? "We're checking your details. You can book as soon as your identity is approved."
+            : me.verification === 'rejected'
+              ? 'Your verification was declined. Please resubmit your documents to rent.'
+              : 'For everyone’s safety, renters complete a quick one-time identity check before their first booking.'}
+        </p>
+        <Link to="/verification" className="mt-5 inline-block">
+          <Button size="lg">
+            <ShieldCheck size={16} /> {underReview ? 'View status' : 'Verify now'}
+          </Button>
+        </Link>
+        <div>
+          <Link to={`/cars/${id}`} className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+            Back to the car
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const today = todayISO();
   const inMaintenance = listing.status === 'maintenance';
   const maintUntil = listing.maintenanceUntil ?? undefined;
@@ -138,6 +174,10 @@ export function BookingPage() {
   const subtotal = listing.pricePerDayRwf * days;
   const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
   const total = subtotal + serviceFee;
+  // Amounts stay in the currency the host set the car in — never re-denominated
+  // by the renter's nationality or their header market selection.
+  const cur: CurrencyCode = isCurrencyCode(listing.priceCurrency) ? listing.priceCurrency : 'RWF';
+  const money = (n: number) => formatMoney(n, cur);
   const instant = listing.bookingMode === 'instant';
   const superhost = host?.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5;
 
@@ -148,6 +188,7 @@ export function BookingPage() {
     startDate,
     endDate,
     totalRwf: total,
+    currency: cur,
     instant,
     onPaid: (pi?: string) => mutation.mutateAsync(pi),
   };
@@ -223,7 +264,7 @@ export function BookingPage() {
                   {demo ? (
                     <DemoPayForm {...payProps} method="momo" disabled={!datesValid} />
                   ) : (
-                    <MomoForm totalRwf={total} />
+                    <MomoForm totalRwf={total} currency={cur} />
                   )}
                 </MethodRow>
 
@@ -293,22 +334,27 @@ export function BookingPage() {
                 <div className="mt-1.5 space-y-1.5 text-sm">
                   <div className="flex justify-between text-ink-600">
                     <span>
-                      {formatRwf(listing.pricePerDayRwf)} × {days} day{days === 1 ? '' : 's'}
+                      {money(listing.pricePerDayRwf)} × {days} day{days === 1 ? '' : 's'}
                     </span>
-                    <span>{formatRwf(subtotal)}</span>
+                    <span>{money(subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-ink-600">
                     <span>Service fee</span>
-                    <span>{formatRwf(serviceFee)}</span>
+                    <span>{money(serviceFee)}</span>
                   </div>
                   <div className="flex justify-between border-t border-ink-100 pt-2 text-base font-semibold text-ink-900">
                     <span>Total</span>
-                    <span>{formatRwf(total)}</span>
+                    <span>{money(total)}</span>
                   </div>
                 </div>
-                <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-400">
-                  <ShieldCheck size={14} className="text-brand-600" /> Protected by AutoHire
-                </p>
+                <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-brand-50/60 p-2.5 text-xs text-ink-600">
+                  <ShieldCheck size={14} className="mt-0.5 shrink-0 text-brand-600" />
+                  <span>
+                    <span className="font-medium text-ink-800">Payment held securely.</span> AutoHire holds your
+                    payment and only releases it to the host after your trip starts — so your money is protected
+                    until pickup.
+                  </span>
+                </div>
               </div>
             </CardBody>
           </Card>
@@ -370,7 +416,10 @@ interface PayProps {
   listingId: string;
   startDate: string;
   endDate: string;
+  /** Total in the listing's native currency (whatever the host set). */
   totalRwf: number;
+  /** The listing's currency — the amount is shown and charged in this. */
+  currency: CurrencyCode;
   instant: boolean;
   /** Create the booking once payment succeeds. In demo mode the id is omitted. */
   onPaid: (paymentIntentId?: string) => Promise<unknown>;
@@ -409,7 +458,7 @@ function BillingFields({
 }
 
 /** Demo checkout — used when no payment provider is configured. No real charge. */
-function DemoPayForm({ totalRwf, onPaid, method, disabled }: PayProps & { method: Method; disabled: boolean }) {
+function DemoPayForm({ totalRwf, currency, onPaid, method, disabled }: PayProps & { method: Method; disabled: boolean }) {
   const { country: initial } = useCountry();
   const [country, setCountry] = useState(initial.code);
   const [zip, setZip] = useState('');
@@ -444,14 +493,14 @@ function DemoPayForm({ totalRwf, onPaid, method, disabled }: PayProps & { method
       </p>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button className="w-full" size="lg" onClick={pay} disabled={busy || disabled}>
-        {busy ? 'Processing…' : `Confirm and pay ${formatRwf(totalRwf)}`}
+        {busy ? 'Processing…' : `Confirm and pay ${formatMoney(totalRwf, currency)}`}
       </Button>
     </div>
   );
 }
 
 /** Stripe card form — creates a PaymentIntent server-side, then confirms it. */
-function CardForm({ listingId, startDate, endDate, totalRwf, onPaid, disabled }: PayProps & { disabled: boolean }) {
+function CardForm({ listingId, startDate, endDate, totalRwf, currency, onPaid, disabled }: PayProps & { disabled: boolean }) {
   const stripe = useStripe();
   const elements = useElements();
   const { country: initial } = useCountry();
@@ -510,14 +559,14 @@ function CardForm({ listingId, startDate, endDate, totalRwf, onPaid, disabled }:
       <BillingFields country={country} setCountry={setCountry} zip={zip} setZip={setZip} />
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button className="w-full" size="lg" onClick={pay} disabled={busy || !stripe || disabled}>
-        {busy ? 'Processing…' : `Confirm and pay ${formatRwf(totalRwf)}`}
+        {busy ? 'Processing…' : `Confirm and pay ${formatMoney(totalRwf, currency)}`}
       </Button>
     </div>
   );
 }
 
 /** MTN MoMo — branded UI. Real collection needs a mobile-money PSP (see docs/payments-plan.md). */
-function MomoForm({ totalRwf }: { totalRwf: number }) {
+function MomoForm({ totalRwf, currency }: { totalRwf: number; currency: CurrencyCode }) {
   const [phone, setPhone] = useState('');
   const [note, setNote] = useState<string | null>(null);
 
@@ -544,7 +593,7 @@ function MomoForm({ totalRwf }: { totalRwf: number }) {
           )
         }
       >
-        Pay {formatRwf(totalRwf)} with Mobile Money
+        Pay {formatMoney(totalRwf, currency)} with Mobile Money
       </Button>
     </div>
   );

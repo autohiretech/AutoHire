@@ -122,11 +122,17 @@ Deno.serve(async (req: Request) => {
     // Business/company accounts are hosts only — they may not rent.
     const { data: profile } = await admin
       .from('profiles')
-      .select('owner_type')
+      .select('owner_type, verification')
       .eq('id', uid)
       .single();
     if (profile?.owner_type === 'business') {
       return json({ error: 'Business accounts cannot rent.' }, 403);
+    }
+    // Renters must have a verified identity before they can rent. This is the
+    // authoritative gate — the UI blocks earlier, but a booking can never be
+    // created for an unverified renter regardless of how confirm is called.
+    if (profile?.verification !== 'verified') {
+      return json({ error: 'Verify your identity before renting.', code: 'verification_required' }, 403);
     }
 
     const { data: listing, error: listErr } = await admin

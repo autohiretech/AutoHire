@@ -24,6 +24,7 @@ import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES, CATEGORY_GROUPS } from '@/lib/categories';
 import { Spinner, toast } from '@/components/ui';
 import { ListingCard } from '@/components/ListingCard';
+import { CategoryRail } from '@/components/marketplace/CategoryRail';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
 import { AiMode } from '@/components/marketplace/AiMode';
@@ -233,61 +234,40 @@ export function HomePage() {
 
         {/* ── Fused search box (standard mode only) ────────────────────────── */}
         {!aiMode && (
-        <div className="mx-auto mt-5 max-w-3xl">
-          <div
-            className={cn(
-              'rounded-2xl p-[3px] shadow-lg transition-colors',
-              aiMode
-                ? 'bg-gradient-to-r from-accent-400 to-accent-600'
-                : 'bg-gradient-to-r from-brand-400 via-brand-500 to-accent-500',
-            )}
-          >
+          <div className="mx-auto mt-5 max-w-3xl">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 void runSearch();
               }}
-              className="rounded-[14px] bg-white px-5 pt-4 pb-3"
+              className="rounded-2xl border border-ink-200 bg-white px-5 pt-4 pb-3 shadow-card transition focus-within:border-brand-400 focus-within:ring-4 focus-within:ring-brand-500/10"
             >
               <input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder={
-                  aiMode
-                    ? 'Describe the car you want — e.g. “cheap automatic SUV for 5 people”'
-                    : 'Search self-drive cars by make, model, or city'
-                }
-                aria-label={aiMode ? 'Describe the car you want' : 'Search cars'}
+                placeholder="Search self-drive cars by make, model, or city"
+                aria-label="Search cars"
                 className="w-full text-base text-ink-900 outline-none placeholder:text-ink-400"
               />
               <div className="mt-3 flex items-center justify-between border-t border-ink-100 pt-3">
                 <button
                   type="button"
                   onClick={() => setAiMode((v) => !v)}
-                  className={cn(
-                    'flex items-center gap-2 text-sm font-medium transition-colors',
-                    aiMode ? 'text-accent-600' : 'text-ink-500 hover:text-ink-800',
-                  )}
+                  className="flex items-center gap-2 text-sm font-medium text-ink-500 transition-colors hover:text-ink-800"
                 >
-                  <Sparkles size={18} /> {aiMode ? 'AI Mode on' : 'Describe with AI'}
+                  <Sparkles size={18} /> Describe with AI
                 </button>
                 <button
                   type="submit"
                   disabled={aiBusy}
-                  className={cn(
-                    'flex items-center gap-2 rounded-full px-6 py-2 font-medium text-white transition-colors disabled:opacity-70',
-                    aiMode
-                      ? 'bg-gradient-to-r from-accent-500 to-accent-600 hover:brightness-95'
-                      : 'bg-gradient-to-r from-brand-500 to-brand-600 hover:brightness-95',
-                  )}
+                  className="flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-600 px-6 py-2 font-medium text-white transition hover:brightness-95 disabled:opacity-70"
                 >
-                  {aiMode ? <Sparkles size={18} /> : <Search size={18} />}
+                  <Search size={18} />
                   {aiBusy ? 'Thinking…' : 'Search'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
         )}
       </div>
 
@@ -305,18 +285,6 @@ export function HomePage() {
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium text-ink-700">
-            <button
-              type="button"
-              onClick={() => {
-                setTopRanked(true);
-                setTab('cars');
-                scrollToResults();
-              }}
-              className="flex items-center gap-1.5 hover:text-brand-600"
-            >
-              <TrendingUp size={16} className="text-brand-600" /> Top ranked cars
-            </button>
-            <span className="hidden h-4 w-px bg-ink-200 sm:block" />
             {mode === 'host' ? (
               <Link to="/cars/new" className="flex items-center gap-1.5 hover:text-brand-600">
                 <PlusCircle size={16} className="text-brand-600" /> List your car
@@ -339,9 +307,23 @@ export function HomePage() {
 
       {/* ── Categories rail + car results ─────────────────────────────────── */}
       <div ref={resultsRef} className="mx-auto mt-5 max-w-[1500px] scroll-mt-4 px-4 pb-10">
+        {/* Mobile: a horizontal category rail. The vertical accordion sidebar is
+            a desktop pattern — on a phone it buried the results, so below lg we
+            swap in the scrollable rail instead. */}
+        <div className="mb-4 lg:hidden">
+          <CategoryRail
+            value={filters.category}
+            onSelect={(cat) => {
+              setFilter('category', cat);
+              setTab('cars');
+              scrollToResults();
+            }}
+          />
+        </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr] lg:items-start">
-          {/* Category sidebar */}
-          <aside className="rounded-2xl border border-ink-100 bg-white p-2 shadow-sm">
+          {/* Category sidebar (desktop only). Sticks below the header once the
+              slideshow scrolls past, so it stays put while the car grid scrolls. */}
+          <aside className="hidden rounded-2xl border border-ink-100 bg-white p-2 shadow-card lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
             <p className="px-3 py-2 text-sm font-semibold text-ink-900">Categories for you</p>
             {CATEGORY_GROUPS.map((group) => {
               const items = CAR_CATEGORIES.filter((c) => c.group === group);
@@ -414,8 +396,8 @@ export function HomePage() {
           </h2>
           {tab === 'cars' && (
             <div className="flex items-center gap-3">
-              <span className="hidden items-center gap-1 text-sm text-ink-500 sm:flex">
-                <ShieldCheck size={16} className="text-brand-600" /> Verified hosts
+              <span className="hidden items-center gap-1 text-xs text-ink-400 sm:flex">
+                <ShieldCheck size={14} className="text-ink-400" /> All hosts verified
               </span>
               <button
                 type="button"
@@ -448,29 +430,16 @@ export function HomePage() {
 
         {tab === 'cities' ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            {citiesFor(country.code).map((c) => {
-              const active = filters.city === c;
-              return (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => {
-                    setFilter('city', active ? undefined : c);
-                    setTab('cars');
-                    scrollToResults();
-                  }}
-                  className={cn(
-                    'flex flex-col items-center gap-2 rounded-2xl border p-6 text-center transition-colors',
-                    active
-                      ? 'border-brand-300 bg-brand-50 text-brand-700'
-                      : 'border-ink-200 bg-white text-ink-700 hover:border-ink-300 hover:bg-ink-50',
-                  )}
-                >
-                  <MapPin size={22} className={active ? 'text-brand-600' : 'text-ink-400'} />
-                  <span className="text-sm font-medium">{c}</span>
-                </button>
-              );
-            })}
+            {citiesFor(country.code).map((c) => (
+              <Link
+                key={c}
+                to={`/cities/${encodeURIComponent(c)}`}
+                className="flex flex-col items-center gap-2 rounded-2xl border border-ink-200 bg-white p-6 text-center text-ink-700 shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-ink-300 hover:shadow-card-hover"
+              >
+                <MapPin size={22} className="text-ink-400" />
+                <span className="text-sm font-medium">{c}</span>
+              </Link>
+            ))}
           </div>
         ) : tab === 'hosts' ? (
           hosts && hosts.length > 0 ? (
@@ -635,7 +604,7 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
     <div
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      className="overflow-hidden rounded-2xl border border-ink-100 bg-ink-900 shadow-sm"
+      className="overflow-hidden rounded-2xl border border-ink-100 bg-ink-900 shadow-card"
     >
       <div className="grid grid-cols-1 gap-1 md:grid-cols-[1.7fr_1fr]">
         {/* Hero (current car) */}
@@ -653,7 +622,7 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
           <span className="absolute left-4 top-4 rounded bg-ink-900/85 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
             Featured
           </span>
-          <div className="absolute right-4 top-3 max-w-[75%] text-right text-white">
+          <div className="absolute right-4 top-3 max-w-[56%] text-right text-white sm:max-w-[75%]">
             <p className="line-clamp-1 text-lg font-bold drop-shadow sm:text-xl">{car.title}</p>
             <p className="line-clamp-1 text-sm text-white/85 drop-shadow">{subtitle}</p>
           </div>
@@ -737,12 +706,15 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
   );
 }
 
-/** Compact host tile for the Hosts tab. */
+/** Compact host tile for the Hosts tab — links to the host's public profile. */
 function HostCard({ host }: { host: Host }) {
   const isBusiness = host.ownerType === 'business';
   const name = host.businessName || host.fullName;
   return (
-    <div className="flex flex-col items-center rounded-2xl border border-ink-100 bg-white p-4 text-center shadow-sm">
+    <Link
+      to={`/hosts/${host.id}`}
+      className="flex flex-col items-center rounded-2xl border border-ink-100 bg-white p-4 text-center shadow-card transition-all duration-200 hover:-translate-y-1 hover:shadow-card-hover"
+    >
       {host.avatarUrl ? (
         <img src={host.avatarUrl} alt={name} className="h-14 w-14 rounded-full object-cover" />
       ) : (
@@ -764,13 +736,13 @@ function HostCard({ host }: { host: Host }) {
           </span>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
 
 function EmptyState({ label, action }: { label: string; action?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-ink-100 bg-white py-16 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-ink-100 bg-white py-16 text-center shadow-card">
       <CarFront size={30} className="text-ink-300" />
       <p className="font-medium text-ink-700">{label}</p>
       {action}

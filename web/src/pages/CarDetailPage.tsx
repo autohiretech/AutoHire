@@ -31,6 +31,7 @@ import { useIsHost } from '@/lib/account';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { formatDate, formatRwf } from '@/lib/format';
+import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
 import { isMachine } from '@/lib/categories';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
@@ -141,9 +142,26 @@ export function CarDetailPage() {
   const subtotal = nights * listing.pricePerDayRwf;
   const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
   const total = subtotal + serviceFee;
+  // The price breakdown stays in the car's own currency (the one the host set),
+  // regardless of the renter's market. The headline above still shows a converted
+  // estimate for convenience via <Price>.
+  const cur: CurrencyCode = isCurrencyCode(listing.priceCurrency) ? listing.priceCurrency : 'RWF';
+  const money = (n: number) => formatMoney(n, cur);
+
+  // Renters must be identity-verified before they can rent. Guests (no `me`) fall
+  // through to the normal flow, which routes them to sign in first.
+  const needsVerification = !isHost && !!me && me.verification !== 'verified';
+  const verifNotice = needsVerification
+    ? me!.verification === 'pending'
+      ? "Your identity is under review — you can rent once it's approved."
+      : me!.verification === 'rejected'
+        ? 'Your verification was declined. Please resubmit to rent.'
+        : 'Verify your identity to rent — a quick one-time check.'
+    : null;
 
   const goToCalendar = () => calendarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const reserve = () => {
+    if (needsVerification) return navigate('/verification');
     if (!datesChosen) return goToCalendar();
     navigate(`/cars/${listing.id}/book`, { state: { startDate: range.start, endDate: range.end } });
   };
@@ -317,7 +335,7 @@ export function CarDetailPage() {
               <h2 className="mb-4 text-lg font-semibold text-ink-900">Meet your host</h2>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-[260px_1fr]">
                 {/* Host profile card */}
-                <div className="rounded-2xl border border-ink-200 p-5 shadow-sm">
+                <div className="rounded-2xl border border-ink-100 p-5 shadow-card">
                   <div className="flex items-center gap-4">
                     <Avatar name={host.businessName ?? host.fullName} src={host.avatarUrl} size="lg" />
                     <div className="min-w-0">
@@ -351,6 +369,12 @@ export function CarDetailPage() {
                       <p className="text-[11px] text-ink-500">Listings</p>
                     </div>
                   </div>
+                  <Link
+                    to={`/hosts/${host.id}`}
+                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-ink-200 py-2 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50"
+                  >
+                    View profile &amp; all cars
+                  </Link>
                 </div>
 
                 {/* Host details + safety */}
@@ -512,25 +536,35 @@ export function CarDetailPage() {
                   </div>
 
                   <Button className="w-full" size="lg" onClick={reserve}>
-                    {datesChosen ? (instant ? 'Reserve' : 'Request to book') : 'Choose dates'}
+                    {needsVerification
+                      ? 'Verify to rent'
+                      : datesChosen
+                        ? instant
+                          ? 'Reserve'
+                          : 'Request to book'
+                        : 'Choose dates'}
                   </Button>
-                  <p className="text-center text-xs text-ink-400">You won't be charged yet</p>
+                  {verifNotice ? (
+                    <p className="text-center text-xs text-ink-500">{verifNotice}</p>
+                  ) : (
+                    <p className="text-center text-xs text-ink-400">You won't be charged yet</p>
+                  )}
 
                   {datesChosen && (
                     <div className="space-y-2 border-t border-ink-100 pt-3 text-sm">
                       <div className="flex justify-between text-ink-600">
                         <span>
-                          {formatRwf(listing.pricePerDayRwf)} × {nights} night{nights === 1 ? '' : 's'}
+                          {money(listing.pricePerDayRwf)} × {nights} night{nights === 1 ? '' : 's'}
                         </span>
-                        <span>{formatRwf(subtotal)}</span>
+                        <span>{money(subtotal)}</span>
                       </div>
                       <div className="flex justify-between text-ink-600">
                         <span>Service fee</span>
-                        <span>{formatRwf(serviceFee)}</span>
+                        <span>{money(serviceFee)}</span>
                       </div>
                       <div className="flex justify-between border-t border-ink-100 pt-2 font-semibold text-ink-900">
                         <span>Total</span>
-                        <span>{formatRwf(total)}</span>
+                        <span>{money(total)}</span>
                       </div>
                     </div>
                   )}
@@ -568,7 +602,7 @@ export function CarDetailPage() {
             <div className="min-w-0">
               {datesChosen ? (
                 <>
-                  <p className="truncate text-base font-bold text-ink-900">{formatRwf(total)}</p>
+                  <p className="truncate text-base font-bold text-ink-900">{money(total)}</p>
                   <p className="text-xs text-ink-500">
                     total · {nights} night{nights === 1 ? '' : 's'}
                   </p>
@@ -583,7 +617,13 @@ export function CarDetailPage() {
               )}
             </div>
             <Button size="lg" className="shrink-0" onClick={reserve}>
-              {datesChosen ? (instant ? 'Reserve' : 'Request to book') : 'Choose dates'}
+              {needsVerification
+                ? 'Verify to rent'
+                : datesChosen
+                  ? instant
+                    ? 'Reserve'
+                    : 'Request to book'
+                  : 'Choose dates'}
             </Button>
           </div>
         </div>

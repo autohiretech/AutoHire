@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bell, Car, LogOut, Menu, MessageSquare, ShieldCheck, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar, Button } from '@/components/ui';
+import { useNotifications } from '@/components/NotificationsProvider';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -35,6 +36,7 @@ export function Header() {
   const { data: me } = useCurrentUser();
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { open: openNotifications } = useNotifications();
 
   // Close the mobile menu whenever the route changes.
   const closeMenu = () => setMenuOpen(false);
@@ -122,8 +124,9 @@ export function Header() {
                   </span>
                 )}
               </Link>
-              <Link
-                to="/notifications"
+              <button
+                type="button"
+                onClick={openNotifications}
                 className="relative hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 sm:block"
                 aria-label={
                   unreadNotifications > 0
@@ -137,7 +140,7 @@ export function Header() {
                     {unreadNotifications}
                   </span>
                 )}
-              </Link>
+              </button>
               <Link to="/account" aria-label="Account" className="ml-1">
                 <Avatar name={identityName} src={mode === 'host' ? host?.avatarUrl : me?.avatarUrl} size="sm" />
               </Link>
@@ -198,15 +201,13 @@ export function Header() {
             </NavLink>
           ))}
           {user && (
-            <NavLink
-              to="/notifications"
-              onClick={closeMenu}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
-                )
-              }
+            <button
+              type="button"
+              onClick={() => {
+                closeMenu();
+                openNotifications();
+              }}
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100"
             >
               <span className="flex items-center gap-2">
                 <Bell size={16} /> Notifications
@@ -216,7 +217,7 @@ export function Header() {
                   {unreadNotifications}
                 </span>
               )}
-            </NavLink>
+            </button>
           )}
           <div className="my-2 border-t border-ink-100" />
           {user ? (

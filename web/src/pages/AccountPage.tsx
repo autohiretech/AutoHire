@@ -119,6 +119,7 @@ export function AccountPage() {
 /** Editable profile: avatar + name, plus the host/renter role switch. */
 function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>; email: string }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const isCompany = profile.ownerType === 'business';
   const isHost = profile.role === 'owner';
   const displayName = profile.businessName ?? profile.fullName;
@@ -174,6 +175,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
   }
 
   async function toggleRole() {
+    const becomingHost = !isHost;
     setBusy(true);
     setError(null);
     try {
@@ -185,6 +187,11 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       queryClient.invalidateQueries({ queryKey: ['ownerHost'] });
       queryClient.invalidateQueries({ queryKey: ['ownerListings'] });
       queryClient.invalidateQueries({ queryKey: ['listings'] });
+      // New hosts need a payout method before they can earn — send them straight
+      // to set one up (unless they already have one on file).
+      if (becomingHost && profile.payoutStatus !== 'active') {
+        navigate('/payouts/setup');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not switch your account.');
     } finally {

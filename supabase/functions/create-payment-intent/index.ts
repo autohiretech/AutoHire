@@ -70,16 +70,21 @@ Deno.serve(async (req: Request) => {
     // Business/company accounts are hosts only — they may not rent.
     const { data: profile } = await admin
       .from('profiles')
-      .select('owner_type')
+      .select('owner_type, verification')
       .eq('id', uid)
       .single();
     if (profile?.owner_type === 'business') {
       return json({ error: 'Business accounts cannot rent.' }, 403);
     }
+    // Block unverified renters BEFORE any charge is created, so an unverified
+    // renter can never be charged only to be refused at confirm-booking.
+    if (profile?.verification !== 'verified') {
+      return json({ error: 'Verify your identity before renting.', code: 'verification_required' }, 403);
+    }
 
     const { data: listing, error: listErr } = await admin
       .from('listings')
-      .select('price_per_day_rwf, title, host_id, blocked_dates')
+      .select('price_per_day_rwf, price_currency, title, host_id, blocked_dates')
       .eq('id', listingId)
       .single();
     if (listErr || !listing) return json({ error: 'Listing not found.' }, 404);
@@ -104,22 +109,43 @@ Deno.serve(async (req: Request) => {
 
     const days = diffDays(startDate, endDate);
     const subtotal = (listing.price_per_day_rwf as number) * days;
-    const totalRwf = subtotal + Math.round(subtotal * SERVICE_FEE_RATE);
+    const total = subtotal + Math.round(subtotal * SERVICE_FEE_RATE);
 
-    // Foreigners are charged in USD; convert from RWF. Stripe USD is in cents.
-    const rwfPerUsd = Number(Deno.env.get('RWF_PER_USD') ?? '1300');
-    const amountUsdCents = Math.max(50, Math.round((totalRwf / rwfPerUsd) * 100));
+    // Charge in the currency the HOST set the car in — the renter's nationality
+    // never re-denominates it. Stripe settles USD/AED/CNY (2-decimal, so the
+    // amount is in the minor unit → ×100). RWF is not a Stripe settlement
+    // currency, so RWF-priced cars fall back to a USD charge converted at
+    // RWF_PER_USD (Stripe cannot take RWF cards).
+    const listingCurrency = String(listing.price_currency ?? 'RWF').toUpperCase();
+    const STRIPE_MINOR: Record<string, number> = { USD: 100, AED: 100, CNY: 100 };
+    let chargeCurrency: string;
+    let amount: number;
+    if (STRIPE_MINOR[listingCurrency]) {
+      chargeCurrency = listingCurrency.toLowerCase();
+      amount = Math.max(50, Math.round(total * STRIPE_MINOR[listingCurrency]));
+    } else {
+      const rwfPerUsd = Number(Deno.env.get('RWF_PER_USD') ?? '1300');
+      chargeCurrency = 'usd';
+      amount = Math.max(50, Math.round((total / rwfPerUsd) * 100));
+    }
 
     const intent = await stripe.paymentIntents.create({
-      amount: amountUsdCents,
-      currency: 'usd',
+      amount,
+      currency: chargeCurrency,
       automatic_payment_methods: { enabled: true },
-      metadata: { uid, listingId, startDate, endDate, totalRwf: String(totalRwf) },
+      metadata: {
+        uid,
+        listingId,
+        startDate,
+        endDate,
+        totalRwf: String(total),
+        priceCurrency: listingCurrency,
+      },
       description: `AutoHire — ${listing.title} (${days} day${days === 1 ? '' : 's'})`,
     });
 
     return json(
-      { clientSecret: intent.client_secret, amountUsdCents, currency: 'usd', totalRwf },
+      { clientSecret: intent.client_secret, amount, currency: chargeCurrency, totalRwf: total, priceCurrency: listingCurrency },
       200,
     );
   } catch (e) {

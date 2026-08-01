@@ -232,11 +232,14 @@ export const supabaseClient = {
   /**
    * Finalise a booking. There is no client-side insert: the `confirm-booking`
    * Edge Function recomputes the amounts and writes the row with the service
-   * role, so the renter can't set their own price, days or status.
+   * role, so the renter can't set their own price, days or status. RLS blocks
+   * direct client inserts (migration-029), so this is the ONLY path in both
+   * modes — including demo.
    *
    * In live mode it verifies the Stripe PaymentIntent (pass `paymentIntentId`).
-   * In demo mode (no Stripe configured) it confirms instantly from the listing +
-   * dates — no real charge. listingId/startDate/endDate are sent for both.
+   * In demo mode (no Stripe configured server-side) it confirms instantly from
+   * the listing + dates — no real charge. listingId/startDate/endDate are sent
+   * for both, and the function also enforces the renter's identity verification.
    */
   async confirmBooking(input: {
     listingId: string;
@@ -244,55 +247,6 @@ export const supabaseClient = {
     endDate: string;
     paymentIntentId?: string;
   }): Promise<Booking> {
-    // Demo mode (no Stripe key) — skip the Edge Function entirely and create the
-    // booking straight from the browser. No real charge, no function deploy.
-    // The DB triggers (availability + status lock) still enforce the rules.
-    if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
-      const renterId = me();
-      const listing = await run(
-        sb()
-          .from('listings')
-          .select('price_per_day_rwf, host_id, booking_mode')
-          .eq('id', input.listingId)
-          .single(),
-      );
-      if (!listing) throw new Error('Listing not found.');
-      if (listing.host_id === renterId) {
-        throw new Error('You cannot book your own car.');
-      }
-      const days = Math.max(
-        1,
-        Math.round(
-          (new Date(input.endDate).getTime() - new Date(input.startDate).getTime()) / 86_400_000,
-        ),
-      );
-      const subtotal = (listing.price_per_day_rwf as number) * days;
-      const serviceFee = Math.round(subtotal * 0.1);
-      const row = await run(
-        sb()
-          .from('bookings')
-          .insert({
-            id: `bk-${Date.now()}`,
-            listing_id: input.listingId,
-            renter_id: renterId,
-            host_id: listing.host_id,
-            start_date: input.startDate,
-            end_date: input.endDate,
-            days,
-            state: listing.booking_mode === 'instant' ? 'confirmed' : 'requested',
-            subtotal_rwf: subtotal,
-            service_fee_rwf: serviceFee,
-            total_rwf: subtotal + serviceFee,
-            payment_status: 'paid',
-            payment_intent_id: `demo-${Date.now()}`,
-            created_at: new Date().toISOString(),
-          })
-          .select('*')
-          .single(),
-      );
-      return mapRow<Booking>(row) as Booking;
-    }
-
     const { data, error } = await getSupabase().functions.invoke('confirm-booking', {
       body: input,
     });
@@ -1240,6 +1194,53 @@ export const supabaseClient = {
     if (patch.ownerType !== undefined) dbPatch.owner_type = patch.ownerType;
     const row = await run(
       sb().from('profiles').update(dbPatch).eq('id', me()).select('*').single(),
+    );
+    return mapRow<UserProfile>(row) as UserProfile;
+  },
+  /**
+   * Connect a host payout method. The host picks a method (momo/bank/card) and a
+   * destination; the caller routes it to a provider (Flutterwave/Stripe) and
+   * passes both. In a live build this kicks off provider onboarding server-side
+   * and status becomes 'active' only once the provider confirms via webhook; the
+   * demo marks it active immediately. Only the MASKED destination is stored.
+   */
+  async setPayoutMethod(input: {
+    method: 'momo' | 'bank' | 'card';
+    provider: 'stripe' | 'flutterwave';
+    destinationMasked: string;
+    label: string;
+  }): Promise<UserProfile> {
+    const row = await run(
+      sb()
+        .from('profiles')
+        .update({
+          payout_method: input.method,
+          payout_provider: input.provider,
+          payout_destination: input.destinationMasked,
+          payout_label: input.label,
+          payout_status: 'active',
+        })
+        .eq('id', me())
+        .select('*')
+        .single(),
+    );
+    return mapRow<UserProfile>(row) as UserProfile;
+  },
+  /** Remove the connected payout method. */
+  async clearPayoutMethod(): Promise<UserProfile> {
+    const row = await run(
+      sb()
+        .from('profiles')
+        .update({
+          payout_method: null,
+          payout_provider: null,
+          payout_destination: null,
+          payout_label: null,
+          payout_status: 'none',
+        })
+        .eq('id', me())
+        .select('*')
+        .single(),
     );
     return mapRow<UserProfile>(row) as UserProfile;
   },

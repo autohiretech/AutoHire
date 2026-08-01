@@ -21,6 +21,15 @@
   --color-accent-500: #f59e0b;
   --color-accent-600: #d97706;
 
+  /* Informational (attention, not money/success) — used for request counts so
+     they read distinctly from the green "earned" figures. */
+  --color-info-50: #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-200: #bfdbfe;
+  --color-info-500: #3b82f6;
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4ed8;
+
   --color-ink-50: #f8fafc;
   --color-ink-100: #f1f5f9;
   --color-ink-200: #e2e8f0;
@@ -34,6 +43,41 @@
 
   --radius-card: 1rem;
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* Soft, layered elevation — a tight contact shadow plus a wider ambient one,
+     so surfaces read as lifted without the hard grey edge of a single shadow. */
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 2px 4px rgba(15, 23, 42, 0.06), 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+/* Right-edge drawer (notifications): scrim fades, panel slides in from the side. */
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-drawer-in {
+  animation: drawer-in 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.animate-overlay-in {
+  animation: overlay-in 0.2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-drawer-in,
+  .animate-overlay-in {
+    animation: none;
+  }
 }
 
 html,

@@ -22,11 +22,14 @@ export function ListingCard({
 
   return (
     <Link to={`/cars/${listing.id}`} className="group block h-full min-w-0 focus:outline-none">
-      <Card className="h-full overflow-hidden transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40">
+      <Card className="h-full overflow-hidden transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-card-hover group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40">
         <Img
           src={listing.photos[0]}
           alt={listing.title}
-          className={cn('w-full object-cover', compact ? 'h-32' : 'h-44')}
+          className={cn(
+            'w-full object-cover transition-transform duration-300 group-hover:scale-105',
+            compact ? 'h-32' : 'h-44',
+          )}
         />
         <CardBody className={cn(compact && 'p-3 sm:p-3')}>
           <div className="mb-1 flex items-center justify-between gap-2">

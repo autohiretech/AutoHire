@@ -139,6 +139,16 @@ export interface ElectricQuota {
   canAddNonElectric: boolean;
 }
 
+/**
+ * Payout rails are an implementation detail — the host picks a *method* they
+ * understand (mobile money / bank), and the system routes it to a provider.
+ */
+export type PayoutProvider = 'stripe' | 'flutterwave';
+/** What the host actually chose — the human-facing destination type. */
+export type PayoutMethodType = 'momo' | 'bank' | 'card';
+/** Onboarding state of a host's payout method. */
+export type PayoutSetupStatus = 'none' | 'pending' | 'active';
+
 export interface UserProfile {
   id: ID;
   fullName: string;
@@ -150,6 +160,15 @@ export interface UserProfile {
   verification: VerificationStatus;
   ratingAvg?: number; // 0..5
   ratingCount?: number;
+  /** Host payout method — how they get paid. Absent/`'none'` until they add one. */
+  payoutMethod?: PayoutMethodType;
+  /** The provider the method is routed to (chosen by the system, not the host). */
+  payoutProvider?: PayoutProvider;
+  payoutStatus?: PayoutSetupStatus;
+  /** Masked destination, e.g. "••••1234". */
+  payoutDestination?: string;
+  /** Human-readable summary of the connected method, e.g. "MTN MoMo · ••••1234". */
+  payoutLabel?: string;
 }
 
 /** A host who lists vehicles. May be an individual or a business/fleet agency. */

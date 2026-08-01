@@ -10,17 +10,23 @@ import {
   ChevronLeft,
   Circle,
   ExternalLink,
+  Inbox,
   KeyRound,
+  LayoutDashboard,
   MessageSquare,
+  Navigation,
   Pencil,
   Plus,
   RotateCw,
   Search,
   ShieldCheck,
   Star,
+  TrendingUp,
   Undo2,
   UserRound,
+  Wallet,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import type { Booking, Host, Listing, Payout } from '@autohire/shared';
 import { client } from '@/lib/client';
@@ -167,6 +173,39 @@ export function DashboardPage() {
     .filter((p) => p.status !== 'paid')
     .reduce((sum, p) => sum + p.amountRwf, 0);
 
+  // Real secondary indicators for the stat cards — all derived from live data,
+  // no fabricated deltas (we don't store historical snapshots to trend against).
+  const indicators = useMemo(() => {
+    const today = todayISO();
+    const dayMs = 86_400_000;
+    const weekAgo = new Date(Date.now() - 7 * dayMs).toISOString().slice(0, 10);
+    const soonCutoff = new Date(Date.now() + 2 * dayMs).toISOString().slice(0, 10);
+
+    const available = listings.filter((l) => {
+      if (l.status === 'maintenance') return false;
+      const cb = bookingsByCar.get(l.id) ?? [];
+      return !cb.some((b) => LIVE_STATES.includes(b.state) && b.startDate <= today && b.endDate > today);
+    }).length;
+
+    const newRequests = bookings.filter(
+      (b) => b.state === 'requested' && b.createdAt.slice(0, 10) >= weekAgo,
+    ).length;
+
+    const dueSoon = bookings.filter(
+      (b) => ACTIVE_STATES.includes(b.state) && b.endDate >= today && b.endDate <= soonCutoff,
+    ).length;
+
+    const nextPayoutDate = payouts
+      .filter((p) => p.status !== 'paid' && p.scheduledFor)
+      .map((p) => p.scheduledFor)
+      .sort()[0];
+    const nextPayoutDays = nextPayoutDate
+      ? Math.max(0, Math.round((new Date(nextPayoutDate).getTime() - Date.now()) / dayMs))
+      : null;
+
+    return { available, newRequests, dueSoon, nextPayoutDays };
+  }, [listings, bookings, bookingsByCar, payouts]);
+
   // Cross-fleet action queue: requests to answer + handoffs the host owns.
   const listingsById = useMemo(() => new Map(listings.map((l) => [l.id, l])), [listings]);
   const actionItems = useMemo<ActionItem[]>(() => {
@@ -237,70 +276,130 @@ export function DashboardPage() {
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-8">
-      {/* Header + summary */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink-900">Host dashboard</h1>
-          <p className="mt-1 text-sm text-ink-500">{host ? host.businessName ?? host.fullName : 'Loading…'}</p>
+      {/* Header + summary — subtle brand-tinted band */}
+      <div className="relative overflow-hidden rounded-2xl border border-ink-100 bg-gradient-to-br from-brand-50 via-white to-ink-50 px-5 py-6 shadow-card">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-brand-200/30 blur-3xl"
+        />
+        <div className="relative flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
+              <LayoutDashboard size={22} />
+            </span>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-ink-900">Host dashboard</h1>
+              <p className="mt-0.5 text-sm text-ink-500">
+                {host ? host.businessName ?? host.fullName : 'Loading…'}
+              </p>
+            </div>
+          </div>
+          <Link to="/cars/new">
+            <Button className="shadow-sm">
+              <Plus size={16} /> Add a listing
+            </Button>
+          </Link>
         </div>
-        <Link to="/cars/new">
-          <Button>
-            <Plus size={16} /> Add a listing
-          </Button>
-        </Link>
       </div>
 
       {host && <SetupChecklist host={host} listingCount={listings.length} />}
 
-      <Card className="mt-5">
-        <CardBody className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-6 lg:divide-x lg:divide-ink-100">
-          <StatItem
-            label="Vehicles"
-            value={`${listings.length}`}
-            onClick={() => focusFilter('all')}
-            active={view === 'cars' && filter === 'all'}
-          />
-          <StatItem
-            label="Requests"
-            value={`${stats.pending}`}
-            tone={stats.pending ? 'brand' : 'muted'}
-            onClick={() => focusFilter('requests')}
-            active={view === 'cars' && filter === 'requests'}
-          />
-          <StatItem
-            label="On trip"
-            value={`${stats.active}`}
-            tone={stats.active ? 'amber' : 'muted'}
-            onClick={() => focusFilter('trip')}
-            active={view === 'cars' && filter === 'trip'}
-          />
-          <StatItem
-            label="Overdue"
-            value={`${overdueTotal}`}
-            tone={overdueTotal ? 'red' : 'muted'}
-            onClick={() => focusFilter('overdue')}
-            active={view === 'cars' && filter === 'overdue'}
-          />
-          <StatItem label="Earned" value={formatRwf(stats.earned)} tone="green" />
-          <StatItem
-            label="Payouts due"
-            value={formatRwf(scheduledTotal)}
-            onClick={() => setView('payouts')}
-            active={view === 'payouts'}
-          />
-        </CardBody>
-      </Card>
+      {/* Stat cards — each metric its own card with a tinted icon chip and a live
+          secondary indicator. Fleet counts filter the list; money cards are totals. */}
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard
+          icon={Car}
+          label="Vehicles"
+          value={`${listings.length}`}
+          tone="brand"
+          trend={
+            listings.length
+              ? { label: `${indicators.available} available`, tone: indicators.available ? 'up' : 'muted' }
+              : undefined
+          }
+          onClick={() => focusFilter('all')}
+          active={view === 'cars' && filter === 'all'}
+        />
+        <StatCard
+          icon={Inbox}
+          label="Requests"
+          value={`${stats.pending}`}
+          tone={stats.pending ? 'info' : 'muted'}
+          trend={
+            indicators.newRequests
+              ? { label: `${indicators.newRequests} new this week`, tone: 'up' }
+              : stats.pending
+                ? { label: 'Awaiting your reply', tone: 'warn' }
+                : { label: 'All caught up', tone: 'muted' }
+          }
+          onClick={() => focusFilter('requests')}
+          active={view === 'cars' && filter === 'requests'}
+        />
+        <StatCard
+          icon={Navigation}
+          label="On trip"
+          value={`${stats.active}`}
+          tone={stats.active ? 'amber' : 'muted'}
+          trend={
+            indicators.dueSoon
+              ? { label: `${indicators.dueSoon} due back soon`, tone: 'warn' }
+              : { label: stats.active ? 'All on schedule' : 'None active', tone: 'muted' }
+          }
+          onClick={() => focusFilter('trip')}
+          active={view === 'cars' && filter === 'trip'}
+        />
+        <StatCard
+          icon={AlertTriangle}
+          label="Overdue"
+          value={`${overdueTotal}`}
+          tone={overdueTotal ? 'red' : 'muted'}
+          trend={
+            overdueTotal
+              ? { label: 'Needs action', tone: 'danger' }
+              : { label: 'All returned on time', tone: 'muted' }
+          }
+          onClick={() => focusFilter('overdue')}
+          active={view === 'cars' && filter === 'overdue'}
+        />
+        <StatCard
+          icon={Banknote}
+          label="Earned"
+          value={formatRwf(stats.earned)}
+          tone="green"
+          trend={{
+            label: `${stats.completed} completed trip${stats.completed === 1 ? '' : 's'}`,
+            tone: 'muted',
+          }}
+        />
+        <StatCard
+          icon={Wallet}
+          label="Payouts due"
+          value={formatRwf(scheduledTotal)}
+          tone="brand"
+          trend={
+            scheduledTotal
+              ? {
+                  label: indicators.nextPayoutDays != null ? `Next in ${indicators.nextPayoutDays}d` : 'Scheduled',
+                  tone: 'up',
+                }
+              : { label: 'Nothing scheduled', tone: 'muted' }
+          }
+          onClick={() => setView('payouts')}
+          active={view === 'payouts'}
+        />
+      </div>
 
-      {/* View toggle */}
-      <div className="mt-6 flex gap-1 border-b border-ink-200">
+      {/* View toggle — segmented control */}
+      <div className="mt-6 inline-flex rounded-xl bg-ink-100 p-1">
         {(['cars', 'payouts'] as View[]).map((v) => (
           <button
             key={v}
             type="button"
             onClick={() => setView(v)}
+            aria-pressed={view === v}
             className={cn(
-              '-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium capitalize transition-colors',
-              view === v ? 'border-brand-600 text-brand-700' : 'border-transparent text-ink-500 hover:text-ink-800',
+              'rounded-lg px-5 py-1.5 text-sm font-medium transition-all',
+              view === v ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-800',
             )}
           >
             {v === 'cars' ? 'Fleet' : 'Payouts'}
@@ -347,31 +446,23 @@ export function DashboardPage() {
               />
             </div>
 
-            {/* Quick filters — kept in sync with the stat bar above. */}
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {(
-                [
-                  { key: 'all', label: 'All' },
-                  { key: 'requests', label: 'Requests' },
-                  { key: 'trip', label: 'On trip' },
-                  { key: 'overdue', label: 'Overdue' },
-                ] as { key: CarFilter; label: string }[]
-              ).map((f) => (
+            {/* Active-filter indicator — the stat bar above is the filter control;
+                this just shows what's applied and offers a one-tap clear. */}
+            {filter !== 'all' && (
+              <div className="mb-3 flex items-center justify-between rounded-lg bg-ink-50 px-3 py-1.5 text-xs">
+                <span className="font-medium text-ink-600">
+                  Showing{' '}
+                  {filter === 'requests' ? 'cars with requests' : filter === 'trip' ? 'cars on a trip' : 'overdue cars'}
+                </span>
                 <button
-                  key={f.key}
                   type="button"
-                  onClick={() => setFilter(f.key)}
-                  className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                    filter === f.key
-                      ? 'border-brand-300 bg-brand-50 text-brand-700'
-                      : 'border-ink-200 bg-white text-ink-500 hover:border-ink-300',
-                  )}
+                  onClick={() => setFilter('all')}
+                  className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline"
                 >
-                  {f.label}
+                  <X size={12} /> Clear
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
 
             <ul className="space-y-2">
               {filtered.map((l) => (
@@ -428,55 +519,68 @@ export function DashboardPage() {
   );
 }
 
-type StatTone = 'muted' | 'brand' | 'amber' | 'green' | 'red' | 'ink';
+type StatTone = 'muted' | 'brand' | 'info' | 'amber' | 'green' | 'red';
+type TrendTone = 'up' | 'warn' | 'danger' | 'muted';
 
-const STAT_DOT: Record<StatTone, string> = {
-  muted: 'bg-ink-300',
-  ink: 'bg-ink-400',
-  brand: 'bg-brand-500',
-  amber: 'bg-amber-500',
-  green: 'bg-emerald-500',
-  red: 'bg-red-500',
+/** Tinted icon-chip background/foreground per metric tone. */
+const STAT_CHIP: Record<StatTone, string> = {
+  muted: 'bg-ink-100 text-ink-500',
+  brand: 'bg-brand-50 text-brand-600',
+  info: 'bg-info-50 text-info-600',
+  amber: 'bg-amber-50 text-amber-600',
+  green: 'bg-emerald-50 text-emerald-600',
+  red: 'bg-red-50 text-red-600',
 };
-const STAT_VALUE: Record<StatTone, string> = {
-  muted: 'text-ink-900',
-  ink: 'text-ink-900',
-  brand: 'text-brand-700',
-  amber: 'text-amber-700',
-  green: 'text-emerald-700',
-  red: 'text-red-600',
+const TREND_COLOR: Record<TrendTone, string> = {
+  up: 'text-emerald-600',
+  warn: 'text-amber-600',
+  danger: 'text-red-600',
+  muted: 'text-ink-400',
 };
 
 /**
- * One figure in the fleet stat bar — small dotted label, big number. When given
- * an `onClick` it becomes a button that filters the fleet below, with an active
- * ring while its filter is the live one.
+ * One metric as a self-contained card: tinted icon chip, label, big value, and a
+ * live secondary indicator. With an `onClick` it filters the fleet below (hover
+ * lift + active ring); money totals are static.
  */
-function StatItem({
+function StatCard({
+  icon: Icon,
   label,
   value,
-  tone = 'ink',
+  tone,
+  trend,
   onClick,
   active = false,
 }: {
+  icon: LucideIcon;
   label: string;
   value: string;
-  tone?: StatTone;
+  tone: StatTone;
+  trend?: { label: string; tone: TrendTone };
   onClick?: () => void;
   active?: boolean;
 }) {
   const inner = (
     <>
-      <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-400">
-        <span className={cn('h-1.5 w-1.5 rounded-full', STAT_DOT[tone])} />
-        {label}
-      </p>
-      <p className={cn('mt-1 text-2xl font-bold leading-none tabular-nums', STAT_VALUE[tone])}>{value}</p>
+      <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl', STAT_CHIP[tone])}>
+        <Icon size={18} />
+      </span>
+      <div className="mt-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-ink-400">{label}</p>
+        <p className="mt-0.5 truncate text-2xl font-bold leading-tight tabular-nums text-ink-900">{value}</p>
+        {trend && (
+          <p className={cn('mt-1 flex items-center gap-1 text-xs font-medium', TREND_COLOR[trend.tone])}>
+            {trend.tone === 'up' && <TrendingUp size={13} />}
+            {trend.label}
+          </p>
+        )}
+      </div>
     </>
   );
 
+  const base = 'flex flex-col rounded-2xl border border-ink-100 bg-white p-4 text-left shadow-card';
   if (!onClick) {
-    return <div className="px-4 first:pl-0 lg:px-5">{inner}</div>;
+    return <div className={base}>{inner}</div>;
   }
   return (
     <button
@@ -484,8 +588,9 @@ function StatItem({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'rounded-lg px-4 py-1 text-left transition-colors first:pl-0 hover:bg-ink-50 lg:px-5',
-        active && 'bg-brand-50/70 ring-1 ring-inset ring-brand-200 hover:bg-brand-50',
+        base,
+        'transition-all hover:-translate-y-0.5 hover:shadow-card-hover active:translate-y-0',
+        active && 'border-brand-300 ring-1 ring-brand-200',
       )}
     >
       {inner}
@@ -493,11 +598,27 @@ function StatItem({
   );
 }
 
-function MiniStat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function MiniStat({
+  label,
+  value,
+  highlight,
+  tone = 'brand',
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  tone?: 'brand' | 'info';
+}) {
+  const on = highlight
+    ? tone === 'info'
+      ? 'border-info-200 bg-info-50'
+      : 'border-brand-200 bg-brand-50'
+    : 'border-ink-100 bg-ink-50/60';
+  const valueColor = highlight ? (tone === 'info' ? 'text-info-700' : 'text-brand-700') : 'text-ink-900';
   return (
-    <div className={cn('rounded-lg border px-3 py-2', highlight ? 'border-brand-200 bg-brand-50' : 'border-ink-100 bg-ink-50/60')}>
+    <div className={cn('rounded-lg border px-3 py-2', on)}>
       <p className="text-[11px] uppercase tracking-wide text-ink-400">{label}</p>
-      <p className={cn('text-base font-bold leading-tight', highlight ? 'text-brand-700' : 'text-ink-900')}>{value}</p>
+      <p className={cn('text-base font-bold leading-tight', valueColor)}>{value}</p>
     </div>
   );
 }
@@ -543,7 +664,7 @@ function FleetSkeleton() {
           </div>
         ))}
       </div>
-      <div className="hidden h-72 rounded-xl border border-ink-100 bg-ink-50/60 md:block" />
+      <div className="hidden h-72 rounded-[var(--radius-card)] border border-ink-200 bg-ink-50/60 md:block" />
     </div>
   );
 }
@@ -613,8 +734,10 @@ function CarListRow({
         type="button"
         onClick={onSelect}
         className={cn(
-          'flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-colors',
-          active ? 'border-brand-300 bg-brand-50 ring-1 ring-brand-200' : 'border-ink-200 bg-white hover:border-ink-300',
+          'flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all',
+          active
+            ? 'border-brand-300 bg-brand-50 ring-1 ring-brand-200'
+            : 'border-ink-200 bg-white hover:border-ink-300 hover:shadow-sm',
         )}
       >
         <Img src={listing.photos[0]} alt={listing.title} className="h-14 w-20 shrink-0 rounded-lg object-cover" />
@@ -672,7 +795,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
           onClick={onBack}
           className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-800 md:hidden"
         >
-          <ChevronLeft size={16} /> Cars
+          <ChevronLeft size={16} /> Fleet
         </button>
         <div className="flex items-start gap-3">
           <Img src={listing.photos[0]} alt={listing.title} className="h-16 w-24 shrink-0 rounded-lg object-cover" />
@@ -711,7 +834,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
 
         {/* Per-car numbers */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <MiniStat label="Requests" value={`${s.pending}`} highlight={s.pending > 0} />
+          <MiniStat label="Requests" value={`${s.pending}`} highlight={s.pending > 0} tone="info" />
           <MiniStat label="Upcoming" value={`${s.upcoming}`} />
           <MiniStat label="On trip" value={`${s.active}`} />
           <MiniStat label="Earned" value={formatRwf(s.earned)} />
@@ -1004,6 +1127,12 @@ function SetupChecklist({ host, listingCount }: { host: Host; listingCount: numb
       muted: host.verification === 'pending',
     },
     {
+      label: 'Add a payout method',
+      done: host.payoutStatus === 'active',
+      to: '/payouts/setup',
+      cta: 'Add payout',
+    },
+    {
       label: 'List your first vehicle or machine',
       done: listingCount > 0,
       to: '/cars/new',
@@ -1017,8 +1146,11 @@ function SetupChecklist({ host, listingCount }: { host: Host; listingCount: numb
     <Card className="mt-5 border-brand-200 bg-brand-50/40">
       <CardBody>
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 font-semibold text-ink-900">
-            <ShieldCheck size={18} className="text-brand-600" /> Finish setting up
+          <h2 className="flex items-center gap-2.5 font-semibold text-ink-900">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
+              <ShieldCheck size={15} />
+            </span>
+            Finish setting up
           </h2>
           <span className="text-sm text-ink-500">
             {doneCount} of {steps.length} done
@@ -1069,10 +1201,13 @@ function ActionQueue({ items, listingsById }: { items: ActionItem[]; listingsByI
   });
 
   return (
-    <Card className="mt-6 border-brand-200">
+    <Card className="mt-6 border-brand-200 shadow-md ring-1 ring-brand-100">
       <CardBody>
-        <h2 className="flex items-center gap-2 font-semibold text-ink-900">
-          <AlertTriangle size={16} className="text-brand-600" /> Action needed
+        <h2 className="flex items-center gap-2.5 font-semibold text-ink-900">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
+            <AlertTriangle size={15} />
+          </span>
+          Action needed
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
             {items.length}
           </span>
@@ -1123,7 +1258,7 @@ function ActionRow({
           : 'Confirm return';
 
   return (
-    <li className="flex items-center gap-3 py-3">
+    <li className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-ink-50">
       <Img src={listing?.photos[0]} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" />
       <div className="min-w-0 flex-1">
         <p className={cn('flex items-center gap-1.5 text-sm font-medium', overdue ? 'text-red-600' : 'text-ink-900')}>

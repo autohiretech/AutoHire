@@ -5,9 +5,11 @@ import { HomePage } from '@/pages/HomePage';
 import { SearchResultsPage } from '@/pages/SearchResultsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { CarDetailPage } from '@/pages/CarDetailPage';
+import { HostProfilePage } from '@/pages/HostProfilePage';
+import { CityPage } from '@/pages/CityPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { PayoutSetupPage } from '@/pages/PayoutSetupPage';
 import { MessagesPage } from '@/pages/MessagesPage';
-import { NotificationsPage } from '@/pages/NotificationsPage';
 import { TripsPage } from '@/pages/TripsPage';
 import { VerificationPage } from '@/pages/VerificationPage';
 import { TripDetailPage } from '@/pages/TripDetailPage';
@@ -32,6 +34,8 @@ export default function App() {
         <Route index element={<HomePage />} />
         <Route path="search" element={<SearchResultsPage />} />
         <Route path="cars/:id" element={<CarDetailPage />} />
+        <Route path="hosts/:id" element={<HostProfilePage />} />
+        <Route path="cities/:city" element={<CityPage />} />
 
         {/* Account-only routes — signing in required */}
         <Route
@@ -39,6 +43,14 @@ export default function App() {
           element={
             <RequireRole roles={['owner']}>
               <DashboardPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="payouts/setup"
+          element={
+            <RequireRole roles={['owner', 'admin']}>
+              <PayoutSetupPage />
             </RequireRole>
           }
         />
@@ -114,14 +126,6 @@ export default function App() {
           element={
             <RequireAuth>
               <AccountPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="notifications"
-          element={
-            <RequireAuth>
-              <NotificationsPage />
             </RequireAuth>
           }
         />

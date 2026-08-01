@@ -4,6 +4,7 @@ import { useRealtime } from '@/lib/useRealtime';
 import { Header } from './Header';
 import { Footer } from './Footer';
 import { RightRail } from './RightRail';
+import { NotificationsProvider } from '@/components/NotificationsProvider';
 import { LocationPrompt } from '@/components/marketplace/LocationPrompt';
 import { ScrollMemory } from '@/components/ScrollMemory';
 
@@ -21,15 +22,17 @@ export function AppLayout() {
   const fullBleed = pathname === '/messages' || pathname.startsWith('/messages/');
 
   return (
-    <div className={cn('flex flex-col', fullBleed ? 'h-full overflow-hidden' : 'min-h-full')}>
-      <ScrollMemory />
-      <Header />
-      {!fullBleed && <LocationPrompt />}
-      <main className={cn('flex-1', fullBleed && 'min-h-0 overflow-hidden')}>
-        <Outlet />
-      </main>
-      {!fullBleed && <Footer />}
-      <RightRail />
-    </div>
+    <NotificationsProvider>
+      <div className={cn('flex flex-col', fullBleed ? 'h-full overflow-hidden' : 'min-h-full')}>
+        <ScrollMemory />
+        <Header />
+        {!fullBleed && <LocationPrompt />}
+        <main className={cn('flex-1', fullBleed && 'min-h-0 overflow-hidden')}>
+          <Outlet />
+        </main>
+        {!fullBleed && <Footer />}
+        <RightRail />
+      </div>
+    </NotificationsProvider>
   );
 }
