@@ -152,19 +152,6 @@ export function HomePage() {
     });
   }
 
-  // Deep link from the eco banner: "/?fuel=electric" applies the fuel filter,
-  // shows Cars, then clears the param so a refresh/back doesn't re-pin it.
-  useEffect(() => {
-    const fuel = searchParams.get('fuel');
-    if (!fuel) return;
-    setFilters((prev) => ({ ...prev, fuel: fuel as ListingFilters['fuel'] }));
-    setTab('cars');
-    const next = new URLSearchParams(searchParams);
-    next.delete('fuel');
-    setSearchParams(next, { replace: true });
-    setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-  }, [searchParams, setSearchParams]);
-
   async function runSearch() {
     const q = text.trim();
     if (aiMode) {
