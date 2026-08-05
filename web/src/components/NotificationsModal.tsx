@@ -10,6 +10,7 @@ import {
   Clock,
   MessageSquare,
   ShieldCheck,
+  Star,
   X,
 } from 'lucide-react';
 import type { AppNotification, NotificationChannel, NotificationKind } from '@autohire/shared';
@@ -26,6 +27,7 @@ const KIND_ICON: Record<NotificationKind, React.ReactNode> = {
   payout_alert: <Banknote size={18} />,
   message: <MessageSquare size={18} />,
   verification: <ShieldCheck size={18} />,
+  watchlist: <Star size={18} />,
 };
 
 const KIND_LABEL: Record<NotificationKind, string> = {
@@ -35,6 +37,7 @@ const KIND_LABEL: Record<NotificationKind, string> = {
   payout_alert: 'Payout',
   message: 'Message',
   verification: 'Verification',
+  watchlist: 'Watchlist',
 };
 
 const CHANNEL_LABEL: Record<NotificationChannel, string> = {
@@ -43,9 +46,16 @@ const CHANNEL_LABEL: Record<NotificationChannel, string> = {
   in_app: 'In-app',
 };
 
-/** Where a notification's "Open" action should take the reader, by kind. */
-function actionFor(kind: NotificationKind, isHost: boolean): { to: string; label: string } | null {
-  switch (kind) {
+/**
+ * Where a notification's "Open" action should take the reader. A notification
+ * about one specific thing carries its own `link` (a watched car, say); the rest
+ * route by kind.
+ */
+function actionFor(n: AppNotification, isHost: boolean): { to: string; label: string } | null {
+  if (n.link) {
+    return { to: n.link, label: n.kind === 'watchlist' ? 'View the car' : 'Open' };
+  }
+  switch (n.kind) {
     case 'message':
       return { to: '/messages', label: 'Open messages' };
     case 'verification':
@@ -126,7 +136,7 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
     onClose();
   };
 
-  const action = selected ? actionFor(selected.kind, isHost) : null;
+  const action = selected ? actionFor(selected, isHost) : null;
   const go = (to: string) => {
     close();
     navigate(to);

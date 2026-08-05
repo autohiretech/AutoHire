@@ -735,7 +735,7 @@ function PhotoGallery({
   );
 }
 
-/** Local, persisted "watchlist" toggle — echoes BaT's Watch (follow) action. */
+/** Guests have no account to hang a watch off — keep theirs in the browser. */
 const WATCH_KEY = 'autohire.watchlist';
 function readWatchlist(): string[] {
   try {
@@ -744,29 +744,74 @@ function readWatchlist(): string[] {
     return [];
   }
 }
+function writeWatchlist(ids: string[]) {
+  try {
+    localStorage.setItem(WATCH_KEY, JSON.stringify(ids));
+  } catch {
+    /* storage disabled — the button still reflects the click */
+  }
+}
 
+/**
+ * "Watch" (follow) a car — BaT-style. For a signed-in account the watch lives in
+ * the `watchlist` table, which is what makes it more than a bookmark: DB
+ * triggers notify every watcher when the car comes back into service or the trip
+ * on it ends, so you find out it's free without checking back. Hosts and
+ * companies can watch too — watching isn't booking.
+ *
+ * Guests fall back to the old localStorage list (no account to notify), and are
+ * told that signing in is what turns it into an alert.
+ */
 function WatchButton({ id }: { id: string }) {
-  const [watched, setWatched] = useState(() => readWatchlist().includes(id));
-  const toggle = () => {
-    const list = new Set(readWatchlist());
-    const next = !list.has(id);
-    if (next) list.add(id);
-    else list.delete(id);
-    try {
-      localStorage.setItem(WATCH_KEY, JSON.stringify([...list]));
-    } catch {
-      /* storage disabled — the button still reflects the click */
-    }
-    setWatched(next);
-    toast.success(next ? 'Saved to your watchlist' : 'Removed from your watchlist');
-  };
+  const queryClient = useQueryClient();
+  // Wait for the profile before deciding where the watch lives, so a fast click
+  // doesn't get written to localStorage for someone who is in fact signed in.
+  const { data: me, isLoading: meLoading } = useCurrentUser();
+  const signedIn = !!me;
+
+  const { data: watchedIds } = useQuery({
+    queryKey: ['watchlist'],
+    queryFn: () => client.listWatchlist(),
+    enabled: signedIn,
+  });
+
+  const [localWatched, setLocalWatched] = useState(() => readWatchlist().includes(id));
+  const watched = signedIn ? (watchedIds ?? []).includes(id) : localWatched;
+
+  const toggle = useMutation({
+    mutationFn: async (next: boolean) => {
+      if (!signedIn) {
+        const list = new Set(readWatchlist());
+        if (next) list.add(id);
+        else list.delete(id);
+        writeWatchlist([...list]);
+        setLocalWatched(next);
+        return;
+      }
+      if (next) await client.watchListing(id);
+      else await client.unwatchListing(id);
+      await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+    },
+    onSuccess: (_data, next) => {
+      if (!next) return toast.success('Removed from your watchlist');
+      toast.success(
+        signedIn
+          ? "Watching — we'll notify you when it's available"
+          : 'Saved to your watchlist — sign in to be notified when it frees up',
+      );
+    },
+    onError: () => toast.error('Could not update your watchlist'),
+  });
+
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={() => toggle.mutate(!watched)}
+      disabled={toggle.isPending || meLoading}
       aria-pressed={watched}
+      title={watched ? "We'll tell you when this car is available" : 'Get told when this car frees up'}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60',
         watched
           ? 'border-brand-300 bg-brand-50 text-brand-700'
           : 'border-ink-200 text-ink-700 hover:bg-ink-50',

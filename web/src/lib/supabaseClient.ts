@@ -824,6 +824,36 @@ export const supabaseClient = {
     );
   },
 
+  // --- Watchlist ---------------------------------------------------------
+  /**
+   * Cars the signed-in account is watching. Watching is not booking — hosts and
+   * companies may watch too — it subscribes you to a notification when the car
+   * comes back into service or the trip on it ends (see migration 043).
+   */
+  async listWatchlist(): Promise<string[]> {
+    const rows = await run(sb().from('watchlist').select('listing_id').eq('profile_id', me()));
+    return (rows ?? []).map((r) => r.listing_id as string);
+  },
+  async watchListing(listingId: string): Promise<void> {
+    await run(
+      sb()
+        .from('watchlist')
+        // Re-watching an already-watched car must not blow up on the PK.
+        .upsert({ profile_id: me(), listing_id: listingId }, { onConflict: 'profile_id,listing_id' })
+        .select('listing_id'),
+    );
+  },
+  async unwatchListing(listingId: string): Promise<void> {
+    await run(
+      sb()
+        .from('watchlist')
+        .delete()
+        .eq('profile_id', me())
+        .eq('listing_id', listingId)
+        .select('listing_id'),
+    );
+  },
+
   // --- Verification ------------------------------------------------------
   async listVerificationDocuments(): Promise<VerificationDocument[]> {
     return mapRows<VerificationDocument>(

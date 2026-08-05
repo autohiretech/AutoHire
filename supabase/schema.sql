@@ -23,7 +23,7 @@ create type payout_status     as enum ('scheduled', 'processing', 'paid', 'faile
 create type review_direction  as enum ('renter_to_host', 'host_to_renter');
 create type booking_payment_status as enum ('unpaid', 'paid', 'refunded');
 create type notification_channel as enum ('sms', 'push', 'in_app');
-create type notification_kind as enum ('booking_confirmation', 'pickup_reminder', 'return_reminder', 'payout_alert', 'message', 'verification');
+create type notification_kind as enum ('booking_confirmation', 'pickup_reminder', 'return_reminder', 'payout_alert', 'message', 'verification', 'watchlist');
 create type verification_doc_type as enum ('drivers_license', 'national_id', 'vehicle_registration', 'insurance_certificate', 'business_registration');
 create type flag_target_type  as enum ('listing', 'user');
 create type flag_reason       as enum ('inappropriate', 'spam', 'fraud', 'safety', 'other');
@@ -190,8 +190,21 @@ create table notifications (
   body       text not null,
   channels   notification_channel[] not null default '{}',
   created_at timestamptz not null,
-  read       boolean not null default false
+  read       boolean not null default false,
+  -- Where "Open" should go when the notification is about one specific thing
+  -- (a car, a trip). Null falls back to routing by kind.
+  link       text
 );
+
+-- Cars a renter is watching. Watching is not booking — hosts and companies may
+-- watch too — it just subscribes you to "this one is available again".
+create table watchlist (
+  profile_id text not null references profiles(id) on delete cascade,
+  listing_id text not null references listings(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (profile_id, listing_id)
+);
+create index watchlist_listing_id_idx on watchlist (listing_id);
 
 create table flags (
   id           text primary key,
@@ -235,6 +248,7 @@ alter table messages               enable row level security;
 alter table reviews                enable row level security;
 alter table verification_documents enable row level security;
 alter table notifications          enable row level security;
+alter table watchlist              enable row level security;
 alter table flags                  enable row level security;
 alter table disputes               enable row level security;
 
@@ -360,6 +374,11 @@ create policy notifications_read  on notifications for select
   using (profile_id = auth.uid()::text or is_admin());
 create policy notifications_write on notifications for all
   using (profile_id = auth.uid()::text) with check (profile_id = auth.uid()::text);
+
+-- watchlist: yours alone — you may only see or change your own rows.
+create policy watchlist_read   on watchlist for select using (profile_id = auth.uid()::text);
+create policy watchlist_insert on watchlist for insert with check (profile_id = auth.uid()::text);
+create policy watchlist_delete on watchlist for delete using (profile_id = auth.uid()::text);
 
 -- ----------------------------------------------------------------------------
 -- Booking integrity triggers (kept in sync with migration 005)
@@ -724,6 +743,66 @@ end $$;
 drop trigger if exists booking_update_notify on bookings;
 create trigger booking_update_notify after update on bookings
   for each row execute function notify_on_booking_update();
+
+-- Watchlist alerts (kept in sync with migration 043): tell everyone watching a
+-- car when it becomes bookable again — back in service, or the trip on it ended.
+-- SECURITY DEFINER because notifications RLS only lets you write your own rows.
+create or replace function notify_watchers(p_listing_id text, p_title text, p_body text)
+  returns void language plpgsql security definer set search_path = public as $$
+declare
+  w       record;
+  l_title text;
+  l_host  text;
+begin
+  select title, host_id into l_title, l_host from listings where id = p_listing_id;
+  if l_title is null then return; end if;
+
+  for w in
+    select profile_id from watchlist
+    where listing_id = p_listing_id
+      and profile_id is distinct from l_host  -- the host knows; don't tell them
+  loop
+    insert into notifications (id, profile_id, kind, title, body, channels, created_at, read, link)
+    values ('ntf-' || gen_random_uuid(), w.profile_id, 'watchlist', p_title,
+            l_title || ' — ' || p_body, '{in_app}', now(), false, '/cars/' || p_listing_id);
+  end loop;
+end $$;
+
+create or replace function notify_watchers_on_listing() returns trigger
+  language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'available' and old.status is distinct from 'available' then
+    perform notify_watchers(new.id, 'A car you''re watching is available',
+      'it''s back in service and open for booking.');
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists listing_watch_notify on listings;
+create trigger listing_watch_notify after update of status on listings
+  for each row execute function notify_watchers_on_listing();
+
+create or replace function notify_watchers_on_booking() returns trigger
+  language plpgsql security definer set search_path = public as $$
+begin
+  if new.state in ('cancelled', 'declined', 'completed')
+     and old.state not in ('cancelled', 'declined', 'completed')
+     -- Only when nothing else is holding the car.
+     and not exists (
+       select 1 from bookings b
+       where b.listing_id = new.listing_id
+         and b.id <> new.id
+         and b.state not in ('cancelled', 'declined', 'completed')
+     ) then
+    perform notify_watchers(new.listing_id, 'A car you''re watching is free again',
+      'the trip on it ended — those dates are open.');
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists booking_watch_notify on bookings;
+create trigger booking_watch_notify after update of state on bookings
+  for each row execute function notify_watchers_on_booking();
 
 -- Overdue returns: notify host + renter when a trip's end date passed but the
 -- car isn't returned/completed. Fires once per booking. Called by pg_cron

@@ -372,7 +372,9 @@ export type NotificationKind =
   | 'return_reminder'
   | 'payout_alert'
   | 'message'
-  | 'verification';
+  | 'verification'
+  /** A watched car became bookable again. */
+  | 'watchlist';
 
 export interface AppNotification {
   id: ID;
@@ -385,6 +387,8 @@ export interface AppNotification {
   channels: NotificationChannel[];
   createdAt: string;
   read: boolean;
+  /** In-app route this is about (e.g. `/cars/x`); absent = route by kind. */
+  link?: string | null;
 }
 
 // ---------------------------------------------------------------------------
