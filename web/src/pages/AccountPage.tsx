@@ -9,6 +9,7 @@ import {
   Phone,
   ShieldAlert,
   ShieldCheck,
+  Star,
   User,
 } from 'lucide-react';
 import type { Host, UserProfile } from '@autohire/shared';
@@ -285,12 +286,20 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
           </div>
         )}
 
-        <Link
-          to="/verification"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
-        >
-          <ShieldCheck size={15} /> Verification & documents
-        </Link>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <Link
+            to="/verification"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
+          >
+            <ShieldCheck size={15} /> Verification & documents
+          </Link>
+          <Link
+            to="/watchlist"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
+          >
+            <Star size={15} /> Cars you're watching
+          </Link>
+        </div>
       </CardBody>
     </Card>
   );

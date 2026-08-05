@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Car, LogOut, Menu, MessageSquare, ShieldCheck, X } from 'lucide-react';
+import { Bell, Car, LogOut, Menu, MessageSquare, ShieldCheck, Star, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar, Button } from '@/components/ui';
 import { useNotifications } from '@/components/NotificationsProvider';
@@ -113,6 +113,14 @@ export function Header() {
                 </Link>
               )}
               <Link
+                to="/watchlist"
+                className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 sm:block"
+                aria-label="Cars you're watching"
+                title="Watching"
+              >
+                <Star size={20} />
+              </Link>
+              <Link
                 to="/messages"
                 className="relative rounded-lg p-2 text-ink-500 hover:bg-ink-100"
                 aria-label={unread > 0 ? `Messages (${unread} unread)` : 'Messages'}
@@ -200,6 +208,18 @@ export function Header() {
               {item.label}
             </NavLink>
           ))}
+          <NavLink
+            to="/watchlist"
+            onClick={closeMenu}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
+              )
+            }
+          >
+            <Star size={16} /> Watching
+          </NavLink>
           {user && (
             <button
               type="button"

@@ -14,6 +14,7 @@ import { TripsPage } from '@/pages/TripsPage';
 import { VerificationPage } from '@/pages/VerificationPage';
 import { TripDetailPage } from '@/pages/TripDetailPage';
 import { BookingPage } from '@/pages/BookingPage';
+import { WatchlistPage } from '@/pages/WatchlistPage';
 import { ListCarPage } from '@/pages/ListCarPage';
 import { AccountPage } from '@/pages/AccountPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
@@ -36,6 +37,9 @@ export default function App() {
         <Route path="cars/:id" element={<CarDetailPage />} />
         <Route path="hosts/:id" element={<HostProfilePage />} />
         <Route path="cities/:city" element={<CityPage />} />
+        {/* Watching is open to everyone — hosts and companies can watch a car
+            they can't book, and a guest's watches live in their browser. */}
+        <Route path="watchlist" element={<WatchlistPage />} />
 
         {/* Account-only routes — signing in required */}
         <Route

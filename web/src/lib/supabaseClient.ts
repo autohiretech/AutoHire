@@ -834,6 +834,25 @@ export const supabaseClient = {
     const rows = await run(sb().from('watchlist').select('listing_id').eq('profile_id', me()));
     return (rows ?? []).map((r) => r.listing_id as string);
   },
+  /** The watched cars themselves, newest watch first — one round trip. */
+  async listWatchedListings(): Promise<Listing[]> {
+    const rows = await run(
+      sb()
+        .from('watchlist')
+        .select('created_at, listings(*)')
+        .eq('profile_id', me())
+        .order('created_at', { ascending: false }),
+    );
+    return (rows ?? [])
+      .map((r) => {
+        // PostgREST types an embedded resource as an array; a to-one join like
+        // this one comes back as a single row at runtime. Accept both.
+        const embedded: unknown = (r as { listings?: unknown }).listings;
+        const row = Array.isArray(embedded) ? embedded[0] : embedded;
+        return mapRow<Listing>(row as Record<string, unknown> | null);
+      })
+      .filter((l): l is Listing => !!l);
+  },
   async watchListing(listingId: string): Promise<void> {
     await run(
       sb()

@@ -33,6 +33,7 @@ import { SERVICE_FEE_RATE } from '@/lib/types';
 import { formatDate, formatRwf } from '@/lib/format';
 import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
 import { isMachine } from '@/lib/categories';
+import { readLocalWatchlist, writeLocalWatchlist } from '@/lib/watchlist';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
 import { Avatar, Badge, Button, Card, CardBody, Rating, Spinner, toast } from '@/components/ui';
@@ -735,23 +736,6 @@ function PhotoGallery({
   );
 }
 
-/** Guests have no account to hang a watch off — keep theirs in the browser. */
-const WATCH_KEY = 'autohire.watchlist';
-function readWatchlist(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(WATCH_KEY) || '[]') as string[];
-  } catch {
-    return [];
-  }
-}
-function writeWatchlist(ids: string[]) {
-  try {
-    localStorage.setItem(WATCH_KEY, JSON.stringify(ids));
-  } catch {
-    /* storage disabled — the button still reflects the click */
-  }
-}
-
 /**
  * "Watch" (follow) a car — BaT-style. For a signed-in account the watch lives in
  * the `watchlist` table, which is what makes it more than a bookmark: DB
@@ -775,22 +759,23 @@ function WatchButton({ id }: { id: string }) {
     enabled: signedIn,
   });
 
-  const [localWatched, setLocalWatched] = useState(() => readWatchlist().includes(id));
+  const [localWatched, setLocalWatched] = useState(() => readLocalWatchlist().includes(id));
   const watched = signedIn ? (watchedIds ?? []).includes(id) : localWatched;
 
   const toggle = useMutation({
     mutationFn: async (next: boolean) => {
       if (!signedIn) {
-        const list = new Set(readWatchlist());
+        const list = new Set(readLocalWatchlist());
         if (next) list.add(id);
         else list.delete(id);
-        writeWatchlist([...list]);
+        writeLocalWatchlist([...list]);
         setLocalWatched(next);
         return;
       }
       if (next) await client.watchListing(id);
       else await client.unwatchListing(id);
       await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      await queryClient.invalidateQueries({ queryKey: ['watchedListings'] });
     },
     onSuccess: (_data, next) => {
       if (!next) return toast.success('Removed from your watchlist');
