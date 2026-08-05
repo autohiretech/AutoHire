@@ -281,7 +281,7 @@ export function HomePage() {
           <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="text-lg font-bold text-ink-900">Welcome to AutoHire</h2>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
-              <Leaf size={13} /> 85%+ electric fleet
+              <Leaf size={13} /> 90% electric, hybrid &amp; ecological
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium text-ink-700">
