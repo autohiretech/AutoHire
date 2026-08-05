@@ -27,7 +27,7 @@ import {
 import type { Booking } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { useIsHost } from '@/lib/account';
+import { useCanRent, useIsBusinessHost, useIsHost } from '@/lib/account';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { formatDate, formatRwf } from '@/lib/format';
@@ -74,6 +74,9 @@ export function CarDetailPage() {
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
   const calendarRef = useRef<HTMLDivElement>(null);
   const isHost = useIsHost();
+  // Hosts and company accounts are view-only on a listing — no booking.
+  const canRent = useCanRent();
+  const isCompany = useIsBusinessHost();
   const { data: me } = useCurrentUser();
 
   const { data: listing, isLoading } = useQuery({
@@ -150,7 +153,7 @@ export function CarDetailPage() {
 
   // Renters must be identity-verified before they can rent. Guests (no `me`) fall
   // through to the normal flow, which routes them to sign in first.
-  const needsVerification = !isHost && !!me && me.verification !== 'verified';
+  const needsVerification = canRent && !!me && me.verification !== 'verified';
   const verifNotice = needsVerification
     ? me!.verification === 'pending'
       ? "Your identity is under review — you can rent once it's approved."
@@ -161,6 +164,7 @@ export function CarDetailPage() {
 
   const goToCalendar = () => calendarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const reserve = () => {
+    if (!canRent) return;
     if (needsVerification) return navigate('/verification');
     if (!datesChosen) return goToCalendar();
     navigate(`/cars/${listing.id}/book`, { state: { startDate: range.start, endDate: range.end } });
@@ -505,14 +509,20 @@ export function CarDetailPage() {
                   </Badge>
                 )}
               </div>
-              {isHost ? (
-                <p className="rounded-lg bg-ink-50 p-3 text-center text-sm text-ink-500">
-                  You're viewing as a host — booking is off. Switch to renting in your{' '}
-                  <Link to="/account" className="text-brand-600 hover:underline">
-                    profile
-                  </Link>{' '}
-                  to book.
-                </p>
+              {!canRent ? (
+                isCompany ? (
+                  <p className="rounded-lg bg-ink-50 p-3 text-center text-sm text-ink-500">
+                    Company accounts host only — you can view this car but not book it.
+                  </p>
+                ) : (
+                  <p className="rounded-lg bg-ink-50 p-3 text-center text-sm text-ink-500">
+                    You're viewing as a host — booking is off. Switch to renting in your{' '}
+                    <Link to="/account" className="text-brand-600 hover:underline">
+                      profile
+                    </Link>{' '}
+                    to book.
+                  </p>
+                )
               ) : (
                 <>
                   {/* Date fields — open the calendar below */}
@@ -596,7 +606,7 @@ export function CarDetailPage() {
       {/* Mobile sticky booking bar — keeps price + reserve reachable without
           scrolling to the card at the bottom of the page. Desktop uses the
           sticky sidebar card instead. */}
-      {!isHost && (
+      {canRent && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-ink-200 bg-white/95 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur lg:hidden">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
             <div className="min-w-0">

@@ -67,14 +67,18 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Return date must be after pick-up date.' }, 400);
     }
 
-    // Business/company accounts are hosts only — they may not rent.
+    // Hosts (role 'owner') and company accounts are host-only — they may browse
+    // and view listings but never book one. Refuse before a charge is created.
     const { data: profile } = await admin
       .from('profiles')
-      .select('owner_type, verification')
+      .select('role, owner_type, verification')
       .eq('id', uid)
       .single();
     if (profile?.owner_type === 'business') {
-      return json({ error: 'Business accounts cannot rent.' }, 403);
+      return json({ error: 'Company accounts cannot rent — they can only view cars.' }, 403);
+    }
+    if (profile?.role === 'owner') {
+      return json({ error: 'Host accounts cannot rent — they can only view cars.' }, 403);
     }
     // Block unverified renters BEFORE any charge is created, so an unverified
     // renter can never be charged only to be refused at confirm-booking.

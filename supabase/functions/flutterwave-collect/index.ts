@@ -61,14 +61,19 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'listingId, startDate and endDate are required.' }, 400);
     }
 
-    // Renter eligibility mirrors the Stripe path: business accounts can't rent,
-    // and only verified renters may rent.
+    // Renter eligibility mirrors the Stripe path: hosts and company accounts are
+    // host-only (view but never book), and only verified renters may rent.
     const { data: profile } = await admin
       .from('profiles')
-      .select('owner_type, verification')
+      .select('role, owner_type, verification')
       .eq('id', uid)
       .single();
-    if (profile?.owner_type === 'business') return json({ error: 'Business accounts cannot rent.' }, 403);
+    if (profile?.owner_type === 'business') {
+      return json({ error: 'Company accounts cannot rent — they can only view cars.' }, 403);
+    }
+    if (profile?.role === 'owner') {
+      return json({ error: 'Host accounts cannot rent — they can only view cars.' }, 403);
+    }
     if (profile?.verification !== 'verified') {
       return json({ error: 'Verify your identity before renting.', code: 'verification_required' }, 403);
     }

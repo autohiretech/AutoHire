@@ -69,6 +69,18 @@ Deno.serve(async (req: Request) => {
     const existing = await admin.from('bookings').select('id').eq('payment_intent_id', txRef).maybeSingle();
     if (existing.data) return json({ booking: existing.data.id, duplicate: true }, 200);
 
+    // Hosts and company accounts are host-only — never turn their payment into a
+    // booking (flutterwave-collect refuses first; this covers a role that changed
+    // mid-flow, and the booking_renter_guard trigger backs both up).
+    const { data: renter } = await admin
+      .from('profiles')
+      .select('role, owner_type')
+      .eq('id', uid)
+      .single();
+    if (renter?.role === 'owner' || renter?.owner_type === 'business') {
+      return json({ error: 'Host and company accounts cannot rent — they can only view cars.' }, 403);
+    }
+
     const { data: listing, error: listErr } = await admin
       .from('listings')
       .select('price_per_day_rwf, price_currency, host_id, booking_mode')

@@ -421,6 +421,37 @@ create trigger booking_availability
   before insert or update of start_date, end_date, listing_id, state on bookings
   for each row execute function booking_check_availability();
 
+-- Renter eligibility (kept in sync with migration 042): hosts (role 'owner') and
+-- company accounts are host-only — they browse and view every listing but can
+-- never be the renter on a booking. Runs as a trigger, not RLS, so it holds for
+-- the service-role Edge Functions that are the only writers of this table.
+create or replace function booking_renter_guard() returns trigger
+  language plpgsql security definer set search_path = public as $$
+declare
+  r_role       user_role;
+  r_owner_type owner_type;
+begin
+  select role, owner_type into r_role, r_owner_type
+    from profiles where id = new.renter_id;
+
+  if r_owner_type = 'business' then
+    raise exception 'Company accounts cannot rent — they can only view cars.';
+  end if;
+  if r_role = 'owner' then
+    raise exception 'Host accounts cannot rent — they can only view cars.';
+  end if;
+  if new.renter_id = new.host_id then
+    raise exception 'You cannot book your own car.';
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists booking_renter on bookings;
+create trigger booking_renter
+  before insert on bookings
+  for each row execute function booking_renter_guard();
+
 -- Booked date ranges for a listing, exposed safely to anyone (no renter identity
 -- or amounts — just the start/end of each live booking) so the booking UI can
 -- show which dates are taken. SECURITY DEFINER to bypass per-row booking RLS.

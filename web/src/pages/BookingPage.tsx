@@ -5,7 +5,7 @@ import { CardElement, Elements, useElements, useStripe } from '@stripe/react-str
 import { ArrowLeft, Award, CreditCard, ShieldCheck, Smartphone, Star } from 'lucide-react';
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { client } from '@/lib/client';
-import { useIsHost } from '@/lib/account';
+import { useCanRent, useIsBusinessHost } from '@/lib/account';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry, COUNTRIES } from '@/lib/country';
 import { cn } from '@/lib/cn';
@@ -53,7 +53,8 @@ export function BookingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const isHost = useIsHost();
+  const canRent = useCanRent();
+  const isCompany = useIsBusinessHost();
   const { data: me } = useCurrentUser();
 
   const picked = location.state as { startDate?: string; endDate?: string } | null;
@@ -130,19 +131,30 @@ export function BookingPage() {
     );
   }
 
-  if (isHost) {
+  // Hosts and company accounts are host-only: they can view any car but never
+  // check out. The Edge Functions and a DB trigger enforce the same rule, so a
+  // direct link to this page can't turn into a booking.
+  if (!canRent) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Host accounts can't rent</p>
-        <p className="mt-1 text-sm text-ink-500">
-          You're on a host account. To rent a car, switch back to renting from your{' '}
-          <Link to="/account" className="text-brand-600 hover:underline">
-            profile
-          </Link>
-          . Companies host only.
+        <p className="font-medium text-ink-900">
+          {isCompany ? "Company accounts can't rent" : "Host accounts can't rent"}
         </p>
-        <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
-          Back to browse
+        <p className="mt-1 text-sm text-ink-500">
+          {isCompany ? (
+            'Companies host only — you can view any car, but booking is off for this account.'
+          ) : (
+            <>
+              You're on a host account. To rent a car, switch back to renting from your{' '}
+              <Link to="/account" className="text-brand-600 hover:underline">
+                profile
+              </Link>
+              .
+            </>
+          )}
+        </p>
+        <Link to={`/cars/${id}`} className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+          Back to the car
         </Link>
       </div>
     );

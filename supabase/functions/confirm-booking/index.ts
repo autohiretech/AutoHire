@@ -123,14 +123,19 @@ Deno.serve(async (req: Request) => {
 
     // --- Shared: validate the renter + recompute amounts server-side. --------
 
-    // Business/company accounts are hosts only — they may not rent.
+    // Hosts (role 'owner') and company accounts are host-only — they may browse
+    // and view listings but never book one. The booking_renter_guard trigger
+    // enforces this again on the insert below, for every creation path.
     const { data: profile } = await admin
       .from('profiles')
-      .select('owner_type, verification')
+      .select('role, owner_type, verification')
       .eq('id', uid)
       .single();
     if (profile?.owner_type === 'business') {
-      return json({ error: 'Business accounts cannot rent.' }, 403);
+      return json({ error: 'Company accounts cannot rent — they can only view cars.' }, 403);
+    }
+    if (profile?.role === 'owner') {
+      return json({ error: 'Host accounts cannot rent — they can only view cars.' }, 403);
     }
     // Renters must have a verified identity before they can rent. This is the
     // authoritative gate — the UI blocks earlier, but a booking can never be
