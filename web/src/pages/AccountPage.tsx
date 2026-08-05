@@ -293,12 +293,15 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
           >
             <ShieldCheck size={15} /> Verification & documents
           </Link>
-          <Link
-            to="/watchlist"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
-          >
-            <Star size={15} /> Cars you're watching
-          </Link>
+          {/* Watching is a renter's tool — hosts and companies can't book. */}
+          {!isHost && !isCompany && (
+            <Link
+              to="/watchlist"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
+            >
+              <Star size={15} /> Cars you're watching
+            </Link>
+          )}
         </div>
       </CardBody>
     </Card>

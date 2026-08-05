@@ -196,8 +196,9 @@ create table notifications (
   link       text
 );
 
--- Cars a renter is watching. Watching is not booking — hosts and companies may
--- watch too — it just subscribes you to "this one is available again".
+-- Cars a renter is watching: subscribes them to "this one is available again".
+-- Renters only — a watch is a "tell me when I can book this", which a host or
+-- company account can never act on (see migration 044).
 create table watchlist (
   profile_id text not null references profiles(id) on delete cascade,
   listing_id text not null references listings(id) on delete cascade,
@@ -375,10 +376,20 @@ create policy notifications_read  on notifications for select
 create policy notifications_write on notifications for all
   using (profile_id = auth.uid()::text) with check (profile_id = auth.uid()::text);
 
--- watchlist: yours alone — you may only see or change your own rows.
+-- watchlist: yours alone — you may only see or change your own rows, and only a
+-- renter may add one (hosts and companies can't book, so a watch buys them
+-- nothing). Delete stays open to everyone so a new host can clear an old list.
 create policy watchlist_read   on watchlist for select using (profile_id = auth.uid()::text);
-create policy watchlist_insert on watchlist for insert with check (profile_id = auth.uid()::text);
 create policy watchlist_delete on watchlist for delete using (profile_id = auth.uid()::text);
+create policy watchlist_insert on watchlist for insert
+  with check (
+    profile_id = auth.uid()::text
+    and not exists (
+      select 1 from profiles p
+      where p.id = auth.uid()::text
+        and (p.role = 'owner' or p.owner_type = 'business')
+    )
+  );
 
 -- ----------------------------------------------------------------------------
 -- Booking integrity triggers (kept in sync with migration 005)

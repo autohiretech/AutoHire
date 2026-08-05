@@ -248,7 +248,9 @@ export function CarDetailPage() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <WatchButton id={listing.id} />
+          {/* Watching is a renter's tool — it says "tell me when I can book
+              this", which a host or company account can never act on. */}
+          {canRent && <WatchButton id={listing.id} />}
           <ShareButton title={listing.title} />
         </div>
       </div>
@@ -737,11 +739,11 @@ function PhotoGallery({
 }
 
 /**
- * "Watch" (follow) a car — BaT-style. For a signed-in account the watch lives in
+ * "Watch" (follow) a car — BaT-style. For a signed-in renter the watch lives in
  * the `watchlist` table, which is what makes it more than a bookmark: DB
  * triggers notify every watcher when the car comes back into service or the trip
- * on it ends, so you find out it's free without checking back. Hosts and
- * companies can watch too — watching isn't booking.
+ * on it ends, so you find out it's free without checking back. Renters only —
+ * the caller hides this for hosts and companies, and RLS refuses their insert.
  *
  * Guests fall back to the old localStorage list (no account to notify), and are
  * told that signing in is what turns it into an alert.

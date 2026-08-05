@@ -4,30 +4,32 @@ import { Bell, Star, Wrench } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useCanRent } from '@/lib/account';
 import { formatDate } from '@/lib/format';
 import { readLocalWatchlist, writeLocalWatchlist } from '@/lib/watchlist';
 import { ListingCard } from '@/components/ListingCard';
 import { Badge, Button, Card, CardBody, Spinner, toast } from '@/components/ui';
 
 /**
- * "Watching" — the cars this account has starred. Watching is not booking (hosts
- * and companies watch too); it subscribes you to a notification when the car
- * comes back into service or the trip on it ends, so this page is the standing
- * view of what you're waiting on.
+ * "Watching" — the cars this renter has starred. A watch subscribes you to a
+ * notification when the car comes back into service or the trip on it ends, so
+ * this page is the standing view of what you're waiting on.
  *
- * Signed-in watches live in the `watchlist` table. Guests have no account to
- * notify, so theirs stay in localStorage and this page renders those instead,
- * with a prompt explaining what signing in buys them.
+ * Renters only: a watch says "tell me when I can book this", which host and
+ * company accounts can never act on. Guests get here too — they're prospective
+ * renters — but have no account to notify, so their watches stay in
+ * localStorage and this page renders those with a prompt to sign in.
  */
 export function WatchlistPage() {
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useCurrentUser();
+  const canRent = useCanRent();
   const signedIn = !!me;
 
   const serverQuery = useQuery({
     queryKey: ['watchedListings'],
     queryFn: () => client.listWatchedListings(),
-    enabled: signedIn,
+    enabled: signedIn && canRent,
   });
 
   // Guests: resolve the ids they saved in the browser, one listing each.
@@ -59,6 +61,23 @@ export function WatchlistPage() {
     },
     onError: () => toast.error('Could not update your watchlist'),
   });
+
+  // Hosts and companies can't book, so there is nothing for a watch to tell
+  // them. Their old watches (from before they became a host) are left in the
+  // table; they simply have no page for them.
+  if (!canRent && !meLoading) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <p className="font-medium text-ink-900">Watching is for renter accounts</p>
+        <p className="mt-1 text-sm text-ink-500">
+          A watch tells you when a car is free to book, which host and company accounts can't do.
+        </p>
+        <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+          Back to browse
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-8">

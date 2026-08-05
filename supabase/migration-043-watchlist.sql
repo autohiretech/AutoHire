@@ -5,8 +5,8 @@
 -- This stores the watch server-side and notifies every watcher when the car
 -- comes back into service or a trip on it ends.
 --
--- Hosts and companies can't book, but they can watch — the notification is
--- suppressed only for the car's own host (they don't need telling).
+-- (Superseded in part by migration 044: watching is renters-only. The notify
+-- path still skips the car's own host, who doesn't need telling.)
 --
 -- NOTE: run the `alter type` statement first and let it commit before anything
 -- writes a 'watchlist' notification — Postgres won't use a new enum value in

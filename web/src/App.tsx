@@ -37,8 +37,8 @@ export default function App() {
         <Route path="cars/:id" element={<CarDetailPage />} />
         <Route path="hosts/:id" element={<HostProfilePage />} />
         <Route path="cities/:city" element={<CityPage />} />
-        {/* Watching is open to everyone — hosts and companies can watch a car
-            they can't book, and a guest's watches live in their browser. */}
+        {/* Public so a guest's browser watchlist still has a home; the page
+            itself turns away host and company accounts (renters only). */}
         <Route path="watchlist" element={<WatchlistPage />} />
 
         {/* Account-only routes — signing in required */}

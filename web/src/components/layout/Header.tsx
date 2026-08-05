@@ -8,6 +8,7 @@ import { useNotifications } from '@/components/NotificationsProvider';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useCanRent } from '@/lib/account';
 import { MODE_HOME, useAppMode, type AppMode } from '@/lib/appMode';
 import { useAuth } from '@/lib/auth';
 
@@ -37,6 +38,7 @@ export function Header() {
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const { open: openNotifications } = useNotifications();
+  const canRent = useCanRent();
 
   // Close the mobile menu whenever the route changes.
   const closeMenu = () => setMenuOpen(false);
@@ -112,14 +114,18 @@ export function Header() {
                   <ShieldCheck size={20} />
                 </Link>
               )}
-              <Link
-                to="/watchlist"
-                className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 sm:block"
-                aria-label="Cars you're watching"
-                title="Watching"
-              >
-                <Star size={20} />
-              </Link>
+              {/* Watching is a renter's tool — hosts and companies can't book,
+                  so "tell me when this is free" means nothing to them. */}
+              {canRent && (
+                <Link
+                  to="/watchlist"
+                  className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 sm:block"
+                  aria-label="Cars you're watching"
+                  title="Watching"
+                >
+                  <Star size={20} />
+                </Link>
+              )}
               <Link
                 to="/messages"
                 className="relative rounded-lg p-2 text-ink-500 hover:bg-ink-100"
@@ -208,18 +214,20 @@ export function Header() {
               {item.label}
             </NavLink>
           ))}
-          <NavLink
-            to="/watchlist"
-            onClick={closeMenu}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
-              )
-            }
-          >
-            <Star size={16} /> Watching
-          </NavLink>
+          {canRent && (
+            <NavLink
+              to="/watchlist"
+              onClick={closeMenu}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                  isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
+                )
+              }
+            >
+              <Star size={16} /> Watching
+            </NavLink>
+          )}
           {user && (
             <button
               type="button"
