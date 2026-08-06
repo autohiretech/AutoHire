@@ -143,7 +143,13 @@ export interface ElectricQuota {
  * Payout rails are an implementation detail — the host picks a *method* they
  * understand (mobile money / bank), and the system routes it to a provider.
  */
-export type PayoutProvider = 'stripe' | 'flutterwave';
+/**
+ * The rail a booking's money moves on. 'external' is the external hold system
+ * (it settles through Stripe on its own side); the other two are the direct
+ * integrations it replaces, kept so existing bookings still capture and refund
+ * against the rail that took their money.
+ */
+export type PayoutProvider = 'stripe' | 'flutterwave' | 'external';
 /** What the host actually chose — the human-facing destination type. */
 export type PayoutMethodType = 'momo' | 'bank' | 'card';
 /** Onboarding state of a host's payout method. */

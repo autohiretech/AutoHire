@@ -20,6 +20,7 @@
 
 import Stripe from 'npm:stripe@16.12.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { externalPaymentsConfigured, getHold } from '../_shared/external-payments.ts';
 
 const cors = {
   // Set the ALLOWED_ORIGIN secret to your web app's origin in production.
@@ -30,7 +31,8 @@ const cors = {
 
 const SERVICE_FEE_RATE = 0.1;
 const STRIPE_KEY = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
-const DEMO = !STRIPE_KEY; // no Stripe configured → demo checkout.
+const EXTERNAL = externalPaymentsConfigured(); // external hold system connected?
+const DEMO = !STRIPE_KEY && !EXTERNAL; // nothing configured → demo checkout.
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -76,8 +78,38 @@ Deno.serve(async (req: Request) => {
     let startDate: string;
     let endDate: string;
     let paymentRef: string;
+    let provider: 'stripe' | 'flutterwave' | 'external' | null = null;
+    let held = true;
 
-    if (DEMO) {
+    if (EXTERNAL) {
+      // External hold system: re-read the hold from the provider — the browser
+      // only ever hands us a reference, never a status.
+      const reference = body.reference ?? body.paymentIntentId;
+      if (!reference) return json({ error: 'reference is required.' }, 400);
+
+      const existing = await admin
+        .from('bookings')
+        .select('*')
+        .eq('payment_intent_id', reference)
+        .maybeSingle();
+      if (existing.data) return json({ booking: toCamelRow(existing.data) }, 200);
+
+      const hold = await getHold(reference);
+      if (hold.status !== 'authorised' && hold.status !== 'captured') {
+        return json({ error: 'Payment has not been authorised.', status: hold.status }, 402);
+      }
+      const m = hold.metadata ?? {};
+      if (m.uid !== uid) return json({ error: 'This payment does not belong to you.' }, 403);
+      if (!m.listingId || !m.startDate || !m.endDate) {
+        return json({ error: 'Payment is missing booking details.' }, 400);
+      }
+      listingId = m.listingId;
+      startDate = m.startDate;
+      endDate = m.endDate;
+      paymentRef = hold.reference;
+      provider = 'external';
+      held = hold.status !== 'captured';
+    } else if (DEMO) {
       // Demo: trust the listing + dates from the request (price is still
       // recomputed below from the listing; availability is enforced by triggers).
       listingId = body.listingId;
@@ -152,10 +184,14 @@ Deno.serve(async (req: Request) => {
     if (listErr || !listing) return json({ error: 'Listing not found.' }, 404);
     if (listing.host_id === uid) return json({ error: 'You cannot book your own car.' }, 403);
 
-    // Route the whole booking to one rail by the CAR's market: Flutterwave for
-    // African markets (money lands as local currency / MoMo), Stripe otherwise.
-    const AFRICA = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CI']);
-    const provider = AFRICA.has(String(listing.country ?? 'RW').toUpperCase()) ? 'flutterwave' : 'stripe';
+    // With the external hold system connected it handles every market, so the
+    // rail is already decided above. Otherwise route by the CAR's market:
+    // Flutterwave for African markets (money lands as local currency / MoMo),
+    // Stripe otherwise.
+    if (!provider) {
+      const AFRICA = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CI']);
+      provider = AFRICA.has(String(listing.country ?? 'RW').toUpperCase()) ? 'flutterwave' : 'stripe';
+    }
 
     const days = diffDays(startDate, endDate);
     const subtotal = (listing.price_per_day_rwf as number) * days;
@@ -179,7 +215,7 @@ Deno.serve(async (req: Request) => {
         payment_status: 'paid',
         provider,
         charge_currency: listing.price_currency ?? 'RWF',
-        hold_status: 'held',
+        hold_status: held ? 'held' : 'released',
         payment_intent_id: paymentRef,
         created_at: new Date().toISOString(),
       })

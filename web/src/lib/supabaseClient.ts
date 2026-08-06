@@ -11,6 +11,7 @@ import type {
   Message,
   ModerationStatus,
   Payout,
+  PayoutProvider,
   Review,
   UserProfile,
   VerificationDocType,
@@ -246,6 +247,8 @@ export const supabaseClient = {
     startDate: string;
     endDate: string;
     paymentIntentId?: string;
+    /** External hold system: the hold's reference (re-read server-side). */
+    reference?: string;
   }): Promise<Booking> {
     const { data, error } = await getSupabase().functions.invoke('confirm-booking', {
       body: input,
@@ -262,6 +265,49 @@ export const supabaseClient = {
       throw new Error(payload?.error ?? 'Could not confirm the booking.');
     }
     return payload.booking;
+  },
+
+  /**
+   * Open an escrow hold on the external payment system. Returns whatever the
+   * browser needs to finish it: a Stripe `clientSecret` (the external system
+   * settles through Stripe), a `redirectUrl` to their hosted page, or neither
+   * when the hold is already authorised. `reference` then goes to
+   * `confirmBooking`, which re-reads the hold server-side before creating a trip.
+   */
+  async createExternalHold(input: {
+    listingId: string;
+    startDate: string;
+    endDate: string;
+    returnUrl?: string;
+  }): Promise<{
+    reference: string;
+    status: string;
+    clientSecret?: string;
+    redirectUrl?: string;
+    totalRwf?: number;
+  }> {
+    const { data, error } = await getSupabase().functions.invoke('external-create-hold', {
+      body: input,
+    });
+    if (error) {
+      throw new Error(
+        error.name === 'FunctionsFetchError'
+          ? "External payments aren't deployed yet — deploy the external-create-hold Edge Function."
+          : error.message,
+      );
+    }
+    const payload = data as {
+      reference?: string;
+      status?: string;
+      clientSecret?: string;
+      redirectUrl?: string;
+      totalRwf?: number;
+      error?: string;
+    };
+    if (payload?.error || !payload?.reference) {
+      throw new Error(payload?.error ?? 'Could not start the payment.');
+    }
+    return { ...payload, reference: payload.reference, status: payload.status ?? 'pending' };
   },
 
   /**
@@ -1310,7 +1356,7 @@ export const supabaseClient = {
    */
   async setPayoutMethod(input: {
     method: 'momo' | 'bank' | 'card';
-    provider: 'stripe' | 'flutterwave';
+    provider: PayoutProvider;
     destinationMasked: string;
     label: string;
   }): Promise<UserProfile> {

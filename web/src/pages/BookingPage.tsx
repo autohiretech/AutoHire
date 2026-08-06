@@ -13,7 +13,7 @@ import { getSupabase } from '@/lib/supabase';
 import { getStripe } from '@/lib/stripe';
 import { formatDate } from '@/lib/format';
 import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
-import { PAYMENTS_LIVE, isAfricanMarket } from '@/lib/payments';
+import { PAYMENTS_EXTERNAL, PAYMENTS_LIVE, isAfricanMarket } from '@/lib/payments';
 import {
   AirtelMark,
   AmexMark,
@@ -73,8 +73,11 @@ export function BookingPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: async (paymentIntentId?: string) => {
-      const booking = await client.confirmBooking({ listingId: id, startDate, endDate, paymentIntentId });
+    // A payment identifies itself differently per rail: a Stripe PaymentIntent
+    // id, or a hold reference from the external system. Either way the server
+    // re-reads it — this is only a pointer, never a claim that it succeeded.
+    mutationFn: async (ref?: { paymentIntentId?: string; reference?: string }) => {
+      const booking = await client.confirmBooking({ listingId: id, startDate, endDate, ...ref });
       try {
         const conv = await client.getOrCreateConversation(booking.listingId, booking.renterId, booking.hostId);
         await client.sendMessage(
@@ -94,8 +97,10 @@ export function BookingPage() {
     },
   });
 
-  // Returned from Flutterwave's hosted payment — the webhook creates the trip.
-  if (new URLSearchParams(location.search).get('flw')) {
+  // Back from a hosted payment page (Flutterwave, or the external system's) —
+  // in both cases their webhook is what creates the trip, not this page.
+  const params = new URLSearchParams(location.search);
+  if (params.get('flw') || params.get('ext')) {
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
@@ -224,7 +229,8 @@ export function BookingPage() {
     totalRwf: total,
     currency: cur,
     instant,
-    onPaid: (pi?: string) => mutation.mutateAsync(pi),
+    onPaid: (pi?: string) => mutation.mutateAsync(pi ? { paymentIntentId: pi } : undefined),
+    onHeld: (reference: string) => mutation.mutateAsync({ reference }),
   };
 
   return (
@@ -257,7 +263,11 @@ export function BookingPage() {
                 </p>
               )}
 
-              {africanLive ? (
+              {PAYMENTS_EXTERNAL ? (
+                <Elements stripe={stripePromise}>
+                  <ExternalPay {...payProps} disabled={!datesValid} />
+                </Elements>
+              ) : africanLive ? (
                 <FlutterwavePay
                   listingId={id}
                   startDate={startDate}
@@ -317,7 +327,7 @@ export function BookingPage() {
               )}
 
               {/* Provider attribution — Flutterwave for African markets, Stripe otherwise. */}
-              {!africanLive && (
+              {!africanLive && !PAYMENTS_EXTERNAL && (
                 isAfrican ? (
                   <p className="mt-4 text-center text-xs text-ink-400">
                     Payments secured — card, MTN MoMo &amp; Airtel Money.
@@ -475,6 +485,8 @@ interface PayProps {
   instant: boolean;
   /** Create the booking once payment succeeds. In demo mode the id is omitted. */
   onPaid: (paymentIntentId?: string) => Promise<unknown>;
+  /** Create the booking from an external-system hold reference. */
+  onHeld: (reference: string) => Promise<unknown>;
 }
 
 /** Country/region + postal-code billing fields shared by card forms. */
@@ -604,6 +616,98 @@ function DemoPayForm({ totalRwf, currency, onPaid, method, disabled }: PayProps 
       <Button className="w-full" size="lg" onClick={pay} disabled={busy || disabled}>
         {busy ? 'Processing…' : `Confirm and pay ${formatMoney(totalRwf, currency)}`}
       </Button>
+    </div>
+  );
+}
+
+/**
+ * Checkout on the EXTERNAL hold system. It owns the escrow and settles through
+ * Stripe on its side, so it can finish in one of three ways and we handle all
+ * of them:
+ *
+ *   • clientSecret — confirm the card here with Stripe.js, exactly as the direct
+ *     rail does, then create the booking from the hold reference;
+ *   • redirectUrl  — send the renter to their hosted page; their webhook creates
+ *     the booking and the renter lands back on ?ext=1;
+ *   • neither      — the hold is already authorised, so go straight to confirm.
+ *
+ * In every case the browser only ever passes a REFERENCE back: confirm-booking
+ * re-reads the hold from the provider before a trip exists.
+ */
+function ExternalPay({
+  listingId,
+  startDate,
+  endDate,
+  totalRwf,
+  currency,
+  onHeld,
+  disabled,
+}: PayProps & { disabled: boolean }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const { country: initial } = useCountry();
+  const [country, setCountry] = useState(initial.code);
+  const [zip, setZip] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pay() {
+    setBusy(true);
+    setError(null);
+    try {
+      const hold = await client.createExternalHold({
+        listingId,
+        startDate,
+        endDate,
+        returnUrl: `${window.location.origin}/cars/${listingId}/book?ext=1`,
+      });
+
+      if (hold.redirectUrl) {
+        window.location.assign(hold.redirectUrl);
+        return; // the webhook creates the booking; we don't come back here
+      }
+
+      if (hold.clientSecret) {
+        if (!stripe || !elements) throw new Error('Card entry is still loading — try again.');
+        const card = elements.getElement(CardElement);
+        if (!card) throw new Error('Enter your card details.');
+        const result = await stripe.confirmCardPayment(hold.clientSecret, {
+          payment_method: {
+            card,
+            billing_details: { address: { country, postal_code: zip || undefined } },
+          },
+        });
+        if (result.error) throw new Error(result.error.message ?? 'Your card was declined.');
+        // Manual capture leaves the intent in requires_capture — that IS the hold.
+        const ok =
+          result.paymentIntent?.status === 'requires_capture' ||
+          result.paymentIntent?.status === 'succeeded';
+        if (!ok) throw new Error('Payment was not completed.');
+      }
+
+      await onHeld(hold.reference);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Payment failed.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label>Card details</Label>
+        <div className="rounded-lg border border-ink-200 px-3 py-3">
+          <CardElement options={{ style: { base: { fontSize: '15px', color: '#04141F' } } }} />
+        </div>
+      </div>
+      <BillingFields country={country} setCountry={setCountry} zip={zip} setZip={setZip} />
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <Button className="w-full" size="lg" onClick={pay} disabled={busy || disabled}>
+        {busy ? 'Processing…' : `Confirm and pay ${formatMoney(totalRwf, currency)}`}
+      </Button>
+      <p className="text-center text-xs text-ink-400">
+        You won't be charged yet — the amount is held until pickup.
+      </p>
     </div>
   );
 }

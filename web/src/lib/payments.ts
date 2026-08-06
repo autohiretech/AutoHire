@@ -15,6 +15,14 @@ import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
  */
 export const PAYMENTS_LIVE = import.meta.env.VITE_PAYMENTS_LIVE === 'true';
 
+/**
+ * Payments run through the EXTERNAL hold system. Set `VITE_PAYMENTS_EXTERNAL=true`
+ * once its Edge Functions + secrets are deployed (see docs/payments-external.md).
+ * When on, it handles every market and the per-market Stripe/Flutterwave routing
+ * below is bypassed — the renter still just picks card or mobile money.
+ */
+export const PAYMENTS_EXTERNAL = import.meta.env.VITE_PAYMENTS_EXTERNAL === 'true';
+
 /** Markets Flutterwave settles locally (MoMo + bank). Extend as you add markets. */
 const FLUTTERWAVE_COUNTRIES = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CI']);
 
@@ -29,11 +37,13 @@ export function isAfricanMarket(countryCode: string): boolean {
  * renter is. A US renter paying a Rwandan car still goes through Flutterwave.
  */
 export function providerForBooking(carCountryCode: string): PayoutProvider {
+  if (PAYMENTS_EXTERNAL) return 'external';
   return isAfricanMarket(carCountryCode) ? 'flutterwave' : 'stripe';
 }
 
 /** Which provider a host's payout method routes to (matches their market). */
 export function payoutProviderFor(method: PayoutMethodType, countryCode: string): PayoutProvider {
+  if (PAYMENTS_EXTERNAL) return 'external';
   if (method === 'momo') return 'flutterwave'; // mobile money is African → Flutterwave
   if (method === 'card') return 'stripe'; // push-to-card / international → Stripe
   return isAfricanMarket(countryCode) ? 'flutterwave' : 'stripe';

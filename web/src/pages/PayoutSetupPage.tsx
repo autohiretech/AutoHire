@@ -12,7 +12,7 @@ import {
   Smartphone,
   Trash2,
 } from 'lucide-react';
-import type { PayoutMethodType } from '@autohire/shared';
+import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { useCountry } from '@/lib/country';
@@ -33,7 +33,13 @@ const METHOD_ICON: Record<PayoutMethodType, typeof Smartphone> = {
   card: CreditCard,
 };
 
-const PROVIDER_NAME = { flutterwave: 'Flutterwave', stripe: 'Stripe' } as const;
+const PROVIDER_NAME: Record<PayoutProvider, string> = {
+  flutterwave: 'Flutterwave',
+  stripe: 'Stripe',
+  // The external system is the platform's own rail — hosts see AutoHire, not a
+  // third-party brand they've never heard of.
+  external: 'AutoHire Payments',
+};
 
 /**
  * Host payout-method setup. The host picks how they want to be paid — Mobile

@@ -1,10 +1,14 @@
 // AutoHire — capture-payment Edge Function.
 //
-// Releases the escrow HOLD on the Stripe side. When a booking is paid we only
-// AUTHORISE the card (capture_method: 'manual'); this captures that authorisation
-// when the trip actually starts (pickup), turning the hold into a real charge.
-// Flutterwave bookings need no capture — their money is already collected and
-// held in the platform balance, released to the host at completion.
+// Releases the escrow HOLD. When a booking is paid we only AUTHORISE the card
+// (capture_method: 'manual'); this captures that authorisation when the trip
+// actually starts (pickup), turning the hold into a real charge.
+//
+// Which rail does the capture depends on the booking's provider:
+//   • 'external'    — the external hold system captures it (its own API),
+//   • 'stripe'      — we capture the PaymentIntent directly,
+//   • 'flutterwave' — nothing to capture; the money is already collected and
+//                     held in the platform balance, released at completion.
 //
 // Call this on the trip's pickup/active transition (from the app or a worker).
 // Idempotent: a booking already 'released' returns success.
@@ -14,6 +18,7 @@
 
 import Stripe from 'npm:stripe@16.12.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { captureHold, externalPaymentsConfigured } from '../_shared/external-payments.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
@@ -59,6 +64,19 @@ Deno.serve(async (req: Request) => {
     if (!isParticipant) return json({ error: 'Not allowed.' }, 403);
 
     if (booking.hold_status === 'released') return json({ released: true, already: true }, 200);
+
+    // External hold system: it owns the authorisation, so it does the capture.
+    if (booking.provider === 'external') {
+      if (!externalPaymentsConfigured()) {
+        return json({ error: 'External payments are not configured.', code: 'not_configured' }, 503);
+      }
+      const hold = await captureHold(booking.payment_intent_id as string);
+      if (hold.status !== 'captured') {
+        return json({ error: `Hold could not be captured (status: ${hold.status}).` }, 402);
+      }
+      await admin.from('bookings').update({ hold_status: 'released' }).eq('id', bookingId);
+      return json({ released: true, provider: 'external' }, 200);
+    }
 
     // Flutterwave: nothing to capture — funds are already in the platform balance.
     if (booking.provider !== 'stripe' || !STRIPE_KEY) {
