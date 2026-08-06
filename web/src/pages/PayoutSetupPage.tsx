@@ -15,7 +15,7 @@ import {
 import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { useCountry } from '@/lib/country';
+import { COUNTRIES } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
   PAYMENTS_LIVE,
@@ -25,7 +25,7 @@ import {
   payoutMethodsFor,
   payoutProviderFor,
 } from '@/lib/payments';
-import { Badge, Button, Card, CardBody, Input, Label, Spinner, toast } from '@/components/ui';
+import { Badge, Button, Card, CardBody, Input, Label, Select, Spinner, toast } from '@/components/ui';
 
 const METHOD_ICON: Record<PayoutMethodType, typeof Smartphone> = {
   momo: Smartphone,
@@ -50,10 +50,14 @@ const PROVIDER_NAME: Record<PayoutProvider, string> = {
 export function PayoutSetupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { country } = useCountry();
   const { data: me, isLoading } = useCurrentUser();
 
-  const methods = payoutMethodsFor(country.code);
+  // The host's OWN country decides which methods they can use and which rail
+  // they land on — not the header selector, which only filters the catalogue
+  // and lives in localStorage. Guessing from that put hosts on the wrong rail
+  // and then froze it into their profile.
+  const payoutCountry = me?.country ?? '';
+  const methods = payoutMethodsFor(payoutCountry);
   const [selected, setSelected] = useState<PayoutMethodType | null>(null);
   const [dest, setDest] = useState('');
 
@@ -66,7 +70,7 @@ export function PayoutSetupPage() {
 
   const connect = useMutation({
     mutationFn: (method: PayoutMethodType) => {
-      const provider = payoutProviderFor(method, country.code);
+      const provider = payoutProviderFor(method, payoutCountry);
       // Live + Flutterwave: register the raw destination as a beneficiary server-
       // side (only a token is stored). Otherwise store the masked method directly.
       if (PAYMENTS_LIVE && provider === 'flutterwave' && (method === 'momo' || method === 'bank')) {
@@ -88,6 +92,12 @@ export function PayoutSetupPage() {
     onError: () => toast.error("Couldn't save your payout method. Please try again."),
   });
 
+  const saveCountry = useMutation({
+    mutationFn: (code: string) => client.updateProfile({ country: code }),
+    onSuccess: () => refresh(),
+    onError: () => toast.error("Couldn't save your country. Please try again."),
+  });
+
   const remove = useMutation({
     mutationFn: () => client.clearPayoutMethod(),
     onSuccess: () => {
@@ -107,7 +117,7 @@ export function PayoutSetupPage() {
 
   const meta = selected ? PAYOUT_METHOD_META[selected] : null;
   const canSave = !!selected && dest.trim().length >= 4;
-  const routedProvider = selected ? payoutProviderFor(selected, country.code) : null;
+  const routedProvider = selected ? payoutProviderFor(selected, payoutCountry) : null;
 
   return (
     <section className="mx-auto max-w-2xl px-4 py-8">
@@ -154,8 +164,40 @@ export function PayoutSetupPage() {
         </Card>
       )}
 
+      {/* Country first — it decides both the methods on offer and the rail they
+          route to, and it's frozen into the profile once a method is saved. Ask
+          rather than guess. */}
+      {!payoutCountry && (
+        <Card className="mt-6 border-amber-200 bg-amber-50/60">
+          <CardBody className="space-y-3">
+            <div>
+              <p className="font-medium text-ink-900">Where do you get paid?</p>
+              <p className="mt-0.5 text-sm text-ink-600">
+                Your country decides which payout methods are available — Mobile Money isn't
+                offered everywhere.
+              </p>
+            </div>
+            <Select
+              aria-label="Payout country"
+              value=""
+              disabled={saveCountry.isPending}
+              onChange={(e) => e.target.value && saveCountry.mutate(e.target.value)}
+            >
+              <option value="" disabled>
+                Select your country
+              </option>
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} {c.name}
+                </option>
+              ))}
+            </Select>
+          </CardBody>
+        </Card>
+      )}
+
       {/* Method chooser */}
-      <div className="mt-6">
+      <div className={cn('mt-6', !payoutCountry && 'pointer-events-none opacity-40')}>
         <p className="mb-2 text-sm font-medium text-ink-700">
           {active ? 'Change your payout method' : 'Choose how you want to be paid'}
         </p>

@@ -62,7 +62,14 @@ export interface CreateHoldInput {
     endDate: string;
     totalRwf: string;
     priceCurrency: string;
+    /** The payer's own country (profiles.country), '' if they haven't set one. */
+    payerCountry: string;
   };
+  /**
+   * The provider's vault token for a payment method this account already saved
+   * (profiles.payment_ref). Absent means collect a method as part of this hold.
+   */
+  paymentMethodRef?: string;
   /** Where to send the renter back to when their flow needs a redirect. */
   returnUrl?: string;
 }
@@ -239,6 +246,7 @@ export async function createHold(input: CreateHoldInput): Promise<CreateHoldResu
       capture_method: 'manual',
       description: input.description,
       metadata: input.metadata,
+      payment_method: input.paymentMethodRef,
       return_url: input.returnUrl,
     },
   });

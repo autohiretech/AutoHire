@@ -46,6 +46,9 @@ create table profiles (
   verification    verification_status not null default 'unverified',
   rating_avg      numeric(2,1),
   rating_count    integer,
+  -- Where this account pays from / is paid into (ISO 3166-1 alpha-2). Null means
+  -- never asked — payout routing prompts rather than guessing (migration 046).
+  country         char(2),
   -- host-only
   owner_type      owner_type,
   business_name   text,

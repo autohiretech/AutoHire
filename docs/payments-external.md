@@ -67,6 +67,31 @@ booking: `confirm-booking` and the webhook read `uid`, `listingId`, `startDate`
 and `endDate` from the hold itself, never from the browser. Without it a payment
 cannot be turned into a trip.
 
+## What AutoHire stores about a payer
+
+The card and the payer's country ultimately belong to your system. AutoHire
+keeps only a local record for it to bind to (migration 046, on `profiles`):
+
+| Column | Holds | Set by |
+|---|---|---|
+| `country` | ISO 3166-1 alpha-2 — where they pay from / are paid into | The user, on their account page |
+| `payment_method` | `card` \| `momo` \| `bank` | The user |
+| `payment_destination` | Masked only, e.g. `••••4242` | The user |
+| `payment_label` | `"Card · ••••4242"` | Derived |
+| `payment_ref` | **Your vault token for the method** | You, once connected |
+| `payment_status` | `none` \| `pending` \| `active` | `active` only once `payment_ref` exists |
+
+No raw card number is ever stored, and no column should ever hold one.
+
+`payment_ref` is the join. Until you issue one, a saved method stays `pending` —
+it's a stated preference, and checkout still collects the card. Once your API
+returns a token and it's written to `payment_ref`, `createHold` sends it as
+`payment_method` and the renter can pay without re-entering anything.
+
+`country` is sent on every hold as `metadata.payerCountry`. It is the payer's
+own country, never the car's market — the two differ whenever someone rents
+abroad, and only the car's market decides the currency.
+
 ## What we need back
 
 Any of these spellings is understood for the response (see `normaliseHold`);

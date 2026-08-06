@@ -155,6 +155,11 @@ export type PayoutMethodType = 'momo' | 'bank' | 'card';
 /** Onboarding state of a host's payout method. */
 export type PayoutSetupStatus = 'none' | 'pending' | 'active';
 
+/** How a renter pays — the mirror of PayoutMethodType on the paying side. */
+export type PaymentMethodType = 'card' | 'momo' | 'bank';
+/** Onboarding state of a renter's saved payment method. */
+export type PaymentSetupStatus = 'none' | 'pending' | 'active';
+
 export interface UserProfile {
   id: ID;
   fullName: string;
@@ -175,6 +180,20 @@ export interface UserProfile {
   payoutDestination?: string;
   /** Human-readable summary of the connected method, e.g. "MTN MoMo · ••••1234". */
   payoutLabel?: string;
+  /**
+   * Where this account pays from / is paid into (ISO 3166-1 alpha-2). Absent
+   * means never asked — don't guess it from the browser's market selector.
+   */
+  country?: string;
+  /** Renter payment method — how they pay. Absent/`'none'` until they add one. */
+  paymentMethod?: PaymentMethodType;
+  paymentStatus?: PaymentSetupStatus;
+  /** Masked, e.g. "••••4242". The real credentials live with the provider. */
+  paymentDestination?: string;
+  /** Human-readable summary, e.g. "Card · ••••4242". */
+  paymentLabel?: string;
+  /** The external payment system's token for this method, once connected. */
+  paymentRef?: string;
 }
 
 /** A host who lists vehicles. May be an individual or a business/fleet agency. */

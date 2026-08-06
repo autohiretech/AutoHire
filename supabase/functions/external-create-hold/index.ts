@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
     // host-only, and only a verified identity may rent.
     const { data: profile } = await admin
       .from('profiles')
-      .select('role, owner_type, verification')
+      .select('role, owner_type, verification, country, payment_ref')
       .eq('id', uid)
       .single();
     if (profile?.owner_type === 'business') {
@@ -128,7 +128,13 @@ Deno.serve(async (req: Request) => {
         endDate,
         totalRwf: String(total),
         priceCurrency: currency,
+        // The payer's own country, not the car's market — theirs decides which
+        // methods they may use. Empty until they've set it on their account.
+        payerCountry: String(profile?.country ?? ''),
       },
+      // Their vault token for a saved method, when the account has one. Null
+      // until the provider issues one, in which case they collect a card.
+      paymentMethodRef: (profile?.payment_ref as string | null) ?? undefined,
       returnUrl,
     });
 

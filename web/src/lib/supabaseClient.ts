@@ -10,6 +10,7 @@ import type {
   Listing,
   Message,
   ModerationStatus,
+  PaymentMethodType,
   Payout,
   PayoutProvider,
   Review,
@@ -1335,6 +1336,8 @@ export const supabaseClient = {
     avatarUrl?: string;
     role?: UserProfile['role'];
     ownerType?: 'individual' | 'business';
+    /** ISO 3166-1 alpha-2 — where they pay from / are paid into. */
+    country?: string;
   }): Promise<UserProfile> {
     const dbPatch: Record<string, unknown> = {};
     if (patch.fullName !== undefined) dbPatch.full_name = patch.fullName;
@@ -1342,6 +1345,7 @@ export const supabaseClient = {
     if (patch.avatarUrl !== undefined) dbPatch.avatar_url = patch.avatarUrl;
     if (patch.role !== undefined) dbPatch.role = patch.role;
     if (patch.ownerType !== undefined) dbPatch.owner_type = patch.ownerType;
+    if (patch.country !== undefined) dbPatch.country = patch.country.toUpperCase();
     const row = await run(
       sb().from('profiles').update(dbPatch).eq('id', me()).select('*').single(),
     );
@@ -1369,6 +1373,54 @@ export const supabaseClient = {
           payout_destination: input.destinationMasked,
           payout_label: input.label,
           payout_status: 'active',
+        })
+        .eq('id', me())
+        .select('*')
+        .single(),
+    );
+    return mapRow<UserProfile>(row) as UserProfile;
+  },
+  /**
+   * Save a renter's payment method — how they pay, the mirror of
+   * `setPayoutMethod`. Only the MASKED destination is stored; the real
+   * credentials belong to the payment provider, never to us. `ref` is that
+   * provider's token for the method, absent until the external payment system
+   * is connected (nothing in AutoHire mints one), which is why the status stays
+   * 'pending' without it — an unbacked method can't actually be charged.
+   */
+  async setPaymentMethod(input: {
+    method: PaymentMethodType;
+    destinationMasked: string;
+    label: string;
+    ref?: string;
+  }): Promise<UserProfile> {
+    const row = await run(
+      sb()
+        .from('profiles')
+        .update({
+          payment_method: input.method,
+          payment_destination: input.destinationMasked,
+          payment_label: input.label,
+          payment_ref: input.ref ?? null,
+          payment_status: input.ref ? 'active' : 'pending',
+        })
+        .eq('id', me())
+        .select('*')
+        .single(),
+    );
+    return mapRow<UserProfile>(row) as UserProfile;
+  },
+  /** Remove the saved payment method. */
+  async clearPaymentMethod(): Promise<UserProfile> {
+    const row = await run(
+      sb()
+        .from('profiles')
+        .update({
+          payment_method: null,
+          payment_destination: null,
+          payment_label: null,
+          payment_ref: null,
+          payment_status: 'none',
         })
         .eq('id', me())
         .select('*')

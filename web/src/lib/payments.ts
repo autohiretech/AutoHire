@@ -1,4 +1,4 @@
-import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
+import type { PaymentMethodType, PayoutMethodType, PayoutProvider } from '@autohire/shared';
 
 /**
  * Payment orchestration — the user picks a method they understand (mobile money,
@@ -77,6 +77,43 @@ export const PAYOUT_METHOD_META: Record<
     placeholder: '4242 4242 4242 4242',
   },
 };
+
+/**
+ * The payment methods a renter can save in a given market — the mirror of
+ * `payoutMethodsFor`. Card is universal; mobile money only where it settles.
+ */
+export function paymentMethodsFor(countryCode: string): PaymentMethodType[] {
+  return isAfricanMarket(countryCode) ? ['card', 'momo'] : ['card'];
+}
+
+export const PAYMENT_METHOD_META: Record<
+  PaymentMethodType,
+  { label: string; blurb: string; field: string; placeholder: string }
+> = {
+  card: {
+    label: 'Card',
+    blurb: 'Visa, Mastercard, Amex. Held at booking, charged at pickup.',
+    field: 'Card number',
+    placeholder: '4242 4242 4242 4242',
+  },
+  momo: {
+    label: 'Mobile Money',
+    blurb: 'MTN MoMo or Airtel Money. You approve each payment on your phone.',
+    field: 'Mobile money number',
+    placeholder: '+250 788 123 456',
+  },
+  bank: {
+    label: 'Bank account',
+    blurb: 'Direct debit from your bank account.',
+    field: 'Bank account number',
+    placeholder: 'Account number',
+  },
+};
+
+/** "Card · ••••4242" style label for a saved payment method. */
+export function paymentLabel(method: PaymentMethodType, dest: string): string {
+  return `${PAYMENT_METHOD_META[method].label} · ${maskDestination(dest)}`;
+}
 
 /** Mask all but the last 4 characters of a destination — never store the full value raw. */
 export function maskDestination(dest: string): string {
