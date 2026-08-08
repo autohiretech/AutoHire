@@ -132,6 +132,59 @@ export interface Withdrawable {
   paid_count: number;
 }
 
+/** Where a host's money can be sent. A seller may have more than one. */
+export interface SellerDestination {
+  id: string;
+  label: string | null;
+  country: string;
+  payout_currency: string;
+  payout_provider: PayoutProvider;
+  masked_destination: string;
+  is_primary: boolean;
+  is_backup: boolean;
+  /** Null until PayHold has verified it. An unverified one cannot be paid to. */
+  verified_at: string | null;
+  /** A freshly added destination is frozen for a window — §5.1's takeover guard. */
+  security_hold_until: string | null;
+}
+
+/** One payout PayHold has scheduled, sent, or stopped. */
+export interface Payout {
+  id: string;
+  deal_id: string;
+  seller_id: string;
+  amount: number;
+  currency: string;
+  status:
+    | 'scheduled'
+    | 'processing'
+    | 'paid'
+    | 'failed'
+    | 'frozen'
+    | 'held_for_review'
+    | 'blocked'
+    | 'needs_verification';
+  /** When the clearance window ends and the cron will send it. */
+  scheduled_for: string | null;
+  paid_at: string | null;
+  failure_reason: string | null;
+  attempts: number;
+}
+
+/** Per-deal money, every figure separately — PayHold derives these from its ledger. */
+export interface DealAmounts {
+  currency: string;
+  buyer_paid: number;
+  platform_fee: number;
+  provider_fee: number;
+  tax: number;
+  reserve: number;
+  refunded: number;
+  paid_out: number;
+  /** What the host actually earns on this trip. */
+  seller_net: number;
+}
+
 export interface SellerCapabilities {
   can_receive_payouts: boolean;
   kyc_status: string;
@@ -277,8 +330,8 @@ export function createDeal(input: CreateDealInput): Promise<CreateDealResult> {
  * Re-read a deal. This is the trust boundary — the webhook's payload says what
  * happened, this says what is true.
  */
-export function getDeal(id: string): Promise<Deal> {
-  return call<Deal>(`/deals/${encodeURIComponent(id)}`, { method: 'GET' });
+export function getDeal(id: string): Promise<Deal & { amounts: DealAmounts | null }> {
+  return call(`/deals/${encodeURIComponent(id)}`, { method: 'GET' });
 }
 
 /**
@@ -352,6 +405,22 @@ export function sellerBalance(
   id: string,
 ): Promise<{ seller_id: string; balances: WalletBalance[]; withdrawable: Withdrawable[] }> {
   return call(`/sellers/${encodeURIComponent(id)}/balance`, { method: 'GET' });
+}
+
+/** Where this host can be paid — each with its own verification state. */
+export function sellerDestinations(id: string): Promise<{ destinations: SellerDestination[] }> {
+  return call(`/sellers/${encodeURIComponent(id)}/destinations`, { method: 'GET' });
+}
+
+/**
+ * The tenant's payouts, newest first.
+ *
+ * PayHold has no per-seller filter here — this is every host's payouts, so a
+ * caller MUST narrow by `seller_id` before showing anything. Doing that in the
+ * one place that reads this (`payhold-earnings`) is why this returns raw.
+ */
+export function listPayouts(limit = 500): Promise<{ payouts: Payout[] }> {
+  return call(`/payouts?limit=${limit}`, { method: 'GET' });
 }
 
 /**

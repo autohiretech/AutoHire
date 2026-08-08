@@ -7,6 +7,7 @@ import type {
   DisputeStatus,
   Flag,
   Host,
+  HostEarnings,
   Listing,
   Message,
   ModerationStatus,
@@ -421,11 +422,36 @@ export const supabaseClient = {
     };
   },
 
-  /** Ask PayHold to send the cleared money to the host's own account. */
-  async payholdWithdraw(): Promise<{ requested: number; message: string }> {
+  /**
+   * Every trip's money and the stage it's at, plus where it can be sent.
+   *
+   * The wallet totals answer "how much"; this answers "which trip, and where is
+   * that money" — the question a host asks when a number looks wrong.
+   */
+  async payholdEarnings(offset = 0): Promise<HostEarnings> {
+    const { data, error } = await getSupabase().functions.invoke(
+      `payhold-earnings?offset=${offset}`,
+      { method: 'GET' },
+    );
+    if (error) throw new Error(error.message);
+    const payload = data as HostEarnings & { error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return {
+      sellerId: payload.sellerId ?? null,
+      trips: payload.trips ?? [],
+      destinations: payload.destinations ?? [],
+      hasMore: payload.hasMore ?? false,
+    };
+  },
+
+  /**
+   * Ask PayHold to send the cleared money. `destinationId` picks among the
+   * host's own registered destinations — it can never name a new address.
+   */
+  async payholdWithdraw(destinationId?: string): Promise<{ requested: number; message: string }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-balance', {
       method: 'POST',
-      body: {},
+      body: destinationId ? { destinationId } : {},
     });
     if (error) throw new Error(error.message);
     const payload = data as { requested?: number; message?: string; error?: string };

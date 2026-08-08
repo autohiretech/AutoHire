@@ -67,10 +67,41 @@ What "Send it now" actually does, from `request_withdrawal`:
 | [`payhold-create-deal`](../supabase/functions/payhold-create-deal/index.ts) | Checkout → deal → hosted payment link. |
 | [`payhold-webhook`](../supabase/functions/payhold-webhook/index.ts) | Signed events → bookings, refunds, disputes. |
 | [`payhold-register-seller`](../supabase/functions/payhold-register-seller/index.ts) | Host's payout destination → PayHold seller. |
-| [`payhold-balance`](../supabase/functions/payhold-balance/index.ts) | GET wallet, POST withdraw. |
+| [`payhold-balance`](../supabase/functions/payhold-balance/index.ts) | GET wallet totals, POST withdraw (optionally to a chosen destination). |
+| [`payhold-earnings`](../supabase/functions/payhold-earnings/index.ts) | Per-trip money, its stage, and the host's payout destinations. |
 | [`payhold-confirm`](../supabase/functions/payhold-confirm/index.ts) | One side confirms a finished trip. |
-| [`EarningsPage`](../web/src/pages/EarningsPage.tsx) | `/earnings` — held, clearing, available, withdraw. |
+| [`EarningsPage`](../web/src/pages/EarningsPage.tsx) | `/earnings` — totals, trip-by-trip stages, fee breakdown, withdraw. |
 | [migration 047](../supabase/migration-047-payhold.sql) | `payhold_deal_id`, `payhold_seller_id`, `payhold_dispute_id`. |
+
+## The stages a host's money passes through
+
+`/earnings` shows every trip and where its money is. The stage comes from the
+deal's status, overridden by the payout's when one exists — a stopped payout
+outranks everything, because the money is the host's and something is in the way.
+
+| Stage | Means | PayHold source |
+|---|---|---|
+| Awaiting payment | The renter hasn't finished paying | `created`, `checkout_started`, `payment_pending` |
+| On trip | Held while the car is out | `funded_held`, `in_progress`, `revision_requested` |
+| Needs confirming | Trip over, waiting on a confirmation | `confirmed_buyer`, `confirmed_seller` |
+| In dispute | Resolution Center; payout frozen | `disputed` |
+| Clearing | Theirs, inside the window — shows the date | `clearing` |
+| Ready to send | Cleared; goes out automatically | `released`, `payout_pending` |
+| Sending | On its way | payout `processing` |
+| Paid | In their account | `paid_out`, payout `paid` |
+| On hold | Stopped, with the reason | payout `failed`/`frozen`/`blocked`/`needs_verification`/`held_for_review` |
+| Refunded | Went back to the renter | `refunded`, `partially_refunded` |
+| Cancelled | No money moved | `payment_failed`, `expired`, `canceled` |
+
+`disputed` is deliberately **not** "needs confirming": a disputed deal cannot be
+resolved by confirming, and pointing a host at that button would waste their
+time. Every one of PayHold's 18 deal statuses and 8 payout statuses is mapped;
+an unrecognised one falls back to "On trip" rather than disappearing.
+
+Each row also opens a breakdown — renter paid, AutoHire fee, payment fee,
+refunds, and what the host earns — from PayHold's `deal_amounts`. That gap is
+the most-queried number on the page, so it is one tap away rather than a support
+question.
 
 ## What AutoHire stores
 
@@ -206,3 +237,9 @@ on the old rail still needs the old capture path to finish.
   calls it.
 - **`payment-options` is not read.** The renter sees whatever PayHold's hosted
   page offers rather than a preview in AutoHire.
+- **Earnings shows the 20 most recent trips.** `payhold-earnings` accepts an
+  `offset` and reports `hasMore`, but the page has no "load more" button, so
+  older trips are reachable only through the API. Each trip is a
+  `GET /deals/:id`, which is why the page is capped rather than unbounded.
+- **No CSV or statement export**, so a host reconciling against their own bank
+  has to read the screen.

@@ -78,8 +78,19 @@ Deno.serve(async (req: Request) => {
     }
 
     if (req.method === 'POST') {
+      // Which of the host's own destinations to send to. PayHold validates that
+      // it belongs to them, is verified, and is past its security hold — a
+      // withdrawal that could name a fresh destination is the shape an account
+      // takeover uses, so this is a choice among rows they already registered
+      // and never a new address.
+      const body = await req.json().catch(() => ({}));
+      const destinationId =
+        typeof (body as { destinationId?: unknown }).destinationId === 'string'
+          ? (body as { destinationId: string }).destinationId
+          : undefined;
+
       try {
-        const result = await withdraw(sellerId);
+        const result = await withdraw(sellerId, destinationId);
         return json(
           {
             requested: result.requested,

@@ -513,6 +513,77 @@ export interface PayholdWallet {
   routeReasons: string[];
 }
 
+/**
+ * Where a trip's money is right now — the one word a host can act on.
+ *
+ * `awaiting_confirmation` is deliberately separate from `on_trip`: the money is
+ * still held in both, but in the first it is waiting on a person, and that is
+ * something the host can go and do something about.
+ */
+export type EarningStage =
+  | 'awaiting_payment'
+  | 'on_trip'
+  | 'awaiting_confirmation'
+  | 'clearing'
+  | 'ready'
+  | 'sending'
+  | 'paid'
+  | 'on_hold'
+  | 'disputed'
+  | 'refunded'
+  | 'cancelled';
+
+/** One trip's money, merged from AutoHire's booking and PayHold's ledger. */
+export interface EarningTrip {
+  bookingId: ID;
+  dealId: string;
+  car: string;
+  photo: string | null;
+  startDate: string;
+  endDate: string;
+  days: number;
+  tripState: string;
+  stage: EarningStage;
+  dealStatus: string | null;
+  currency: string;
+  /** All amounts are MINOR units, as PayHold reports them. Null if unreachable. */
+  gross: number | null;
+  platformFee: number | null;
+  providerFee: number | null;
+  refunded: number | null;
+  /** What the host actually earns on this trip. */
+  net: number | null;
+  /** When this money can be sent — the end of the clearance window. */
+  availableAt: string | null;
+  releasedAt: string | null;
+  paidAt: string | null;
+  holdReason: string | null;
+  payoutStatus: string | null;
+}
+
+/** A place a host's money can be sent. */
+export interface PayoutDestination {
+  id: string;
+  label: string | null;
+  country: string;
+  payoutCurrency: string;
+  maskedDestination: string;
+  isPrimary: boolean;
+  isBackup: boolean;
+  /** Null until PayHold verifies it — an unverified destination can't be paid. */
+  verifiedAt: string | null;
+  /** A newly added destination is frozen for a window against takeover. */
+  securityHoldUntil: string | null;
+}
+
+/** Not `EarningsPage` — that name is the React route component. */
+export interface HostEarnings {
+  sellerId: string | null;
+  trips: EarningTrip[];
+  destinations: PayoutDestination[];
+  hasMore: boolean;
+}
+
 /** Platform-wide figures for the admin reporting view. */
 export interface AdminStats {
   grossRwf: number;
