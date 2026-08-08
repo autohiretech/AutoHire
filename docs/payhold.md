@@ -146,44 +146,134 @@ in `verifyWebhookSignature`, with a 3-hour age bound — generous because
 PayHold's last retry lands two hours out, and rejecting a legitimate final retry
 loses the event for good.
 
-## Secrets
+## Connecting the two systems
+
+Everything below is one-time. Do it in this order — later steps fail without
+earlier ones.
+
+### 0. Know the two addresses
+
+| | |
+|---|---|
+| PayHold API (AutoHire calls this) | `https://mwnbjjlilqrwdmwutbxr.supabase.co/functions/v1` |
+| AutoHire webhook (PayHold calls this) | `https://gsnoggfofbmzamxxyazc.supabase.co/functions/v1/payhold-webhook` |
+| PayHold hosted checkout (renters land here) | `https://payhold.pages.dev` |
+
+### 1. On PayHold: set `PUBLIC_URL` — do this first
 
 ```bash
-supabase secrets set \
-  PAYHOLD_BASE_URL=https://mwnbjjlilqrwdmwutbxr.supabase.co/functions/v1 \
-  PAYHOLD_API_KEY=<dashboard → Rails → API Keys> \
-  PAYHOLD_WEBHOOK_SECRET=<the secret PayHold minted for our endpoint>
+# in the payhold-backend project
+supabase secrets set PUBLIC_URL=https://payhold.pages.dev
 ```
 
-Web app: `VITE_PAYMENTS_PAYHOLD=true` switches checkout onto this rail.
+**Without it every payment link is dead.** `deals/index.ts` falls back to
+`https://app.payhold.local`, so AutoHire would hand renters a link to a domain
+that does not exist and checkout would fail with no error anywhere.
 
-Until `PAYHOLD_BASE_URL` and `PAYHOLD_API_KEY` are set, `payholdConfigured()` is
-false and every function returns 503 without touching anything. Nothing breaks
-by merging this.
+### 2. On PayHold: mint an API key
 
-## Deploy
+Dashboard → **Rails → API Keys → New key**. Label it `autohire`.
 
-```bash
-supabase functions deploy payhold-create-deal
-supabase functions deploy payhold-register-seller
-supabase functions deploy payhold-balance
-supabase functions deploy payhold-confirm
-supabase functions deploy payhold-webhook --no-verify-jwt
+It must be the dashboard, not curl: `api-keys/index.ts` refuses an API key and
+requires an `owner` or `staff` session, so that a leaked key cannot mint its own
+replacement.
+
+**The plaintext appears once.** Only its SHA-256 is stored and `key_hash` is
+revoked at the column level, so nobody — including PayHold staff — can read it
+back. Lose it and you mint a new one.
+
+### 3. On PayHold: register AutoHire's webhook
+
+Dashboard → **Webhooks → Add endpoint**:
+
+```
+https://gsnoggfofbmzamxxyazc.supabase.co/functions/v1/payhold-webhook
 ```
 
-`--no-verify-jwt` on the webhook only: the caller is PayHold's server, not a
-signed-in user.
-
-Then register the endpoint in the PayHold dashboard:
-
-```
-https://<autohire-ref>.functions.supabase.co/payhold-webhook
-```
+Must be `https` — `webhook-endpoints/index.ts` refuses anything else, because
+these payloads carry deal amounts and a signature proves who sent a thing, not
+that nobody read it.
 
 Subscribe it to: `order.funded_held`, `order.clearing_started`,
 `order.released`, `payout.paid`, `refund.succeeded`, `dispute.opened`.
 
-Apply [migration 047](../supabase/migration-047-payhold.sql).
+**The signing secret also appears once.** Copy it now — it becomes
+`PAYHOLD_WEBHOOK_SECRET` in the next step. Unlike the API key it is encrypted
+rather than hashed (dispatch has to recover it to sign), but no endpoint returns
+it. Losing it means registering a new endpoint.
+
+### 4. On PayHold: connect a payment rail
+
+Dashboard → **Rails → Providers**. Flutterwave test keys are already in.
+
+Live credentials are **refused** until the launch checklist is signed off —
+that gate is in `provider-accounts/index.ts` and is deliberate. Test mode first;
+a live secret connected as "test" would move real money during a sandbox run.
+
+### 5. On AutoHire: apply the migrations
+
+042 through 047, in order. 047 adds the three join columns; without it every
+PayHold write fails on a missing column — the same class of error as the
+`country` one.
+
+### 6. On AutoHire: set the secrets and deploy
+
+```bash
+supabase secrets set \
+  PAYHOLD_BASE_URL=https://mwnbjjlilqrwdmwutbxr.supabase.co/functions/v1 \
+  PAYHOLD_API_KEY=<from step 2> \
+  PAYHOLD_WEBHOOK_SECRET=<from step 3>
+
+supabase functions deploy payhold-create-deal
+supabase functions deploy payhold-register-seller
+supabase functions deploy payhold-balance
+supabase functions deploy payhold-earnings
+supabase functions deploy payhold-confirm
+supabase functions deploy payhold-webhook --no-verify-jwt
+```
+
+`--no-verify-jwt` on the webhook only. Its caller is PayHold's server, not a
+signed-in user, so the signature is the authentication.
+
+### 7. On AutoHire: flip the rail
+
+```
+VITE_PAYMENTS_PAYHOLD=true
+```
+
+in the web env, then rebuild. Until this is set, checkout stays on the old rails
+and `/earnings` says "not switched on yet" rather than erroring.
+
+### 8. Re-register every host as a seller
+
+**This is the step that cannot be automated.** AutoHire only ever stored a mask
+(`••••4242`), and tokenizing a mask produces a destination that cannot receive
+money — so each existing host must re-enter their payout number once, through
+`/payouts/setup`.
+
+Until a host has a `payhold_seller_id`, `payhold-create-deal` refuses to open a
+deal for their cars: better an unbookable listing than a renter's money taken
+for a trip that cannot be settled. Nothing prompts them yet, so this needs an
+email or a banner you send yourself.
+
+### 9. Prove it end to end
+
+```bash
+# 1. the API key works and the corridor is open
+curl -s -X POST "$PAYHOLD/sellers" -H "X-Api-Key: $KEY" \
+  -H 'content-type: application/json' \
+  -d '{"name":"Test host","country":"RW","payout_provider":"flutterwave_momo","destination":"250788000000"}'
+
+# 2. a deal opens and returns a live payment link
+curl -s -X POST "$PAYHOLD/deals" -H "X-Api-Key: $KEY" \
+  -H 'content-type: application/json' \
+  -d '{"buyer_ref":"test","seller_id":"<from 1>","description":"Test","amount":45000,"currency":"RWF"}'
+```
+
+Then in the app: book a car, pay on the hosted page, and confirm a booking
+appears with `payhold_deal_id` set. If it does not, the webhook is the first
+place to look — PayHold's dashboard shows every delivery attempt and its
+response.
 
 ## Amounts
 
