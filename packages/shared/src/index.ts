@@ -149,7 +149,7 @@ export interface ElectricQuota {
  * integrations it replaces, kept so existing bookings still capture and refund
  * against the rail that took their money.
  */
-export type PayoutProvider = 'stripe' | 'flutterwave' | 'external';
+export type PayoutProvider = 'stripe' | 'flutterwave' | 'external' | 'payhold';
 /** What the host actually chose — the human-facing destination type. */
 export type PayoutMethodType = 'momo' | 'bank' | 'card';
 /** Onboarding state of a host's payout method. */
@@ -456,6 +456,61 @@ export interface Dispute {
   amountRwf: number;
   createdAt: string;
   status: DisputeStatus;
+}
+
+// ---------------------------------------------------------------------------
+// PayHold
+// ---------------------------------------------------------------------------
+//
+// The escrow platform that holds a renter's money and pays the host. AutoHire
+// stores no balance of its own — these shapes are read live from PayHold, which
+// owns the ledger.
+
+/** Ledger money for one currency, as the renter was charged it. */
+export interface PayholdBalance {
+  currency: string;
+  /** Money for trips still running — held, not yet earned. */
+  held: number;
+  /** Earned, inside the clearance window. Theirs, not yet payable. */
+  pendingClearance: number;
+  /** Cleared and payable. This is what a withdrawal moves. */
+  available: number;
+  reserved: number;
+  paidOut: number;
+}
+
+/**
+ * What a withdrawal would actually move, in the host's own payout currency —
+ * a different question from `PayholdBalance`, and on a cross-border trip a
+ * different number in a different currency.
+ */
+export interface PayholdWithdrawable {
+  currency: string;
+  availableAmount: number;
+  availableCount: number;
+  requestedAmount: number;
+  requestedCount: number;
+  clearingAmount: number;
+  clearingCount: number;
+  /** Counts against each reason something is not moving. */
+  heldCount: number;
+  needsVerificationCount: number;
+  blockedCount: number;
+  paidAmount: number;
+  paidCount: number;
+}
+
+export interface PayholdWallet {
+  /** Null until the host has registered a payout destination. */
+  sellerId: string | null;
+  balances: PayholdBalance[];
+  withdrawable: PayholdWithdrawable[];
+  canReceivePayouts: boolean;
+  kycStatus: string;
+  /** What the host must do — an identity check, a destination to verify. */
+  reasons: string[];
+  /** What PayHold cannot reach. Not the host's fault and not their fix. */
+  routeReasons: string[];
 }
 
 /** Platform-wide figures for the admin reporting view. */

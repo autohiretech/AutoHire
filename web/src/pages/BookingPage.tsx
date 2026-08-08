@@ -13,7 +13,7 @@ import { getSupabase } from '@/lib/supabase';
 import { getStripe } from '@/lib/stripe';
 import { formatDate } from '@/lib/format';
 import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
-import { PAYMENTS_EXTERNAL, PAYMENTS_LIVE, isAfricanMarket } from '@/lib/payments';
+import { PAYMENTS_EXTERNAL, PAYMENTS_LIVE, PAYMENTS_PAYHOLD, isAfricanMarket } from '@/lib/payments';
 import {
   AirtelMark,
   AmexMark,
@@ -263,7 +263,15 @@ export function BookingPage() {
                 </p>
               )}
 
-              {PAYMENTS_EXTERNAL ? (
+              {PAYMENTS_PAYHOLD ? (
+                <PayholdPay
+                  listingId={id}
+                  startDate={startDate}
+                  endDate={endDate}
+                  label={money(total)}
+                  disabled={!datesValid}
+                />
+              ) : PAYMENTS_EXTERNAL ? (
                 <Elements stripe={stripePromise}>
                   <ExternalPay {...payProps} disabled={!datesValid} />
                 </Elements>
@@ -634,6 +642,63 @@ function DemoPayForm({ totalRwf, currency, onPaid, method, disabled }: PayProps 
  * In every case the browser only ever passes a REFERENCE back: confirm-booking
  * re-reads the hold from the provider before a trip exists.
  */
+/**
+ * Checkout through PayHold.
+ *
+ * There is no card form here on purpose. PayHold owns payment orchestration and
+ * hosts the page the renter pays on, so AutoHire never handles card data — the
+ * renter picks their method there, across every rail PayHold has connected.
+ *
+ * Nothing is created here but the deal. The trip is written by
+ * `payhold-webhook` when PayHold reports the money is actually held, so a
+ * renter who abandons the hosted page leaves no half-made booking behind, and a
+ * browser that never comes back cannot cost us a car.
+ */
+function PayholdPay({
+  listingId,
+  startDate,
+  endDate,
+  label,
+  disabled,
+}: {
+  listingId: string;
+  startDate: string;
+  endDate: string;
+  label: string;
+  disabled: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pay() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { paymentLink } = await client.createPayholdDeal({ listingId, startDate, endDate });
+      // A full navigation, not a new tab: the renter is leaving AutoHire for
+      // the payment and PayHold brings them back itself. A popup here is the
+      // thing a blocker eats.
+      window.location.assign(paymentLink);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not start the payment.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <Button className="w-full" disabled={disabled || busy} onClick={pay}>
+        {busy ? 'Opening secure checkout…' : `Pay ${label}`}
+      </Button>
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      <p className="mt-3 text-center text-xs text-ink-500">
+        You'll pay on our secure checkout page and choose your method there. Your money is held
+        until the trip is done — the host is paid after you both confirm the car came back.
+      </p>
+    </div>
+  );
+}
+
 function ExternalPay({
   listingId,
   startDate,

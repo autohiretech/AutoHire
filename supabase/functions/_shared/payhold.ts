@@ -1,0 +1,509 @@
+// AutoHire — PayHold client.
+//
+// PayHold is the escrow platform AutoHire is tenant #1 on. It owns the money:
+// the hold, the clearance window, the seller's wallet, the payout. AutoHire
+// creates deals and reads state; it never touches a provider itself.
+//
+// This replaces the direct-provider rails. `create-payment-intent`,
+// `capture-payment`, `flutterwave-collect` and `flutterwave-transfer` all
+// existed because AutoHire was orchestrating Stripe and Flutterwave by hand —
+// PayHold does that now, behind /deals → /confirm → /withdraw.
+//
+// Shapes here are taken from PayHold's own source (payhold-backend/supabase/
+// functions/{deals,sellers,disputes}/index.ts), not guessed. Where a field is a
+// judgement call rather than a copy, the comment says so.
+//
+// Secrets:
+//   PAYHOLD_BASE_URL       https://<ref>.supabase.co/functions/v1
+//   PAYHOLD_API_KEY        from the PayHold dashboard → Rails → API Keys
+//   PAYHOLD_WEBHOOK_SECRET the endpoint secret PayHold minted for our URL
+
+// ---------------------------------------------------------------------------
+// Types — PayHold's wire shapes
+// ---------------------------------------------------------------------------
+
+/** PayHold's 18 deal states. AutoHire only branches on a handful. */
+export type DealStatus =
+  | 'created'
+  | 'checkout_started'
+  | 'payment_pending'
+  | 'payment_failed'
+  | 'expired'
+  | 'canceled'
+  | 'funded_held'
+  | 'in_progress'
+  | 'revision_requested'
+  | 'confirmed_buyer'
+  | 'confirmed_seller'
+  | 'clearing'
+  | 'released'
+  | 'payout_pending'
+  | 'paid_out'
+  | 'refunded'
+  | 'partially_refunded'
+  | 'disputed';
+
+/** Money is with the provider under PayHold's control — the trip may proceed. */
+export const HOLDING: readonly DealStatus[] = [
+  'funded_held',
+  'in_progress',
+  'revision_requested',
+  'confirmed_buyer',
+  'confirmed_seller',
+  'disputed',
+];
+
+/** Past the hold: released to the seller's wallet, clearing, or paid out. */
+export const PAST_HOLD: readonly DealStatus[] = [
+  'clearing',
+  'released',
+  'payout_pending',
+  'paid_out',
+];
+
+export interface Deal {
+  id: string;
+  buyer_ref: string;
+  seller_id: string;
+  description: string;
+  /** Minor units, in `currency`. */
+  amount: number;
+  currency: string;
+  presentment_currency: string;
+  presentment_amount: number;
+  status: DealStatus;
+  payment_method: string | null;
+  provider: string | null;
+  auto_release_at: string | null;
+  payout_due_at: string | null;
+  released_at: string | null;
+  fee_amount: number;
+  /** What we attached at creation. This is how a deal is bound to a booking. */
+  metadata: Record<string, string>;
+  created_at: string;
+  /** Present on single-deal reads and on `confirm`; absent from list rows. */
+  confirmations?: { side: 'buyer' | 'seller'; actor: string; confirmed_at: string }[];
+}
+
+export interface Seller {
+  id: string;
+  name: string;
+  country: string;
+  payout_currency: string;
+  payout_provider: PayoutProvider;
+  masked_destination: string;
+  kyc_status: 'pending' | 'verified' | 'restricted' | 'rejected' | 'review_required';
+}
+
+/** The rail a destination is tokenized against — provider and method together. */
+export type PayoutProvider =
+  | 'flutterwave_momo'
+  | 'flutterwave_bank'
+  | 'stripe_connect'
+  | 'paypal'
+  | 'venmo'
+  | 'cash_app_pay'
+  | 'alipay'
+  | 'wechat_pay';
+
+/** Ledger money, in the currency the buyer was charged. */
+export interface WalletBalance {
+  currency: string;
+  held: number;
+  pending_clearance: number;
+  available: number;
+  reserved: number;
+  paid_out: number;
+}
+
+/** What a withdrawal would actually move, in the seller's payout currency. */
+export interface Withdrawable {
+  currency: string;
+  available_amount: number;
+  available_count: number;
+  requested_amount: number;
+  requested_count: number;
+  clearing_amount: number;
+  clearing_count: number;
+  held_count: number;
+  needs_verification_count: number;
+  blocked_count: number;
+  paid_amount: number;
+  paid_count: number;
+}
+
+export interface SellerCapabilities {
+  can_receive_payouts: boolean;
+  kyc_status: string;
+  /** What this seller must go and do. */
+  reasons: string[];
+  /** What PayHold cannot reach — not the seller's fault and not their fix. */
+  route_reasons: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+
+const BASE_URL = (Deno.env.get('PAYHOLD_BASE_URL') ?? '').replace(/\/+$/, '');
+const API_KEY = Deno.env.get('PAYHOLD_API_KEY') ?? '';
+const WEBHOOK_SECRET = Deno.env.get('PAYHOLD_WEBHOOK_SECRET') ?? '';
+
+/** True once the secrets are set. Callers fall back to the old rails if not. */
+export function payholdConfigured(): boolean {
+  return !!BASE_URL && !!API_KEY;
+}
+
+export function payholdWebhookConfigured(): boolean {
+  return !!WEBHOOK_SECRET;
+}
+
+export class PayHoldError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    /** PayHold's own code: not_found, invalid_state, policy_violation, … */
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'PayHoldError';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Transport
+// ---------------------------------------------------------------------------
+
+async function call<T>(path: string, init: { method: string; body?: unknown }): Promise<T> {
+  if (!payholdConfigured()) {
+    throw new PayHoldError(
+      'PayHold is not configured (set PAYHOLD_BASE_URL and PAYHOLD_API_KEY).',
+      503,
+    );
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: init.method,
+    headers: {
+      // PayHold's own header — see payhold-backend/_shared/auth.ts, which reads
+      // `x-api-key` and returns 401 'Missing X-Api-Key header' without it. It is
+      // NOT a bearer token; Authorization there means a dashboard session.
+      'X-Api-Key': API_KEY,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = text;
+  }
+
+  if (!res.ok) {
+    const e = parsed as { error?: { code?: string; message?: string }; message?: string };
+    throw new PayHoldError(
+      e?.error?.message ?? e?.message ?? `PayHold returned ${res.status}.`,
+      res.status,
+      e?.error?.code,
+    );
+  }
+  return parsed as T;
+}
+
+// ---------------------------------------------------------------------------
+// Deals
+// ---------------------------------------------------------------------------
+
+export interface CreateDealInput {
+  /** The renter's AutoHire profile id. PayHold has no account for them. */
+  buyerRef: string;
+  /** The host's PayHold seller id. Must exist before a deal can name it. */
+  sellerId: string;
+  description: string;
+  /** Minor units. RWF is zero-decimal, so RWF minor === RWF major. */
+  amount: number;
+  currency: string;
+  /** The renter's own country, so PayHold can pick a rail they can pay on. */
+  buyerCountry?: string;
+  /** When the trip ends — PayHold's completion clock reads it. */
+  expectedCompleteAt?: string;
+  /**
+   * Bound to the deal and returned by GET /deals/:id. This is the only trusted
+   * route from a payment back to a trip: the webhook reads the booking's
+   * particulars from here, never from its own payload.
+   */
+  metadata: Record<string, string>;
+}
+
+export interface CreateDealResult {
+  deal: Deal;
+  /** PayHold's hosted checkout. The renter picks a method and pays there. */
+  payment_link: string;
+}
+
+/**
+ * Open a deal. Nothing is charged yet — the renter pays on `payment_link`, and
+ * the money is held until both sides confirm.
+ */
+export function createDeal(input: CreateDealInput): Promise<CreateDealResult> {
+  return call<CreateDealResult>('/deals', {
+    method: 'POST',
+    body: {
+      buyer_ref: input.buyerRef,
+      seller_id: input.sellerId,
+      description: input.description,
+      amount: input.amount,
+      currency: input.currency,
+      buyer_country: input.buyerCountry,
+      expected_complete_at: input.expectedCompleteAt,
+      completion_policy: {
+        // AutoHire's own name for the event that ends the work. PayHold stores
+        // it verbatim and hands it back; it does not interpret it.
+        completion_event: 'vehicle_returned',
+        // auto_complete_after_hours and clearing_days are left null on purpose:
+        // null means "use the tenant default", and those windows are PayHold
+        // account settings that ops should be able to move without a deploy.
+      },
+      metadata: input.metadata,
+    },
+  });
+}
+
+/**
+ * Re-read a deal. This is the trust boundary — the webhook's payload says what
+ * happened, this says what is true.
+ */
+export function getDeal(id: string): Promise<Deal> {
+  return call<Deal>(`/deals/${encodeURIComponent(id)}`, { method: 'GET' });
+}
+
+/**
+ * Record one side's confirmation. When both sides have confirmed, PayHold
+ * releases the hold atomically inside its own transaction — there is no
+ * separate "release" call for AutoHire to make, and no window where it could
+ * be missed.
+ */
+export function confirmDeal(id: string, side: 'buyer' | 'seller'): Promise<Deal> {
+  return call<Deal>(`/deals/${encodeURIComponent(id)}/confirm`, {
+    method: 'POST',
+    body: { side },
+  });
+}
+
+/** Give the renter their money back. Omit `amount` for the full remainder. */
+export function refundDeal(id: string, reason: string, amount?: number): Promise<Deal> {
+  return call<Deal>(`/deals/${encodeURIComponent(id)}/refund`, {
+    method: 'POST',
+    body: { reason, ...(amount === undefined ? {} : { amount }) },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sellers
+// ---------------------------------------------------------------------------
+
+export interface CreateSellerInput {
+  name: string;
+  country: string;
+  payoutProvider: PayoutProvider;
+  /**
+   * The raw MoMo number or bank account. PayHold tokenizes it with the provider
+   * and drops it — it is never written to a column on either side. AutoHire
+   * holds it only for the duration of this call.
+   */
+  destination: string;
+  payoutCurrency?: string;
+}
+
+export function createSeller(
+  input: CreateSellerInput,
+): Promise<{ seller: Seller; payout_route: unknown }> {
+  return call('/sellers', {
+    method: 'POST',
+    body: {
+      name: input.name,
+      country: input.country,
+      payout_provider: input.payoutProvider,
+      destination: input.destination,
+      payout_currency: input.payoutCurrency,
+    },
+  });
+}
+
+/** Can this host be paid, and if not, what is missing. */
+export function sellerCapabilities(id: string): Promise<SellerCapabilities> {
+  return call(`/sellers/${encodeURIComponent(id)}/capabilities`, { method: 'GET' });
+}
+
+/**
+ * One host's wallet, in two shapes that answer two questions.
+ *
+ * `balances` is ledger money in the currency the renter was charged.
+ * `withdrawable` is what a withdrawal would actually move, in the host's own
+ * payout currency, with a count against each reason something is stuck. A
+ * cross-border trip makes these genuinely different numbers in different
+ * currencies, so collapsing them would mean picking one to be wrong.
+ */
+export function sellerBalance(
+  id: string,
+): Promise<{ seller_id: string; balances: WalletBalance[]; withdrawable: Withdrawable[] }> {
+  return call(`/sellers/${encodeURIComponent(id)}/balance`, { method: 'GET' });
+}
+
+/**
+ * Ask for the cleared money.
+ *
+ * This is not a shortcut past anything: PayHold runs the same frozen-tenant
+ * check, eligibility gate, routing decision and provider call it runs for its
+ * own cron. A withdrawal that skipped them would be a second way to pay a host
+ * nobody had verified.
+ */
+export function withdraw(
+  id: string,
+  destinationId?: string,
+): Promise<{ seller_id: string; requested: number; payouts: { payout_id: string; outcome: string }[] }> {
+  return call(`/sellers/${encodeURIComponent(id)}/withdraw`, {
+    method: 'POST',
+    body: destinationId ? { destination_id: destinationId } : {},
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Disputes
+// ---------------------------------------------------------------------------
+
+export type DisputeSide = 'buyer' | 'seller';
+
+/**
+ * Open a case in PayHold's Resolution Center. Opening one freezes the payout on
+ * that deal — that freeze is the reason to mirror AutoHire's disputes here at
+ * all, rather than only tracking them locally.
+ *
+ * Note PayHold refuses `resolve` from an API key: deciding a case is a person's
+ * judgement made in their dashboard, not something AutoHire's server can do on
+ * its own behalf. Resolutions therefore travel back to us by webhook.
+ */
+export function openDispute(input: {
+  dealId: string;
+  raisedBy: DisputeSide;
+  reason: string;
+  reasonCode?: string;
+  disputedAmount?: number;
+}): Promise<{ id: string }> {
+  return call('/disputes', {
+    method: 'POST',
+    body: {
+      deal_id: input.dealId,
+      raised_by: input.raisedBy,
+      reason: input.reason,
+      reason_code: input.reasonCode ?? 'other',
+      disputed_amount: input.disputedAmount,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Webhooks
+// ---------------------------------------------------------------------------
+
+export interface WebhookEvent {
+  event: string;
+  deal_id: string | null;
+  occurred_at: string;
+  data: Record<string, unknown>;
+}
+
+/** Default replay window. PayHold retries at 1m, 5m, 30m and 2h. */
+const SIGNATURE_TOLERANCE_SECONDS = 60 * 60 * 3;
+
+/**
+ * Verify a `PayHold-Signature: t=<unix>,v1=<hmac>` header.
+ *
+ * The MAC is HMAC-SHA256 over `${timestamp}.${rawBody}` — the timestamp is
+ * inside the signed material, so it cannot be edited to extend the window.
+ *
+ * The age bound is what stops a captured delivery being replayed at us later.
+ * It is generous because PayHold's last retry lands two hours out and rejecting
+ * a legitimate final retry would lose the event for good.
+ */
+export async function verifyWebhookSignature(
+  rawBody: string,
+  header: string | null,
+  toleranceSeconds = SIGNATURE_TOLERANCE_SECONDS,
+): Promise<boolean> {
+  if (!WEBHOOK_SECRET || !header) return false;
+
+  const parts = new Map(
+    header.split(',').map((p) => {
+      const i = p.indexOf('=');
+      return [p.slice(0, i).trim(), p.slice(i + 1).trim()] as [string, string];
+    }),
+  );
+  const timestamp = Number(parts.get('t'));
+  const presented = parts.get('v1');
+  if (!Number.isFinite(timestamp) || !presented) return false;
+
+  const age = Math.abs(Math.floor(Date.now() / 1000) - timestamp);
+  if (age > toleranceSeconds) return false;
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(WEBHOOK_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(`${timestamp}.${rawBody}`),
+  );
+  const expected = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+  // Constant-time compare — a length-leaking early return is enough to attack.
+  const a = new TextEncoder().encode(expected);
+  const b = new TextEncoder().encode(presented.toLowerCase());
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+// ---------------------------------------------------------------------------
+// Mapping AutoHire onto PayHold
+// ---------------------------------------------------------------------------
+
+/** Currencies with no minor unit — the amount goes as-is, not ×100. */
+const ZERO_DECIMAL = new Set(['RWF', 'UGX', 'JPY', 'KRW', 'VND', 'XAF', 'XOF']);
+
+/** AutoHire stores whole units; PayHold wants minor units and only integers. */
+export function toMinorUnits(amount: number, currency: string): number {
+  return ZERO_DECIMAL.has(currency.toUpperCase()) ? amount : Math.round(amount * 100);
+}
+
+export function fromMinorUnits(amount: number, currency: string): number {
+  return ZERO_DECIMAL.has(currency.toUpperCase()) ? amount : amount / 100;
+}
+
+/**
+ * Which PayHold rail a host's payout destination is tokenized against.
+ *
+ * Mobile money is Flutterwave's, everywhere it exists. A bank account goes to
+ * Flutterwave inside its African corridors and to Stripe Connect outside them,
+ * which is the same split `payoutProviderFor` makes in the web app.
+ */
+export function payoutProviderFor(
+  method: 'momo' | 'bank' | 'card',
+  countryCode: string,
+): PayoutProvider {
+  const african = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CM', 'CI', 'SN', 'ZM', 'ET']);
+  if (method === 'momo') return 'flutterwave_momo';
+  if (method === 'bank') {
+    return african.has(countryCode.toUpperCase()) ? 'flutterwave_bank' : 'stripe_connect';
+  }
+  return 'stripe_connect';
+}

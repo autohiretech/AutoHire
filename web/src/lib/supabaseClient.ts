@@ -11,7 +11,9 @@ import type {
   Message,
   ModerationStatus,
   PaymentMethodType,
+  PayholdWallet,
   Payout,
+  PayoutMethodType,
   PayoutProvider,
   Review,
   UserProfile,
@@ -309,6 +311,141 @@ export const supabaseClient = {
       throw new Error(payload?.error ?? 'Could not start the payment.');
     }
     return { ...payload, reference: payload.reference, status: payload.status ?? 'pending' };
+  },
+
+  /**
+   * Open a PayHold deal for a booking and get the hosted checkout link.
+   *
+   * No booking row exists yet — the renter pays on PayHold's page, and the trip
+   * is created by `payhold-webhook` when the money is actually held. The link is
+   * a redirect away from AutoHire, so nothing here should be treated as a
+   * completed payment.
+   */
+  async createPayholdDeal(input: {
+    listingId: string;
+    startDate: string;
+    endDate: string;
+  }): Promise<{ dealId: string; paymentLink: string; status: string; total: number }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-create-deal', {
+      body: input,
+    });
+    if (error) {
+      throw new Error(
+        error.name === 'FunctionsFetchError'
+          ? "PayHold isn't deployed yet — deploy the payhold-create-deal Edge Function."
+          : error.message,
+      );
+    }
+    const payload = data as {
+      dealId?: string;
+      paymentLink?: string;
+      status?: string;
+      total?: number;
+      error?: string;
+    };
+    if (payload?.error || !payload?.dealId || !payload?.paymentLink) {
+      throw new Error(payload?.error ?? 'Could not start the payment.');
+    }
+    return {
+      dealId: payload.dealId,
+      paymentLink: payload.paymentLink,
+      status: payload.status ?? 'created',
+      total: payload.total ?? 0,
+    };
+  },
+
+  /**
+   * Register this host as a PayHold seller.
+   *
+   * The raw destination is sent once, to be tokenized, and is never stored on
+   * either side — AutoHire keeps the seller id and a mask. This is why payout
+   * setup goes through a function rather than a table write.
+   */
+  async registerPayholdSeller(input: {
+    method: PayoutMethodType;
+    destination: string;
+  }): Promise<{
+    sellerId: string;
+    maskedDestination: string;
+    canReceivePayouts: boolean;
+    reasons: string[];
+    routeReasons: string[];
+  }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-register-seller', {
+      body: input,
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as {
+      sellerId?: string;
+      maskedDestination?: string;
+      canReceivePayouts?: boolean;
+      reasons?: string[];
+      routeReasons?: string[];
+      error?: string;
+    };
+    if (payload?.error || !payload?.sellerId) {
+      throw new Error(payload?.error ?? 'Could not save your payout method.');
+    }
+    return {
+      sellerId: payload.sellerId,
+      maskedDestination: payload.maskedDestination ?? '',
+      canReceivePayouts: payload.canReceivePayouts ?? false,
+      reasons: payload.reasons ?? [],
+      routeReasons: payload.routeReasons ?? [],
+    };
+  },
+
+  /**
+   * This host's wallet, read live from PayHold — never cached in our database,
+   * because a stale balance is one a host makes plans against.
+   *
+   * `balances` is ledger money in the currency the renter was charged;
+   * `withdrawable` is what a withdrawal would move, in the host's own payout
+   * currency. A cross-border trip makes those different numbers.
+   */
+  async payholdBalance(): Promise<PayholdWallet> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-balance', {
+      method: 'GET',
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as PayholdWallet & { error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return {
+      sellerId: payload.sellerId ?? null,
+      balances: payload.balances ?? [],
+      withdrawable: payload.withdrawable ?? [],
+      canReceivePayouts: payload.canReceivePayouts ?? false,
+      kycStatus: payload.kycStatus ?? 'pending',
+      reasons: payload.reasons ?? [],
+      routeReasons: payload.routeReasons ?? [],
+    };
+  },
+
+  /** Ask PayHold to send the cleared money to the host's own account. */
+  async payholdWithdraw(): Promise<{ requested: number; message: string }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-balance', {
+      method: 'POST',
+      body: {},
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as { requested?: number; message?: string; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return { requested: payload.requested ?? 0, message: payload.message ?? 'Withdrawal requested.' };
+  },
+
+  /**
+   * Confirm this side of a finished trip. When both sides have, PayHold
+   * releases the held money to the host. Which side you are is decided from
+   * your session server-side, not passed in.
+   */
+  async payholdConfirm(bookingId: string): Promise<{ dealStatus: string; side: string }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-confirm', {
+      body: { bookingId },
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as { dealStatus?: string; side?: string; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return { dealStatus: payload.dealStatus ?? 'unknown', side: payload.side ?? '' };
   },
 
   /**

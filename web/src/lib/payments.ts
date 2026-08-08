@@ -23,6 +23,22 @@ export const PAYMENTS_LIVE = import.meta.env.VITE_PAYMENTS_LIVE === 'true';
  */
 export const PAYMENTS_EXTERNAL = import.meta.env.VITE_PAYMENTS_EXTERNAL === 'true';
 
+/**
+ * Payments run through PayHold — the escrow platform AutoHire is tenant #1 on.
+ * Set `VITE_PAYMENTS_PAYHOLD=true` once its Edge Functions + secrets are
+ * deployed (see docs/payhold.md).
+ *
+ * When on, PayHold owns the whole money path: the renter pays on its hosted
+ * page, it holds the funds until both sides confirm, and it pays the host out.
+ * Every per-market Stripe/Flutterwave decision below is bypassed — PayHold
+ * makes those itself, and better, because it can see both ends of the corridor.
+ *
+ * Takes precedence over PAYMENTS_EXTERNAL: both being on is a misconfiguration,
+ * and silently splitting checkout across two escrow systems would be worse than
+ * picking one.
+ */
+export const PAYMENTS_PAYHOLD = import.meta.env.VITE_PAYMENTS_PAYHOLD === 'true';
+
 /** Markets Flutterwave settles locally (MoMo + bank). Extend as you add markets. */
 const FLUTTERWAVE_COUNTRIES = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CI']);
 
@@ -37,12 +53,14 @@ export function isAfricanMarket(countryCode: string): boolean {
  * renter is. A US renter paying a Rwandan car still goes through Flutterwave.
  */
 export function providerForBooking(carCountryCode: string): PayoutProvider {
+  if (PAYMENTS_PAYHOLD) return 'payhold';
   if (PAYMENTS_EXTERNAL) return 'external';
   return isAfricanMarket(carCountryCode) ? 'flutterwave' : 'stripe';
 }
 
 /** Which provider a host's payout method routes to (matches their market). */
 export function payoutProviderFor(method: PayoutMethodType, countryCode: string): PayoutProvider {
+  if (PAYMENTS_PAYHOLD) return 'payhold';
   if (PAYMENTS_EXTERNAL) return 'external';
   if (method === 'momo') return 'flutterwave'; // mobile money is African → Flutterwave
   if (method === 'card') return 'stripe'; // push-to-card / international → Stripe

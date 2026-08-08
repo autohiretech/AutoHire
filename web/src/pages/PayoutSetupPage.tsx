@@ -39,6 +39,7 @@ const PROVIDER_NAME: Record<PayoutProvider, string> = {
   // The external system is the platform's own rail — hosts see AutoHire, not a
   // third-party brand they've never heard of.
   external: 'AutoHire Payments',
+  payhold: 'PayHold',
 };
 
 /**

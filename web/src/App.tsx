@@ -8,6 +8,7 @@ import { CarDetailPage } from '@/pages/CarDetailPage';
 import { HostProfilePage } from '@/pages/HostProfilePage';
 import { CityPage } from '@/pages/CityPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { EarningsPage } from '@/pages/EarningsPage';
 import { PayoutSetupPage } from '@/pages/PayoutSetupPage';
 import { MessagesPage } from '@/pages/MessagesPage';
 import { TripsPage } from '@/pages/TripsPage';
@@ -55,6 +56,15 @@ export default function App() {
           element={
             <RequireRole roles={['owner', 'admin']}>
               <PayoutSetupPage />
+            </RequireRole>
+          }
+        />
+        {/* A host's money: held, clearing, and what they can withdraw now. */}
+        <Route
+          path="earnings"
+          element={
+            <RequireRole roles={['owner', 'admin']}>
+              <EarningsPage />
             </RequireRole>
           }
         />
