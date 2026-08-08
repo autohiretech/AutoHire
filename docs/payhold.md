@@ -34,10 +34,30 @@ trip runs
   │  ◄──── webhook order.released
   │        cleared and withdrawable
   │
-  └─ host withdraws ─► POST /v1/sellers/:id/withdraw        (payhold-balance)
+  └─ PayHold's payout-dispatch cron sends it automatically once the
+     clearance window ends. "Send it now" (POST /v1/sellers/:id/withdraw,
+     via payhold-balance) only brings that forward, or retries a stuck one.
            │
            └── webhook payout.paid → money is in their account
 ```
+
+## Getting paid: automatic, with a nudge
+
+**A host does not have to do anything to be paid.** `release_deal` queues a
+payout with `scheduled_for` at the end of the clearance window, and PayHold's
+`payout-dispatch` cron sends it. Withdrawal is an *expedite*, not the route.
+
+What "Send it now" actually does, from `request_withdrawal`:
+
+- Claims payouts in `scheduled`, `blocked`, `needs_verification`, `failed` or
+  `frozen` whose deal is `released` or `payout_pending`, stamps them requested
+  and re-arms `next_attempt_at`. So it doubles as **retry a failed payout**.
+- **Cannot pull money out of the clearance window.** A deal still in `clearing`
+  is not claimable — there is no early access, by design.
+- **All-or-nothing.** It takes everything cleared; there is no partial amount.
+- Raises rather than returning zero when nothing has cleared. `payhold-balance`
+  translates that into a calm message — the raw string is a Postgres error
+  carrying the seller's uuid.
 
 ## What was built
 

@@ -236,7 +236,7 @@ export function EarningsPage() {
               onClick={() => withdraw.mutate()}
             >
               <Banknote size={16} />
-              {withdraw.isPending ? 'Sending…' : 'Withdraw'}
+              {withdraw.isPending ? 'Sending…' : 'Send it now'}
             </Button>
           </CardBody>
         </Card>
@@ -254,8 +254,13 @@ export function EarningsPage() {
       )}
 
       <p className="mt-6 text-xs text-ink-500">
-        Money is held while a trip runs and released when both you and the renter confirm the
-        car came back. It then clears before it can be withdrawn.
+        Money is held while a trip runs and released when you and the renter both confirm the car
+        came back. It then clears before it can be sent.{' '}
+        <span className="font-medium text-ink-600">
+          Cleared money is paid out to you automatically
+        </span>{' '}
+        — use “Send it now” only if you want it sooner, or to retry a payout that didn't go
+        through.
       </p>
     </section>
   );

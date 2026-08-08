@@ -17,6 +17,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
+  PayHoldError,
   payholdConfigured,
   sellerBalance,
   sellerCapabilities,
@@ -77,20 +78,35 @@ Deno.serve(async (req: Request) => {
     }
 
     if (req.method === 'POST') {
-      const result = await withdraw(sellerId);
-      return json(
-        {
-          requested: result.requested,
-          payouts: result.payouts,
-          // Nothing cleared is a normal answer, not a failure. PayHold refuses
-          // with a policy_violation and this reads better than an error toast.
-          message:
-            result.requested === 0
-              ? 'Nothing has cleared yet — money becomes available after the clearance window.'
-              : `${result.requested} payout${result.requested === 1 ? '' : 's'} on the way.`,
-        },
-        200,
-      );
+      try {
+        const result = await withdraw(sellerId);
+        return json(
+          {
+            requested: result.requested,
+            payouts: result.payouts,
+            message: `${result.requested} payout${result.requested === 1 ? '' : 's'} on the way.`,
+          },
+          200,
+        );
+      } catch (e) {
+        // "Nothing cleared" is a normal answer for a host who checks early, not
+        // a failure — but PayHold raises rather than returning zero, and the
+        // raw message is a Postgres string carrying their seller uuid. Shown as
+        // a red error toast it would read like a bug. Translated here.
+        const message = e instanceof PayHoldError ? e.message : '';
+        if (/nothing cleared/i.test(message)) {
+          return json(
+            {
+              requested: 0,
+              payouts: [],
+              message:
+                'Nothing has cleared yet. Money becomes available once the clearance window ends.',
+            },
+            200,
+          );
+        }
+        throw e;
+      }
     }
 
     const [wallet, caps] = await Promise.all([
