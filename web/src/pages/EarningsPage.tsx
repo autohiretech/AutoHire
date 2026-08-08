@@ -152,6 +152,13 @@ export function EarningsPage() {
     );
   }
 
+  // The Edge Functions answer 503 'not_configured' until the PayHold secrets
+  // are set. Detected from the message because supabase-js collapses a non-2xx
+  // into a FunctionsHttpError without surfacing our body's `code`.
+  const notConfigured = [wallet.error, earnings.error].some(
+    (e) => e instanceof Error && /not configured|non-2xx|FunctionsHttpError/i.test(e.message),
+  );
+
   const w = wallet.data;
   const balances = w?.balances ?? [];
   const withdrawable = w?.withdrawable ?? [];
@@ -189,7 +196,7 @@ export function EarningsPage() {
         </div>
       </div>
 
-      {(wallet.isLoading || earnings.isLoading) && (
+      {(wallet.isLoading || earnings.isLoading) && !notConfigured && (
         <Card className="mt-6">
           <CardBody className="flex justify-center py-10">
             <Spinner size={22} />
@@ -197,7 +204,24 @@ export function EarningsPage() {
         </Card>
       )}
 
-      {wallet.error && (
+      {/* PayHold isn't connected on this deployment. Not the host's problem and
+          not a failure they can act on, so it reads as a status rather than an
+          error — the red card below is for things that actually went wrong. */}
+      {notConfigured && (
+        <Card className="mt-6">
+          <CardBody className="space-y-2 py-8 text-center">
+            <Wallet size={22} className="mx-auto text-ink-400" />
+            <p className="font-medium text-ink-900">Earnings aren't switched on yet</p>
+            <p className="mx-auto max-w-md text-sm text-ink-600">
+              Payments are still running on the old system. Once AutoHire is connected to
+              PayHold, this page shows every trip's money, what stage it's at, and when it
+              reaches your account.
+            </p>
+          </CardBody>
+        </Card>
+      )}
+
+      {wallet.error && !notConfigured && (
         <Card className="mt-6 border-red-200 bg-red-50/50">
           <CardBody className="text-sm text-red-700">
             Couldn't load your balance.{' '}
@@ -208,7 +232,7 @@ export function EarningsPage() {
 
       {/* No payout destination — the wallet is empty because nothing can reach
           it, so say that rather than showing a row of zeroes. */}
-      {w && !w.sellerId && (
+      {w && !w.sellerId && !notConfigured && (
         <Card className="mt-6 border-amber-200 bg-amber-50/60">
           <CardBody className="space-y-3">
             <div>
@@ -400,7 +424,7 @@ export function EarningsPage() {
         </Card>
       )}
 
-      <p className="mt-6 text-xs text-ink-500">
+      <p className={cn('mt-6 text-xs text-ink-500', notConfigured && 'hidden')}>
         Money is held while a trip runs and released when you and the renter both confirm the car
         came back. It then clears before it can be sent.{' '}
         <span className="font-medium text-ink-600">

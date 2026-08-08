@@ -26,6 +26,7 @@ const NAV_BY_MODE: Record<AppMode, { to: string; label: string; end?: boolean }[
   ],
   host: [
     { to: '/dashboard', label: 'Dashboard' },
+    { to: '/earnings', label: 'Earnings' },
     { to: '/', label: 'Explore', end: true },
     { to: '/verification', label: 'Verification' },
   ],

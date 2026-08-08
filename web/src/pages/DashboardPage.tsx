@@ -32,6 +32,7 @@ import type { Booking, Host, Listing, Payout } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
+import { PAYMENTS_PAYHOLD } from '@/lib/payments';
 import { PAYOUT_CHANNEL_LABEL, PAYOUT_STATUS_META } from '@/lib/payouts';
 import { hostTripHint } from '@/lib/trips';
 import { TripCard } from '@/components/TripCard';
@@ -1284,14 +1285,35 @@ function ActionRow({
 }
 
 function PayoutsView({ payouts }: { payouts: Payout[] }) {
+  // Under PayHold these rows are a local shadow of a ledger it owns. The real
+  // answer — what has cleared, what is still holding, when it lands — lives on
+  // /earnings, so point there rather than letting a host trust a stale copy.
+  const earningsLink = PAYMENTS_PAYHOLD ? (
+    <Link
+      to="/earnings"
+      className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/50 px-4 py-3 hover:bg-brand-50"
+    >
+      <span>
+        <span className="block text-sm font-medium text-ink-900">See your full earnings</span>
+        <span className="block text-xs text-ink-600">
+          Every trip, what stage its money is at, and when it reaches you.
+        </span>
+      </span>
+      <ArrowRight size={16} className="shrink-0 text-brand-600" />
+    </Link>
+  ) : null;
+
   if (payouts.length === 0) {
     return (
-      <Card>
-        <CardBody className="flex flex-col items-center gap-2 py-12 text-center text-ink-500">
-          <Banknote size={22} />
-          <p className="text-sm">No payouts yet.</p>
-        </CardBody>
-      </Card>
+      <>
+        {earningsLink}
+        <Card>
+          <CardBody className="flex flex-col items-center gap-2 py-12 text-center text-ink-500">
+            <Banknote size={22} />
+            <p className="text-sm">No payouts yet.</p>
+          </CardBody>
+        </Card>
+      </>
     );
   }
   const due = payouts.filter((p) => p.status !== 'paid');
@@ -1331,6 +1353,7 @@ function PayoutsView({ payouts }: { payouts: Payout[] }) {
 
   return (
     <div className="space-y-5">
+      {earningsLink}
       <div className="grid grid-cols-2 gap-3">
         <MiniStat label="Due" value={formatRwf(dueTotal)} highlight={dueTotal > 0} />
         <MiniStat label="Paid out" value={formatRwf(paidTotal)} />
