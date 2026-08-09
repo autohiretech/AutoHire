@@ -432,7 +432,14 @@ export async function findSellerByExternalUserId(
     `/sellers?external_user_id=${encodeURIComponent(handle)}`,
     { method: 'GET' },
   );
-  return sellers[0] ?? null;
+
+  // The match is checked here and not taken on trust. A PayHold that predates
+  // the filter ignores the parameter and answers with the tenant's WHOLE list,
+  // and taking row zero of that would link this host to whichever seller was
+  // registered most recently — someone else's payout destination, written onto
+  // their profile. Checking the handle makes an undeployed filter read as "not
+  // registered", which is wrong but harmless, instead of paying the wrong host.
+  return sellers.find((s) => s.external_user_id === handle) ?? null;
 }
 
 /** Can this host be paid, and if not, what is missing. */
