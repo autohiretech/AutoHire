@@ -68,17 +68,18 @@ export function payoutProviderFor(method: PayoutMethodType, countryCode: string)
 }
 
 /**
- * The payout methods offered in a given market.
+ * The payout methods offered in a given market, most local first.
  *
- * Flutterwave corridors take a raw number, so MoMo and bank work there and
- * nothing else is needed. Everywhere else the destination is an account held
- * with the provider — PayHold routes all of it through Stripe — so the wallets
- * are what a host can realistically use, with the market's own ones first.
+ * Card is offered everywhere PayHold can pay at all — it is the one destination
+ * type with no geography to it, and a host who holds a debit card should not be
+ * refused because their country also has Mobile Money. The market-specific
+ * rails simply lead: MoMo in the Flutterwave corridors, the domestic wallets in
+ * the US and China.
  */
 export function payoutMethodsFor(countryCode: string): PayoutMethodType[] {
-  if (FLUTTERWAVE_COUNTRIES.has(countryCode)) return ['momo', 'bank'];
+  if (FLUTTERWAVE_COUNTRIES.has(countryCode)) return ['momo', 'bank', 'card'];
   if (countryCode === 'US') return ['bank', 'card', 'paypal', 'venmo', 'cash_app'];
-  if (countryCode === 'CN') return ['alipay', 'wechat_pay', 'bank'];
+  if (countryCode === 'CN') return ['alipay', 'wechat_pay', 'bank', 'card'];
   return ['bank', 'card', 'paypal'];
 }
 
@@ -209,10 +210,10 @@ export const PAYOUT_METHOD_META: Record<
  */
 export function paymentMethodsFor(countryCode: string, known?: PayoutCountry | null): PaymentMethodType[] {
   if (known && !known.can_collect) return [];
-  if (isAfricanMarket(countryCode)) return ['card', 'momo'];
+  if (isAfricanMarket(countryCode)) return ['card', 'momo', 'bank'];
   if (countryCode === 'CN') return ['alipay', 'wechat_pay', 'card'];
   // Venmo and Cash App are payout-only rails on PayHold, so they are not here.
-  return ['card', 'paypal'];
+  return ['card', 'paypal', 'bank'];
 }
 
 export const PAYMENT_METHOD_META: Record<
