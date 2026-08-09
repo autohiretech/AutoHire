@@ -246,15 +246,26 @@ and `/earnings` says "not switched on yet" rather than erroring.
 
 ### 8. Re-register every host as a seller
 
-**This is the step that cannot be automated.** AutoHire only ever stored a mask
-(`••••4242`), and tokenizing a mask produces a destination that cannot receive
-money — so each existing host must re-enter their payout number once, through
-`/payouts/setup`.
+**This cannot be automated, and it is not a coding problem.**
+
+`POST /v1/sellers` needs the RAW MoMo or bank number so it can tokenize it.
+AutoHire only ever stored a mask (`••••4242`) — so there is nothing to migrate.
+A bulk script would tokenize masks. PayHold pulling hosts out of AutoHire's
+`external-api` would fetch the same masks. The raw number exists only in the
+moment a host types it, which is why `payhold-register-seller` is the only door.
+
+Hosts are prompted on their dashboard: `ReconnectPayouts` shows a banner to any
+host with no `payhold_seller_id` once `VITE_PAYMENTS_PAYHOLD` is on. It is
+separate from `SetupChecklist` on purpose — that hides itself once every step is
+done, so a host who onboarded months ago, exactly the host this affects, would
+never have seen it.
 
 Until a host has a `payhold_seller_id`, `payhold-create-deal` refuses to open a
 deal for their cars: better an unbookable listing than a renter's money taken
-for a trip that cannot be settled. Nothing prompts them yet, so this needs an
-email or a banner you send yourself.
+for a trip that cannot be settled.
+
+**So flip step 7 only after at least one host has reconnected** — the flag makes
+every unregistered host's cars unbookable at once.
 
 ### 9. Prove it end to end
 

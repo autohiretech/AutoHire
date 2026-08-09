@@ -303,6 +303,7 @@ export function DashboardPage() {
         </div>
       </div>
 
+      {host && <ReconnectPayouts host={host} />}
       {host && <SetupChecklist host={host} listingCount={listings.length} />}
 
       {/* Stat cards — each metric its own card with a tinted icon chip and a live
@@ -1112,6 +1113,48 @@ function CarManage({ listing }: { listing: Listing }) {
 }
 
 /**
+ * The one thing a host must redo when payments move to PayHold.
+ *
+ * PayHold tokenizes the RAW payout number, and AutoHire only ever stored a mask
+ * (`••••4242`), so there is nothing to migrate — not by fetching, not by a
+ * script. Each host enters their number once more or their cars stay
+ * unbookable, because a PayHold deal names a seller and they do not have one.
+ *
+ * Deliberately NOT part of `SetupChecklist`: that hides itself once every step
+ * is done, so a host who finished onboarding months ago — exactly the host this
+ * affects — would never see it.
+ */
+function ReconnectPayouts({ host }: { host: Host }) {
+  if (!PAYMENTS_PAYHOLD || host.payholdSellerId) return null;
+
+  return (
+    <Card className="mt-5 border-amber-300 bg-amber-50">
+      <CardBody className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+            <AlertTriangle size={15} />
+          </span>
+          <div>
+            <p className="font-semibold text-ink-900">Reconnect your payout account</p>
+            <p className="mt-0.5 max-w-xl text-sm text-ink-700">
+              We've moved to a new payments system that holds each renter's money until the trip
+              is done. For your security we never stored your full account number, so please
+              enter it once more.{' '}
+              <span className="font-medium">
+                Until you do, your cars can't be booked.
+              </span>
+            </p>
+          </div>
+        </div>
+        <Link to="/payouts/setup">
+          <Button>Reconnect</Button>
+        </Link>
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
  * New-host setup steps that unblock earning. Hides itself once all are done.
  * Verification is one of the steps, so this doubles as the verification nudge.
  */
@@ -1129,7 +1172,13 @@ function SetupChecklist({ host, listingCount }: { host: Host; listingCount: numb
     },
     {
       label: 'Add a payout method',
-      done: host.payoutStatus === 'active',
+      // On the PayHold rail the step is done once the host EXISTS as a seller.
+      // `payoutStatus` only reaches 'active' when PayHold also says they can be
+      // paid, which waits on verification they may not control — keying off it
+      // would leave this checklist permanently unfinished for a host who did
+      // everything asked of them. Whether they can actually be paid is its own
+      // question, and /earnings answers it.
+      done: PAYMENTS_PAYHOLD ? !!host.payholdSellerId : host.payoutStatus === 'active',
       to: '/payouts/setup',
       cta: 'Add payout',
     },

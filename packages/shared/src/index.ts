@@ -194,6 +194,14 @@ export interface UserProfile {
   paymentLabel?: string;
   /** The external payment system's token for this method, once connected. */
   paymentRef?: string;
+  /**
+   * This host's PayHold seller record. Absent means their cars cannot be booked
+   * on the PayHold rail — a deal names a seller.
+   *
+   * It cannot be backfilled. PayHold tokenizes the RAW destination, and AutoHire
+   * only ever stored a mask, so every host has to enter their number once more.
+   */
+  payholdSellerId?: string;
 }
 
 /** A host who lists vehicles. May be an individual or a business/fleet agency. */
