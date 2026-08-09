@@ -132,11 +132,17 @@ export function payoutAvailability(
   if (known.restricted) return { state: 'restricted' };
   if (!known.can_payout) return { state: 'unavailable', reason: known.closed_reason };
 
-  // Reachable, and reachable with a number the host can type. These are the
-  // corridors Flutterwave settles, and the only ones registration works in.
-  if (FLUTTERWAVE_COUNTRIES.has(countryCode)) return { state: 'ok', methods: ['momo', 'bank'] };
-
-  return { state: 'unsupported' };
+  // PayHold says it can pay this country, so offer what the market has.
+  //
+  // This used to return `unsupported` for everything outside the Flutterwave
+  // corridors, which was right when Bank and Card were the only options there
+  // and both wanted a Stripe `acct_…` nobody could produce. Now that the wallet
+  // rails are methods in their own right, that blanket refusal hides real
+  // choices — a US host was shown a wall where PayPal, Venmo and Cash App now
+  // belong.
+  const methods = payoutMethodsFor(countryCode);
+  if (methods.length === 0) return { state: 'unsupported' };
+  return { state: 'ok', methods };
 }
 
 export const PAYOUT_METHOD_META: Record<
