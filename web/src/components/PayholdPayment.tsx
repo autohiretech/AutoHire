@@ -7,7 +7,7 @@ import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { PAYMENT_METHOD_META, PAYMENTS_PAYHOLD, paymentMethodsFor } from '@/lib/payments';
-import { PayholdCheckout } from '@/components/PayholdCheckout';
+import { PayholdHandover } from '@/components/PayholdHandover';
 import { MethodMarks } from '@/components/PaymentBrands';
 import { Button, Input, Label } from '@/components/ui';
 
@@ -49,14 +49,6 @@ export function PayholdPayment({
 
   const [method, setMethod] = useState<PaymentMethodType | null>(null);
   const [ref, setRef] = useState('');
-  /**
-   * The card, held in this component and nowhere else.
-   *
-   * It is handed to PayHold's checkout frame in the browser and never included
-   * in the deal, so it does not touch AutoHire's server, its logs, or PayHold's
-   * `metadata` — which is stored verbatim and rendered in a dashboard.
-   */
-  const [card, setCard] = useState({ number: '', expiry: '', cvc: '' });
   const [link, setLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,13 +71,9 @@ export function PayholdPayment({
     [payerCountry, known],
   );
 
-  // Card carries no field, so choosing it is enough. Everything else needs the
-  // detail it asked for before there is anything to send.
-  const ready =
-    !!method &&
-    (method === 'card'
-      ? card.number.replace(/\s/g, '').length >= 13 && !!card.expiry.trim() && !!card.cvc.trim()
-      : ref.trim().length >= 4);
+  // Card carries no field — the provider collects it — so choosing it is
+  // enough. Every other method needs the detail it asked for.
+  const ready = !!method && (method === 'card' || ref.trim().length >= 4);
 
   async function pay() {
     if (!method) return;
@@ -110,9 +98,9 @@ export function PayholdPayment({
   return (
     <div>
     {/* Once the deal exists the choice is made, so the picker gives way to
-        the checkout rather than sitting above it inviting a second answer. */}
+        the handover rather than sitting above it inviting a second answer. */}
     {link ? (
-      <PayholdCheckout paymentLink={link} prefill={method === 'card' ? card : null} />
+      <PayholdHandover paymentLink={link} />
     ) : (
       <>
         {/* Flat panels, not cards: this whole block already sits inside the
@@ -158,12 +146,10 @@ export function PayholdPayment({
                 <button
                   type="button"
                   onClick={() => {
-                    // Switching method clears what was typed: a MoMo number left
-                    // in a PayPal row would be submitted as an address, and a
-                    // card should not linger in memory once it is not the choice.
+                    // Switching method clears the field: a MoMo number left in
+                    // a PayPal row would be submitted as an address.
                     setMethod(m);
                     setRef('');
-                    setCard({ number: '', expiry: '', cvc: '' });
                   }}
                   aria-expanded={chosen}
                   className="flex w-full items-start gap-3 p-4 text-left"
@@ -195,55 +181,16 @@ export function PayholdPayment({
                 {chosen && (
                   <div className="border-t border-brand-200/70 px-4 pb-4 pt-3">
                     {m === 'card' ? (
-                      // The card is typed here and handed to PayHold's checkout
-                      // in the browser — the same trip it would make if the
-                      // renter typed it on that page. It is never sent to
-                      // AutoHire's server and never goes near the deal's
-                      // metadata, which PayHold stores verbatim and shows in its
-                      // dashboard; a card number there would be plaintext at
-                      // rest in two systems.
-                      <div className="grid gap-3">
-                        <div>
-                          <Label htmlFor="card-number">Card number</Label>
-                          <Input
-                            id="card-number"
-                            value={card.number}
-                            onChange={(e) => setCard({ ...card, number: e.target.value })}
-                            placeholder="4242 4242 4242 4242"
-                            inputMode="numeric"
-                            autoComplete="cc-number"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <Label htmlFor="card-exp">Expiry</Label>
-                            <Input
-                              id="card-exp"
-                              value={card.expiry}
-                              onChange={(e) => setCard({ ...card, expiry: e.target.value })}
-                              placeholder="MM / YY"
-                              inputMode="numeric"
-                              autoComplete="cc-exp"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="card-cvc">CVC</Label>
-                            <Input
-                              id="card-cvc"
-                              value={card.cvc}
-                              onChange={(e) => setCard({ ...card, cvc: e.target.value })}
-                              placeholder="123"
-                              inputMode="numeric"
-                              autoComplete="cc-csc"
-                            />
-                          </div>
-                        </div>
-                        <p className="flex items-start gap-1.5 text-xs text-ink-500">
-                          <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
-                          Goes straight to our payment provider — never to AutoHire's servers.
-                          You confirm the payment on the secure checkout.
-                        </p>
-                      </div>
+                      // No card fields, on PayHold's instruction and for the
+                      // reason they give: an <input> we own puts the number in
+                      // AutoHire's DOM, and that alone moves us from PCI SAQ A
+                      // to SAQ D. The provider's own page collects it, which is
+                      // the arrangement the whole integration is built on.
+                      <p className="flex items-start gap-1.5 text-xs text-ink-600">
+                        <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
+                        You'll enter your card on our payment provider's secure page — it never
+                        passes through AutoHire.
+                      </p>
                     ) : (
                       <>
                         <Label htmlFor={`ref-${m}`}>{meta.field}</Label>

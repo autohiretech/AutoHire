@@ -429,9 +429,9 @@ export function BookingPage() {
                 <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-brand-50/60 p-2.5 text-xs text-ink-600">
                   <ShieldCheck size={14} className="mt-0.5 shrink-0 text-brand-600" />
                   <span>
-                    <span className="font-medium text-ink-800">Payment held securely.</span> AutoHire holds your
-                    payment and only releases it to the host after your trip starts — so your money is protected
-                    until pickup.
+                    <span className="font-medium text-ink-800">Payment held securely.</span> Your payment is
+                    held from the moment you book and only released to the host once you both confirm the car
+                    came back — so your money is protected for the whole trip, not just until pickup.
                   </span>
                 </div>
               </div>
