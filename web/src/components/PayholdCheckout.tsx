@@ -25,7 +25,21 @@ import { Button } from '@/components/ui';
  * has spoken — a method chosen, a handoff begun — an unannounced navigation
  * could interrupt a payment in progress, so we stop and offer the link instead.
  */
-export function PayholdCheckout({ paymentLink }: { paymentLink: string }) {
+export function PayholdCheckout({
+  paymentLink,
+  prefill = null,
+}: {
+  paymentLink: string;
+  /**
+   * Card details the renter typed on the booking page, to be handed to the
+   * checkout so they are not asked twice.
+   *
+   * This goes browser-to-frame and nowhere else: posted to PayHold's exact
+   * origin, never to AutoHire's server, never into the deal. It is the same
+   * journey the number makes when typed on PayHold's page directly.
+   */
+  prefill?: { number: string; expiry: string; cvc: string } | null;
+}) {
   const frame = useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = useState(620);
   const [stage, setStage] = useState<'loading' | 'live' | 'stranded' | 'paid' | 'failed'>(
@@ -67,6 +81,16 @@ export function PayholdCheckout({ paymentLink }: { paymentLink: string }) {
       spoke.current = true;
       setStage((s) => (s === 'loading' ? 'live' : s));
 
+      // Hand over the card the moment the frame is listening, and only then —
+      // posting before it has spoken would send the number into a page that may
+      // not be PayHold's yet. Targeted at its exact origin, never "*".
+      if (data.event === 'ready' && prefill?.number) {
+        e.source?.postMessage?.(
+          { source: 'autohire', event: 'prefill', method: 'card', card: prefill },
+          { targetOrigin: origin } as WindowPostMessageOptions,
+        );
+      }
+
       switch (data.event) {
         case 'resize':
           // Bounded: a bad number here would either clip the card form or
@@ -94,7 +118,7 @@ export function PayholdCheckout({ paymentLink }: { paymentLink: string }) {
 
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [origin]);
+  }, [origin, prefill]);
 
   /**
    * Did the frame actually render, or is it the blank document a refusal leaves?

@@ -18,18 +18,17 @@ import {
   PAYMENTS_LIVE,
   PAYMENTS_PAYHOLD,
   isAfricanMarket,
-  paymentMethodsFor,
 } from '@/lib/payments';
 import {
   AirtelMark,
   AmexMark,
   DiscoverMark,
   MastercardMark,
-  MethodMarks,
   MomoMark,
   StripeWordmark,
   VisaMark,
 } from '@/components/PaymentBrands';
+import { PayholdPayment } from '@/components/PayholdPayment';
 import { Img } from '@/components/Img';
 import { Badge, Button, Card, CardBody, Input, Label, Select, Spinner } from '@/components/ui';
 
@@ -258,7 +257,7 @@ export function BookingPage() {
         <div className="min-w-0">
           <Card>
             <CardBody>
-              <h2 className="mb-2 text-lg font-semibold text-ink-900">1. Add a payment method</h2>
+              <h2 className="mb-3 text-lg font-semibold text-ink-900">How do you want to pay?</h2>
 
               {!datesValid && (
                 <p className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
@@ -271,7 +270,7 @@ export function BookingPage() {
               )}
 
               {PAYMENTS_PAYHOLD ? (
-                <PayholdPay
+                <PayholdPayment
                   listingId={id}
                   startDate={startDate}
                   endDate={endDate}
@@ -664,72 +663,6 @@ function DemoPayForm({ totalRwf, currency, onPaid, method, disabled }: PayProps 
  * renter who abandons the hosted page leaves no half-made booking behind, and a
  * browser that never comes back cannot cost us a car.
  */
-/**
- * Under PayHold, choosing how to pay is its own step at `/cars/:id/pay`.
- *
- * It used to happen here, straight from this button. Splitting it out is what
- * let the saved-payment-method screen go: paying is a per-trip decision, and a
- * renter picking mobile money for one trip and a card for the next was being
- * asked to edit their profile to do it.
- */
-function PayholdPay({
-  listingId,
-  startDate,
-  endDate,
-  label,
-  disabled,
-}: {
-  listingId: string;
-  startDate: string;
-  endDate: string;
-  label: string;
-  disabled: boolean;
-}) {
-  const navigate = useNavigate();
-  const { data: me } = useCurrentUser();
-  const payerCountry = me?.country ?? '';
-
-  const { data: countries } = useQuery({
-    queryKey: ['payholdPaymentCountries'],
-    queryFn: () => client.payholdPayoutCountries(),
-    enabled: PAYMENTS_PAYHOLD && !!payerCountry,
-    staleTime: 60 * 60 * 1000,
-    retry: false,
-  });
-
-  const known = countries?.find((c) => c.code === payerCountry) ?? null;
-  const methods = paymentMethodsFor(payerCountry, PAYMENTS_PAYHOLD ? known : undefined);
-
-  return (
-    <div>
-      <Button
-        className="w-full"
-        disabled={disabled}
-        onClick={() => navigate(`/cars/${listingId}/pay`, { state: { startDate, endDate } })}
-      >
-        Choose how to pay · {label}
-      </Button>
-
-      {/* What this renter can actually use, before they commit to the step.
-          Showing the marks here rather than the words "card, MTN MoMo & Airtel
-          Money" means a renter in a market that has none of those is not
-          promised them on the way in. */}
-      {methods.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          {methods.map((m) => (
-            <MethodMarks key={m} method={m} />
-          ))}
-        </div>
-      )}
-
-      <p className="mt-3 text-center text-xs text-ink-500">
-        Your money is held until the trip is done — the host is paid after you both confirm the
-        car came back.
-      </p>
-    </div>
-  );
-}
-
 function ExternalPay({
   listingId,
   startDate,
