@@ -1,3 +1,5 @@
+import type { PaymentMethodType } from '@autohire/shared';
+
 /**
  * Lightweight, recognizable brand marks for payment methods, drawn inline so we
  * don't bundle proprietary raster logos. Swap in official SVGs later if desired.
@@ -107,4 +109,112 @@ export function GooglePayMark() {
       <span className="ml-1 text-ink-700">Pay</span>
     </span>
   );
+}
+
+/** Alipay — its brand blue, with the wordmark it is recognised by. */
+export function AlipayMark() {
+  return (
+    <span
+      className="rounded-md px-2 py-0.5 text-xs font-bold text-white"
+      style={{ backgroundColor: '#1677FF' }}
+      aria-label="Alipay"
+    >
+      Alipay
+    </span>
+  );
+}
+
+/** WeChat Pay — WeChat green. */
+export function WeChatPayMark() {
+  return (
+    <span
+      className="rounded-md px-2 py-0.5 text-xs font-bold text-white"
+      style={{ backgroundColor: '#07C160' }}
+      aria-label="WeChat Pay"
+    >
+      WeChat Pay
+    </span>
+  );
+}
+
+/** Venmo — its blue wordmark. */
+export function VenmoMark() {
+  return (
+    <span className="text-sm font-bold" style={{ color: '#008CFF' }} aria-label="Venmo">
+      venmo
+    </span>
+  );
+}
+
+/** Cash App — brand green. */
+export function CashAppMark() {
+  return (
+    <span
+      className="rounded-md px-2 py-0.5 text-xs font-bold text-white"
+      style={{ backgroundColor: '#00D64F' }}
+      aria-label="Cash App"
+    >
+      Cash App
+    </span>
+  );
+}
+
+/**
+ * A bank transfer has no brand to show — the renter's own bank is the brand, and
+ * we do not know which it is. A neutral mark keeps the row from looking unfinished
+ * beside the ones that do have logos.
+ */
+export function BankMark() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold"
+      style={{ backgroundColor: '#EEF2F5', color: '#33414D' }}
+      aria-label="Bank transfer"
+    >
+      <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 1.5 15 5v1.4H1V5L8 1.5Z" fill="currentColor" />
+        <rect x="3" y="7.6" width="1.9" height="5" fill="currentColor" />
+        <rect x="7.05" y="7.6" width="1.9" height="5" fill="currentColor" />
+        <rect x="11.1" y="7.6" width="1.9" height="5" fill="currentColor" />
+        <rect x="1.6" y="13.4" width="12.8" height="1.5" rx="0.5" fill="currentColor" />
+      </svg>
+      Bank
+    </span>
+  );
+}
+
+/**
+ * What each payment method actually accepts, as the marks people recognise.
+ *
+ * "Card" means nothing until you see Visa and Mastercard under it; "Mobile
+ * Money" means nothing until you see MTN and Airtel. These answer the question
+ * the label leaves open — *will mine work?* — before the renter commits to a
+ * choice and finds out on someone else's page.
+ */
+export function MethodMarks({ method }: { method: PaymentMethodType }) {
+  switch (method) {
+    case 'card':
+      return (
+        <>
+          <VisaMark />
+          <MastercardMark />
+          <AmexMark />
+        </>
+      );
+    case 'momo':
+      return (
+        <>
+          <MomoMark />
+          <AirtelMark />
+        </>
+      );
+    case 'bank':
+      return <BankMark />;
+    case 'paypal':
+      return <PayPalMark />;
+    case 'alipay':
+      return <AlipayMark />;
+    case 'wechat_pay':
+      return <WeChatPayMark />;
+  }
 }
