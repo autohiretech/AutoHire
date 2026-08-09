@@ -32,14 +32,28 @@ import { useAppMode } from '@/lib/appMode';
 import { useCountry } from '@/lib/country';
 import { citiesFor } from '@/lib/cities';
 
-const PAGE_SIZE = 24;
+/**
+ * A page and a half of scrolling before the pager appears.
+ *
+ * Was 24, which at four cards a row ran out after six rows — short enough that
+ * a catalogue of 500 cars read as a small one. Larger cards mean fewer per row,
+ * so the count goes up to keep the page feeling deep rather than paged.
+ */
+const PAGE_SIZE = 36;
 
 /**
- * Listing grid: 2 / 3 / 4 fixed columns. A short final row leaves empty cells rather
+ * Listing grid: 2 / 3 fixed columns. A short final row leaves empty cells rather
  * than stretching its cards — under flex `grow` a row of one card blew up to full
  * width and no longer matched the cards above it.
+ *
+ * Three across at the widest, not four.
+ *
+ * A fourth column buys one more car per row and costs every car the photo that
+ * sells it — at four the image is small enough that a RAV4 and a Land Cruiser
+ * look alike. Three keeps the picture large enough to tell them apart, and the
+ * grid runs longer instead of denser.
  */
-const CARD_GRID = 'grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4';
+const CARD_GRID = 'grid grid-cols-2 gap-5 lg:grid-cols-3';
 
 type Tab = 'cars' | 'hosts' | 'cities';
 
@@ -429,7 +443,7 @@ export function HomePage() {
         </div>
 
         {tab === 'cities' ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {citiesFor(country.code).map((c) => (
               <Link
                 key={c}
@@ -443,7 +457,7 @@ export function HomePage() {
           </div>
         ) : tab === 'hosts' ? (
           hosts && hosts.length > 0 ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {hosts.map((h) => (
                 <HostCard key={h.id} host={h} />
               ))}
@@ -459,7 +473,7 @@ export function HomePage() {
           <>
             <div className={CARD_GRID}>
               {results.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} compact />
+                <ListingCard key={listing.id} listing={listing} />
               ))}
             </div>
             <PageBar
