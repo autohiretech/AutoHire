@@ -27,6 +27,36 @@ const SERVICE_FEE_RATE = 0.1;
 /** Methods a renter may state a preference for. Anything else is ignored. */
 const PREFERRED = ['card', 'momo', 'bank', 'paypal', 'alipay', 'wechat_pay'];
 
+/**
+ * Does this look like a card number?
+ *
+ * `metadata` is stored verbatim by PayHold and shown in its dashboard, so a PAN
+ * landing there would be a plaintext card number at rest in two systems — the
+ * one thing this whole integration is arranged to avoid. The renter's card is
+ * typed on PayHold's own checkout and never passes through AutoHire.
+ *
+ * Length plus Luhn is what separates a card from a phone number or an account
+ * number, both of which are legitimately 13-19 digits. This is a backstop, not
+ * the control: the payment screen offers no card field at all. It exists so a
+ * future caller cannot reintroduce one by accident.
+ */
+function looksLikeCard(value: string): boolean {
+  const digits = value.replace(/[\s-]/g, '');
+  if (!/^\d{13,19}$/.test(digits)) return false;
+  let sum = 0;
+  let double = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48;
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return sum % 10 === 0;
+}
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -59,7 +89,20 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ error: 'Invalid or expired session.' }, 401);
     const uid = userData.user.id;
 
-    const { listingId, startDate, endDate, preferredMethod } = await req.json();
+    const { listingId, startDate, endDate, preferredMethod, payerRef } = await req.json();
+
+    // Where the renter wants to be charged — a MoMo number, a PayPal address.
+    // Never a card: those are typed on PayHold's checkout.
+    const ref = typeof payerRef === 'string' ? payerRef.trim().slice(0, 128) : '';
+    if (ref && looksLikeCard(ref)) {
+      return json(
+        {
+          error: 'Card details are entered on the secure checkout, not here.',
+          code: 'card_not_accepted',
+        },
+        400,
+      );
+    }
     if (!listingId || !startDate || !endDate) {
       return json({ error: 'listingId, startDate and endDate are required.' }, 400);
     }
@@ -170,6 +213,7 @@ Deno.serve(async (req: Request) => {
         ...(PREFERRED.includes(String(preferredMethod))
           ? { preferredMethod: String(preferredMethod) }
           : {}),
+        ...(ref && preferredMethod !== 'card' ? { payerRef: ref } : {}),
         startDate,
         endDate,
         days: String(days),

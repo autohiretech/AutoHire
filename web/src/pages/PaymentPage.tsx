@@ -25,7 +25,7 @@ import {
 } from '@/lib/payments';
 import { PayholdCheckout } from '@/components/PayholdCheckout';
 import { MethodMarks } from '@/components/PaymentBrands';
-import { Button, Card, CardBody, Spinner } from '@/components/ui';
+import { Button, Card, CardBody, Input, Label, Spinner } from '@/components/ui';
 
 const METHOD_ICON: Record<PaymentMethodType, typeof Smartphone> = {
   card: CreditCard,
@@ -65,6 +65,7 @@ export function PaymentPage() {
   const endDate = picked?.endDate ?? params.get('end') ?? '';
 
   const [method, setMethod] = useState<PaymentMethodType | null>(null);
+  const [ref, setRef] = useState('');
   const [link, setLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +102,10 @@ export function PaymentPage() {
   const total = subtotal + serviceFee;
   const money = (n: number) => formatMoney(n, cur, { decimals: 0 });
 
+  // Card carries no field, so choosing it is enough. Everything else needs the
+  // detail it asked for before there is anything to send.
+  const ready = !!method && (method === 'card' || ref.trim().length >= 4);
+
   async function pay() {
     if (!method) return;
     setBusy(true);
@@ -111,6 +116,8 @@ export function PaymentPage() {
         startDate,
         endDate,
         preferredMethod: method,
+        // Card details are never sent from here — see the note by the card row.
+        payerRef: method === 'card' ? undefined : ref.trim() || undefined,
       });
       setLink(paymentLink);
     } catch (e) {
@@ -202,57 +209,97 @@ export function PaymentPage() {
               const Icon = METHOD_ICON[m];
               const chosen = method === m;
               return (
-                <button
+                <div
                   key={m}
-                  type="button"
-                  onClick={() => setMethod(m)}
-                  aria-pressed={chosen}
                   className={cn(
-                    'flex items-start gap-3 rounded-2xl border p-4 text-left transition-all',
+                    'rounded-2xl border transition-all',
                     chosen
                       ? 'border-brand-400 bg-brand-50 ring-1 ring-brand-200'
                       : 'border-ink-200 bg-white hover:border-ink-300 hover:shadow-card',
                   )}
                 >
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-                    <Icon size={18} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                      <span className="font-semibold text-ink-900">{meta.label}</span>
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        <MethodMarks method={m} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Switching method clears the field: a MoMo number typed
+                      // into a PayPal row would be submitted as an address.
+                      setMethod(m);
+                      setRef('');
+                    }}
+                    aria-expanded={chosen}
+                    className="flex w-full items-start gap-3 p-4 text-left"
+                  >
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                      <Icon size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                        <span className="font-semibold text-ink-900">{meta.label}</span>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <MethodMarks method={m} />
+                        </span>
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-ink-500">
+                        {meta.blurb}
                       </span>
                     </span>
-                    <span className="mt-0.5 block text-xs leading-relaxed text-ink-500">
-                      {meta.blurb}
-                    </span>
-                  </span>
-                  {/* A radio would say the same thing, but this row is the
-                      control — a real one beside it invites a second click. */}
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'mt-1 h-4 w-4 shrink-0 rounded-full border-2 transition-colors',
-                      chosen ? 'border-brand-600 bg-brand-600 ring-2 ring-white' : 'border-ink-300',
-                    )}
-                  />
-                </button>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'mt-1 h-4 w-4 shrink-0 rounded-full border-2 transition-colors',
+                        chosen ? 'border-brand-600 bg-brand-600 ring-2 ring-white' : 'border-ink-300',
+                      )}
+                    />
+                  </button>
+
+                  {/* The detail for this method, opened underneath it. */}
+                  {chosen && (
+                    <div className="border-t border-brand-200/70 px-4 pb-4 pt-3">
+                      {m === 'card' ? (
+                        // No card field here, deliberately. A PAN typed into
+                        // AutoHire would travel through our page and our server
+                        // to reach PayHold, and it rides in the deal's metadata,
+                        // which PayHold stores verbatim — a plaintext card
+                        // number at rest in two systems. Cards are typed on
+                        // PayHold's own checkout, which appears right here.
+                        <p className="flex items-start gap-1.5 text-xs text-ink-600">
+                          <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
+                          Your card is entered on the secure checkout that opens below — it never
+                          passes through AutoHire.
+                        </p>
+                      ) : (
+                        <>
+                          <Label htmlFor={`ref-${m}`}>{meta.field}</Label>
+                          <Input
+                            id={`ref-${m}`}
+                            value={ref}
+                            onChange={(e) => setRef(e.target.value)}
+                            placeholder={meta.placeholder}
+                            inputMode={m === 'momo' || m === 'bank' ? 'numeric' : 'text'}
+                            autoComplete="off"
+                          />
+                          <p className="mt-1.5 text-xs text-ink-500">
+                            We pass this to the secure checkout so you don't type it again. You
+                            approve the payment there.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
 
           {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
-          <Button className="mt-5 w-full" size="lg" disabled={!method || busy} onClick={pay}>
+          <Button className="mt-5 w-full" size="lg" disabled={!ready || busy} onClick={pay}>
             {busy ? 'Starting secure checkout…' : `Pay ${money(total)}`}
           </Button>
 
-          {/* Said before they commit, not after. The number they enter is typed
-              on the payment provider's own page — AutoHire never sees it. */}
           <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-500">
             <Lock size={12} className="text-brand-600" />
-            You'll enter your details on our secure checkout — AutoHire never sees them.
+            You approve every payment on our secure checkout.
           </p>
           <p className="mt-4 flex items-start gap-1.5 text-xs text-ink-400">
             <ShieldCheck size={14} className="mt-0.5 shrink-0 text-brand-600" />

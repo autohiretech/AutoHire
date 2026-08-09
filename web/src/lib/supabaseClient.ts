@@ -373,6 +373,12 @@ export const supabaseClient = {
     endDate: string;
     /** What the renter chose on `/cars/:id/pay`. A preference, not an instruction. */
     preferredMethod?: PaymentMethodType;
+    /**
+     * Where they want to be charged — a MoMo number, a PayPal address. Never a
+     * card: the server refuses anything that passes a Luhn check, because this
+     * rides in the deal's metadata and PayHold stores metadata verbatim.
+     */
+    payerRef?: string;
   }): Promise<{ dealId: string; paymentLink: string; status: string; total: number }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-create-deal', {
       body: input,
