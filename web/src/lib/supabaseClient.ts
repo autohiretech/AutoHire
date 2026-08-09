@@ -371,6 +371,8 @@ export const supabaseClient = {
     listingId: string;
     startDate: string;
     endDate: string;
+    /** What the renter chose on `/cars/:id/pay`. A preference, not an instruction. */
+    preferredMethod?: PaymentMethodType;
   }): Promise<{ dealId: string; paymentLink: string; status: string; total: number }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-create-deal', {
       body: input,

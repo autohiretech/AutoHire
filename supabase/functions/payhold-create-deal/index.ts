@@ -24,6 +24,9 @@ const cors = {
 
 const SERVICE_FEE_RATE = 0.1;
 
+/** Methods a renter may state a preference for. Anything else is ignored. */
+const PREFERRED = ['card', 'momo', 'bank', 'paypal', 'alipay', 'wechat_pay'];
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -56,7 +59,7 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ error: 'Invalid or expired session.' }, 401);
     const uid = userData.user.id;
 
-    const { listingId, startDate, endDate } = await req.json();
+    const { listingId, startDate, endDate, preferredMethod } = await req.json();
     if (!listingId || !startDate || !endDate) {
       return json({ error: 'listingId, startDate and endDate are required.' }, 400);
     }
@@ -159,6 +162,14 @@ Deno.serve(async (req: Request) => {
       metadata: {
         uid,
         listingId,
+        // What the renter picked before they got here. PayHold stores metadata
+        // verbatim and hands it back, so this rides along whether or not its
+        // checkout reads it yet — the choice is recorded either way, and it is
+        // a preference rather than an instruction: PayHold decides what a buyer
+        // in that country can actually be charged with.
+        ...(PREFERRED.includes(String(preferredMethod))
+          ? { preferredMethod: String(preferredMethod) }
+          : {}),
         startDate,
         endDate,
         days: String(days),

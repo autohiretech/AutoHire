@@ -15,6 +15,7 @@ import { TripsPage } from '@/pages/TripsPage';
 import { VerificationPage } from '@/pages/VerificationPage';
 import { TripDetailPage } from '@/pages/TripDetailPage';
 import { BookingPage } from '@/pages/BookingPage';
+import { PaymentPage } from '@/pages/PaymentPage';
 import { WatchlistPage } from '@/pages/WatchlistPage';
 import { ListCarPage } from '@/pages/ListCarPage';
 import { AccountPage } from '@/pages/AccountPage';
@@ -108,6 +109,14 @@ export default function App() {
           element={
             <RequireAuth>
               <BookingPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="cars/:id/pay"
+          element={
+            <RequireAuth>
+              <PaymentPage />
             </RequireAuth>
           }
         />

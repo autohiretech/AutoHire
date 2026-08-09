@@ -1,32 +1,23 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
   Building2,
   Camera,
   CheckCircle2,
-  CreditCard,
   Phone,
   ShieldAlert,
   ShieldCheck,
   Star,
   User,
 } from 'lucide-react';
-import type { Host, PaymentMethodType, UserProfile } from '@autohire/shared';
+import type { Host, UserProfile } from '@autohire/shared';
 import { client } from '@/lib/client';
-import { cn } from '@/lib/cn';
 import { useAuth } from '@/lib/auth';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { COUNTRIES } from '@/lib/country';
 import { normalizePhone } from '@/lib/phone';
-import {
-  PAYMENT_METHOD_META,
-  PAYMENTS_PAYHOLD,
-  maskDestination,
-  paymentLabel,
-  paymentMethodsFor,
-} from '@/lib/payments';
 import {
   Avatar,
   Badge,
@@ -39,7 +30,6 @@ import {
   Modal,
   Select,
   Spinner,
-  toast,
 } from '@/components/ui';
 
 /** Account settings: shows who you are and lets you permanently delete the account. */
@@ -88,11 +78,10 @@ export function AccountPage() {
         </div>
 
         <div>
-          {/* Payment method — how a renter pays. Hosts are paid instead, and
-              set that up under Payouts. */}
-          {profile && profile.role !== 'owner' && !isCompany && (
-            <PaymentMethodCard profile={profile} />
-          )}
+          {/* No saved payment method here. PayHold collects the renter's method
+              at checkout, per booking — a card stored on the profile was never
+              read by it, so keeping the screen only implied otherwise. Choosing
+              how to pay now happens at /cars/:id/pay. */}
 
           {/* Phone verification */}
           <PhoneVerification defaultPhone={profile?.phone ?? ''} />
@@ -403,150 +392,6 @@ function CountryField({ profile }: { profile: UserProfile }) {
   );
 }
 
-/**
- * A renter's saved payment method. Only a MASKED destination is kept — the real
- * credentials belong to the payment provider. Until the external payment system
- * is connected there is no vault token to bind to, so a method saved here stays
- * 'pending': it's a stated preference, and checkout still collects the card.
- */
-function PaymentMethodCard({ profile }: { profile: UserProfile }) {
-  const queryClient = useQueryClient();
-  const country = profile.country ?? '';
-
-  // PayHold's payment options for this country — renters see what they can actually pay with.
-  const { data: paymentCountries } = useQuery({
-    queryKey: ['payholdPaymentCountries'],
-    queryFn: () => client.payholdPayoutCountries(),
-    enabled: PAYMENTS_PAYHOLD && !!country,
-    staleTime: 60 * 60 * 1000,
-    retry: false,
-  });
-
-  const known = paymentCountries?.find((c) => c.code === country) ?? null;
-  const methods = paymentMethodsFor(country, PAYMENTS_PAYHOLD ? known : undefined);
-
-  const [selected, setSelected] = useState<PaymentMethodType | null>(null);
-  const [dest, setDest] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const connected = profile.paymentStatus && profile.paymentStatus !== 'none';
-  const meta = selected ? PAYMENT_METHOD_META[selected] : null;
-  const canSave = !!selected && dest.trim().length >= 4;
-
-  function refresh() {
-    queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-  }
-
-  async function save() {
-    if (!selected) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await client.setPaymentMethod({
-        method: selected,
-        destinationMasked: maskDestination(dest),
-        label: paymentLabel(selected, dest),
-      });
-      refresh();
-      setSelected(null);
-      setDest('');
-      toast.success('Payment method saved.');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save your payment method.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove() {
-    setBusy(true);
-    try {
-      await client.clearPaymentMethod();
-      refresh();
-      toast.success('Payment method removed.');
-    } catch {
-      toast.error('Could not remove your payment method.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card className="mt-6">
-      <CardHeader className="flex items-center gap-2">
-        <CreditCard size={18} className="text-brand-600" />
-        <h2 className="font-semibold text-ink-900">Payment method</h2>
-      </CardHeader>
-      <CardBody className="space-y-4">
-        {connected ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ink-50 p-3">
-            <div>
-              <p className="font-medium text-ink-900">{profile.paymentLabel}</p>
-              <p className="text-xs text-ink-500">
-                {profile.paymentStatus === 'active'
-                  ? 'Ready to use at checkout.'
-                  : 'Saved. Checkout still asks for the card until payments are connected.'}
-              </p>
-            </div>
-            <Button variant="outline" size="sm" disabled={busy} onClick={remove}>
-              Remove
-            </Button>
-          </div>
-        ) : !country ? (
-          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-            Set your country above first — it decides which payment methods you can use.
-          </p>
-        ) : (
-          <>
-            <p className="text-sm text-ink-600">
-              Save how you'd like to pay. You can still pay with a different card at checkout.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {methods.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setSelected(m === selected ? null : m)}
-                  className={cn(
-                    'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                    m === selected
-                      ? 'border-brand-300 bg-brand-50 text-brand-700'
-                      : 'border-ink-200 text-ink-700 hover:bg-ink-50',
-                  )}
-                >
-                  {PAYMENT_METHOD_META[m].label}
-                </button>
-              ))}
-            </div>
-            {meta && (
-              <div className="space-y-3">
-                <p className="text-xs text-ink-500">{meta.blurb}</p>
-                <div>
-                  <Label htmlFor="pay-dest">{meta.field}</Label>
-                  <Input
-                    id="pay-dest"
-                    value={dest}
-                    onChange={(e) => setDest(e.target.value)}
-                    placeholder={meta.placeholder}
-                    inputMode={selected === 'momo' ? 'tel' : 'numeric'}
-                  />
-                  <p className="mt-1 text-xs text-ink-400">
-                    Only the last 4 digits are stored.
-                  </p>
-                </div>
-                {error && <p className="text-sm text-red-600">{error}</p>}
-                <Button className="w-full" disabled={!canSave || busy} onClick={save}>
-                  {busy ? 'Saving…' : 'Save payment method'}
-                </Button>
-              </div>
-            )}
-          </>
-        )}
-      </CardBody>
-    </Card>
-  );
-}
 
 /** Verify the account's phone number by SMS one-time code. */
 function PhoneVerification({ defaultPhone }: { defaultPhone: string }) {
