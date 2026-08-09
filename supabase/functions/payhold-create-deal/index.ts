@@ -14,7 +14,12 @@
 // Deploy:   supabase functions deploy payhold-create-deal
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { createDeal, payholdConfigured, toMinorUnits } from '../_shared/payhold.ts';
+import {
+  createCheckoutSession,
+  createDeal,
+  payholdConfigured,
+  toMinorUnits,
+} from '../_shared/payhold.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
@@ -23,6 +28,14 @@ const cors = {
 };
 
 const SERVICE_FEE_RATE = 0.1;
+
+/**
+ * PayHold's public base, handed to the browser so it does not need its own copy
+ * of the URL. The public checkout routes take no credential — the session token
+ * in the path is the credential — so this is safe to expose and the API key
+ * stays here.
+ */
+const PAYHOLD_PUBLIC = (Deno.env.get('PAYHOLD_BASE_URL') ?? '').replace(/\/+$/, '');
 
 /** Methods a renter may state a preference for. Anything else is ignored. */
 const PREFERRED = ['card', 'momo', 'bank', 'paypal', 'alipay', 'wechat_pay'];
@@ -224,11 +237,36 @@ Deno.serve(async (req: Request) => {
       },
     });
 
+    /**
+     * Make the deal payable by the browser as well as by the link.
+     *
+     * A session lets AutoHire render PayHold's own method list and start the
+     * payment from the renter's browser, so mobile money can finish without
+     * anyone leaving the page. It is attempted, not required: the endpoint is
+     * newer than the rest of this flow, and a deal with a `payment_link` is
+     * still perfectly payable without one. Falling back is a worse experience,
+     * not a broken booking.
+     */
+    let session: { token: string; expiresAt: string } | null = null;
+    try {
+      const s = await createCheckoutSession(
+        deal.id,
+        `${Deno.env.get('ALLOWED_ORIGIN') ?? 'https://autohiretech.pages.dev'}/trips`,
+      );
+      if (s?.token) session = { token: s.token, expiresAt: s.expires_at };
+    } catch (e) {
+      console.warn('checkout session unavailable, falling back to payment_link:', e);
+    }
+
     return json(
       {
         dealId: deal.id,
         status: deal.status,
         paymentLink: payment_link,
+        // Where the browser can read methods and start the payment without a
+        // credential. Null when sessions are unavailable.
+        checkoutToken: session?.token ?? null,
+        checkoutBase: session ? `${PAYHOLD_PUBLIC}/checkout/public/${session.token}` : null,
         amount: deal.amount,
         currency: deal.currency,
         total,

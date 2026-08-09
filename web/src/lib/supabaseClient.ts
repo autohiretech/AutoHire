@@ -379,7 +379,14 @@ export const supabaseClient = {
      * rides in the deal's metadata and PayHold stores metadata verbatim.
      */
     payerRef?: string;
-  }): Promise<{ dealId: string; paymentLink: string; status: string; total: number }> {
+  }): Promise<{
+    dealId: string;
+    paymentLink: string;
+    status: string;
+    total: number;
+    /** PayHold's public session URL — null when sessions are unavailable. */
+    checkoutBase: string | null;
+  }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-create-deal', {
       body: input,
     });
@@ -394,6 +401,7 @@ export const supabaseClient = {
       paymentLink?: string;
       status?: string;
       total?: number;
+      checkoutBase?: string | null;
       error?: string;
     };
     if (payload?.error || !payload?.dealId || !payload?.paymentLink) {
@@ -404,6 +412,7 @@ export const supabaseClient = {
       paymentLink: payload.paymentLink,
       status: payload.status ?? 'created',
       total: payload.total ?? 0,
+      checkoutBase: payload.checkoutBase ?? null,
     };
   },
 

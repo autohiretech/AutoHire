@@ -535,6 +535,37 @@ export function withdraw(
 }
 
 // ---------------------------------------------------------------------------
+// Checkout sessions — the renter's half of a deal
+// ---------------------------------------------------------------------------
+
+/**
+ * A session is a deal made payable by someone who holds no credential.
+ *
+ * The token IS the authorisation: scoped to one payment on one deal, and it
+ * expires. That is what lets AutoHire's browser read the methods and start the
+ * payment itself, instead of proxying both through an Edge Function that would
+ * only be relaying a public call while holding a secret key.
+ *
+ * Idempotent per deal — a retry hands back the live session rather than minting
+ * a second payable link for the same trip.
+ */
+export interface CheckoutSession {
+  token: string;
+  payment_link: string;
+  expires_at: string;
+}
+
+export function createCheckoutSession(
+  dealId: string,
+  returnUrl: string,
+): Promise<CheckoutSession> {
+  return call('/checkout/sessions', {
+    method: 'POST',
+    body: { deal_id: dealId, return_url: returnUrl },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Payment options — PayHold's routing table
 // ---------------------------------------------------------------------------
 

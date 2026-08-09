@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CreditCard, Landmark, Lock, QrCode, ShieldCheck, Smartphone, Wallet } from 'lucide-react';
+import { CreditCard, Landmark, Lock, QrCode, Smartphone, Wallet } from 'lucide-react';
 import type { PaymentMethodType } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { PAYMENT_METHOD_META, PAYMENTS_PAYHOLD, paymentMethodsFor } from '@/lib/payments';
-import { PayholdHandover } from '@/components/PayholdHandover';
+import { CheckoutModal } from '@/components/CheckoutModal';
 import { MethodMarks } from '@/components/PaymentBrands';
 import { Button, Input, Label } from '@/components/ui';
 
@@ -50,6 +50,7 @@ export function PayholdPayment({
   const [method, setMethod] = useState<PaymentMethodType | null>(null);
   const [ref, setRef] = useState('');
   const [link, setLink] = useState<string | null>(null);
+  const [checkoutBase, setCheckoutBase] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,33 +77,50 @@ export function PayholdPayment({
   const ready = !!method && (method === 'card' || ref.trim().length >= 4);
 
   async function pay() {
-    if (!method) return;
     setBusy(true);
     setError(null);
     try {
-      const { paymentLink } = await client.createPayholdDeal({
+      const { paymentLink, checkoutBase: base } = await client.createPayholdDeal({
         listingId,
         startDate,
         endDate,
-        preferredMethod: method,
-        // Card details are never sent from here — see the note by the card row.
-        payerRef: method === 'card' ? undefined : ref.trim() || undefined,
+        ...(method ? { preferredMethod: method } : {}),
+        ...(method && method !== 'card' && ref.trim() ? { payerRef: ref.trim() } : {}),
       });
+      setCheckoutBase(base);
       setLink(paymentLink);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the payment.');
+    } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div>
-    {/* Once the deal exists the choice is made, so the picker gives way to
-        the handover rather than sitting above it inviting a second answer. */}
-    {link ? (
-      <PayholdHandover paymentLink={link} />
-    ) : (
-      <>
+    <>
+      {/* The choice lives in a modal so the booking summary stays put behind
+          it — a renter deciding how to pay should still see what they are
+          paying for. */}
+      <Button className="w-full" size="lg" disabled={disabled || busy} onClick={pay}>
+        {busy ? 'Opening…' : `Pay ${label}`}
+      </Button>
+      {error && !link && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      <p className="mt-3 text-center text-xs text-ink-500">
+        Your money is held until the trip is done — the host is paid after you both confirm the
+        car came back.
+      </p>
+
+      <CheckoutModal
+        open={!!link}
+        onClose={() => {
+          setLink(null);
+          setCheckoutBase(null);
+        }}
+        checkoutBase={checkoutBase}
+        paymentLink={link ?? ''}
+        amountLabel={label}
+        fallback={
+          <div>
         {/* Flat panels, not cards: this whole block already sits inside the
             checkout card, and a card within a card reads as a second subject. */}
         {!payerCountry && (
@@ -217,21 +235,26 @@ export function PayholdPayment({
 
         {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
-        <Button className="mt-5 w-full" size="lg" disabled={disabled || !ready || busy} onClick={pay}>
-          {busy ? 'Starting secure checkout…' : `Pay ${label}`}
+        {/* The deal already exists by the time this shows — it is the modal's
+            fallback, reached only when PayHold could not open a session. So
+            this continues to the link rather than calling `pay` again, which
+            would open a second deal for the same trip. */}
+        <Button
+          className="mt-5 w-full"
+          size="lg"
+          disabled={!ready}
+          onClick={() => link && window.location.assign(link)}
+        >
+          Continue · {label}
         </Button>
 
         <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-500">
           <Lock size={12} className="text-brand-600" />
           You approve every payment on our secure checkout.
         </p>
-        <p className="mt-4 flex items-start gap-1.5 text-xs text-ink-400">
-          <ShieldCheck size={14} className="mt-0.5 shrink-0 text-brand-600" />
-          Your money is held until the trip is done. The host is paid only after you both
-          confirm the car came back.
-        </p>
-      </>
-    )}
-    </div>
+          </div>
+        }
+      />
+    </>
   );
 }
