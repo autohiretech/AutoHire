@@ -39,6 +39,16 @@ trip runs
      via payhold-balance) only brings that forward, or retries a stuck one.
            │
            └── webhook payout.paid → money is in their account
+
+if something goes wrong instead
+  │
+  ├─ POST /disputes ─────────────► case opened, PAYOUT FROZEN   (payhold-dispute)
+  │  ◄──── webhook dispute.opened ─ mirrored back either way
+  │        resolved by a person in PayHold's dashboard, not by us
+  │
+  └─ POST /deals/:id/refund ─────► money goes back               (payhold-refund)
+     ◄──── webhook refund.succeeded
+           full → the trip is cancelled; partial → it carries on
 ```
 
 ## Getting paid: automatic, with a nudge
@@ -70,8 +80,58 @@ What "Send it now" actually does, from `request_withdrawal`:
 | [`payhold-balance`](../supabase/functions/payhold-balance/index.ts) | GET wallet totals, POST withdraw (optionally to a chosen destination). |
 | [`payhold-earnings`](../supabase/functions/payhold-earnings/index.ts) | Per-trip money, its stage, and the host's payout destinations. |
 | [`payhold-confirm`](../supabase/functions/payhold-confirm/index.ts) | One side confirms a finished trip. |
+| [`payhold-seller`](../supabase/functions/payhold-seller/index.ts) | The host's seller record: id, KYC, capabilities, destinations. |
+| [`payhold-dispute`](../supabase/functions/payhold-dispute/index.ts) | Raise a case in PayHold — this is what freezes the payout. |
+| [`payhold-refund`](../supabase/functions/payhold-refund/index.ts) | Send the renter's money back, in full or in part. |
 | [`EarningsPage`](../web/src/pages/EarningsPage.tsx) | `/earnings` — totals, trip-by-trip stages, fee breakdown, withdraw. |
 | [migration 047](../supabase/migration-047-payhold.sql) | `payhold_deal_id`, `payhold_seller_id`, `payhold_dispute_id`. |
+| [migration 048](../supabase/migration-048-payhold-disputes-and-refunds.sql) | `partially_refunded`; unique index on `payhold_dispute_id`. |
+
+## Every endpoint, both directions
+
+**Outbound — AutoHire calls PayHold.** All of it goes through
+[`_shared/payhold.ts`](../supabase/functions/_shared/payhold.ts) against
+`PAYHOLD_BASE_URL` with `X-Api-Key`. There is no second door.
+
+| PayHold endpoint | Client fn | AutoHire function that calls it |
+|---|---|---|
+| `POST /deals` | `createDeal` | `payhold-create-deal` |
+| `GET /deals/:id` | `getDeal` | `payhold-webhook` (the trust boundary), `payhold-earnings` (one per trip) |
+| `POST /deals/:id/confirm` | `confirmDeal` | `payhold-confirm` |
+| `POST /deals/:id/refund` | `refundDeal` | `payhold-refund` |
+| `POST /sellers` | `createSeller` | `payhold-register-seller` |
+| `GET /sellers/:id/capabilities` | `sellerCapabilities` | `payhold-seller`, `payhold-register-seller`, `payhold-balance` |
+| `GET /sellers/:id/balance` | `sellerBalance` | `payhold-balance` |
+| `GET /sellers/:id/destinations` | `sellerDestinations` | `payhold-seller`, `payhold-earnings` |
+| `POST /sellers/:id/withdraw` | `withdraw` | `payhold-balance` |
+| `GET /payouts` | `listPayouts` | `payhold-earnings` — tenant-wide, filtered to the seller locally |
+| `POST /disputes` | `openDispute` | `payhold-dispute` |
+
+PayHold refuses `resolve` from an API key: deciding a case is a person's
+judgement made in their dashboard. Resolutions come back by webhook.
+
+**AutoHire's own routes** — what the app and its hosts call:
+
+| Route | Method | Who | Does |
+|---|---|---|---|
+| `payhold-create-deal` | POST | renter | Opens the deal, returns the hosted checkout link |
+| `payhold-confirm` | POST | renter or host | Confirms this side of a finished trip |
+| `payhold-register-seller` | POST | host | Registers their payout destination — the only place the raw number exists |
+| `payhold-seller` | GET | host (admin: `?hostId=`) | Their seller record, capabilities and destinations |
+| `payhold-seller/capabilities` | GET | host | Just the can-I-be-paid answer |
+| `payhold-seller/destinations` | GET | host | Just where the money can go |
+| `payhold-balance` | GET | host | Wallet totals, read live |
+| `payhold-balance` | POST | host | Withdraw — an expedite, not the route |
+| `payhold-earnings` | GET | host | Every trip's money and the stage it's at |
+| `payhold-dispute` | GET | either party (admin: all) | The cases they are party to |
+| `payhold-dispute` | POST | renter or host | Raises a case — **freezes the payout** |
+| `payhold-refund` | POST | host (own bookings) or admin | Refunds the renter, full or partial |
+| `payhold-webhook` | POST | PayHold's server | Signed events → bookings, refunds, disputes |
+
+Every one of these takes the side, the seller id and the party from the
+**session**, never from the request body. The one exception is `?hostId=` on
+`payhold-seller`, which is refused for anyone who is not an admin — a host who
+could name another host's id would read where a competitor gets paid.
 
 ## The stages a host's money passes through
 
@@ -123,6 +183,25 @@ against it.
 by nobody. AutoHire keeps the seller id and a mask (`••••4242`); PayHold keeps
 the token.
 
+**The link runs both ways.** `POST /v1/sellers` now carries
+`external_user_id` — the host's `profiles.id` — so a seller can be found from
+our side even when `profiles.payhold_seller_id` is missing. PayHold makes it
+unique per tenant and **refuses** a second registration under the same handle
+rather than returning the existing seller, which turns a double-submit into an
+error instead of a duplicate seller with money owed to the one it orphaned.
+
+`payhold-register-seller` asks `findSellerByExternalUserId` before it tokenizes
+anything, and re-links a seller it finds instead of creating another. That is
+the only repair available, and it repairs a *lost link*, never a missing seller:
+tokenization needs the raw number, which exists only while the host is typing
+it. A host who never registered has to be asked again — the ReconnectPayouts
+banner — and no bulk import can ever exist, on either side.
+
+A re-link deliberately does **not** save the destination just typed. The
+response carries `relinked: true` and the screen says so, because changing where
+a host is paid is a new `seller_destinations` row with its own verification and
+security hold (PayHold §5.1), and that flow is not built.
+
 ## Auth
 
 Outbound, AutoHire → PayHold:
@@ -150,6 +229,26 @@ loses the event for good.
 
 Everything below is one-time. Do it in this order — later steps fail without
 earlier ones.
+
+**Where this stands (9 Aug 2026): steps 1–8 are done. Step 9 has not started.**
+The three `PAYHOLD_*` secrets are set on `gsnoggfofbmzamxxyazc`, the functions
+are deployed, and the live site (<https://autohiretech.pages.dev>, Cloudflare
+Pages) is built with `VITE_PAYMENTS_PAYHOLD=true` — its bundle calls
+`payhold-register-seller` and no longer calls `setPayoutMethod`.
+`web/.env` now matches, so local builds are on the same rail.
+
+**`render.yaml` is not the live deploy.** It describes a Render static site;
+the site actually serving traffic is Cloudflare Pages, where the `VITE_*`
+values are set in the Pages project's build environment. Change the flag there.
+
+**PayHold's Sellers list being empty is step 9, not a fault.** A seller row is
+only ever created when a host opens `/payouts/setup` and types their raw
+number — see below for why nothing can create one on their behalf. Check
+`payhold-register-seller`'s function logs to tell "no host has tried" from
+"hosts are hitting an error".
+
+Still undeployed: `payhold-seller`, `payhold-dispute`, `payhold-refund` (all
+404). They are unreleased work, not part of this flow.
 
 ### 0. Know the two addresses
 
@@ -212,9 +311,10 @@ a live secret connected as "test" would move real money during a sandbox run.
 
 ### 5. On AutoHire: apply the migrations
 
-042 through 047, in order. 047 adds the three join columns; without it every
+042 through 048, in order. 047 adds the three join columns; without it every
 PayHold write fails on a missing column — the same class of error as the
-`country` one.
+`country` one. 048 adds the `partially_refunded` payment status and the unique
+index the dispute mirror is idempotent on.
 
 ### 6. On AutoHire: set the secrets and deploy
 
@@ -226,25 +326,76 @@ supabase secrets set \
 
 supabase functions deploy payhold-create-deal
 supabase functions deploy payhold-register-seller
+supabase functions deploy payhold-seller
 supabase functions deploy payhold-balance
 supabase functions deploy payhold-earnings
 supabase functions deploy payhold-confirm
+supabase functions deploy payhold-dispute
+supabase functions deploy payhold-refund
 supabase functions deploy payhold-webhook --no-verify-jwt
 ```
 
 `--no-verify-jwt` on the webhook only. Its caller is PayHold's server, not a
 signed-in user, so the signature is the authentication.
 
-### 7. On AutoHire: flip the rail
+### 7. On AutoHire: prove the corridor with curl — before the app depends on it
+
+This step comes before the flag, and that ordering is the whole point.
+
+The API key works on its own. It does not care about `VITE_PAYMENTS_PAYHOLD`,
+which only decides what the *browser* does — so the one way to find out whether
+PayHold will accept a seller and open a deal is to ask it directly, while the
+app is still safely on the old rails.
+
+```bash
+PAYHOLD=https://mwnbjjlilqrwdmwutbxr.supabase.co/functions/v1
+KEY=<the plaintext from step 2>
+
+# 1. the API key works and the corridor is open
+curl -s -X POST "$PAYHOLD/sellers" -H "X-Api-Key: $KEY" \
+  -H 'content-type: application/json' \
+  -d '{"name":"ZZ Test host","country":"RW","payout_provider":"flutterwave_momo","destination":"250788000000"}'
+
+# 2. a deal opens and returns a live payment link
+curl -s -X POST "$PAYHOLD/deals" -H "X-Api-Key: $KEY" \
+  -H 'content-type: application/json' \
+  -d '{"buyer_ref":"test","seller_id":"<from 1>","description":"Test","amount":45000,"currency":"RWF"}'
+```
+
+Then open PayHold's dashboard → **Sellers**. The seller the first command
+created should be listed. If it is not, stop here — nothing the app does later
+will work, and every step below only makes that harder to see.
+
+Open the `payment_link` the second command returned as well. A link pointing at
+`app.payhold.local` means step 1 of this runbook was skipped and `PUBLIC_URL` is
+still unset.
+
+**Name the test seller something you will recognise** — `ZZ Test host` sorts to
+the bottom. PayHold has no delete-seller endpoint, so this row is permanent, in
+the same tenant, next to your real hosts, forever.
+
+### 8. On AutoHire: flip the rail
 
 ```
 VITE_PAYMENTS_PAYHOLD=true
 ```
 
-in the web env, then rebuild. Until this is set, checkout stays on the old rails
-and `/earnings` says "not switched on yet" rather than erroring.
+in the web env, then rebuild and redeploy the web app. Until this is set,
+checkout stays on the old rails, `/earnings` says "not switched on yet" rather
+than erroring, and — the part that is easy to miss — `payhold-register-seller`
+is never called, so **no host can become a seller and PayHold's Sellers list
+stays empty no matter how long you wait.**
 
-### 8. Re-register every host as a seller
+Everything hangs off this one variable: the reconnect banner, the payout-setup
+form's registration call, the booking page's checkout, and the earnings link.
+Deployed functions and set secrets are not enough on their own.
+
+**This is the moment every unregistered host's cars become unbookable.** That is
+`payhold-create-deal` refusing to take a renter's money for a trip that cannot
+be settled — correct behaviour, and it will still look like an outage if nobody
+was warned. Flip it at a quiet hour, and tell hosts the day before.
+
+### 9. Every host re-registers as a seller
 
 **This cannot be automated, and it is not a coding problem.**
 
@@ -264,26 +415,20 @@ Until a host has a `payhold_seller_id`, `payhold-create-deal` refuses to open a
 deal for their cars: better an unbookable listing than a renter's money taken
 for a trip that cannot be settled.
 
-**So flip step 7 only after at least one host has reconnected** — the flag makes
-every unregistered host's cars unbookable at once.
+This is why step 7 exists and why it is a curl. An earlier version of this
+runbook said to flip the flag only *after* a host had reconnected — which no
+host could do, because the banner and the registration call are both behind that
+same flag. There is no order of steps 8 and 9 that avoids a window where
+unregistered hosts are unbookable. Shorten the window; you cannot remove it.
 
-### 9. Prove it end to end
+Watch it close: every host who reconnects appears in PayHold's dashboard →
+**Sellers**, and in AutoHire as a non-null `profiles.payhold_seller_id`.
 
-```bash
-# 1. the API key works and the corridor is open
-curl -s -X POST "$PAYHOLD/sellers" -H "X-Api-Key: $KEY" \
-  -H 'content-type: application/json' \
-  -d '{"name":"Test host","country":"RW","payout_provider":"flutterwave_momo","destination":"250788000000"}'
+### 10. Prove it end to end in the app
 
-# 2. a deal opens and returns a live payment link
-curl -s -X POST "$PAYHOLD/deals" -H "X-Api-Key: $KEY" \
-  -H 'content-type: application/json' \
-  -d '{"buyer_ref":"test","seller_id":"<from 1>","description":"Test","amount":45000,"currency":"RWF"}'
-```
-
-Then in the app: book a car, pay on the hosted page, and confirm a booking
-appears with `payhold_deal_id` set. If it does not, the webhook is the first
-place to look — PayHold's dashboard shows every delivery attempt and its
+Book a car whose host has reconnected, pay on the hosted page, and confirm a
+booking appears with `payhold_deal_id` set. If it does not, the webhook is the
+first place to look — PayHold's dashboard shows every delivery attempt and its
 response.
 
 ## Amounts
@@ -327,15 +472,19 @@ on the old rail still needs the old capture path to finish.
   AutoHire only ever stored a mask, and tokenizing `••••4242` would produce a
   destination that cannot receive money. `payhold-create-deal` refuses to open a
   deal for a host with no `payhold_seller_id` rather than take a renter's money
-  for a trip that cannot be settled — but nothing yet *prompts* those hosts to
-  reconnect. Their cars are unbookable until they do.
+  for a trip that cannot be settled. `ReconnectPayouts` now prompts them on the
+  dashboard (see step 9), but their cars stay unbookable until they act.
 - **Confirmations are not wired to the trip UI.** `payhold-confirm` exists and
   is correct; no button calls it yet. Until one does, releases depend on
   PayHold's `auto_complete_after_hours` timer.
-- **Disputes are one-way.** A dispute opened in PayHold is mirrored into
-  AutoHire by webhook. One opened in AutoHire is *not* pushed to PayHold, so it
-  does not freeze the payout. `openDispute` in the adapter is ready; nothing
-  calls it.
+- **Disputes go both ways now, but no button raises one.** `payhold-dispute`
+  pushes a case to PayHold — which is what freezes the payout — and the webhook
+  mirrors PayHold's back. Neither the trip screen nor `/admin` calls it yet, so
+  the only way to raise one today is the API. Resolution is still one-way by
+  design: PayHold refuses `resolve` from an API key.
+- **Refunds have an endpoint, not a screen.** `payhold-refund` is wired for
+  hosts (own bookings) and admins, full or partial. Nothing in the UI calls it,
+  so a refund is still a curl or a dashboard action.
 - **`payment-options` is not read.** The renter sees whatever PayHold's hosted
   page offers rather than a preview in AutoHire.
 - **Earnings shows the 20 most recent trips.** `payhold-earnings` accepts an

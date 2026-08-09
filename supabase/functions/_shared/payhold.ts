@@ -93,6 +93,14 @@ export interface Seller {
   payout_provider: PayoutProvider;
   masked_destination: string;
   kyc_status: 'pending' | 'verified' | 'restricted' | 'rejected' | 'review_required';
+  /**
+   * Our own handle for this host — their `profiles.id`. PayHold mints its own
+   * seller id and has no idea who our users are, so this column is the only way
+   * to ask "which seller is this host of mine" without AutoHire's own link being
+   * intact. Unique per tenant where present; null on a seller registered by hand
+   * from PayHold's dashboard.
+   */
+  external_user_id: string | null;
 }
 
 /** The rail a destination is tokenized against — provider and method together. */
@@ -370,6 +378,14 @@ export interface CreateSellerInput {
    */
   destination: string;
   payoutCurrency?: string;
+  /**
+   * The host's `profiles.id`. Sent so the seller can be found again from our
+   * side alone — see `Seller.external_user_id`. PayHold **refuses** a second
+   * registration under the same handle rather than returning the existing
+   * seller, which is what turns a double-submit from an orphaned duplicate into
+   * an error we can act on.
+   */
+  externalUserId?: string;
 }
 
 export function createSeller(
@@ -383,8 +399,40 @@ export function createSeller(
       payout_provider: input.payoutProvider,
       destination: input.destination,
       payout_currency: input.payoutCurrency,
+      external_user_id: input.externalUserId,
     },
   });
+}
+
+/**
+ * Find a host's seller by our own id for them.
+ *
+ * PayHold filters this server-side on the handle we registered them under, so
+ * one host is one row — not a scan of every seller we have, which is a list
+ * that grows with the business and would eventually paginate out from under
+ * this lookup. An unmatched handle comes back as an empty list, because "this
+ * host is not registered yet" is an answer and not a failure.
+ *
+ * This is the only repair available for a lost link. It cannot re-create a
+ * seller: `POST /v1/sellers` tokenizes the RAW destination, and the raw number
+ * exists only while the host is typing it — we store a mask and PayHold stores
+ * a token, so neither side can reconstruct one. A host with no seller has to be
+ * asked again; a host with a seller we lost track of can be re-linked here.
+ */
+export async function findSellerByExternalUserId(
+  externalUserId: string,
+): Promise<Seller | null> {
+  const handle = externalUserId.trim();
+  // PayHold rejects a blank handle rather than ignoring it, and it would come
+  // back as a PayHoldError that callers here treat as "PayHold is unreachable".
+  // No id means no seller, which we can answer without the round trip.
+  if (!handle) return null;
+
+  const { sellers } = await call<{ sellers: Seller[] }>(
+    `/sellers?external_user_id=${encodeURIComponent(handle)}`,
+    { method: 'GET' },
+  );
+  return sellers[0] ?? null;
 }
 
 /** Can this host be paid, and if not, what is missing. */

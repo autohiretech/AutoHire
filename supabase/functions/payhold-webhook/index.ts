@@ -204,16 +204,30 @@ Deno.serve(async (req: Request) => {
         return json({ received: true, booking: booking?.id ?? null }, 200);
       }
 
-      // Money went back to the renter. The trip is off.
+      // Money went back to the renter — all of it, or some of it.
+      //
+      // The event does not say which; the DEAL does. `payhold-refund` can send
+      // a partial refund (a damaged-return settlement, a late-cancellation
+      // fee), and cancelling the trip for one would take the car back off a
+      // renter who is still driving it. The deal's own status is the only thing
+      // that distinguishes the two, which is why this branches on it rather
+      // than on the event name.
       case 'refund.succeeded': {
         const booking = await bookingFor(admin, deal.id);
-        if (booking && booking.state !== 'cancelled') {
-          await admin
-            .from('bookings')
-            .update({ state: 'cancelled', payment_status: 'refunded', hold_status: 'released' })
-            .eq('id', booking.id);
+        if (booking) {
+          if (deal.status === 'partially_refunded') {
+            await admin
+              .from('bookings')
+              .update({ payment_status: 'partially_refunded' })
+              .eq('id', booking.id);
+          } else if (booking.state !== 'cancelled') {
+            await admin
+              .from('bookings')
+              .update({ state: 'cancelled', payment_status: 'refunded', hold_status: 'released' })
+              .eq('id', booking.id);
+          }
         }
-        return json({ received: true, booking: booking?.id ?? null }, 200);
+        return json({ received: true, booking: booking?.id ?? null, dealStatus: deal.status }, 200);
       }
 
       // A case was opened in PayHold's Resolution Center — by either side, or

@@ -12,8 +12,12 @@ import type {
   Message,
   ModerationStatus,
   PaymentMethodType,
+  PayholdDispute,
+  PayholdRefund,
+  PayholdSeller,
   PayholdWallet,
   Payout,
+  PayoutDestination,
   PayoutMethodType,
   PayoutProvider,
   Review,
@@ -368,6 +372,13 @@ export const supabaseClient = {
   }): Promise<{
     sellerId: string;
     maskedDestination: string;
+    /**
+     * True when PayHold already had a seller for this host and we re-linked it
+     * rather than registering a second one. The destination just typed was NOT
+     * saved — changing where a host is paid is a different operation, with its
+     * own verification and security hold, and it is not built yet.
+     */
+    relinked: boolean;
     canReceivePayouts: boolean;
     reasons: string[];
     routeReasons: string[];
@@ -379,6 +390,7 @@ export const supabaseClient = {
     const payload = data as {
       sellerId?: string;
       maskedDestination?: string;
+      relinked?: boolean;
       canReceivePayouts?: boolean;
       reasons?: string[];
       routeReasons?: string[];
@@ -390,6 +402,7 @@ export const supabaseClient = {
     return {
       sellerId: payload.sellerId,
       maskedDestination: payload.maskedDestination ?? '',
+      relinked: payload.relinked ?? false,
       canReceivePayouts: payload.canReceivePayouts ?? false,
       reasons: payload.reasons ?? [],
       routeReasons: payload.routeReasons ?? [],
@@ -472,6 +485,135 @@ export const supabaseClient = {
     const payload = data as { dealStatus?: string; side?: string; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return { dealStatus: payload.dealStatus ?? 'unknown', side: payload.side ?? '' };
+  },
+
+  /**
+   * This host's PayHold seller record — the thing that decides whether they can
+   * be paid at all. Separate from `payholdBalance` because "can PayHold reach
+   * me" and "how much is in there" change on different clocks, and the first is
+   * what a host needs when a payout has not arrived.
+   *
+   * `hostId` is admin-only and refused for anyone else, so a host can never
+   * read where another host gets paid.
+   */
+  async payholdSeller(hostId?: string): Promise<PayholdSeller> {
+    const { data, error } = await getSupabase().functions.invoke(
+      hostId ? `payhold-seller?hostId=${encodeURIComponent(hostId)}` : 'payhold-seller',
+      { method: 'GET' },
+    );
+    if (error) throw new Error(error.message);
+    const payload = data as PayholdSeller & { error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return {
+      sellerId: payload.sellerId ?? null,
+      registered: payload.registered ?? false,
+      host: payload.host ?? null,
+      payout: payload.payout ?? null,
+      canReceivePayouts: payload.canReceivePayouts ?? false,
+      kycStatus: payload.kycStatus ?? 'unknown',
+      reasons: payload.reasons ?? [],
+      routeReasons: payload.routeReasons ?? [],
+      // Undefined → null, deliberately. See the note on the type: an empty
+      // array means "nowhere to be paid" and must not be faked here.
+      destinations: payload.destinations ?? null,
+    };
+  },
+
+  /** Where this host's money can be sent, on its own — the narrow read. */
+  async payholdDestinations(): Promise<PayoutDestination[]> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-seller/destinations', {
+      method: 'GET',
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as { destinations?: PayoutDestination[]; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return payload.destinations ?? [];
+  },
+
+  /** Every dispute this person is party to, both raised and received. */
+  async payholdDisputes(): Promise<PayholdDispute[]> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-dispute', {
+      method: 'GET',
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as { disputes?: PayholdDispute[]; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return payload.disputes ?? [];
+  },
+
+  /**
+   * Raise a dispute — in PayHold first, then here.
+   *
+   * This is the call that FREEZES the payout on the booking's deal. A dispute
+   * that only lived in AutoHire watched the host's money clear and go out.
+   *
+   * Which side you are is decided from your session server-side. `amount` is in
+   * whole units of the booking's charge currency; omit it to dispute the trip
+   * in full.
+   */
+  async openPayholdDispute(input: {
+    bookingId: string;
+    reason: string;
+    reasonCode?: string;
+    amount?: number;
+  }): Promise<{
+    disputeId: string;
+    payholdDisputeId: string | null;
+    /** Whether a payout is actually being held. False = a complaint, not a hold. */
+    frozen: boolean;
+    side: string;
+  }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-dispute', {
+      body: input,
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as {
+      disputeId?: string;
+      payholdDisputeId?: string | null;
+      frozen?: boolean;
+      side?: string;
+      error?: string;
+    };
+    if (payload?.error || !payload?.disputeId) {
+      throw new Error(payload?.error ?? 'Could not open the dispute.');
+    }
+    return {
+      disputeId: payload.disputeId,
+      payholdDisputeId: payload.payholdDisputeId ?? null,
+      frozen: payload.frozen ?? false,
+      side: payload.side ?? '',
+    };
+  },
+
+  /**
+   * Send a renter's money back, in full or in part. Hosts may refund their own
+   * bookings; admins may refund any. A renter cannot refund themselves — they
+   * open a dispute, which freezes the money for a person to decide.
+   *
+   * The booking is NOT marked refunded by this call. PayHold answers when it
+   * accepts the refund; `refund.succeeded` is what says the money landed.
+   */
+  async payholdRefund(input: {
+    bookingId: string;
+    reason: string;
+    amount?: number;
+  }): Promise<PayholdRefund> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-refund', {
+      body: input,
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as PayholdRefund & { error?: string };
+    if (payload?.error || !payload?.dealId) {
+      throw new Error(payload?.error ?? 'Could not send the refund.');
+    }
+    return {
+      dealId: payload.dealId,
+      dealStatus: payload.dealStatus ?? 'unknown',
+      partial: payload.partial ?? false,
+      amount: payload.amount ?? null,
+      currency: payload.currency ?? 'RWF',
+      message: payload.message ?? 'Refund sent.',
+    };
   },
 
   /**

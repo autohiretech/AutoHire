@@ -25,3 +25,9 @@ services:
         sync: false
       - key: VITE_STRIPE_PUBLISHABLE_KEY
         sync: false
+      # Set to "true" to put payouts on PayHold. Vite inlines it at BUILD time,
+      # so changing it in the dashboard does nothing until the site is redeployed
+      # — and every host without a payhold_seller_id is unbookable from that
+      # moment until they reconnect. See docs/payhold.md §8.
+      - key: VITE_PAYMENTS_PAYHOLD
+        sync: false

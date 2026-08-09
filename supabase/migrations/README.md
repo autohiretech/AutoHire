@@ -32,6 +32,7 @@ npx supabase db push --linked
 | `…044_watchlist_renters_only` | Watchlist insert policy |
 | `…045_external_payment_provider` | Widens the provider checks to `'external'` |
 | `…047_payhold` | `payhold_deal_id`, `payhold_seller_id`, `payhold_dispute_id`; widens provider checks to `'payhold'` |
+| `…048_payhold_disputes_and_refunds` | `partially_refunded` payment status; unique index on `disputes.payhold_dispute_id` |
 
 040 goes first because 045 and 047 both widen check constraints on the columns
 it creates — run either before it and they fail on a column that does not exist.

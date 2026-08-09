@@ -592,6 +592,64 @@ export interface HostEarnings {
   hasMore: boolean;
 }
 
+/**
+ * A host as PayHold knows them. A PayHold "seller" IS an AutoHire host — the
+ * record that decides whether they can be paid at all.
+ *
+ * Money is not here on purpose: `PayholdWallet` answers "how much", this
+ * answers "who am I to PayHold and can it reach me", and the two change on
+ * completely different clocks.
+ */
+export interface PayholdSeller {
+  /** Null until the host registers a payout destination. */
+  sellerId: string | null;
+  registered: boolean;
+  host: { id: ID; name: string | null; country: string | null } | null;
+  /** What AutoHire wrote down: a mask and a label, never the destination. */
+  payout: {
+    method: PayoutMethodType | null;
+    maskedDestination: string | null;
+    label: string | null;
+    status: string | null;
+  } | null;
+  canReceivePayouts: boolean;
+  kycStatus: string;
+  /** What this host must go and do. */
+  reasons: string[];
+  /** What PayHold cannot reach — not the host's fault and not their fix. */
+  routeReasons: string[];
+  /** Null when PayHold was unreachable. `[]` means nowhere to be paid, which
+   *  is a much more alarming thing to show than "we could not check". */
+  destinations: PayoutDestination[] | null;
+}
+
+/**
+ * An AutoHire dispute and the PayHold case behind it.
+ *
+ * `payholdDisputeId` is the load-bearing field: a case in PayHold's Resolution
+ * Center FREEZES the payout on that deal. Null means this dispute is local
+ * only and is holding nothing back — an older one, or one raised before PayHold
+ * was switched on.
+ */
+export interface PayholdDispute extends Dispute {
+  payholdDisputeId: string | null;
+}
+
+/**
+ * What a refund request came back with. Note `dealStatus`, not "refunded":
+ * PayHold answers when it ACCEPTS the refund, and the money landing is a later
+ * event that arrives by webhook.
+ */
+export interface PayholdRefund {
+  dealId: string;
+  dealStatus: string;
+  partial: boolean;
+  /** Whole units of `currency`, or null for a full refund. */
+  amount: number | null;
+  currency: string;
+  message: string;
+}
+
 /** Platform-wide figures for the admin reporting view. */
 export interface AdminStats {
   grossRwf: number;

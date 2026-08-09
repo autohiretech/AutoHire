@@ -102,15 +102,33 @@ export function PayoutSetupPage() {
       // not. Telling them now beats a payout that sits stuck weeks later with
       // a renter's money already taken.
       if (result && typeof result === 'object' && 'canReceivePayouts' in result) {
-        const r = result as { canReceivePayouts: boolean; reasons: string[]; routeReasons: string[] };
+        const r = result as {
+          relinked?: boolean;
+          maskedDestination: string;
+          canReceivePayouts: boolean;
+          reasons: string[];
+          routeReasons: string[];
+        };
+
+        // A payout account already existed for this host and we reconnected it.
+        // Say plainly that the number they just typed was not used — a second
+        // registration would orphan the first account, and money may already be
+        // owed to it, so changing a destination goes through support for now.
+        const lead = r.relinked
+          ? `Reconnected your existing payout account (${r.maskedDestination}) — the number you entered was not saved.`
+          : 'Payout method saved';
+
         if (r.canReceivePayouts) {
-          toast.success('Payout method saved — you can receive payouts.');
+          toast.success(
+            r.relinked ? `${lead} You can receive payouts.` : `${lead} — you can receive payouts.`,
+          );
         } else {
           const blockers = [...r.reasons, ...r.routeReasons];
+          const stem = r.relinked ? lead : 'Saved.';
           toast.success(
             blockers.length
-              ? `Saved. Before you can be paid: ${blockers.join('; ')}`
-              : 'Saved. Payouts unlock once your account finishes verification.',
+              ? `${stem} Before you can be paid: ${blockers.join('; ')}`
+              : `${stem} Payouts unlock once your account finishes verification.`,
           );
         }
         return;
