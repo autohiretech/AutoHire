@@ -24,6 +24,7 @@ import {
   paymentMethodsFor,
 } from '@/lib/payments';
 import { PayholdCheckout } from '@/components/PayholdCheckout';
+import { MethodMarks } from '@/components/PaymentBrands';
 import { Button, Card, CardBody, Spinner } from '@/components/ui';
 
 const METHOD_ICON: Record<PaymentMethodType, typeof Smartphone> = {
@@ -216,10 +217,26 @@ export function PaymentPage() {
                   <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                     <Icon size={18} />
                   </span>
-                  <span className="min-w-0">
-                    <span className="block font-semibold text-ink-900">{meta.label}</span>
-                    <span className="block text-xs leading-relaxed text-ink-500">{meta.blurb}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                      <span className="font-semibold text-ink-900">{meta.label}</span>
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <MethodMarks method={m} />
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-relaxed text-ink-500">
+                      {meta.blurb}
+                    </span>
                   </span>
+                  {/* A radio would say the same thing, but this row is the
+                      control — a real one beside it invites a second click. */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'mt-1 h-4 w-4 shrink-0 rounded-full border-2 transition-colors',
+                      chosen ? 'border-brand-600 bg-brand-600 ring-2 ring-white' : 'border-ink-300',
+                    )}
+                  />
                 </button>
               );
             })}

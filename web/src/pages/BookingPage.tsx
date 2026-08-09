@@ -18,12 +18,14 @@ import {
   PAYMENTS_LIVE,
   PAYMENTS_PAYHOLD,
   isAfricanMarket,
+  paymentMethodsFor,
 } from '@/lib/payments';
 import {
   AirtelMark,
   AmexMark,
   DiscoverMark,
   MastercardMark,
+  MethodMarks,
   MomoMark,
   StripeWordmark,
   VisaMark,
@@ -339,8 +341,11 @@ export function BookingPage() {
               </div>
               )}
 
-              {/* Provider attribution — Flutterwave for African markets, Stripe otherwise. */}
-              {!africanLive && !PAYMENTS_EXTERNAL && (
+              {/* Provider attribution — Flutterwave for African markets, Stripe
+                  otherwise. Not on the PayHold rail: it names card, MTN and
+                  Airtel whatever the renter's country is, and the marks above
+                  now say the same thing truthfully. */}
+              {!africanLive && !PAYMENTS_EXTERNAL && !PAYMENTS_PAYHOLD && (
                 isAfrican ? (
                   <p className="mt-4 text-center text-xs text-ink-400">
                     Payments secured — card, MTN MoMo &amp; Airtel Money.
@@ -681,6 +686,20 @@ function PayholdPay({
   disabled: boolean;
 }) {
   const navigate = useNavigate();
+  const { data: me } = useCurrentUser();
+  const payerCountry = me?.country ?? '';
+
+  const { data: countries } = useQuery({
+    queryKey: ['payholdPaymentCountries'],
+    queryFn: () => client.payholdPayoutCountries(),
+    enabled: PAYMENTS_PAYHOLD && !!payerCountry,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+
+  const known = countries?.find((c) => c.code === payerCountry) ?? null;
+  const methods = paymentMethodsFor(payerCountry, PAYMENTS_PAYHOLD ? known : undefined);
+
   return (
     <div>
       <Button
@@ -690,6 +709,19 @@ function PayholdPay({
       >
         Choose how to pay · {label}
       </Button>
+
+      {/* What this renter can actually use, before they commit to the step.
+          Showing the marks here rather than the words "card, MTN MoMo & Airtel
+          Money" means a renter in a market that has none of those is not
+          promised them on the way in. */}
+      {methods.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          {methods.map((m) => (
+            <MethodMarks key={m} method={m} />
+          ))}
+        </div>
+      )}
+
       <p className="mt-3 text-center text-xs text-ink-500">
         Your money is held until the trip is done — the host is paid after you both confirm the
         car came back.
