@@ -1,6 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
   Building2,
@@ -22,6 +22,7 @@ import { COUNTRIES } from '@/lib/country';
 import { normalizePhone } from '@/lib/phone';
 import {
   PAYMENT_METHOD_META,
+  PAYMENTS_PAYHOLD,
   maskDestination,
   paymentLabel,
   paymentMethodsFor,
@@ -411,7 +412,18 @@ function CountryField({ profile }: { profile: UserProfile }) {
 function PaymentMethodCard({ profile }: { profile: UserProfile }) {
   const queryClient = useQueryClient();
   const country = profile.country ?? '';
-  const methods = paymentMethodsFor(country);
+
+  // PayHold's payment options for this country — renters see what they can actually pay with.
+  const { data: paymentCountries } = useQuery({
+    queryKey: ['payholdPaymentCountries'],
+    queryFn: () => client.payholdPayoutCountries(),
+    enabled: PAYMENTS_PAYHOLD && !!country,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+
+  const known = paymentCountries?.find((c) => c.code === country) ?? null;
+  const methods = paymentMethodsFor(country, PAYMENTS_PAYHOLD ? known : undefined);
 
   const [selected, setSelected] = useState<PaymentMethodType | null>(null);
   const [dest, setDest] = useState('');

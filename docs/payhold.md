@@ -81,9 +81,11 @@ What "Send it now" actually does, from `request_withdrawal`:
 | [`payhold-earnings`](../supabase/functions/payhold-earnings/index.ts) | Per-trip money, its stage, and the host's payout destinations. |
 | [`payhold-confirm`](../supabase/functions/payhold-confirm/index.ts) | One side confirms a finished trip. |
 | [`payhold-seller`](../supabase/functions/payhold-seller/index.ts) | The host's seller record: id, KYC, capabilities, destinations. |
+| [`payhold-payment-options`](../supabase/functions/payhold-payment-options/index.ts) | Which countries PayHold can collect in and pay out to. Drives the payout screen. |
 | [`payhold-dispute`](../supabase/functions/payhold-dispute/index.ts) | Raise a case in PayHold — this is what freezes the payout. |
 | [`payhold-refund`](../supabase/functions/payhold-refund/index.ts) | Send the renter's money back, in full or in part. |
 | [`EarningsPage`](../web/src/pages/EarningsPage.tsx) | `/earnings` — totals, trip-by-trip stages, fee breakdown, withdraw. |
+| [`seed-host-payout-methods.mjs`](../scripts/seed-host-payout-methods.mjs) | Gives the demo hosts a varied payout method and a real PayHold seller (step 9). |
 | [migration 047](../supabase/migration-047-payhold.sql) | `payhold_deal_id`, `payhold_seller_id`, `payhold_dispute_id`. |
 | [migration 048](../supabase/migration-048-payhold-disputes-and-refunds.sql) | `partially_refunded`; unique index on `payhold_dispute_id`. |
 
@@ -103,6 +105,7 @@ What "Send it now" actually does, from `request_withdrawal`:
 | `GET /sellers/:id/capabilities` | `sellerCapabilities` | `payhold-seller`, `payhold-register-seller`, `payhold-balance` |
 | `GET /sellers/:id/balance` | `sellerBalance` | `payhold-balance` |
 | `GET /sellers/:id/destinations` | `sellerDestinations` | `payhold-seller`, `payhold-earnings` |
+| `GET /payment-options` | `paymentOptions` | `payhold-payment-options` — tenant-wide, cached |
 | `POST /sellers/:id/withdraw` | `withdraw` | `payhold-balance` |
 | `GET /payouts` | `listPayouts` | `payhold-earnings` — tenant-wide, filtered to the seller locally |
 | `POST /disputes` | `openDispute` | `payhold-dispute` |
@@ -120,6 +123,7 @@ judgement made in their dashboard. Resolutions come back by webhook.
 | `payhold-seller` | GET | host (admin: `?hostId=`) | Their seller record, capabilities and destinations |
 | `payhold-seller/capabilities` | GET | host | Just the can-I-be-paid answer |
 | `payhold-seller/destinations` | GET | host | Just where the money can go |
+| `payhold-payment-options` | GET | any signed-in user | Which countries can collect / be paid out |
 | `payhold-balance` | GET | host | Wallet totals, read live |
 | `payhold-balance` | POST | host | Withdraw — an expedite, not the route |
 | `payhold-earnings` | GET | host | Every trip's money and the stage it's at |
@@ -195,7 +199,9 @@ anything, and re-links a seller it finds instead of creating another. That is
 the only repair available, and it repairs a *lost link*, never a missing seller:
 tokenization needs the raw number, which exists only while the host is typing
 it. A host who never registered has to be asked again — the ReconnectPayouts
-banner — and no bulk import can ever exist, on either side.
+banner — and no bulk import of *real* hosts can ever exist, on either side. The
+demo hosts are the one exception, and only because their numbers are invented
+rather than remembered — see step 9.
 
 A re-link deliberately does **not** save the destination just typed. The
 response carries `relinked: true` and the screen says so, because changing where
@@ -230,7 +236,11 @@ loses the event for good.
 Everything below is one-time. Do it in this order — later steps fail without
 earlier ones.
 
-**Where this stands (9 Aug 2026): steps 1–8 are done. Step 9 has not started.**
+**Where this stands (9 Aug 2026): steps 1–8 are done. Step 9 has begun — three
+sellers exist** (one real host, plus the two Rwandan demo hosts seeded by
+`scripts/seed-host-payout-methods.mjs`). The first real calls to PayHold's API
+have now been made, and they found three things — see **What the first live run
+found**, below. The rest of this paragraph still holds:
 The three `PAYHOLD_*` secrets are set on `gsnoggfofbmzamxxyazc`, the functions
 are deployed, and the live site (<https://autohiretech.pages.dev>, Cloudflare
 Pages) is built with `VITE_PAYMENTS_PAYHOLD=true` — its bundle calls
@@ -424,6 +434,46 @@ unregistered hosts are unbookable. Shorten the window; you cannot remove it.
 Watch it close: every host who reconnects appears in PayHold's dashboard →
 **Sellers**, and in AutoHire as a non-null `profiles.payhold_seller_id`.
 
+#### The demo hosts are the exception
+
+The `demo-host-*` profiles seeded by migrations 024/026/027 have no login, so
+nobody can ever type a destination for them — and without a seller their cars
+are unbookable, which takes most of the catalogue out of a demo.
+
+They are the one case a script can do the work, and only because the paragraph
+above does not apply to them: there is no real number being remembered, so
+nothing is lost by inventing one.
+
+```bash
+SUPABASE_URL=https://gsnoggfofbmzamxxyazc.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=… \
+PAYHOLD_BASE_URL=https://mwnbjjlilqrwdmwutbxr.supabase.co/functions/v1 \
+PAYHOLD_API_KEY=… \
+node scripts/seed-host-payout-methods.mjs --dry-run
+```
+
+Drop `--dry-run` to write. It gives each demo host a method their market
+actually offers (`payoutMethodsFor` — MoMo only in Flutterwave markets, card
+only outside them), rotating so no two hosts in a market match: Rwanda gets
+MoMo + bank, Dubai/Shanghai/Bay Area get bank + card, across all three rails.
+Card numbers rotate through the Stripe test PANs so the masks differ too.
+
+It is not a migration, because `POST /v1/sellers` is a network call to another
+system that mints permanent records and SQL cannot make one. A migration that
+filled the payout columns alone would leave `payhold_seller_id` null and the
+cars still unbookable — the columns are not what PayHold checks.
+
+Three guards, because **PayHold has no delete-seller endpoint** and everything
+this creates is permanent in the tenant: it only touches ids matching
+`--prefix` (default `demo-host-`), skips any host that already has a seller,
+and otherwise asks by `external_user_id` first so a seller PayHold already has
+is re-linked rather than duplicated. Re-running converges instead of
+accumulating sellers.
+
+**Real hosts are never seeded.** A fabricated destination on a real profile
+would show them "Active · Card ••••4242" for an account that cannot receive
+money — the reconnect banner exists precisely so they enter their own.
+
 ### 10. Prove it end to end in the app
 
 Book a car whose host has reconnected, pay on the hosted page, and confirm a
@@ -462,12 +512,114 @@ rail at checkout, so both paths exist while the switch is being tested. Delete
 them once PayHold has carried real bookings — not before, because a booking made
 on the old rail still needs the old capture path to finish.
 
+## What the first live run found
+
+Seeding the demo hosts (step 9) made AutoHire's first real calls to PayHold.
+Two of eight hosts registered; six were refused, and the refusals are AutoHire
+bugs rather than seeding accidents. **Each of these breaks a real host at
+`/payouts/setup` exactly as it broke the demo one.**
+
+**1. `stripe_connect` does not take a number — it takes an `acct_…`.**
+
+> A Stripe payout destination is a connected account id (acct_…). Raw bank
+> details are given to Stripe during Connect onboarding, never to PayHold.
+
+`payoutProviderFor` routes **card anywhere**, and **bank outside the twelve
+African countries**, to `stripe_connect`. Both then send the raw number the host
+typed, and PayHold refuses it with a 422.
+
+This is not specific to `stripe_connect`. `paypal`, `venmo` and `cash_app_pay`
+were each tried against a live UAE and US seller and returned the **identical**
+error — PayHold settles all of them through Stripe, so every rail it exposes
+outside the Flutterwave corridors wants an `acct_…`. There is no rail anywhere
+in `PayoutProvider` that accepts a raw number or address outside Africa.
+
+Nor can the id be invented. A syntactically valid `acct_…` was tried and Stripe
+itself refused it through PayHold:
+
+> Stripe: The provided key 'sk_test_…' does not have access to account
+> 'acct_163vm7kxurp6t3nkf' (or that account does not exist).
+
+PayHold passes the id straight to Stripe, so the account has to genuinely exist
+under PayHold's platform. (That message also confirms PayHold's Stripe is in
+**test** mode, which is the expected state per step 4.)
+
+So today **no host outside the Flutterwave corridors can register a payout
+method at all**, by any route — not a raw number, not a wallet address, not a
+placeholder account. The screen offers them bank and card, PayHold accepts
+neither, and there is nothing to fall back to. Fixing it means building Stripe
+Connect onboarding — AutoHire sends the host to Stripe, Stripe returns an
+`acct_…`, and *that* is what `destination` carries — which exists on neither
+side. Until it does, `payoutMethodsFor` offering `bank` or `card` outside Africa
+is offering a dead end, and those hosts' cars are unbookable.
+
+**2. China cannot be paid at all.**
+
+> PayHold cannot send money to China yet. Neither provider is licensed for that
+> corridor. Buyers there can still pay — collection works everywhere — but a
+> seller needs an account somewhere we can reach.
+
+Collection works; payout does not. `alipay` and `wechat_pay` — the two rails
+that exist precisely for that market — return the same refusal, so this is a
+**corridor** limit and not a rail one: there is nothing to pick instead. Every
+CN listing is therefore unbookable under PayHold no matter what AutoHire builds,
+because the limit is licensing on PayHold's side. The 150 demo cars in Shanghai
+are catalogue only until that changes.
+
+**3. `GET /sellers?external_user_id=` is not filtered server-side.**
+
+The deployed PayHold ignores the parameter and returns the tenant's whole list —
+a handle matching nothing still comes back with every seller. `docs` above says
+PayHold "filters this server-side"; it does not, yet.
+
+`findSellerByExternalUserId` already checks the handle on our side rather than
+trusting row zero, so nothing links to the wrong seller — that guard was written
+for exactly this and it earned itself. But the **repair it provides is dead**: a
+host whose `payhold_seller_id` was lost cannot be re-linked, because the lookup
+cannot find their seller. Re-registering them would create a duplicate and
+orphan the first, which is unrecoverable — there is no delete endpoint. Treat a
+lost link as a support case until PayHold deploys the filter.
+
+## Which payout methods a host is offered
+
+`payoutMethodsFor` used to answer this from `FLUTTERWAVE_COUNTRIES` — eight
+country codes in a constant — and it was wrong in both directions. It offered
+Bank and Card to every host outside those eight, all of which route to
+`stripe_connect` and get refused; and it withheld payouts from the ~60 countries
+beyond those eight that PayHold does reach.
+
+The list is now PayHold's. `payhold-payment-options` proxies its
+`payment-options` table (198 countries: `can_collect`, `can_payout`,
+`restricted`, `closed_reason`), and `payoutAvailability` in `payments.ts` turns
+one country into one of four states:
+
+| State | When | What the host sees |
+|---|---|---|
+| `ok` | Payable **and** a Flutterwave corridor | Mobile Money / Bank, as before |
+| `unsupported` | Payable, but only via Stripe Connect | "needs a step we haven't finished building" |
+| `unavailable` | `can_payout: false` — China and ~122 others | "we can't send payouts there yet"; renters can still book |
+| `restricted` | Sanctioned — BY, RU, IR, SY, KP, CU | "money cannot move in either direction" |
+
+Only `ok` shows the method chooser. The other three explain themselves and say
+plainly that listings cannot take bookings until it is resolved — which was
+already true, and previously happened silently after a 422.
+
+**`unsupported` and `unavailable` are deliberately different.** The first is
+work on AutoHire's side that a host can do nothing about; the second is a
+corridor PayHold may open later. Collapsing them would tell a host in Dubai to
+wait for something that is not coming, and a host in Shanghai to try something
+that cannot work.
+
+If the lookup fails or has not loaded, `payoutAvailability` falls back to the
+old constant rather than blocking. Being wrong the way it was before beats a
+screen a payable host cannot use.
+
 ## Not done
 
-- **Never run against PayHold's live API.** The shapes here were read from
-  PayHold's own source rather than guessed, and the webhook signature is
-  verified interoperable against its actual signer — but no call has been made
-  to a real endpoint. Expect the first end-to-end run to find something.
+- **Live API: barely exercised.** Six `POST /sellers` calls, two of which
+  succeeded, plus reads. Deals, webhooks, confirmations, payouts, disputes and
+  refunds have still never run against a real endpoint. Expect each first run to
+  find something, the way seller registration did.
 - **Hosts registered before PayHold must re-enter their payout destination.**
   AutoHire only ever stored a mask, and tokenizing `••••4242` would produce a
   destination that cannot receive money. `payhold-create-deal` refuses to open a
@@ -485,8 +637,9 @@ on the old rail still needs the old capture path to finish.
 - **Refunds have an endpoint, not a screen.** `payhold-refund` is wired for
   hosts (own bookings) and admins, full or partial. Nothing in the UI calls it,
   so a refund is still a curl or a dashboard action.
-- **`payment-options` is not read.** The renter sees whatever PayHold's hosted
-  page offers rather than a preview in AutoHire.
+- **`payment-options` is read for payouts, not for collection.** The payout
+  screen now asks it which countries can be paid (see below); the renter still
+  sees whatever PayHold's hosted page offers rather than a preview in AutoHire.
 - **Earnings shows the 20 most recent trips.** `payhold-earnings` accepts an
   `offset` and reports `hasMore`, but the page has no "load more" button, so
   older trips are reachable only through the API. Each trip is a

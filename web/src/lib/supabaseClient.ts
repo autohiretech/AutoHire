@@ -42,6 +42,7 @@ import {
 } from '@/lib/types';
 import { getSupabase } from '@/lib/supabase';
 import { getCurrentUserId } from '@/lib/identity';
+import type { PayoutCountry } from '@/lib/payments';
 
 /**
  * The Supabase-backed data client — the single implementation the app runs on.
@@ -517,6 +518,24 @@ export const supabaseClient = {
       // array means "nowhere to be paid" and must not be faked here.
       destinations: payload.destinations ?? null,
     };
+  },
+
+  /**
+   * Which countries PayHold can collect in and pay out to.
+   *
+   * The payout screen asks this before offering anything, because the answer
+   * used to be a hardcoded eight-country list that promised Bank and Card to
+   * markets PayHold refuses. Tenant-wide and slow-moving, so it is cached hard
+   * on both sides.
+   */
+  async payholdPayoutCountries(): Promise<PayoutCountry[]> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-payment-options', {
+      method: 'GET',
+    });
+    if (error) throw new Error(error.message);
+    const payload = data as { countries?: PayoutCountry[]; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return payload.countries ?? [];
   },
 
   /** Where this host's money can be sent, on its own — the narrow read. */

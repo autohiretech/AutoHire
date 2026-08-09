@@ -72,6 +72,63 @@ export function payoutMethodsFor(countryCode: string): PayoutMethodType[] {
   return FLUTTERWAVE_COUNTRIES.has(countryCode) ? ['momo', 'bank'] : ['bank', 'card'];
 }
 
+/** One country's capabilities as PayHold reports them (`payhold-payment-options`). */
+export interface PayoutCountry {
+  code: string;
+  name: string;
+  flag: string;
+  currency: string;
+  can_collect: boolean;
+  can_payout: boolean;
+  restricted: boolean;
+  closed_reason: string | null;
+}
+
+/**
+ * What a host in this country can actually do — the answer the setup screen
+ * needs, rather than a method list that may lead nowhere.
+ *
+ * `payoutMethodsFor` alone was a promise AutoHire could not keep. It returned
+ * `['bank', 'card']` for every country outside the Flutterwave eight, but both
+ * of those route to `stripe_connect`, and PayHold refuses a raw number there —
+ * a Stripe destination is an `acct_…` minted by Connect onboarding, which
+ * AutoHire has not built. Hosts in those markets could pick a method, submit,
+ * and only then discover there was no way through.
+ *
+ * So this returns a state, not a list, and the states that are not `ok` each
+ * carry the reason. `unavailable` and `unsupported` are deliberately different:
+ * the first is a corridor PayHold may open later, the second is work on our
+ * side that a host can do nothing about, and telling them apart is the
+ * difference between "not yet" and "not you".
+ */
+export type PayoutAvailability =
+  | { state: 'ok'; methods: PayoutMethodType[] }
+  /** PayHold cannot pay this country at all — China, and ~122 others. */
+  | { state: 'unavailable'; reason: string | null }
+  /** Sanctioned. Neither direction, and not a corridor that will open. */
+  | { state: 'restricted' }
+  /** PayHold reaches it, but only via Stripe Connect, which AutoHire lacks. */
+  | { state: 'unsupported' };
+
+export function payoutAvailability(
+  countryCode: string,
+  known: PayoutCountry | null | undefined,
+): PayoutAvailability {
+  // No answer from PayHold — a cold cache, or the function is not deployed.
+  // Fall back to the old list rather than blocking a host who may be perfectly
+  // payable; being wrong the way we were before is better than a dead screen.
+  if (!known) return { state: 'ok', methods: payoutMethodsFor(countryCode) };
+
+  if (known.restricted) return { state: 'restricted' };
+  if (!known.can_payout) return { state: 'unavailable', reason: known.closed_reason };
+
+  // Reachable, and reachable with a number the host can type. These are the
+  // corridors Flutterwave settles, and the only ones registration works in.
+  if (FLUTTERWAVE_COUNTRIES.has(countryCode)) return { state: 'ok', methods: ['momo', 'bank'] };
+
+  return { state: 'unsupported' };
+}
+
 export const PAYOUT_METHOD_META: Record<
   PayoutMethodType,
   { label: string; blurb: string; field: string; placeholder: string }
@@ -99,8 +156,13 @@ export const PAYOUT_METHOD_META: Record<
 /**
  * The payment methods a renter can save in a given market — the mirror of
  * `payoutMethodsFor`. Card is universal; mobile money only where it settles.
+ *
+ * This is now driven by PayHold's `payment-options` / `can_collect`, not by a
+ * constant. The fallback below only runs if PayHold is unreachable, in which
+ * case we guess rather than block the booking flow.
  */
-export function paymentMethodsFor(countryCode: string): PaymentMethodType[] {
+export function paymentMethodsFor(countryCode: string, known?: PayoutCountry | null): PaymentMethodType[] {
+  if (known && !known.can_collect) return [];
   return isAfricanMarket(countryCode) ? ['card', 'momo'] : ['card'];
 }
 

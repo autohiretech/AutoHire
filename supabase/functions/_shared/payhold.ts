@@ -497,6 +497,51 @@ export function withdraw(
 }
 
 // ---------------------------------------------------------------------------
+// Payment options — PayHold's routing table
+// ---------------------------------------------------------------------------
+
+/**
+ * What PayHold can actually do in one country.
+ *
+ * `can_collect` and `can_payout` are separate because they genuinely are: 123 of
+ * the 198 countries can be charged but not paid. China is the one that bit us —
+ * a renter in Shanghai can pay for a trip, and a host in Shanghai can never
+ * receive one, so offering them a payout method is offering a dead end.
+ */
+export interface PayoutCountry {
+  code: string;
+  name: string;
+  flag: string;
+  region: string;
+  currency: string;
+  can_collect: boolean;
+  can_payout: boolean;
+  /** Sanctioned — neither direction, and not a corridor that will open. */
+  restricted: boolean;
+  closed_reason: string | null;
+}
+
+export interface PaymentOptions {
+  countries: PayoutCountry[];
+  currencies: string[];
+  /** False while PayHold's providers are still in test mode. */
+  rails_verified: boolean;
+}
+
+/**
+ * PayHold's own answer to "where can money go".
+ *
+ * AutoHire used to answer this from `FLUTTERWAVE_COUNTRIES`, an eight-entry
+ * hardcoded list, which was wrong in both directions: it offered bank and card
+ * to hosts in countries PayHold cannot pay at all, and it withheld payouts from
+ * the 60-odd countries beyond those eight that PayHold does reach. This is the
+ * authority, and it is tenant-wide rather than per-seller, so it caches well.
+ */
+export function paymentOptions(): Promise<PaymentOptions> {
+  return call('/payment-options', { method: 'GET' });
+}
+
+// ---------------------------------------------------------------------------
 // Disputes
 // ---------------------------------------------------------------------------
 

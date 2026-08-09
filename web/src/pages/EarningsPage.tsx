@@ -174,6 +174,37 @@ export function EarningsPage() {
       (!d.securityHoldUntil || new Date(d.securityHoldUntil) <= new Date()),
   );
 
+  /**
+   * The totals always render, at zero if that is the truth.
+   *
+   * PayHold returns no balance rows at all for a seller who has not been paid
+   * yet — there is no ledger entry to sum — so `balances.map` drew nothing and a
+   * new host saw a page of warnings with no figures on it. That reads as broken
+   * rather than as empty. A zero in "Available" is a real answer to "how much do
+   * I have", and it also shows the host what this page will look like once money
+   * starts moving.
+   *
+   * The currency comes from where they'd actually be paid, not from a guess: the
+   * withdrawable row first, then their payout destination. With neither there is
+   * nothing truthful to label a zero with, so the card stays hidden.
+   */
+  const fallbackCurrency = withdrawable[0]?.currency ?? destinations[0]?.payoutCurrency ?? null;
+  const shownBalances =
+    balances.length > 0
+      ? balances
+      : fallbackCurrency
+        ? [
+            {
+              currency: fallbackCurrency,
+              held: 0,
+              pendingClearance: 0,
+              available: 0,
+              reserved: 0,
+              paidOut: 0,
+            },
+          ]
+        : [];
+
   return (
     <section className="mx-auto max-w-3xl px-4 py-8">
       <button
@@ -277,8 +308,76 @@ export function EarningsPage() {
         </Card>
       )}
 
+      {/* --- Where you get paid ---------------------------------------------
+          Always on the page once a seller exists, not folded into the withdraw
+          card. That card only renders when PayHold returns a withdrawable row,
+          so a host with nothing cleared yet — every new host — previously had no
+          way to see or reach their payout method from here at all. */}
+      {w?.sellerId && !notConfigured && (
+        <Card className="mt-6">
+          <CardHeader className="flex items-center justify-between">
+            <h2 className="font-semibold text-ink-900">Where you get paid</h2>
+            {/* Only offered when there is genuinely something to do. A host who
+                already has a destination cannot change it: PayHold has no
+                delete-seller endpoint, and adding one is a `seller_destinations`
+                row with its own verification and security hold (§5.1) that is
+                not built on either side. A "Change" button here would open a
+                screen that refuses with `seller_exists`. */}
+            {destinations.length === 0 && (
+              <Button variant="outline" size="sm" onClick={() => navigate('/payouts/setup')}>
+                <Banknote size={14} /> Add a method
+              </Button>
+            )}
+          </CardHeader>
+          <CardBody className="space-y-2">
+            {destinations.length === 0 && (
+              <p className="text-sm text-ink-600">
+                {me?.payoutLabel
+                  ? `${me.payoutLabel} — PayHold is still setting this up, so it can't receive money yet.`
+                  : "You don't have a payout method yet. Money from your trips will wait here until you add one."}
+              </p>
+            )}
+            {destinations.map((d) => {
+              const ready = usable.includes(d);
+              return (
+                <div
+                  key={d.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-100 px-3 py-2"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-ink-900">
+                      {d.label ?? d.maskedDestination}
+                      {d.isPrimary && (
+                        <span className="ml-2 text-xs font-normal text-ink-500">default</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-ink-500">
+                      {d.maskedDestination} · {d.payoutCurrency}
+                    </p>
+                  </div>
+                  <Badge tone={ready ? 'success' : 'neutral'}>
+                    {ready
+                      ? 'Ready'
+                      : !d.verifiedAt
+                        ? 'Being verified'
+                        : `On hold until ${formatDate(d.securityHoldUntil!)}`}
+                  </Badge>
+                </div>
+              );
+            })}
+            {destinations.length > 0 && (
+              <p className="pt-1 text-xs text-ink-500">
+                {usable.length > 1
+                  ? 'Pick which of these a payout goes to when you send it below.'
+                  : 'To change where you’re paid, contact support — money may already be owed to this account.'}
+              </p>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
       {/* --- Totals --------------------------------------------------------- */}
-      {balances.map((b) => (
+      {shownBalances.map((b) => (
         <Card key={b.currency} className="mt-6">
           <CardHeader className="flex items-center justify-between">
             <h2 className="font-semibold text-ink-900">Your money</h2>
@@ -348,8 +447,10 @@ export function EarningsPage() {
               </Button>
             </div>
 
-            {/* Which account. Shown only when there's a real choice — a single
-                destination is information, not a decision. */}
+            {/* Which account. The chips appear whenever there is a choice to
+                make; with one destination the line below states where the money
+                goes, because "send it now" should never be the first time a host
+                finds out. */}
             {usable.length > 1 && (
               <div>
                 <p className="mb-1.5 text-xs font-medium text-ink-700">Send to</p>
@@ -396,7 +497,11 @@ export function EarningsPage() {
         </Card>
       )}
 
-      {/* --- Trip by trip --------------------------------------------------- */}
+      {/* --- Trip by trip ---------------------------------------------------
+          No empty state here on purpose. A host with no completed trips already
+          has the totals above reading zero, and a card announcing "no earnings
+          yet" underneath them repeats that in a way that reads like a fault.
+          The heading simply does not appear until there is something under it. */}
       {trips.length > 0 && (
         <>
           <h2 className="mb-3 mt-8 font-semibold text-ink-900">Trip by trip</h2>
@@ -411,17 +516,6 @@ export function EarningsPage() {
             </p>
           )}
         </>
-      )}
-
-      {w?.sellerId && trips.length === 0 && !earnings.isLoading && (
-        <Card className="mt-6">
-          <CardBody className="py-10 text-center">
-            <p className="font-medium text-ink-900">No earnings yet</p>
-            <p className="mt-1 text-sm text-ink-500">
-              Money from your first completed trip will show up here.
-            </p>
-          </CardBody>
-        </Card>
       )}
 
       <p className={cn('mt-6 text-xs text-ink-500', notConfigured && 'hidden')}>

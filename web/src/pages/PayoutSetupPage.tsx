@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Banknote,
@@ -22,8 +22,8 @@ import {
   PAYMENTS_PAYHOLD,
   PAYOUT_METHOD_META,
   maskDestination,
+  payoutAvailability,
   payoutLabel,
-  payoutMethodsFor,
   payoutProviderFor,
 } from '@/lib/payments';
 import { Badge, Button, Card, CardBody, Input, Label, Select, Spinner, toast } from '@/components/ui';
@@ -59,7 +59,23 @@ export function PayoutSetupPage() {
   // and lives in localStorage. Guessing from that put hosts on the wrong rail
   // and then froze it into their profile.
   const payoutCountry = me?.country ?? '';
-  const methods = payoutMethodsFor(payoutCountry);
+
+  // PayHold's own routing table, not our constant. Only worth asking once the
+  // host has a country to look up, and only on the PayHold rail — the old rails
+  // route themselves and have no such endpoint.
+  const { data: payoutCountries } = useQuery({
+    queryKey: ['payholdPayoutCountries'],
+    queryFn: () => client.payholdPayoutCountries(),
+    enabled: PAYMENTS_PAYHOLD && !!payoutCountry,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+
+  const known = payoutCountries?.find((c) => c.code === payoutCountry) ?? null;
+  const availability = payoutAvailability(payoutCountry, PAYMENTS_PAYHOLD ? known : undefined);
+  const methods = availability.state === 'ok' ? availability.methods : [];
+  const countryName = known?.name ?? 'your country';
+
   const [selected, setSelected] = useState<PayoutMethodType | null>(null);
   const [dest, setDest] = useState('');
 
@@ -257,8 +273,42 @@ export function PayoutSetupPage() {
         </Card>
       )}
 
+      {/* PayHold cannot pay this country — say so instead of offering a method
+          that fails on submit. Before this, a host here picked Bank or Card,
+          typed their account number, and got a 422 they could do nothing about. */}
+      {payoutCountry && availability.state !== 'ok' && (
+        <Card className="mt-6 border-amber-200 bg-amber-50/60">
+          <CardBody className="space-y-2">
+            <p className="font-medium text-ink-900">
+              {availability.state === 'restricted'
+                ? `Payouts aren't available in ${countryName}.`
+                : availability.state === 'unavailable'
+                  ? `We can't send payouts to ${countryName} yet.`
+                  : `Payouts in ${countryName} need a step we haven't finished building.`}
+            </p>
+            <p className="text-sm text-ink-600">
+              {availability.state === 'restricted'
+                ? 'This market is sanctioned, so money cannot move in either direction.'
+                : availability.state === 'unavailable'
+                  ? (availability.reason ??
+                    `Renters in ${countryName} can still book and pay — it's only payouts that aren't open yet. We'll email you the moment they are.`)
+                  : `Getting paid here goes through Stripe, which needs an account you set up with them directly. That connection isn't ready yet — we'll email you as soon as it is.`}
+            </p>
+            <p className="text-sm text-ink-600">
+              Until then your listings can't take bookings, because we won't hold a renter's money
+              for a trip we can't pay you for.
+            </p>
+          </CardBody>
+        </Card>
+      )}
+
       {/* Method chooser */}
-      <div className={cn('mt-6', !payoutCountry && 'pointer-events-none opacity-40')}>
+      <div
+        className={cn(
+          'mt-6',
+          (!payoutCountry || availability.state !== 'ok') && 'pointer-events-none hidden',
+        )}
+      >
         <p className="mb-2 text-sm font-medium text-ink-700">
           {active ? 'Change your payout method' : 'Choose how you want to be paid'}
         </p>
