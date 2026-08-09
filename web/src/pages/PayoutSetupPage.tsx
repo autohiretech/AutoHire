@@ -8,9 +8,11 @@ import {
   CreditCard,
   Landmark,
   Lock,
+  QrCode,
   ShieldCheck,
   Smartphone,
   Trash2,
+  Wallet,
 } from 'lucide-react';
 import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
@@ -32,6 +34,13 @@ const METHOD_ICON: Record<PayoutMethodType, typeof Smartphone> = {
   momo: Smartphone,
   bank: Landmark,
   card: CreditCard,
+  // The wallets share an icon on purpose: they are the same shape of thing —
+  // an account held with a provider — and the label already names which.
+  paypal: Wallet,
+  venmo: Wallet,
+  cash_app: Wallet,
+  alipay: QrCode,
+  wechat_pay: QrCode,
 };
 
 const PROVIDER_NAME: Record<PayoutProvider, string> = {

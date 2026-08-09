@@ -150,13 +150,36 @@ export interface ElectricQuota {
  * against the rail that took their money.
  */
 export type PayoutProvider = 'stripe' | 'flutterwave' | 'external' | 'payhold';
-/** What the host actually chose — the human-facing destination type. */
-export type PayoutMethodType = 'momo' | 'bank' | 'card';
+/**
+ * What the host actually chose — the human-facing destination type.
+ *
+ * One entry per rail PayHold can tokenize a destination against (its
+ * `PayoutProvider`), because a method that maps to no rail is a dead end the
+ * host only discovers on submit. `momo` and `bank` cover Flutterwave's two;
+ * `card` is Stripe Connect; the rest are the wallets, which are their own
+ * rails rather than a flavour of card — PayPal and Alipay take an address, not
+ * a number, and PayHold routes them separately.
+ */
+export type PayoutMethodType =
+  | 'momo'
+  | 'bank'
+  | 'card'
+  | 'paypal'
+  | 'venmo'
+  | 'cash_app'
+  | 'alipay'
+  | 'wechat_pay';
 /** Onboarding state of a host's payout method. */
 export type PayoutSetupStatus = 'none' | 'pending' | 'active';
 
 /** How a renter pays — the mirror of PayoutMethodType on the paying side. */
-export type PaymentMethodType = 'card' | 'momo' | 'bank';
+export type PaymentMethodType =
+  | 'card'
+  | 'momo'
+  | 'bank'
+  | 'paypal'
+  | 'alipay'
+  | 'wechat_pay';
 /** Onboarding state of a renter's saved payment method. */
 export type PaymentSetupStatus = 'none' | 'pending' | 'active';
 

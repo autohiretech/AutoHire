@@ -49,19 +49,32 @@ const METHOD_LABEL: Record<string, string> = {
   momo: 'Mobile Money',
   bank: 'Bank',
   card: 'Card',
+  paypal: 'PayPal',
+  venmo: 'Venmo',
+  cash_app: 'Cash App',
+  alipay: 'Alipay',
+  wechat_pay: 'WeChat Pay',
 };
 
 /**
- * Which of our three methods a PayHold rail came from.
+ * Which of our methods a PayHold rail came from.
  *
  * `stripe_connect` is genuinely ambiguous — `payoutProviderFor` sends both a
  * card and a non-African bank account there — so this is only ever used to fill
- * a column that is empty, never to overwrite what the host told us.
+ * a column that is empty, never to overwrite what the host told us. The wallets
+ * are unambiguous: one rail, one method.
  */
-function methodForProvider(provider: PayoutProvider): 'momo' | 'bank' | 'card' {
-  if (provider === 'flutterwave_momo') return 'momo';
-  if (provider === 'flutterwave_bank') return 'bank';
-  return 'card';
+function methodForProvider(provider: PayoutProvider): string {
+  const byRail: Partial<Record<PayoutProvider, string>> = {
+    flutterwave_momo: 'momo',
+    flutterwave_bank: 'bank',
+    paypal: 'paypal',
+    venmo: 'venmo',
+    cash_app_pay: 'cash_app',
+    alipay: 'alipay',
+    wechat_pay: 'wechat_pay',
+  };
+  return byRail[provider] ?? 'card';
 }
 
 Deno.serve(async (req: Request) => {
@@ -89,8 +102,9 @@ Deno.serve(async (req: Request) => {
     if (!method || !destination) {
       return json({ error: 'method and destination are required.' }, 400);
     }
-    if (!['momo', 'bank', 'card'].includes(method)) {
-      return json({ error: 'method must be momo, bank or card.' }, 400);
+    const METHODS = ['momo', 'bank', 'card', 'paypal', 'venmo', 'cash_app', 'alipay', 'wechat_pay'];
+    if (!METHODS.includes(method)) {
+      return json({ error: `method must be one of: ${METHODS.join(', ')}.` }, 400);
     }
     if (String(destination).trim().length < 4) {
       return json({ error: 'That destination looks too short.' }, 400);

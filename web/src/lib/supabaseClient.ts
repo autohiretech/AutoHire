@@ -1683,7 +1683,7 @@ export const supabaseClient = {
    * demo marks it active immediately. Only the MASKED destination is stored.
    */
   async setPayoutMethod(input: {
-    method: 'momo' | 'bank' | 'card';
+    method: PayoutMethodType;
     provider: PayoutProvider;
     destinationMasked: string;
     label: string;

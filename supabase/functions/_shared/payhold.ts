@@ -665,14 +665,30 @@ export function fromMinorUnits(amount: number, currency: string): number {
  * Flutterwave inside its African corridors and to Stripe Connect outside them,
  * which is the same split `payoutProviderFor` makes in the web app.
  */
-export function payoutProviderFor(
-  method: 'momo' | 'bank' | 'card',
-  countryCode: string,
-): PayoutProvider {
+/** Every destination type a host can pick in the app. */
+export type PayoutMethod =
+  | 'momo'
+  | 'bank'
+  | 'card'
+  | 'paypal'
+  | 'venmo'
+  | 'cash_app'
+  | 'alipay'
+  | 'wechat_pay';
+
+export function payoutProviderFor(method: PayoutMethod, countryCode: string): PayoutProvider {
   const african = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CM', 'CI', 'SN', 'ZM', 'ET']);
   if (method === 'momo') return 'flutterwave_momo';
   if (method === 'bank') {
     return african.has(countryCode.toUpperCase()) ? 'flutterwave_bank' : 'stripe_connect';
   }
+  // The wallets are their own rails on PayHold, not a flavour of card. Mapping
+  // them onto `stripe_connect` would demand an `acct_…` for a destination that
+  // is an email address.
+  if (method === 'paypal') return 'paypal';
+  if (method === 'venmo') return 'venmo';
+  if (method === 'cash_app') return 'cash_app_pay';
+  if (method === 'alipay') return 'alipay';
+  if (method === 'wechat_pay') return 'wechat_pay';
   return 'stripe_connect';
 }

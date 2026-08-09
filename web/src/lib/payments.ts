@@ -67,9 +67,19 @@ export function payoutProviderFor(method: PayoutMethodType, countryCode: string)
   return isAfricanMarket(countryCode) ? 'flutterwave' : 'stripe';
 }
 
-/** The payout methods offered in a given market (MoMo only where it exists). */
+/**
+ * The payout methods offered in a given market.
+ *
+ * Flutterwave corridors take a raw number, so MoMo and bank work there and
+ * nothing else is needed. Everywhere else the destination is an account held
+ * with the provider — PayHold routes all of it through Stripe — so the wallets
+ * are what a host can realistically use, with the market's own ones first.
+ */
 export function payoutMethodsFor(countryCode: string): PayoutMethodType[] {
-  return FLUTTERWAVE_COUNTRIES.has(countryCode) ? ['momo', 'bank'] : ['bank', 'card'];
+  if (FLUTTERWAVE_COUNTRIES.has(countryCode)) return ['momo', 'bank'];
+  if (countryCode === 'US') return ['bank', 'card', 'paypal', 'venmo', 'cash_app'];
+  if (countryCode === 'CN') return ['alipay', 'wechat_pay', 'bank'];
+  return ['bank', 'card', 'paypal'];
 }
 
 /** One country's capabilities as PayHold reports them (`payhold-payment-options`). */
@@ -151,6 +161,36 @@ export const PAYOUT_METHOD_META: Record<
     field: 'Card number',
     placeholder: '4242 4242 4242 4242',
   },
+  paypal: {
+    label: 'PayPal',
+    blurb: 'Paid to your PayPal balance, usually within a day.',
+    field: 'PayPal email',
+    placeholder: 'you@example.com',
+  },
+  venmo: {
+    label: 'Venmo',
+    blurb: 'US only. Paid to your Venmo account.',
+    field: 'Venmo username or phone',
+    placeholder: '@yourname',
+  },
+  cash_app: {
+    label: 'Cash App',
+    blurb: 'US only. Paid to your $Cashtag.',
+    field: 'Cashtag',
+    placeholder: '$yourname',
+  },
+  alipay: {
+    label: 'Alipay',
+    blurb: 'Paid to your Alipay account.',
+    field: 'Alipay email or phone',
+    placeholder: 'you@example.com',
+  },
+  wechat_pay: {
+    label: 'WeChat Pay',
+    blurb: 'Paid to your WeChat Pay wallet.',
+    field: 'WeChat ID or phone',
+    placeholder: '+86 138 0013 8000',
+  },
 };
 
 /**
@@ -163,7 +203,10 @@ export const PAYOUT_METHOD_META: Record<
  */
 export function paymentMethodsFor(countryCode: string, known?: PayoutCountry | null): PaymentMethodType[] {
   if (known && !known.can_collect) return [];
-  return isAfricanMarket(countryCode) ? ['card', 'momo'] : ['card'];
+  if (isAfricanMarket(countryCode)) return ['card', 'momo'];
+  if (countryCode === 'CN') return ['alipay', 'wechat_pay', 'card'];
+  // Venmo and Cash App are payout-only rails on PayHold, so they are not here.
+  return ['card', 'paypal'];
 }
 
 export const PAYMENT_METHOD_META: Record<
@@ -187,6 +230,24 @@ export const PAYMENT_METHOD_META: Record<
     blurb: 'Direct debit from your bank account.',
     field: 'Bank account number',
     placeholder: 'Account number',
+  },
+  paypal: {
+    label: 'PayPal',
+    blurb: 'Approve each booking from your PayPal account.',
+    field: 'PayPal email',
+    placeholder: 'you@example.com',
+  },
+  alipay: {
+    label: 'Alipay',
+    blurb: 'Scan to approve each booking in the Alipay app.',
+    field: 'Alipay email or phone',
+    placeholder: 'you@example.com',
+  },
+  wechat_pay: {
+    label: 'WeChat Pay',
+    blurb: 'Scan to approve each booking in WeChat.',
+    field: 'WeChat ID or phone',
+    placeholder: '+86 138 0013 8000',
   },
 };
 
