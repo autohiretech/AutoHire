@@ -502,6 +502,55 @@ booking appears with `payhold_deal_id` set. If it does not, the webhook is the
 first place to look — PayHold's dashboard shows every delivery attempt and its
 response.
 
+## Checkout in the page
+
+`VITE_PAYHOLD_EMBED=true` runs PayHold's hosted checkout in an iframe on the
+booking page instead of navigating to it. Off by default: it needs PayHold to
+serve `frame-ancestors … https://autohiretech.pages.dev` and to post its result
+back, and until that is live every renter would wait out a blank frame before
+the fallback moved them along.
+
+**The redirect is not a legacy path.** PayHold collects through Flutterwave or
+Stripe, and hands the frame off to them to take the money. **Stripe Checkout
+refuses to be framed**, so on that rail a frame that loaded perfectly goes blank
+at the moment the renter is sent to pay. The redirect is what completes those
+bookings, and removing it would break the main path on a live rail.
+
+`PayholdCheckout` therefore never assumes the frame is working:
+
+| Signal | Meaning | What happens |
+|---|---|---|
+| `load` fires, frame is cross-origin | It really rendered | Stay in the page |
+| `load` fires, frame reads as `about:blank` | Framing refused | Fall back |
+| Nothing at all within 6s | Blocked, or headers not shipped | Fall back |
+| `payment_succeeded` \| `_failed` \| `_cancelled` | PayHold reporting | Change the screen |
+| `resize` | Content height changed | Resize, clamped 320–1400px |
+
+The `about:blank` check is the load test that works: a refused frame still fires
+`load`, so the event proves nothing — but a frame that genuinely loaded PayHold
+is cross-origin, and reading its location *throws*. The throw is the success
+signal.
+
+**When we fall back depends on whether anything is in flight.** Before PayHold
+has said a word, leaving costs nothing and happens silently. Once it has spoken
+— a method chosen, a handoff begun — navigating unannounced could interrupt a
+payment, so the renter is shown the link and decides.
+
+`payment_succeeded` **only changes the screen.** The booking is still created by
+the signed `order.funded_held` webhook, exactly as with the redirect. A frame
+that could mint a trip by posting a message would be a trip anyone could mint.
+
+The frame is sandboxed without `allow-top-navigation`, so checkout cannot move
+the page out from under the renter.
+
+### One tenant's exception
+
+PayHold's `frame-ancestors` is a static allowlist naming AutoHire's origin, so
+**a second tenant wanting the same thing needs a PayHold redeploy**. This is the
+only place AutoHire has something no other tenant does. The durable fix is for
+PayHold to derive the allowed ancestor per deal — from the tenant's registered
+origin — rather than from a header baked at build time.
+
 ## Amounts
 
 PayHold takes **integer minor units** plus an ISO currency code, always —

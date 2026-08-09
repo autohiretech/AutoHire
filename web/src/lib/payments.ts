@@ -39,6 +39,23 @@ export const PAYMENTS_EXTERNAL = import.meta.env.VITE_PAYMENTS_EXTERNAL === 'tru
  */
 export const PAYMENTS_PAYHOLD = import.meta.env.VITE_PAYMENTS_PAYHOLD === 'true';
 
+/**
+ * Keep the renter on the booking page: run PayHold's checkout in a frame
+ * instead of navigating away to it.
+ *
+ * Off unless set, because it depends on PayHold serving
+ * `frame-ancestors … https://autohiretech.pages.dev` and posting its result
+ * back to us. Until that is deployed a frame renders blank, and while the
+ * fallback below catches it, every renter would pay a needless round trip
+ * first. Turn this on once PayHold's header change is live.
+ *
+ * It is a preference, never a requirement. `PayholdCheckout` falls back to the
+ * full-page redirect whenever framing is refused — including part-way through,
+ * when PayHold hands off to Stripe, which refuses framing outright. On that
+ * rail the redirect is not a legacy path but the only one that completes.
+ */
+export const PAYHOLD_EMBED = import.meta.env.VITE_PAYHOLD_EMBED === 'true';
+
 /** Markets Flutterwave settles locally (MoMo + bank). Extend as you add markets. */
 const FLUTTERWAVE_COUNTRIES = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CI']);
 
