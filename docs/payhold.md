@@ -101,7 +101,8 @@ What "Send it now" actually does, from `request_withdrawal`:
 | `GET /deals/:id` | `getDeal` | `payhold-webhook` (the trust boundary), `payhold-earnings` (one per trip) |
 | `POST /deals/:id/confirm` | `confirmDeal` | `payhold-confirm` |
 | `POST /deals/:id/refund` | `refundDeal` | `payhold-refund` |
-| `POST /sellers` | `createSeller` | `payhold-register-seller` |
+| `POST /sellers` | `createSeller` | `payhold-register-seller` — the first destination |
+| `POST /sellers/:id/destinations` | `addSellerDestination` | `payhold-register-seller` — every later one |
 | `GET /sellers/:id/capabilities` | `sellerCapabilities` | `payhold-seller`, `payhold-register-seller`, `payhold-balance` |
 | `GET /sellers/:id/balance` | `sellerBalance` | `payhold-balance` |
 | `GET /sellers/:id/destinations` | `sellerDestinations` | `payhold-seller`, `payhold-earnings` |
@@ -119,7 +120,7 @@ judgement made in their dashboard. Resolutions come back by webhook.
 |---|---|---|---|
 | `payhold-create-deal` | POST | renter | Opens the deal, returns the hosted checkout link |
 | `payhold-confirm` | POST | renter or host | Confirms this side of a finished trip |
-| `payhold-register-seller` | POST | host | Registers their payout destination — the only place the raw number exists |
+| `payhold-register-seller` | POST | host | Saves their payout destination, first or changed — the only place the raw number exists |
 | `payhold-seller` | GET | host (admin: `?hostId=`) | Their seller record, capabilities and destinations |
 | `payhold-seller/capabilities` | GET | host | Just the can-I-be-paid answer |
 | `payhold-seller/destinations` | GET | host | Just where the money can go |
@@ -204,9 +205,29 @@ demo hosts are the one exception, and only because their numbers are invented
 rather than remembered — see step 9.
 
 A re-link deliberately does **not** save the destination just typed. The
-response carries `relinked: true` and the screen says so, because changing where
-a host is paid is a new `seller_destinations` row with its own verification and
-security hold (PayHold §5.1), and that flow is not built.
+response carries `relinked: true` and the screen says so: the link is being
+repaired, and the destination on file is the one PayHold holds a token for.
+Saving again goes down the change path below, which does use what was typed.
+
+**Changing where a host is paid** is a different operation and now exists.
+`payhold-register-seller` branches on `profiles.payhold_seller_id`: absent, it
+registers a seller; present, it calls `POST /v1/sellers/:id/destinations`, which
+adds a `seller_destinations` row, makes it primary and demotes the old one —
+atomically, because a window with no primary destination is a window in which
+the host is unpayable for a reason nobody chose.
+
+The new destination lands unverified and inside PayHold §5.1's security hold, so
+**payouts pause for up to 24 hours** while it is checked. There is no parameter
+to skip that, and there should not be: "get in, move the destination, withdraw"
+is the whole shape of an account takeover, and the hold is what puts a person
+between the second step and the third. The response carries `changed: true` and
+`securityHoldUntil`, and the payout screen says plainly what will happen before
+the host saves.
+
+Bookings are unaffected — `payhold-create-deal` gates on `payhold_seller_id`,
+which does not move — so a host changing their bank account does not take their
+cars off the market. Their `payout_status` goes back to `pending` until PayHold
+says otherwise, which is what the screen's Verifying badge reads.
 
 ## Auth
 

@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Banknote,
   CheckCircle2,
+  Clock,
   CreditCard,
   Landmark,
   Lock,
@@ -90,6 +91,16 @@ export function PayoutSetupPage() {
 
   const active = me?.payoutStatus === 'active';
 
+  /**
+   * A method is on file — which is not the same as being payable.
+   *
+   * Changing a destination sends `payout_status` back to 'pending' while
+   * PayHold verifies the new account, and keying the card off `active` alone
+   * made the host's payout method appear to vanish at exactly the moment they
+   * had just saved one.
+   */
+  const connected = !!me?.payoutLabel && me.payoutStatus !== 'none';
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['currentUser'] });
     queryClient.invalidateQueries({ queryKey: ['ownerHost'] });
@@ -129,6 +140,8 @@ export function PayoutSetupPage() {
       if (result && typeof result === 'object' && 'canReceivePayouts' in result) {
         const r = result as {
           relinked?: boolean;
+          changed?: boolean;
+          securityHoldUntil?: string | null;
           maskedDestination: string;
           canReceivePayouts: boolean;
           reasons: string[];
@@ -136,24 +149,38 @@ export function PayoutSetupPage() {
         };
 
         // A payout account already existed for this host and we reconnected it.
-        // Say plainly that the number they just typed was not used — a second
-        // registration would orphan the first account, and money may already be
-        // owed to it, so changing a destination goes through support for now.
-        const lead = r.relinked
-          ? `Reconnected your existing payout account (${r.maskedDestination}) — the number you entered was not saved.`
-          : 'Payout method saved';
+        // Say plainly that the number they just typed was not used: this path
+        // repairs a lost link, and the destination on file is the one PayHold
+        // has a token for. Saving again now goes down the change path, which
+        // does use what they typed.
+        if (r.relinked) {
+          toast.success(
+            `Reconnected your existing payout account (${r.maskedDestination}) — the number you entered was not saved. ` +
+              'Save it again to move your payouts there.',
+          );
+          return;
+        }
+
+        // A change, not a first registration. The new account is real but
+        // frozen while PayHold checks it belongs to them — the same hold that
+        // stops someone who got into the account from redirecting the money.
+        if (r.changed) {
+          toast.success(
+            `Payouts will now go to ${r.maskedDestination}. ` +
+              'It has to be verified first, so payouts pause for up to 24 hours — ' +
+              'your cars stay bookable and the money keeps building up in the meantime.',
+          );
+          return;
+        }
 
         if (r.canReceivePayouts) {
-          toast.success(
-            r.relinked ? `${lead} You can receive payouts.` : `${lead} — you can receive payouts.`,
-          );
+          toast.success('Payout method saved — you can receive payouts.');
         } else {
           const blockers = [...r.reasons, ...r.routeReasons];
-          const stem = r.relinked ? lead : 'Saved.';
           toast.success(
             blockers.length
-              ? `${stem} Before you can be paid: ${blockers.join('; ')}`
-              : `${stem} Payouts unlock once your account finishes verification.`,
+              ? `Saved. Before you can be paid: ${blockers.join('; ')}`
+              : 'Saved. Payouts unlock once your account finishes verification.',
           );
         }
         return;
@@ -218,28 +245,47 @@ export function PayoutSetupPage() {
       </div>
 
       {/* Currently connected */}
-      {active && me && (
-        <Card className="mt-6 border-emerald-200 bg-emerald-50/40">
+      {connected && me && (
+        <Card
+          className={cn(
+            'mt-6',
+            active ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200 bg-amber-50/50',
+          )}
+        >
           <CardBody className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-emerald-600 ring-1 ring-emerald-100">
-                <CheckCircle2 size={20} />
+              <span
+                className={cn(
+                  'flex h-10 w-10 items-center justify-center rounded-xl bg-white ring-1',
+                  active ? 'text-emerald-600 ring-emerald-100' : 'text-amber-600 ring-amber-100',
+                )}
+              >
+                {active ? <CheckCircle2 size={20} /> : <Clock size={20} />}
               </span>
               <div>
                 <p className="flex items-center gap-2 font-semibold text-ink-900">
                   {me.payoutLabel ?? 'Payout method'}
-                  <Badge tone="success">Active</Badge>
+                  {active ? (
+                    <Badge tone="success">Active</Badge>
+                  ) : (
+                    <Badge tone="warning">Verifying</Badge>
+                  )}
                 </p>
-                <p className="text-sm text-ink-500">Earnings are released here after each completed trip.</p>
+                <p className="text-sm text-ink-500">
+                  {active
+                    ? 'Earnings are released here after each completed trip.'
+                    : 'Being checked before the first payout. Your earnings keep building up meanwhile.'}
+                </p>
               </div>
             </div>
-            {/* Under PayHold there is nothing here to remove: the destination
+            {/* Under PayHold there is nothing here to REMOVE: the destination
                 is held by PayHold, which has no delete-seller endpoint, and
                 money may already be owed to that record. Clearing our columns
-                would change nothing and imply otherwise. */}
+                would change nothing and imply otherwise. Changing it is a
+                different matter and is the form below. */}
             {PAYMENTS_PAYHOLD ? (
               <span className="text-xs text-ink-500">
-                To change where you're paid, contact support.
+                Moving? Save a new method below.
               </span>
             ) : (
               <Button variant="outline" size="sm" disabled={remove.isPending} onClick={() => remove.mutate()}>
@@ -319,7 +365,7 @@ export function PayoutSetupPage() {
         )}
       >
         <p className="mb-2 text-sm font-medium text-ink-700">
-          {active ? 'Change your payout method' : 'Choose how you want to be paid'}
+          {connected ? 'Change your payout method' : 'Choose how you want to be paid'}
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           {methods.map((m) => {
@@ -372,16 +418,30 @@ export function PayoutSetupPage() {
                 {PROVIDER_NAME[routedProvider]}. Only the last 4 digits are stored.
               </p>
             )}
-            <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-              Demo: connecting is simulated. In production this opens secure onboarding and activates once
-              verified.
-            </p>
+            {/* What saving actually does, said before they do it. A change is
+                not a free action — the new account is frozen while it is
+                checked — and a host who finds that out from a paused payout is
+                a host who thinks something broke. */}
+            {PAYMENTS_PAYHOLD ? (
+              connected && (
+                <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                  This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
+                  before they're paid, so payouts pause for up to 24 hours — your cars stay bookable
+                  and your earnings keep building up in the meantime.
+                </p>
+              )
+            ) : (
+              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                Demo: connecting is simulated. In production this opens secure onboarding and activates
+                once verified.
+              </p>
+            )}
             <Button
               className="w-full"
               disabled={!canSave || connect.isPending}
               onClick={() => connect.mutate(selected)}
             >
-              {connect.isPending ? 'Saving…' : 'Save payout method'}
+              {connect.isPending ? 'Saving…' : connected ? 'Save new payout method' : 'Save payout method'}
             </Button>
           </CardBody>
         </Card>

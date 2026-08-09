@@ -467,6 +467,44 @@ export function sellerDestinations(id: string): Promise<{ destinations: SellerDe
   return call(`/sellers/${encodeURIComponent(id)}/destinations`, { method: 'GET' });
 }
 
+export interface AddDestinationInput {
+  payoutProvider: PayoutProvider;
+  /** Raw MoMo number, account number or wallet handle. Tokenized and dropped. */
+  destination: string;
+  /** Defaults to the seller's own country, which a rail change does not move. */
+  country?: string;
+  label?: string;
+  /** 'primary' moves where the money goes; 'backup' is only used after a failure. */
+  role?: 'primary' | 'backup';
+}
+
+/**
+ * Move where a host is paid — the operation `createSeller` deliberately is not.
+ *
+ * PayHold refuses a second `POST /sellers` under the same `external_user_id`
+ * precisely so a re-registration cannot become a silent destination change.
+ * This is the door with the lock on it: the new row lands unverified and inside
+ * §5.1's security hold, so payouts pause until PayHold has checked the account
+ * belongs to the host. That pause is the feature — the shape of an account
+ * takeover is "move the destination, then withdraw" — and there is no parameter
+ * to skip it. A caller's job is to tell the host it will happen.
+ */
+export function addSellerDestination(
+  sellerId: string,
+  input: AddDestinationInput,
+): Promise<{ destination: SellerDestination }> {
+  return call(`/sellers/${encodeURIComponent(sellerId)}/destinations`, {
+    method: 'POST',
+    body: {
+      payout_provider: input.payoutProvider,
+      destination: input.destination,
+      country: input.country,
+      label: input.label,
+      role: input.role ?? 'primary',
+    },
+  });
+}
+
 /**
  * The tenant's payouts, newest first.
  *

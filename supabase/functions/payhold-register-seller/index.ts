@@ -15,13 +15,15 @@
 // Secrets:  PAYHOLD_* (see _shared/payhold.ts), ALLOWED_ORIGIN
 // Deploy:   supabase functions deploy payhold-register-seller
 
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
+  addSellerDestination,
   createSeller,
   findSellerByExternalUserId,
   payholdConfigured,
   payoutProviderFor,
   sellerCapabilities,
+  type PayoutMethod,
   type PayoutProvider,
   type Seller,
 } from '../_shared/payhold.ts';
@@ -77,6 +79,94 @@ function methodForProvider(provider: PayoutProvider): string {
   return byRail[provider] ?? 'card';
 }
 
+/**
+ * Move a host's payout destination — the second and every later save.
+ *
+ * PayHold registers the new destination, makes it the primary, and puts it
+ * inside §5.1's security hold: unverified, and frozen for a window measured in
+ * hours. Payouts pause for that window. That is the trade this operation makes
+ * and the screen says so, because the alternative — letting a fresh destination
+ * be paid immediately — is an account takeover's entire plan.
+ *
+ * `payout_status` goes back to 'pending' for the same reason. It is not a
+ * demotion of the host: bookings gate on `payhold_seller_id`, which does not
+ * move here, so their cars stay bookable while the new account is checked.
+ */
+async function changeDestination(
+  admin: SupabaseClient,
+  uid: string,
+  sellerId: string,
+  method: PayoutMethod,
+  raw: string,
+  country: string,
+): Promise<Response> {
+  let destination;
+  try {
+    ({ destination } = await addSellerDestination(sellerId, {
+      payoutProvider: payoutProviderFor(method, country),
+      destination: raw,
+      // PayHold defaults country and currency from the seller's own row, and it
+      // should: a host swapping MoMo for a bank account has not moved country,
+      // and restating it here is a chance to restate it wrongly.
+      label: METHOD_LABEL[method] ?? 'Payout',
+    }));
+  } catch (e) {
+    // Our column names a seller PayHold has never heard of — a profile carried
+    // between environments, or a seller id written by hand. "Seller <uuid> not
+    // found" is PayHold telling us about our own bookkeeping, and repeating it
+    // to a host asks them to fix something they cannot see.
+    if ((e as { status?: number }).status === 404) {
+      return json(
+        {
+          error:
+            'We could not find your payout account with our payments provider. ' +
+            'Contact support and we will reconnect it.',
+          code: 'seller_unknown',
+        },
+        409,
+      );
+    }
+    throw e;
+  }
+
+  const maskedDestination = destination.masked_destination ?? mask(raw);
+
+  const { error: upErr } = await admin
+    .from('profiles')
+    .update({
+      payout_method: method,
+      payout_provider: 'payhold',
+      payout_destination: maskedDestination,
+      payout_label: `${METHOD_LABEL[method] ?? 'Payout'} · ${maskedDestination}`,
+      // Back to pending, truthfully. PayHold will not pay this destination
+      // until it has verified it, and a profile that still said 'active' would
+      // be telling the host their money is on its way to an account nothing has
+      // checked.
+      payout_status: 'pending',
+    })
+    .eq('id', uid);
+  if (upErr) return json({ error: upErr.message }, 500);
+
+  const caps = await sellerCapabilities(sellerId).catch(() => null);
+  if (caps?.can_receive_payouts) {
+    await admin.from('profiles').update({ payout_status: 'active' }).eq('id', uid);
+  }
+
+  return json(
+    {
+      sellerId,
+      maskedDestination,
+      changed: true,
+      relinked: false,
+      securityHoldUntil: destination.security_hold_until,
+      canReceivePayouts: caps?.can_receive_payouts ?? false,
+      reasons: caps?.reasons ?? [],
+      routeReasons: caps?.route_reasons ?? [],
+    },
+    200,
+  );
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
@@ -130,27 +220,29 @@ Deno.serve(async (req: Request) => {
         400,
       );
     }
-    if (profile.payhold_seller_id) {
-      // Registering again would create a SECOND seller record for one host,
-      // orphaning the first — and money may already be owed to it. PayHold has
-      // no delete-seller endpoint, so this is not recoverable by retrying.
-      //
-      // Changing where a host is paid is a different operation: a new row in
-      // PayHold's `seller_destinations`, with its own verification and security
-      // hold (§5.1). That flow is not built yet, so say so rather than
-      // suggesting a "remove and re-add" that would not work.
-      return json(
-        {
-          error:
-            'Your payout account is already set up. Changing where you get paid needs to go through support for now.',
-          code: 'seller_exists',
-        },
-        409,
-      );
-    }
-
     const country = String(profile.country).toUpperCase();
     const raw = String(destination).trim();
+
+    // A host who already has a seller is CHANGING where they are paid, not
+    // registering. Those are different operations and PayHold treats them as
+    // such: a second `POST /sellers` under the same handle is refused, because
+    // silently accepting one would be a destination change that skipped §5.1's
+    // security hold — which is exactly what a takeover wants.
+    //
+    // This used to be a 409 telling the host to contact support, which is a
+    // wall in front of something every host eventually needs: a MoMo line gets
+    // cut off, a bank account closes, and the money keeps being sent somewhere
+    // they can no longer reach.
+    if (profile.payhold_seller_id) {
+      return await changeDestination(
+        admin,
+        uid,
+        String(profile.payhold_seller_id),
+        method as PayoutMethod,
+        raw,
+        country,
+      );
+    }
 
     /**
      * Write the link and tell the host where they stand.

@@ -74,6 +74,49 @@ function mapRows<T>(rows: Record<string, unknown>[] | null): T[] {
   return (rows ?? []).map((r) => mapRow<T>(r) as T);
 }
 
+/**
+ * The message behind "Edge Function returned a non-2xx status code".
+ *
+ * supabase-js turns every non-2xx into that one sentence and hands the
+ * untouched `Response` over on `error.context`. Our Edge Functions answer with
+ * `{ error, code }` — "Set your country before adding a payout method", "Only
+ * host accounts receive payouts" — so the sentence the user actually needs is
+ * sitting in a body nothing reads, and a 400 they could fix in five seconds
+ * arrives looking identical to the function being on fire. This reads it back.
+ *
+ * `notDeployed` is the other half: a `FunctionsFetchError` never reached a
+ * function at all, which is ours to fix and not something to show a user as a
+ * failure of what they were doing.
+ */
+async function fnError(
+  error: { name?: string; message: string },
+  notDeployed?: string,
+): Promise<Error> {
+  if (notDeployed && error.name === 'FunctionsFetchError') return new Error(notDeployed);
+
+  const res = (error as { context?: Response }).context;
+  if (res && typeof res.clone === 'function') {
+    try {
+      // Cloned, because the caller may still want to read it and a body can be
+      // consumed once. Any failure here falls through to the generic message —
+      // an unreadable body must not replace an error with a parse error.
+      const body = await res.clone().text();
+      const parsed = body ? (JSON.parse(body) as { error?: unknown; message?: unknown }) : null;
+      const detail = typeof parsed?.error === 'string'
+        ? parsed.error
+        : typeof (parsed?.error as { message?: unknown })?.message === 'string'
+          ? (parsed!.error as { message: string }).message
+          : typeof parsed?.message === 'string'
+            ? parsed.message
+            : null;
+      if (detail) return new Error(detail);
+    } catch {
+      // Not JSON, or already consumed. The generic message stands.
+    }
+  }
+  return new Error(error.message);
+}
+
 /** Await a PostgREST builder, throwing on error and returning data. */
 async function run<D>(builder: PromiseLike<{ data: D; error: { message: string } | null }>): Promise<D> {
   const { data, error } = await builder;
@@ -206,10 +249,9 @@ export const supabaseClient = {
       body: { query },
     });
     if (error) {
-      throw new Error(
-        error.name === 'FunctionsFetchError'
-          ? "AI search isn't deployed yet — deploy the ai-search Edge Function."
-          : error.message,
+      throw await fnError(
+        error,
+        "AI search isn't deployed yet — deploy the ai-search Edge Function.",
       );
     }
     const payload = data as { filters?: ListingFilters; error?: string };
@@ -263,10 +305,9 @@ export const supabaseClient = {
       body: input,
     });
     if (error) {
-      throw new Error(
-        error.name === 'FunctionsFetchError'
-          ? "Bookings aren't deployed yet — deploy the confirm-booking Edge Function."
-          : error.message,
+      throw await fnError(
+        error,
+        "Bookings aren't deployed yet — deploy the confirm-booking Edge Function.",
       );
     }
     const payload = data as { booking?: Booking; error?: string };
@@ -299,10 +340,9 @@ export const supabaseClient = {
       body: input,
     });
     if (error) {
-      throw new Error(
-        error.name === 'FunctionsFetchError'
-          ? "External payments aren't deployed yet — deploy the external-create-hold Edge Function."
-          : error.message,
+      throw await fnError(
+        error,
+        "External payments aren't deployed yet — deploy the external-create-hold Edge Function.",
       );
     }
     const payload = data as {
@@ -336,10 +376,9 @@ export const supabaseClient = {
       body: input,
     });
     if (error) {
-      throw new Error(
-        error.name === 'FunctionsFetchError'
-          ? "PayHold isn't deployed yet — deploy the payhold-create-deal Edge Function."
-          : error.message,
+      throw await fnError(
+        error,
+        "PayHold isn't deployed yet — deploy the payhold-create-deal Edge Function.",
       );
     }
     const payload = data as {
@@ -361,7 +400,13 @@ export const supabaseClient = {
   },
 
   /**
-   * Register this host as a PayHold seller.
+   * Save where this host is paid — their first destination, or a later one.
+   *
+   * One call for both because it is one thing to a host ("save my payout
+   * method") and two things to PayHold: a registration mints a seller, a change
+   * adds a destination and puts it under a security hold. The server knows
+   * which it is from whether the profile already has a seller id, and says so
+   * in `changed`.
    *
    * The raw destination is sent once, to be tokenized, and is never stored on
    * either side — AutoHire keeps the seller id and a mask. This is why payout
@@ -376,10 +421,18 @@ export const supabaseClient = {
     /**
      * True when PayHold already had a seller for this host and we re-linked it
      * rather than registering a second one. The destination just typed was NOT
-     * saved — changing where a host is paid is a different operation, with its
-     * own verification and security hold, and it is not built yet.
+     * saved — the profile's link was being repaired, and saving again now goes
+     * down the `changed` path below.
      */
     relinked: boolean;
+    /**
+     * True when this moved an existing host's destination rather than
+     * registering a new one. Payouts pause until PayHold verifies the new
+     * account and its security hold expires — see `securityHoldUntil`.
+     */
+    changed: boolean;
+    /** When the new destination leaves §5.1's hold. Null on a registration. */
+    securityHoldUntil: string | null;
     canReceivePayouts: boolean;
     reasons: string[];
     routeReasons: string[];
@@ -387,11 +440,13 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('payhold-register-seller', {
       body: input,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as {
       sellerId?: string;
       maskedDestination?: string;
       relinked?: boolean;
+      changed?: boolean;
+      securityHoldUntil?: string | null;
       canReceivePayouts?: boolean;
       reasons?: string[];
       routeReasons?: string[];
@@ -404,6 +459,8 @@ export const supabaseClient = {
       sellerId: payload.sellerId,
       maskedDestination: payload.maskedDestination ?? '',
       relinked: payload.relinked ?? false,
+      changed: payload.changed ?? false,
+      securityHoldUntil: payload.securityHoldUntil ?? null,
       canReceivePayouts: payload.canReceivePayouts ?? false,
       reasons: payload.reasons ?? [],
       routeReasons: payload.routeReasons ?? [],
@@ -422,7 +479,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('payhold-balance', {
       method: 'GET',
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as PayholdWallet & { error?: string };
     if (payload?.error) throw new Error(payload.error);
     return {
@@ -447,7 +504,7 @@ export const supabaseClient = {
       `payhold-earnings?offset=${offset}`,
       { method: 'GET' },
     );
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as HostEarnings & { error?: string };
     if (payload?.error) throw new Error(payload.error);
     return {
@@ -467,7 +524,7 @@ export const supabaseClient = {
       method: 'POST',
       body: destinationId ? { destinationId } : {},
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as { requested?: number; message?: string; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return { requested: payload.requested ?? 0, message: payload.message ?? 'Withdrawal requested.' };
@@ -482,7 +539,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('payhold-confirm', {
       body: { bookingId },
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as { dealStatus?: string; side?: string; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return { dealStatus: payload.dealStatus ?? 'unknown', side: payload.side ?? '' };
@@ -502,7 +559,7 @@ export const supabaseClient = {
       hostId ? `payhold-seller?hostId=${encodeURIComponent(hostId)}` : 'payhold-seller',
       { method: 'GET' },
     );
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as PayholdSeller & { error?: string };
     if (payload?.error) throw new Error(payload.error);
     return {
@@ -532,7 +589,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('payhold-payment-options', {
       method: 'GET',
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as { countries?: PayoutCountry[]; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return payload.countries ?? [];
@@ -543,7 +600,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('payhold-seller/destinations', {
       method: 'GET',
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as { destinations?: PayoutDestination[]; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return payload.destinations ?? [];
@@ -554,7 +611,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('payhold-dispute', {
       method: 'GET',
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as { disputes?: PayholdDispute[]; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return payload.disputes ?? [];
@@ -585,7 +642,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('payhold-dispute', {
       body: input,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as {
       disputeId?: string;
       payholdDisputeId?: string | null;
@@ -620,7 +677,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('payhold-refund', {
       body: input,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as PayholdRefund & { error?: string };
     if (payload?.error || !payload?.dealId) {
       throw new Error(payload?.error ?? 'Could not send the refund.');
@@ -647,7 +704,7 @@ export const supabaseClient = {
     endDate: string;
   }): Promise<{ link?: string; demo?: boolean; txRef?: string }> {
     const { data, error } = await getSupabase().functions.invoke('flutterwave-collect', { body: input });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as { link?: string; demo?: boolean; txRef?: string; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return payload;
@@ -664,7 +721,7 @@ export const supabaseClient = {
     accountBank?: string;
   }): Promise<UserProfile> {
     const { data, error } = await getSupabase().functions.invoke('flutterwave-beneficiary', { body: input });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as { profile?: Record<string, unknown>; error?: string };
     if (payload?.error || !payload?.profile) throw new Error(payload?.error ?? 'Could not save destination.');
     return mapRow<UserProfile>(payload.profile) as UserProfile;
@@ -680,7 +737,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('flutterwave-transfer', {
       body: { payoutId },
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     return data;
   },
 
@@ -1473,7 +1530,7 @@ export const supabaseClient = {
     const { data, error } = await getSupabase().functions.invoke('admin-delete-user', {
       body: { profileId },
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await fnError(error);
     const payload = data as { error?: string } | null;
     if (payload?.error) throw new Error(payload.error);
   },
