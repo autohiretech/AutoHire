@@ -93,12 +93,18 @@ Deno.serve(async (req: Request) => {
       );
     }
     if (profile.payhold_seller_id) {
-      // Changing a destination is a different operation with its own security
-      // hold on PayHold's side (§5.1) — it must not be reachable by calling the
-      // register endpoint twice.
+      // Registering again would create a SECOND seller record for one host,
+      // orphaning the first — and money may already be owed to it. PayHold has
+      // no delete-seller endpoint, so this is not recoverable by retrying.
+      //
+      // Changing where a host is paid is a different operation: a new row in
+      // PayHold's `seller_destinations`, with its own verification and security
+      // hold (§5.1). That flow is not built yet, so say so rather than
+      // suggesting a "remove and re-add" that would not work.
       return json(
         {
-          error: 'You already have a payout method. Remove it before adding another.',
+          error:
+            'Your payout account is already set up. Changing where you get paid needs to go through support for now.',
           code: 'seller_exists',
         },
         409,

@@ -19,6 +19,7 @@ import { COUNTRIES } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
   PAYMENTS_LIVE,
+  PAYMENTS_PAYHOLD,
   PAYOUT_METHOD_META,
   maskDestination,
   payoutLabel,
@@ -70,27 +71,58 @@ export function PayoutSetupPage() {
   };
 
   const connect = useMutation({
-    mutationFn: (method: PayoutMethodType) => {
+    mutationFn: async (method: PayoutMethodType) => {
+      // PayHold owns payouts on this rail, so the host has to exist there as a
+      // SELLER — a deal names one, and without it their cars cannot be booked
+      // at all. The raw destination goes straight to PayHold to be tokenized
+      // and is written down by neither side.
+      if (PAYMENTS_PAYHOLD) {
+        return await client.registerPayholdSeller({ method, destination: dest.trim() });
+      }
+
       const provider = payoutProviderFor(method, payoutCountry);
       // Live + Flutterwave: register the raw destination as a beneficiary server-
       // side (only a token is stored). Otherwise store the masked method directly.
       if (PAYMENTS_LIVE && provider === 'flutterwave' && (method === 'momo' || method === 'bank')) {
-        return client.connectPayoutBeneficiary({ method, destination: dest.trim() });
+        return await client.connectPayoutBeneficiary({ method, destination: dest.trim() });
       }
-      return client.setPayoutMethod({
+      return await client.setPayoutMethod({
         method,
         provider,
         destinationMasked: maskDestination(dest),
         label: payoutLabel(method, dest),
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       refresh();
       setSelected(null);
       setDest('');
+
+      // PayHold decides whether this host can actually be paid, and says why
+      // not. Telling them now beats a payout that sits stuck weeks later with
+      // a renter's money already taken.
+      if (result && typeof result === 'object' && 'canReceivePayouts' in result) {
+        const r = result as { canReceivePayouts: boolean; reasons: string[]; routeReasons: string[] };
+        if (r.canReceivePayouts) {
+          toast.success('Payout method saved — you can receive payouts.');
+        } else {
+          const blockers = [...r.reasons, ...r.routeReasons];
+          toast.success(
+            blockers.length
+              ? `Saved. Before you can be paid: ${blockers.join('; ')}`
+              : 'Saved. Payouts unlock once your account finishes verification.',
+          );
+        }
+        return;
+      }
       toast.success('Payout method saved.');
     },
-    onError: () => toast.error("Couldn't save your payout method. Please try again."),
+    onError: (e) =>
+      toast.error(
+        e instanceof Error && e.message
+          ? e.message
+          : "Couldn't save your payout method. Please try again.",
+      ),
   });
 
   const saveCountry = useMutation({
@@ -158,9 +190,19 @@ export function PayoutSetupPage() {
                 <p className="text-sm text-ink-500">Earnings are released here after each completed trip.</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" disabled={remove.isPending} onClick={() => remove.mutate()}>
-              <Trash2 size={14} /> Remove
-            </Button>
+            {/* Under PayHold there is nothing here to remove: the destination
+                is held by PayHold, which has no delete-seller endpoint, and
+                money may already be owed to that record. Clearing our columns
+                would change nothing and imply otherwise. */}
+            {PAYMENTS_PAYHOLD ? (
+              <span className="text-xs text-ink-500">
+                To change where you're paid, contact support.
+              </span>
+            ) : (
+              <Button variant="outline" size="sm" disabled={remove.isPending} onClick={() => remove.mutate()}>
+                <Trash2 size={14} /> Remove
+              </Button>
+            )}
           </CardBody>
         </Card>
       )}
