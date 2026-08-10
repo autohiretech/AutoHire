@@ -15,9 +15,11 @@ Repo: <https://github.com/autohiretech/payhold>
 ```
 renter picks dates
   │
-  ├─ POST /v1/deals ─────────────► deal + payment_link      (payhold-create-deal)
+  ├─ POST /v1/deals ─────────────► deal + checkout session  (payhold-create-deal)
   │                                    │
-  │                          renter pays on PayHold's page
+  │                    renter pays in AutoHire's own modal
+  │                    (POST /checkout/public/:token/pay,
+  │                     then /validate if a code is asked for)
   │                                    │
   │  ◄──── webhook order.funded_held ──┘                    (payhold-webhook)
   │        AutoHire creates the booking. Money is HELD.
@@ -495,61 +497,135 @@ accumulating sellers.
 would show them "Active · Card ••••4242" for an account that cannot receive
 money — the reconnect banner exists precisely so they enter their own.
 
-### 10. Prove it end to end in the app
+### 10. Deploy PayHold's checkout function — the in-page flow needs it
 
-Book a car whose host has reconnected, pay on the hosted page, and confirm a
-booking appears with `payhold_deal_id` set. If it does not, the webhook is the
-first place to look — PayHold's dashboard shows every delivery attempt and its
-response.
+The in-modal flow is **half PayHold's**. AutoHire's bundle can be perfect and
+still fall through to the hosted page until this ships:
+
+```bash
+# in the payhold-backend project
+supabase functions deploy checkout
+```
+
+That one deploy carries all of it: the wildcard CORS on
+`/checkout/public/*` (without which AutoHire's browser cannot read the method
+list at all), the `next_action` field on `/pay`, and the new
+`/checkout/public/:token/validate` route the OTP box posts to.
+
+Check it landed without a deal, from anywhere:
+
+```bash
+curl -si -X OPTIONS \
+  https://mwnbjjlilqrwdmwutbxr.supabase.co/functions/v1/checkout/public/x \
+  -H 'origin: https://autohire.pages.dev' | grep -i access-control-allow-origin
+```
+
+`access-control-allow-origin: *` means it is live. **No header at all means the
+old build is still deployed**, and every renter will be sent to PayHold's page
+exactly as before — which is the failure mode to recognise, because AutoHire
+degrades quietly rather than erroring.
+
+### 11. Prove it end to end in the app
+
+Book a car whose host has reconnected and pay **without leaving the modal**.
+What to watch, in order:
+
+1. The method list is PayHold's, not ours — if you see our own picker, the
+   session fetch failed and step 10 is the reason.
+2. Choosing mobile money asks for a number *here*, and paying shows "Check your
+   phone" or a code box. **Landing on `payhold.pages.dev` at any point is the
+   bug this flow exists to remove.**
+3. The modal turns itself to "Your money is held safely" — that is the poll
+   seeing `deal.status` move, driven by the webhook.
+4. A booking appears with `payhold_deal_id` set. If step 3 happened and this did
+   not, the webhook is the place to look — PayHold's dashboard shows every
+   delivery attempt and its response.
 
 ## Checkout in the page
 
-`VITE_PAYHOLD_EMBED=true` runs PayHold's hosted checkout in an iframe on the
-booking page instead of navigating to it. Off by default: it needs PayHold to
-serve `frame-ancestors … https://autohiretech.pages.dev` and to post its result
-back, and until that is live every renter would wait out a blank frame before
-the fallback moved them along.
+**The renter is asked how they want to pay exactly once, in AutoHire's own
+modal, and PayHold's hosted page is never opened.**
 
-**The redirect is not a legacy path.** PayHold collects through Flutterwave or
-Stripe, and hands the frame off to them to take the money. **Stripe Checkout
-refuses to be framed**, so on that rail a frame that loaded perfectly goes blank
-at the moment the renter is sent to pay. The redirect is what completes those
-bookings, and removing it would break the main path on a live rail.
+That sentence was false until now, and no amount of styling could have fixed
+it. PayHold's hosted page carries its own method picker, so handing a renter
+over *after* they had already chosen here asked them the same question twice —
+second time in someone else's brand, on a domain that is not ours. Framing that
+page would only have moved the duplicate inside a border.
 
-`PayholdCheckout` therefore never assumes the frame is working:
+What changed is on PayHold's side. `POST /checkout/public/:token/pay` used to
+return one field, `payment_link`, which can only ever mean "send them away". It
+now also returns a **`next_action`** — the same information with its shape kept:
 
-| Signal | Meaning | What happens |
+| `next_action.type` | Means | What the modal does |
 |---|---|---|
-| `load` fires, frame is cross-origin | It really rendered | Stay in the page |
-| `load` fires, frame reads as `about:blank` | Framing refused | Fall back |
-| Nothing at all within 6s | Blocked, or headers not shipped | Fall back |
-| `payment_succeeded` \| `_failed` \| `_cancelled` | PayHold reporting | Change the screen |
-| `resize` | Content height changed | Resize, clamped 320–1400px |
+| `wait` | The rail took the charge; the renter approves on their handset | "Check your phone", and polls |
+| `otp` | The rail sent a code and wants it back | Shows the code box, posts to `/validate` |
+| `element` | The provider collects the details itself, from its own script | Opens Flutterwave's form over the page |
+| `redirect` | This rail genuinely has nowhere else to go | Frames it, then falls back to the tab |
 
-The `about:blank` check is the load test that works: a refused frame still fires
-`load`, so the event proves nothing — but a frame that genuinely loaded PayHold
-is cross-origin, and reading its location *throws*. The throw is the success
-signal.
+Three of the four never leave the page. `redirect` is the only branch that can
+still move a renter, and PayHold only answers it for rails that require it —
+**Stripe Checkout refuses to be framed**, so on that rail a frame that loaded
+perfectly goes blank at the moment the renter is sent to pay. Removing it would
+break the main path on a live rail.
 
-**When we fall back depends on whether anything is in flight.** Before PayHold
-has said a word, leaving costs nothing and happens silently. Once it has spoken
-— a method chosen, a handoff begun — navigating unannounced could interrupt a
-payment, so the renter is shown the link and decides.
+### What each method actually costs
 
-`payment_succeeded` **only changes the screen.** The booking is still created by
-the signed `order.funded_held` webhook, exactly as with the redirect. A frame
-that could mint a trip by posting a message would be a trip anyone could mint.
+- **Mobile money finishes here in full.** The number is typed in the modal and
+  the charge is direct — `POST /charges?type=mobile_money_rwanda` rather than
+  the hosted `/payments` — so there is no provider page in it anywhere. If the
+  network asks for a code, that box appears in the same modal.
+- **Card is collected by Flutterwave's own script**, loaded on demand and
+  rendered over the booking page. The fields live in Flutterwave's iframe, so
+  **the card number never enters AutoHire's DOM** and we stay PCI **SAQ A**.
+  This is why it is not `<input>` elements of ours: owning those fields alone
+  moves AutoHire to SAQ D, and PayHold §6 forbids raw cards on their
+  infrastructure, so their server could not relay them either.
+- **The card element and the hosted link are one charge.** Both carry
+  `tx_ref = deal_id`, our webhook matches on that reference, and Flutterwave
+  refuses a second success against a `tx_ref` that already has one. At most one
+  of them can ever complete, which is what makes offering both safe.
 
-The frame is sandboxed without `allow-top-navigation`, so checkout cannot move
-the page out from under the renter.
+### Two bugs this replaced
 
-### One tenant's exception
+Worth recording, because both were silent:
 
-PayHold's `frame-ancestors` is a static allowlist naming AutoHire's origin, so
-**a second tenant wanting the same thing needs a PayHold redeploy**. This is the
-only place AutoHire has something no other tenant does. The durable fix is for
-PayHold to derive the allowed ancestor per deal — from the tenant's registered
-origin — rather than from a header baked at build time.
+1. **The session call was blocked by CORS.** PayHold's `corsHeaders` allowed
+   `DASHBOARD_ORIGIN` only, so AutoHire's `fetch` of `/checkout/public/:token`
+   failed in the browser, `methods` stayed null, our own picker showed, and
+   "Continue" navigated to the hosted page. That is the duplicate picker, and
+   its cause was a header rather than a design decision. The public buyer routes
+   now answer any origin — they read no cookie and no API key, so the session
+   token in the path is the whole credential and CORS was protecting nothing the
+   token was not already protecting better.
+2. **The poll watched the wrong `status`.** `status` at the top of the public
+   checkout response is the *session's* (`open` / `completed`), not the deal's.
+   The modal compared it against deal states like `funded_held`, so it could
+   never match and the renter would have waited out a payment that had already
+   landed. It reads `deal.status` now.
+
+A third, structural one: `bySession` accepted only `open` sessions, but `/pay`
+completes the session — so every request *after* the charge started, including
+the polling and the OTP, would have been told the payment link had already been
+used. Reads and `/validate` now accept `completed`; starting a charge still
+requires `open`, which is what stops one session being charged twice.
+
+### Nothing here can fund a deal
+
+`/pay` and `/validate` both stop at `payment_pending`. A validated OTP means the
+rail accepted the renter's authorisation, not that money moved — the hold is
+still written by `payhold-webhook` on the signed `order.funded_held`, after
+PayHold has re-fetched the transaction from the provider (§15 phase 2). Polling
+only decides what the renter is shown.
+
+### `VITE_PAYHOLD_EMBED` and `frame-ancestors` are moot
+
+Both existed to make PayHold's hosted page survive inside our frame. Nothing
+frames that page now, so its `frame-ancestors` allowlist — the one place
+AutoHire had something no other tenant did — no longer gates this flow. The
+`redirect` branch frames the *provider*, not PayHold, and it is sandboxed
+without `allow-top-navigation` so a payment page cannot move the booking out
+from under the renter.
 
 ## Amounts
 

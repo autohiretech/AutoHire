@@ -262,6 +262,21 @@ export const PAYMENT_METHOD_META: Record<
   },
 };
 
+/**
+ * Currencies with no minor unit — the amount is already whole, not ×100.
+ *
+ * The same list the Edge Function's adapter holds, and it has to be: PayHold
+ * counts in minor units on the wire, and a provider's own checkout script quotes
+ * major ones. RWF is where the two coincide and every other market is where a
+ * blanket ÷100 charges a renter a hundredth of the price.
+ */
+const ZERO_DECIMAL = new Set(['RWF', 'UGX', 'JPY', 'KRW', 'VND', 'XAF', 'XOF']);
+
+/** PayHold's minor units back to the whole units a provider widget wants. */
+export function fromMinorUnits(amount: number, currency: string): number {
+  return ZERO_DECIMAL.has(currency.toUpperCase()) ? amount : amount / 100;
+}
+
 /** "Card · ••••4242" style label for a saved payment method. */
 export function paymentLabel(method: PaymentMethodType, dest: string): string {
   return `${PAYMENT_METHOD_META[method].label} · ${maskDestination(dest)}`;
