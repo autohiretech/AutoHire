@@ -317,17 +317,21 @@ export function EarningsPage() {
         <Card className="mt-6">
           <CardHeader className="flex items-center justify-between">
             <h2 className="font-semibold text-ink-900">Where you get paid</h2>
-            {/* Only offered when there is genuinely something to do. A host who
-                already has a destination cannot change it: PayHold has no
-                delete-seller endpoint, and adding one is a `seller_destinations`
-                row with its own verification and security hold (§5.1) that is
-                not built on either side. A "Change" button here would open a
-                screen that refuses with `seller_exists`. */}
-            {destinations.length === 0 && (
-              <Button variant="outline" size="sm" onClick={() => navigate('/payouts/setup')}>
-                <Banknote size={14} /> Add a method
-              </Button>
-            )}
+            {/* Offered whether or not a destination exists.
+
+                This used to be hidden for anyone who already had one, on the
+                reasoning that changing it was "not built on either side" and a
+                button here would open a screen that refuses with
+                `seller_exists`. That stopped being true when
+                `payhold-register-seller` grew its change path: it branches on
+                `payhold_seller_id` and calls `POST /sellers/:id/destinations`,
+                which adds the row, makes it primary and demotes the old one
+                atomically. So the only thing standing between a host and their
+                own bank details was this condition. */}
+            <Button variant="outline" size="sm" onClick={() => navigate('/payouts/setup')}>
+              <Banknote size={14} />
+              {destinations.length === 0 ? 'Add a method' : 'Change'}
+            </Button>
           </CardHeader>
           <CardBody className="space-y-2">
             {destinations.length === 0 && (
