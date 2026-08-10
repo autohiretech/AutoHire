@@ -82,6 +82,15 @@ type NextAction =
 export interface CheckoutMethod {
   method: string;
   label: string;
+  /**
+   * The rail behind this method, and the reason the card step differs.
+   *
+   * Never shown to the renter — they choose a card, not an acquirer — but it
+   * decides *who collects the number*. Flutterwave has no field-level embed, so
+   * the fields below are ours; Stripe has one, so its Element collects the card
+   * after this step and our own inputs would ask for it twice.
+   */
+  provider?: string;
   blurb?: string | null;
   networks?: string[];
   schemes?: { code: string; label: string }[];
@@ -437,6 +446,17 @@ export function CheckoutModal({
   const [error, setError] = useState<string | null>(null);
   /** Bumped to re-ask for the method list. `methods` alone is not a trigger. */
   const [attempt, setAttempt] = useState(0);
+  /**
+   * Do *we* collect the card, or does the provider?
+   *
+   * Only Flutterwave makes us: it has no field-level embed, so the fields are
+   * ours and AutoHire carries PCI SAQ D for them. Stripe has the Payment
+   * Element, so its own inputs appear after this step — and asking here too
+   * would make the renter type the same card twice, into two different forms,
+   * one of which then throws it away.
+   */
+  const collectsCardHere =
+    methods?.find((m) => m.method === chosen)?.provider === 'flutterwave';
   const polling = useRef<number | null>(null);
   /**
    * Whether this PayHold has `/confirm`. Assumed yes and unset on the first
@@ -583,7 +603,7 @@ export function CheckoutModal({
           method,
           ...(network ? { network } : {}),
           ...(phone.trim() ? { phone: phone.trim() } : {}),
-          ...(method === 'card' && card.number.trim() ? { card: cardPayload() } : {}),
+          ...(method === 'card' && collectsCardHere ? { card: cardPayload() } : {}),
         }),
       });
       const data = (await res.json()) as {
@@ -1000,7 +1020,15 @@ export function CheckoutModal({
                         </div>
                       )}
 
-                      {isChosen && m.method === 'card' && (
+                      {isChosen && m.method === 'card' && m.provider !== 'flutterwave' && (
+                        <p className="flex items-start gap-1.5 border-t border-brand-200/70 px-3.5 pb-3.5 pt-3 text-xs text-ink-600">
+                          <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
+                          Your card details come next, entered directly with our payment
+                          provider — they never pass through AutoHire.
+                        </p>
+                      )}
+
+                      {isChosen && m.method === 'card' && m.provider === 'flutterwave' && (
                         <div className="space-y-2.5 border-t border-brand-200/70 px-3.5 pb-3.5 pt-3">
                           <div>
                             <Label htmlFor="card-number">Card number</Label>
@@ -1111,7 +1139,7 @@ export function CheckoutModal({
                   !chosen ||
                   stage === 'starting' ||
                   (chosen === 'mobile_money' && phone.trim().length < 8) ||
-                  (chosen === 'card' && !cardLooksComplete(card))
+                  (chosen === 'card' && collectsCardHere && !cardLooksComplete(card))
                 }
                 onClick={() => chosen && start(chosen)}
               >
