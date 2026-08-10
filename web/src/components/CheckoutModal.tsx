@@ -62,6 +62,18 @@ type NextAction =
       expires_at: string | null;
       note: string | null;
     }
+  /**
+   * A wallet the renter signs into. Approved in a popup their provider owns,
+   * over this page — never in a frame, which PayPal refuses and should.
+   */
+  | {
+      type: 'wallet_approval';
+      provider: string;
+      client_id: string;
+      order: string;
+      currency: string;
+      approval_url: string;
+    }
   /** The card needs a PIN. The answer goes back to `/authorize` with the card. */
   | { type: 'pin'; message: string }
   /** The card needs its billing address. `fields` says what to ask for. */
@@ -108,6 +120,9 @@ function marksFor(method: string): PaymentMethodType | null {
   if (method === 'card') return 'card';
   if (method === 'mobile_money') return 'momo';
   if (method === 'bank_transfer') return 'bank';
+  // PayHold calls the method `wallet` because the rail could be any of several.
+  // Ours is PayPal, and a renter recognises the mark rather than the category.
+  if (method === 'wallet') return 'paypal';
   if (method === 'paypal' || method === 'alipay' || method === 'wechat_pay') {
     return method as PaymentMethodType;
   }
@@ -201,6 +216,16 @@ function cardLooksComplete(card: { number: string; expiry: string; cvv: string }
   );
 }
 
+/** Only what we call — their SDK is far larger than the part we depend on. */
+interface PayPalSdk {
+  Buttons: (options: {
+    createOrder: () => Promise<string>;
+    onApprove: (data: { orderID?: string }) => Promise<void>;
+    onCancel: () => void;
+    onError: (err: unknown) => void;
+  }) => { render: (el: HTMLElement) => void };
+}
+
 /** Deal states that mean the money is with PayHold and the trip is being made. */
 const SETTLED = ['funded_held', 'in_progress', 'paid', 'completed'];
 /** Deal states that mean nothing was taken and the car is still free. */
@@ -281,6 +306,111 @@ function StripeFields({
         <Lock size={12} className="text-brand-600" />
         Your card is entered directly with our payment provider.
       </p>
+    </div>
+  );
+}
+
+/**
+ * PayPal's own buttons, rendered in our modal.
+ *
+ * The approval itself happens in a popup PayPal opens, and that is not a
+ * compromise — a wallet login inside somebody else's iframe is the shape of a
+ * phishing page, so PayPal refuses to be framed and is right to. What matters
+ * is that the booking underneath survives: the renter approves, the popup
+ * closes, and they are still on the page they started on.
+ *
+ * `createOrder` hands back an order PayHold already opened rather than making
+ * one here, so the charge the browser approves is the charge our webhook is
+ * waiting for.
+ */
+function PayPalButtons({
+  action,
+  onApproved,
+  onFailed,
+}: {
+  action: Extract<NextAction, { type: 'wallet_approval' }>;
+  onApproved: (orderId: string) => void;
+  onFailed: (message: string) => void;
+}) {
+  const host = useRef<HTMLDivElement | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    const src =
+      `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(action.client_id)}` +
+      `&currency=${encodeURIComponent(action.currency)}&intent=capture`;
+
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
+    const script = existing ?? document.createElement('script');
+
+    const render = () => {
+      const sdk = (window as unknown as { paypal?: PayPalSdk }).paypal;
+      if (cancelled || !sdk || !host.current) return;
+      host.current.innerHTML = '';
+      setState('ready');
+      sdk
+        .Buttons({
+          createOrder: () => Promise.resolve(action.order),
+          onApprove: (data) => {
+            onApproved(data.orderID ?? action.order);
+            return Promise.resolve();
+          },
+          // A renter who closes the popup has not failed at anything, so this
+          // says nothing and leaves the buttons where they are.
+          onCancel: () => undefined,
+          onError: () => onFailed('PayPal could not complete that payment.'),
+        })
+        .render(host.current);
+    };
+
+    if ((window as unknown as { paypal?: PayPalSdk }).paypal) {
+      render();
+    } else {
+      script.addEventListener('load', render);
+      script.addEventListener('error', () => !cancelled && setState('failed'));
+      if (!existing) {
+        script.src = src;
+        script.async = true;
+        document.body.appendChild(script);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      script.removeEventListener('load', render);
+    };
+  }, [action, onApproved, onFailed]);
+
+  if (state === 'failed') {
+    return (
+      <div className="py-4 text-center">
+        <p className="font-medium text-ink-900">One more step</p>
+        <p className="mt-1 text-sm text-ink-600">
+          We couldn't open PayPal here. This link approves the same payment.
+        </p>
+        <Button
+          className="mt-4 w-full"
+          onClick={() => window.location.assign(action.approval_url)}
+        >
+          Continue with PayPal
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2">
+      <p className="mb-3 text-center text-sm text-ink-600">
+        Approve this booking in your PayPal account. You'll stay on this page.
+      </p>
+      <div ref={host} />
+      {state === 'loading' && (
+        <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+          <Loader2 size={12} className="animate-spin" />
+          Loading PayPal…
+        </p>
+      )}
     </div>
   );
 }
@@ -668,6 +798,36 @@ export function CheckoutModal({
     }
   }
 
+  /**
+   * The renter approved in the wallet's popup; ask the rail to take the money.
+   *
+   * The SDK reporting approval is not evidence of anything — it runs in the
+   * renter's browser. PayHold asks PayPal to capture and lets PayPal refuse if
+   * no such approval happened, and even a successful capture only means money
+   * moved *there*: the trip still waits for the signed webhook.
+   */
+  async function capture(orderId: string) {
+    if (!checkoutBase) return;
+    setStage('validating');
+    setError(null);
+    try {
+      const res = await fetch(`${checkoutBase}/capture`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: orderId }),
+      });
+      const data = (await res.json()) as {
+        next_action?: NextAction;
+        error?: { message?: string };
+      };
+      if (!res.ok) throw new Error(data?.error?.message ?? 'That payment could not be completed.');
+      apply(data.next_action, undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That payment could not be completed.');
+      setStage('acting');
+    }
+  }
+
   async function submitOtp() {
     if (!checkoutBase || action?.type !== 'otp') return;
     setStage('validating');
@@ -804,6 +964,14 @@ export function CheckoutModal({
               </Button>
             </div>
           </div>
+        )}
+
+        {stage === 'acting' && action?.type === 'wallet_approval' && (
+          <PayPalButtons
+            action={action}
+            onApproved={capture}
+            onFailed={(m) => setError(m)}
+          />
         )}
 
         {midPayment && action?.type === 'transfer' && (
