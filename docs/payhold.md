@@ -560,14 +560,26 @@ now also returns a **`next_action`** — the same information with its shape kep
 |---|---|---|
 | `wait` | The rail took the charge; the renter approves on their handset | "Check your phone", and polls |
 | `otp` | The rail sent a code and wants it back | Shows the code box, posts to `/validate` |
-| `element` | The provider collects the details itself, from its own script | Opens Flutterwave's form over the page |
-| `redirect` | This rail genuinely has nowhere else to go | Frames it, then falls back to the tab |
+| `element` | The provider collects the details itself | Read as `redirect` — see below |
+| `redirect` | The provider's own page finishes it | Frames it in the modal, then falls back to the tab |
 
-Three of the four never leave the page. `redirect` is the only branch that can
-still move a renter, and PayHold only answers it for rails that require it —
-**Stripe Checkout refuses to be framed**, so on that rail a frame that loaded
-perfectly goes blank at the moment the renter is sent to pay. Removing it would
+None of the four leaves the page while Flutterwave is the rail. `redirect` only
+moves a renter when the frame is *refused*, and the rail that refuses is
+Stripe: **Stripe Checkout will not be framed**, so a frame that loaded perfectly
+goes blank at the moment the renter is sent to pay. Removing that fallback would
 break the main path on a live rail.
+
+**`element` is answered but not honoured, deliberately.** PayHold offers a card
+two ways — its inline script, and the hosted link — and they are two doors onto
+one charge sharing a `tx_ref`. Only the link can be put *inside* something.
+Flutterwave's script (`checkout.flutterwave.com/v3.js`) was built, deployed and
+removed within the day: it takes the entire viewport with a dialog of its own
+that carries its own method sidebar, so a renter who had already chosen Card in
+our modal was shown Card and Mobile Money again, full-screen, on top of the
+booking. `payment_options: 'card'` did not suppress it. That is the same
+duplicate this whole flow exists to remove, wearing a different costume. The
+element is now read as what it *proves* — the rail is Flutterwave, and
+Flutterwave frames — and the link goes in the modal.
 
 ### What each method actually costs
 
@@ -575,12 +587,15 @@ break the main path on a live rail.
   the charge is direct — `POST /charges?type=mobile_money_rwanda` rather than
   the hosted `/payments` — so there is no provider page in it anywhere. If the
   network asks for a code, that box appears in the same modal.
-- **Card is collected by Flutterwave's own script**, loaded on demand and
-  rendered over the booking page. The fields live in Flutterwave's iframe, so
-  **the card number never enters AutoHire's DOM** and we stay PCI **SAQ A**.
-  This is why it is not `<input>` elements of ours: owning those fields alone
-  moves AutoHire to SAQ D, and PayHold §6 forbids raw cards on their
-  infrastructure, so their server could not relay them either.
+- **Card is Flutterwave's own form, framed inside our modal.** The fields live
+  in Flutterwave's origin, so **the card number never enters AutoHire's DOM**
+  and we stay PCI **SAQ A**. This is why they are not `<input>` elements of
+  ours: owning those fields alone moves AutoHire to SAQ D, and PayHold §6
+  forbids raw cards on their infrastructure, so their server could not relay
+  them either. Flutterwave sends no `X-Frame-Options` and no `frame-ancestors`,
+  which is what makes framing it possible at all — verify with
+  `curl -sI https://checkout.flutterwave.com/v3/hosted/pay` before assuming it
+  still holds.
 - **The card element and the hosted link are one charge.** Both carry
   `tx_ref = deal_id`, our webhook matches on that reference, and Flutterwave
   refuses a second success against a `tx_ref` that already has one. At most one

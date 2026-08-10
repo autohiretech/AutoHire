@@ -119,7 +119,6 @@ export function PayholdPayment({
         checkoutBase={checkoutBase}
         paymentLink={link ?? ''}
         amountLabel={label}
-        payerEmail={me?.email}
         fallback={
           <div>
         {/* Flat panels, not cards: this whole block already sits inside the

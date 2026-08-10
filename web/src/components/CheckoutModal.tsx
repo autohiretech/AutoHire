@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Loader2, Lock, ShieldCheck, Smartphone } from 'lucide-react';
 import { Button, Input, Label, Modal } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
-import { fromMinorUnits } from '@/lib/payments';
 import type { PaymentMethodType } from '@autohire/shared';
 
 /**
@@ -65,84 +64,28 @@ const SETTLED = ['funded_held', 'in_progress', 'paid', 'completed'];
 /** Deal states that mean nothing was taken and the car is still free. */
 const DEAD = ['payment_failed', 'expired', 'canceled'];
 
-// ---------------------------------------------------------------------------
-// The provider's own card form, in our page
-// ---------------------------------------------------------------------------
-
-interface FlutterwaveOptions {
-  public_key: string;
-  tx_ref: string;
-  amount: number;
-  currency: string;
-  payment_options: string;
-  redirect_url: string;
-  customer: { email: string; phone_number?: string; name?: string };
-  customizations: { title: string; description: string };
-  callback: (response: unknown) => void;
-  onclose: () => void;
-}
-
-declare global {
-  interface Window {
-    FlutterwaveCheckout?: (options: FlutterwaveOptions) => { close: () => void };
-  }
-}
-
-const FLUTTERWAVE_SCRIPT = 'https://checkout.flutterwave.com/v3.js';
-
-/**
- * Load Flutterwave's checkout script once per page.
- *
- * Loaded on demand rather than in `index.html` because the overwhelming
- * majority of sessions never reach a card form, and a payment provider's script
- * on every page view is a third party watching people browse cars.
- */
-function useFlutterwave(enabled: boolean): 'idle' | 'loading' | 'ready' | 'failed' {
-  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'failed'>(
-    typeof window !== 'undefined' && window.FlutterwaveCheckout ? 'ready' : 'idle',
-  );
-
-  useEffect(() => {
-    if (!enabled || state === 'ready' || state === 'failed') return;
-    if (window.FlutterwaveCheckout) {
-      setState('ready');
-      return;
-    }
-
-    setState('loading');
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${FLUTTERWAVE_SCRIPT}"]`,
-    );
-    const script = existing ?? document.createElement('script');
-    const onLoad = () => setState(window.FlutterwaveCheckout ? 'ready' : 'failed');
-    const onError = () => setState('failed');
-
-    script.addEventListener('load', onLoad);
-    script.addEventListener('error', onError);
-    if (!existing) {
-      script.src = FLUTTERWAVE_SCRIPT;
-      script.async = true;
-      document.body.appendChild(script);
-    }
-
-    return () => {
-      script.removeEventListener('load', onLoad);
-      script.removeEventListener('error', onError);
-    };
-  }, [enabled, state]);
-
-  return state;
-}
-
 /**
  * The provider's page, running inside the modal.
  *
- * This is the last-resort branch now rather than the main one: PayHold only
- * answers `redirect` for rails that genuinely have nowhere else to go. Stripe
- * Checkout is the one that matters — it refuses to be framed outright, so a
- * frame that loaded perfectly goes blank at the moment the renter is sent to pay.
+ * This is how card is collected, and the reasoning is worth keeping because the
+ * obvious alternatives are both worse:
  *
- * A refused frame still fires `load`, so the event proves nothing. What
+ *   • **Our own card inputs** would put the number in AutoHire's DOM, which
+ *     alone moves us from PCI SAQ A to SAQ D. PayHold §6 forbids raw cards on
+ *     their infrastructure too, so there would be nowhere to send it.
+ *   • **Flutterwave's inline script** (`checkout.flutterwave.com/v3.js`) was
+ *     tried and removed. It takes the whole viewport with a dialog of its own,
+ *     carrying its own method sidebar — so a renter who had already chosen Card
+ *     here was shown Card and Mobile Money again, full-screen, on top of the
+ *     booking. That is the same duplicate this modal exists to remove, and
+ *     `payment_options` did not suppress it.
+ *
+ * A frame keeps the fields in Flutterwave's origin — the card number never
+ * touches AutoHire — while the modal stays the thing the renter is looking at.
+ *
+ * Stripe is why the fallback survives: Stripe Checkout refuses to be framed, so
+ * a frame that loaded perfectly goes blank at the moment the renter is sent to
+ * pay. A refused frame still fires `load`, so the event proves nothing. What
  * separates them is reachability: a frame that really loaded the provider is
  * cross-origin and reading its location throws, while a blocked one sits on
  * `about:blank`, same-origin and readable. The throw is the success signal.
@@ -191,7 +134,10 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
           onLoad={check}
           title="Payment"
           className="block w-full"
-          style={{ height: 520 }}
+          // Tall enough for the provider's card form without its own scrollbar.
+          // Their page centres its content, so a short frame shows a band of
+          // empty chrome and puts the fields half off-screen.
+          style={{ height: 640 }}
           // No `allow-top-navigation`: the payment page must not be able to move
           // the booking out from under the renter.
           sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
@@ -222,10 +168,12 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
  *   • **Mobile money** finishes here in full. The number is typed here, the
  *     charge is direct, and if the network wants a code that box appears here
  *     too. There is no provider page anywhere in it.
- *   • **Card** is collected by the provider's own script, rendered over this
- *     page. The fields belong to Flutterwave's iframe and the card number never
- *     enters AutoHire's DOM — which is the whole reason it is done this way and
- *     not with inputs of our own. We stay PCI SAQ A.
+ *   • **Card** is the provider's own form, framed inside this modal. The fields
+ *     belong to Flutterwave's origin, so the number never enters AutoHire's DOM
+ *     and we stay PCI SAQ A — which is why they are not inputs of ours. Framed
+ *     rather than launched: their inline script takes the whole viewport and
+ *     brings its own method sidebar, so a renter who had chosen Card here was
+ *     asked the same question again, full-screen, over the booking.
  *   • **Anything on a Stripe rail** can still need the provider's page, because
  *     Stripe Checkout refuses to be framed. `redirect` is what PayHold answers
  *     then, and it is the only branch that can still move the renter.
@@ -241,7 +189,6 @@ export function CheckoutModal({
   paymentLink,
   fallback,
   amountLabel,
-  payerEmail,
 }: {
   open: boolean;
   onClose: () => void;
@@ -251,8 +198,6 @@ export function CheckoutModal({
   /** Our own picker, shown when PayHold cannot describe the methods itself. */
   fallback: React.ReactNode;
   amountLabel: string;
-  /** The renter's address, for the provider's receipt. */
-  payerEmail?: string | null;
 }) {
   const [methods, setMethods] = useState<CheckoutMethod[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
@@ -266,8 +211,6 @@ export function CheckoutModal({
   const [error, setError] = useState<string | null>(null);
   const polling = useRef<number | null>(null);
 
-  const card = action?.type === 'element' ? action : null;
-  const script = useFlutterwave(!!card);
 
   // Read what this renter may pay with, in PayHold's own words. No credential:
   // the session token in the path is the credential.
@@ -321,56 +264,24 @@ export function CheckoutModal({
   }, [open, stage, checkoutBase]);
 
   /**
-   * Hand the card over to Flutterwave's own script.
+   * Whatever PayHold answered, applied.
    *
-   * Opened as soon as we know it is a card, and reopenable, because their
-   * widget is a modal of its own: a renter who dismisses it by accident has
-   * nothing left on the screen to try again with unless we keep a way back.
+   * `element` is deliberately collapsed into `redirect` here rather than
+   * honoured as its own screen. PayHold offers both for a card — the element
+   * and the hosted link are two doors onto one charge, sharing a `tx_ref` — and
+   * of the two only the link can be put *inside* something. Flutterwave's
+   * script insists on the whole viewport and brings its own method sidebar with
+   * it, which is the duplicate picker in a new costume.
    *
-   * `tx_ref` is the deal id PayHold gave us, which is what makes this the same
-   * charge PayHold's webhook is already waiting for rather than a second one.
+   * So the element is read as what it proves rather than as an instruction: the
+   * provider is Flutterwave, and Flutterwave frames. The link goes in the modal.
    */
-  const openCardForm = useCallback(() => {
-    if (!card || !window.FlutterwaveCheckout) return;
-    const widget = window.FlutterwaveCheckout({
-      public_key: card.public_key,
-      tx_ref: card.reference,
-      // PayHold counts in minor units; Flutterwave quotes major ones. RWF is
-      // zero-decimal so the two coincide there and nowhere else — a blanket
-      // conversion either way is wrong in half the markets.
-      amount: fromMinorUnits(card.amount, card.currency),
-      currency: card.currency,
-      payment_options: card.options.join(','),
-      redirect_url: card.redirect_url,
-      customer: { email: payerEmail || `deal-${card.reference}@autohire.invalid` },
-      customizations: {
-        title: 'AutoHire',
-        description: 'Your money is held until the trip is done',
-      },
-      /**
-       * Neither of these confirms anything, and that is the point.
-       *
-       * `callback` fires with whatever Flutterwave's own page believed, in the
-       * renter's browser, where anyone can call it. The hold is written by the
-       * signed `order.funded_held` webhook after PayHold re-fetches the
-       * transaction — a trip a callback could mint would be a trip anyone could
-       * mint. So this only puts their form away and lets the poll, which reads
-       * the deal itself, decide what the renter is shown.
-       */
-      callback: () => widget.close(),
-      onclose: () => undefined,
-    });
-  }, [card, payerEmail]);
-
-  useEffect(() => {
-    if (card && script === 'ready') openCardForm();
-  }, [card, script, openCardForm]);
-
-  /** Whatever PayHold answered, applied. */
   function apply(next: NextAction | undefined, link: string | undefined) {
-    // An older PayHold that only knows how to return a link meant `redirect`
-    // and always did, so this reads as that rather than as a failure.
-    const resolved: NextAction = next ?? { type: 'redirect', url: link || paymentLink };
+    const url = link || paymentLink;
+    const resolved: NextAction =
+      // An older PayHold that only knows how to return a link meant `redirect`
+      // and always did, so a missing action reads as that rather than a failure.
+      !next || next.type === 'element' ? { type: 'redirect', url } : next;
     setAction(resolved);
     setOtp('');
     setStage('acting');
@@ -522,42 +433,6 @@ export function CheckoutModal({
 
         {midPayment && action?.type === 'redirect' && (
           <PayFrame url={action.url} amountLabel={amountLabel} />
-        )}
-
-        {midPayment && card && (
-          <div className="py-2 text-center">
-            {script === 'failed' ? (
-              <>
-                <p className="font-medium text-ink-900">One more step</p>
-                <p className="mt-1 text-sm text-ink-600">
-                  We couldn't open the card form here. This link finishes the same payment.
-                </p>
-                <Button
-                  className="mt-4 w-full"
-                  onClick={() => window.location.assign(paymentLink)}
-                >
-                  Continue · {amountLabel}
-                </Button>
-              </>
-            ) : (
-              <>
-                <Lock size={26} className="mx-auto text-brand-600" />
-                <p className="mt-2.5 font-medium text-ink-900">Enter your card</p>
-                <p className="mx-auto mt-1 max-w-xs text-sm text-ink-600">
-                  The card form is our payment provider's own — your number never passes
-                  through AutoHire.
-                </p>
-                <Button
-                  variant="outline"
-                  className="mt-4 w-full"
-                  disabled={script !== 'ready'}
-                  onClick={openCardForm}
-                >
-                  {script === 'ready' ? 'Reopen the card form' : 'Opening…'}
-                </Button>
-              </>
-            )}
-          </div>
         )}
 
         {(stage === 'choosing' || stage === 'starting') && (
