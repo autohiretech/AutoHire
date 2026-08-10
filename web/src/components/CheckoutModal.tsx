@@ -438,6 +438,12 @@ export function CheckoutModal({
   /** Bumped to re-ask for the method list. `methods` alone is not a trigger. */
   const [attempt, setAttempt] = useState(0);
   const polling = useRef<number | null>(null);
+  /**
+   * Whether this PayHold has `/confirm`. Assumed yes and unset on the first
+   * 404, so an older deployment costs one wasted request rather than a
+   * capability check on every payment.
+   */
+  const confirmable = useRef(true);
 
   // Read what this renter may pay with, in PayHold's own words. No credential:
   // the session token in the path is the credential.
@@ -468,6 +474,15 @@ export function CheckoutModal({
    * `completed`, meaning whether the renter has finished choosing. The money is
    * `deal.status`, and reading the wrong one is a screen that waits forever
    * through a payment that already landed.
+   *
+   * And **it asks rather than reads**. A plain `GET` returns PayHold's own
+   * row, which only ever changed when the provider's webhook reached PayHold —
+   * so a payment that succeeded at the rail while that delivery failed left
+   * this poll refreshing a value nothing could move. The renter's money was
+   * gone, the spinner was permanent, and the host was never told anyone had
+   * booked. `/confirm` makes PayHold re-fetch the transaction from the provider
+   * and fund the deal if it landed, which is the same evidence its webhook
+   * handler acts on, obtained by asking instead of by waiting.
    */
   useEffect(() => {
     if (!open || !checkoutBase) return;
@@ -475,8 +490,19 @@ export function CheckoutModal({
 
     const tick = async () => {
       try {
-        const r = await fetch(checkoutBase);
+        // Fall back to reading the session for a PayHold too old to have
+        // `/confirm`. Worse — it can only see a payment the webhook delivered —
+        // but a deployment mismatch should degrade rather than break checkout.
+        const r = confirmable.current
+          ? await fetch(`${checkoutBase}/confirm`, { method: 'POST' })
+          : await fetch(checkoutBase);
+
+        if (r.status === 404 && confirmable.current) {
+          confirmable.current = false;
+          return;
+        }
         if (!r.ok) return;
+
         const d = (await r.json()) as PublicCheckout;
         const s = String(d.deal?.status ?? '');
         if (SETTLED.includes(s)) setStage('paid');
