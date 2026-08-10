@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from '@stripe/react-stripe-js';
 import { CheckCircle2, Loader2, Lock, ShieldCheck, Smartphone } from 'lucide-react';
 import { Button, Input, Label, Modal } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
+import { getStripeFor } from '@/lib/stripe';
 import type { PaymentMethodType } from '@autohire/shared';
 
 /**
@@ -20,6 +27,18 @@ type NextAction =
   | { type: 'otp'; reference: string; message: string }
   /** No way to finish here — the provider needs its own page. */
   | { type: 'redirect'; url: string }
+  /**
+   * The provider's fields, mounted into our own markup. The best of the four:
+   * the inputs are served from the provider's origin so the card never touches
+   * AutoHire, but the layout around them is ours.
+   */
+  | {
+      type: 'payment_element';
+      provider: string;
+      publishable_key: string;
+      client_secret: string;
+      return_url: string;
+    }
   /** The provider collects the details itself, in this page, from its own script. */
   | {
       type: 'element';
@@ -63,6 +82,85 @@ function marksFor(method: string): PaymentMethodType | null {
 const SETTLED = ['funded_held', 'in_progress', 'paid', 'completed'];
 /** Deal states that mean nothing was taken and the car is still free. */
 const DEAD = ['payment_failed', 'expired', 'canceled'];
+
+// ---------------------------------------------------------------------------
+// The provider's fields, in our layout
+// ---------------------------------------------------------------------------
+
+/**
+ * Stripe's Payment Element, mounted inside this modal.
+ *
+ * This is the rail every renter outside Africa lands on — PayHold quotes them
+ * in USD or EUR, and the Stripe card rail is the only one that serves those
+ * currencies — so it is the path most non-Rwandan bookings take, and until now
+ * it was a redirect to `checkout.stripe.com`.
+ *
+ * An Element is not a hosted page in a border. Each input is its own iframe
+ * served from Stripe, so the card number never enters AutoHire's DOM and we
+ * stay PCI SAQ A, but the arrangement, spacing and button around them are ours.
+ */
+function StripeFields({
+  action,
+  amountLabel,
+  onDone,
+}: {
+  action: Extract<NextAction, { type: 'payment_element' }>;
+  amountLabel: string;
+  onDone: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!stripe || !elements) return;
+    setBusy(true);
+    setError(null);
+
+    /**
+     * `if_required` is what keeps this in the page.
+     *
+     * The default sends the browser to `return_url` unconditionally. With this,
+     * Stripe only leaves when the *issuer* insists — a 3DS challenge it cannot
+     * render inline — and for everything else it resolves right here. The
+     * `return_url` is still required, because Stripe needs somewhere to come
+     * back to on the occasions it does go.
+     */
+    const { error: err } = await stripe.confirmPayment({
+      elements,
+      confirmParams: { return_url: action.return_url },
+      redirect: 'if_required',
+    });
+
+    if (err) {
+      // Card errors are the renter's to fix and safe to show; anything else is
+      // Stripe's own wording, which is better than ours at explaining itself.
+      setError(err.message ?? 'That payment could not be completed.');
+      setBusy(false);
+      return;
+    }
+
+    // Confirmed with Stripe — not funded. The hold is written by the signed
+    // webhook once PayHold has re-fetched the intent, so this only tells the
+    // modal to stop showing a form and start watching the deal.
+    onDone();
+  }
+
+  return (
+    <div>
+      <PaymentElement options={{ layout: 'tabs' }} />
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      <Button className="mt-4 w-full" size="lg" disabled={!stripe || busy} onClick={submit}>
+        {busy ? 'Confirming…' : `Pay ${amountLabel}`}
+      </Button>
+      <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-500">
+        <Lock size={12} className="text-brand-600" />
+        Your card is entered directly with our payment provider.
+      </p>
+    </div>
+  );
+}
 
 /**
  * The provider's page, running inside the modal.
@@ -280,6 +378,29 @@ export function CheckoutModal({
    * So the element is read as what it proves rather than as an instruction: the
    * provider is Flutterwave, and Flutterwave frames. The link goes in the modal.
    */
+  /**
+   * Stripe.js and the Element's options, built once per client secret.
+   *
+   * `Elements` treats `options.clientSecret` as fixed after mount, so this must
+   * not be rebuilt on unrelated renders — a new object each time remounts the
+   * Element and loses whatever the renter had typed into it.
+   */
+  const stripeElements = useMemo(() => {
+    if (action?.type !== 'payment_element') return null;
+    return {
+      stripe: getStripeFor(action.publishable_key),
+      options: {
+        clientSecret: action.client_secret,
+        // Their fields, our palette — which is the whole point of an Element
+        // over a hosted page.
+        appearance: {
+          theme: 'stripe' as const,
+          variables: { colorPrimary: '#0f766e', borderRadius: '10px' },
+        },
+      },
+    };
+  }, [action]);
+
   function apply(next: NextAction | undefined, link: string | undefined) {
     const url = link || paymentLink;
     const resolved: NextAction =
@@ -443,6 +564,32 @@ export function CheckoutModal({
 
         {midPayment && action?.type === 'redirect' && (
           <PayFrame url={action.url} amountLabel={amountLabel} />
+        )}
+
+        {/* `acting`, not `midPayment` — once Stripe has taken the card the form
+            must come down. Leaving it up through `validating` would invite a
+            renter to enter a second card against a charge already in flight. */}
+        {stage === 'acting' && action?.type === 'payment_element' && stripeElements && (
+          <Elements stripe={stripeElements.stripe} options={stripeElements.options}>
+            <StripeFields
+              action={action}
+              amountLabel={amountLabel}
+              // Stripe has taken the card; the deal has not moved yet. Handing
+              // over to the poll rather than declaring success keeps the webhook
+              // the only thing that can call a trip paid for.
+              onDone={() => setStage('validating')}
+            />
+          </Elements>
+        )}
+
+        {stage === 'validating' && action?.type === 'payment_element' && (
+          <div className="py-6 text-center">
+            <Loader2 size={26} className="mx-auto animate-spin text-brand-600" />
+            <p className="mt-3 font-medium text-ink-900">Confirming your payment</p>
+            <p className="mt-1 text-sm text-ink-600">
+              This takes a few seconds — don't close this window.
+            </p>
+          </div>
         )}
 
         {(stage === 'choosing' || stage === 'starting') && (
