@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Lock } from 'lucide-react';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { CheckoutModal } from '@/components/CheckoutModal';
@@ -88,11 +89,17 @@ export function PayholdPayment({
       {/* The choice lives in a modal so the booking summary stays put behind
           it — a renter deciding how to pay should still see what they are
           paying for. */}
-      <Button className="w-full" size="lg" disabled={disabled || busy} onClick={pay}>
+      <Button
+        className="h-14 w-full rounded-xl text-lg font-semibold shadow-sm"
+        size="lg"
+        disabled={disabled || busy}
+        onClick={pay}
+      >
         {busy ? 'Opening…' : `Pay ${label}`}
       </Button>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-      <p className="mt-3 text-center text-xs text-ink-500">
+      <p className="mt-3.5 flex items-center justify-center gap-1.5 text-center text-sm text-ink-500">
+        <Lock size={14} className="shrink-0 text-ink-400" />
         Your money is held until the trip is done — the host is paid after you both confirm the
         car came back.
       </p>

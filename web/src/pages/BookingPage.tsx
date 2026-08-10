@@ -2,7 +2,23 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
-import { ArrowLeft, Award, CreditCard, ShieldCheck, Smartphone, Star } from 'lucide-react';
+import {
+  ArrowLeft,
+  Award,
+  BadgeCheck,
+  Calendar,
+  CalendarCheck,
+  Cog,
+  CreditCard,
+  Fuel,
+  Lock,
+  MapPin,
+  ShieldCheck,
+  Smartphone,
+  Star,
+  Users,
+  Wallet,
+} from 'lucide-react';
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { client } from '@/lib/client';
 import { useCanRent, useIsBusinessHost } from '@/lib/account';
@@ -20,6 +36,7 @@ import {
   isAfricanMarket,
 } from '@/lib/payments';
 import {
+  AcceptedCards,
   AirtelMark,
   AmexMark,
   DiscoverMark,
@@ -30,7 +47,7 @@ import {
 } from '@/components/PaymentBrands';
 import { PayholdPayment } from '@/components/PayholdPayment';
 import { Img } from '@/components/Img';
-import { Badge, Button, Card, CardBody, Input, Label, Select, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, Input, Label, Select, Spinner } from '@/components/ui';
 
 type Method = 'card' | 'momo';
 
@@ -239,28 +256,44 @@ export function BookingPage() {
     onHeld: (reference: string) => mutation.mutateAsync({ reference }),
   };
 
+  // Rails that hand the method choice to a modal or a provider page show no
+  // method rows here — so the accepted-card tiles are the only thing telling a
+  // renter their card is welcome before they commit. The picker rails already
+  // carry the same marks row by row; a second strip there would just repeat it.
+  const pickerless = PAYMENTS_PAYHOLD || PAYMENTS_EXTERNAL || africanLive;
+
   return (
-    <section className="mx-auto max-w-5xl px-4 py-8">
+    <section className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <button
         type="button"
         onClick={() => navigate(`/cars/${id}`)}
         aria-label="Back"
-        className="mb-5 flex h-9 w-9 items-center justify-center rounded-full border border-ink-200 text-ink-700 hover:bg-ink-50"
+        className="mb-6 flex h-10 w-10 items-center justify-center rounded-full border border-ink-200 text-ink-700 transition hover:bg-ink-50"
       >
         <ArrowLeft size={18} />
       </button>
 
-      <h1 className="text-2xl font-bold text-ink-900">Confirm and pay</h1>
+      <h1 className="text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl">Confirm and pay</h1>
+      <p className="mt-2 max-w-xl text-base text-ink-500">
+        Check the car and the dates, then pay. Nothing reaches the host until the trip is over.
+      </p>
 
-      <div className="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_minmax(0,380px)]">
+      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_minmax(0,440px)] lg:gap-10">
         {/* Left: payment methods */}
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-6">
           <Card>
-            <CardBody>
-              <h2 className="mb-3 text-lg font-semibold text-ink-900">How do you want to pay?</h2>
+            <CardBody className="p-5 sm:p-7">
+              <h2 className="text-xl font-semibold text-ink-900 sm:text-2xl">
+                How do you want to pay?
+              </h2>
+              <p className="mb-5 mt-1.5 text-sm text-ink-500">
+                {pickerless
+                  ? 'Choose your method on the next step — you stay right here on AutoHire.'
+                  : 'Pick a method below and enter your details.'}
+              </p>
 
               {!datesValid && (
-                <p className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                <p className="mb-4 rounded-xl bg-red-50 p-3.5 text-sm text-red-700">
                   These dates aren't available.{' '}
                   <Link to={`/cars/${id}`} className="font-medium underline">
                     Choose different dates
@@ -340,6 +373,17 @@ export function BookingPage() {
               </div>
               )}
 
+              {/* The cards we take, drawn where the renter is deciding. On the
+                  picker rails the method rows already carry these marks. */}
+              {pickerless && (
+                <div className="mt-6 border-t border-ink-100 pt-5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-ink-400">
+                    Cards accepted
+                  </p>
+                  <AcceptedCards className="mt-3" />
+                </div>
+              )}
+
               {/* Provider attribution — Flutterwave for African markets, Stripe
                   otherwise. Not on the PayHold rail: it names card, MTN and
                   Airtel whatever the renter's country is, and the marks above
@@ -357,60 +401,122 @@ export function BookingPage() {
               )}
             </CardBody>
           </Card>
+
+          {/* Why this is safe — the questions a renter asks themselves right
+              before pressing Pay, answered on the page instead of in a help
+              centre they would have to go looking for. */}
+          <Card>
+            <CardBody className="p-5 sm:p-7">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-ink-900">
+                <ShieldCheck size={20} className="text-brand-600" />
+                Your payment is protected
+              </h2>
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                <SafetyPoint
+                  icon={<Lock size={18} />}
+                  title="Encrypted, and never stored here"
+                  body="Your card details travel over an encrypted connection straight to our payment provider. AutoHire never keeps your card number."
+                />
+                <SafetyPoint
+                  icon={<Wallet size={18} />}
+                  title="Held, not handed over"
+                  body="We hold the full amount from the moment you book. The host is paid only after you both confirm the car came back."
+                />
+                <SafetyPoint
+                  icon={<CalendarCheck size={18} />}
+                  title="Free cancellation"
+                  body={`Cancel before ${formatDate(startDate)} and the full ${money(total)} comes back to you, automatically.`}
+                />
+                <SafetyPoint
+                  icon={<BadgeCheck size={18} />}
+                  title="Verified people only"
+                  body="Every renter passes an identity check before they can book, and hosts are reviewed after each trip."
+                />
+              </div>
+            </CardBody>
+          </Card>
         </div>
 
-        {/* Right: order summary */}
+        {/* Right: order summary. The car leads it — at a size where you can see
+            which car you are about to spend on, with the title, the place and
+            the specs spelled out rather than truncated into a hint. */}
         <div>
-          <Card className="lg:sticky lg:top-20">
-            <CardBody className="space-y-4">
-              <div className="flex gap-3">
-                <Img
-                  src={listing.photos[0]}
-                  alt={listing.title}
-                  className="h-16 w-24 shrink-0 rounded-lg object-cover"
-                />
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-ink-900">{listing.title}</p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-500">
-                    {listing.ratingCount ? (
-                      <span className="inline-flex items-center gap-1 text-ink-700">
-                        <Star size={12} className="fill-ink-900 text-ink-900" />
-                        {listing.ratingAvg?.toFixed(2)} ({listing.ratingCount})
-                      </span>
-                    ) : (
-                      <span>New listing</span>
-                    )}
-                    {superhost && (
-                      <span className="inline-flex items-center gap-1 text-ink-700">
-                        <Award size={12} /> Top-rated host
-                      </span>
-                    )}
-                  </p>
+          <Card className="overflow-hidden lg:sticky lg:top-20">
+            <div className="relative">
+              <Img
+                src={listing.photos[0]}
+                alt={listing.title}
+                className="aspect-[16/10] w-full object-cover"
+              />
+              {superhost && (
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-ink-800 shadow-sm backdrop-blur">
+                  <Award size={13} className="text-brand-600" /> Top-rated host
+                </span>
+              )}
+            </div>
+
+            <CardBody className="space-y-5 p-5 sm:p-6">
+              <div>
+                <h2 className="text-xl font-semibold leading-snug text-ink-900">{listing.title}</h2>
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-500">
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin size={14} className="text-ink-400" />
+                    {listing.location}
+                  </span>
+                  {listing.ratingCount ? (
+                    <span className="inline-flex items-center gap-1 font-medium text-ink-800">
+                      <Star size={14} className="fill-ink-900 text-ink-900" />
+                      {listing.ratingAvg?.toFixed(2)}
+                      <span className="font-normal text-ink-500">({listing.ratingCount} trips)</span>
+                    </span>
+                  ) : (
+                    <span>New listing</span>
+                  )}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <SpecChip icon={<Users size={13} />} label={`${listing.seats} seats`} />
+                  <SpecChip icon={<Cog size={13} />} label={listing.transmission} />
+                  <SpecChip icon={<Fuel size={13} />} label={listing.fuel} />
+                  <SpecChip icon={<Calendar size={13} />} label={`${listing.year}`} />
                 </div>
               </div>
 
-              <div className="border-t border-ink-100 pt-3">
-                <p className="font-medium text-ink-900">Free cancellation</p>
-                <p className="text-sm text-ink-500">
-                  Cancel before {formatDate(startDate)} for a full refund.
-                </p>
-              </div>
+              {host && (
+                <div className="flex items-center gap-3 border-t border-ink-100 pt-4">
+                  <Avatar name={host.businessName || host.fullName} src={host.avatarUrl} size="md" />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink-900">
+                      Hosted by {host.businessName || host.fullName}
+                    </p>
+                    <p className="text-sm text-ink-500">
+                      {instant ? 'Books instantly' : 'Approves each request'}
+                    </p>
+                  </div>
+                </div>
+              )}
 
-              <div className="flex items-start justify-between border-t border-ink-100 pt-3">
+              <div className="flex items-start justify-between border-t border-ink-100 pt-4">
                 <div>
-                  <p className="font-medium text-ink-900">Dates</p>
-                  <p className="text-sm text-ink-600">
+                  <p className="font-semibold text-ink-900">Your trip</p>
+                  <p className="mt-0.5 text-base text-ink-700">
                     {formatDate(startDate)} – {formatDate(endDate)}
                   </p>
+                  <p className="text-sm text-ink-500">
+                    {days} day{days === 1 ? '' : 's'} · free cancellation until{' '}
+                    {formatDate(startDate)}
+                  </p>
                 </div>
-                <Link to={`/cars/${id}`} className="text-sm font-medium text-brand-600 hover:underline">
+                <Link
+                  to={`/cars/${id}`}
+                  className="shrink-0 text-sm font-medium text-brand-600 hover:underline"
+                >
                   Change
                 </Link>
               </div>
 
-              <div className="border-t border-ink-100 pt-3">
-                <p className="font-medium text-ink-900">Price details</p>
-                <div className="mt-1.5 space-y-1.5 text-sm">
+              <div className="border-t border-ink-100 pt-4">
+                <p className="font-semibold text-ink-900">Price details</p>
+                <div className="mt-2.5 space-y-2 text-base">
                   <div className="flex justify-between text-ink-600">
                     <span>
                       {money(listing.pricePerDayRwf)} × {days} day{days === 1 ? '' : 's'}
@@ -421,17 +527,18 @@ export function BookingPage() {
                     <span>Service fee</span>
                     <span>{money(serviceFee)}</span>
                   </div>
-                  <div className="flex justify-between border-t border-ink-100 pt-2 text-base font-semibold text-ink-900">
-                    <span>Total</span>
-                    <span>{money(total)}</span>
+                  <div className="flex items-baseline justify-between border-t border-ink-100 pt-3 font-bold text-ink-900">
+                    <span className="text-lg">Total</span>
+                    <span className="text-2xl">{money(total)}</span>
                   </div>
                 </div>
-                <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-brand-50/60 p-2.5 text-xs text-ink-600">
-                  <ShieldCheck size={14} className="mt-0.5 shrink-0 text-brand-600" />
+                <div className="mt-4 flex items-start gap-2 rounded-xl bg-brand-50/70 p-3.5 text-sm text-ink-600">
+                  <ShieldCheck size={18} className="mt-0.5 shrink-0 text-brand-600" />
                   <span>
-                    <span className="font-medium text-ink-800">Payment held securely.</span> Your payment is
-                    held from the moment you book and only released to the host once you both confirm the car
-                    came back — so your money is protected for the whole trip, not just until pickup.
+                    <span className="font-semibold text-ink-800">Payment held securely.</span> Your
+                    payment is held from the moment you book and only released to the host once you
+                    both confirm the car came back — so your money is protected for the whole trip,
+                    not just until pickup.
                   </span>
                 </div>
               </div>
@@ -440,6 +547,39 @@ export function BookingPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+/** One reassurance in the "Your payment is protected" grid. */
+function SafetyPoint({
+  icon,
+  title,
+  body,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="flex gap-3">
+      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="font-medium text-ink-900">{title}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-ink-500">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+/** A small fact about the car — seats, gearbox, fuel, year. */
+function SpecChip({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-50 px-2.5 py-1 text-xs font-medium capitalize text-ink-700">
+      <span className="text-ink-400">{icon}</span>
+      {label}
+    </span>
   );
 }
 

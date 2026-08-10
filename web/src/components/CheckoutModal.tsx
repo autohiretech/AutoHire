@@ -641,8 +641,21 @@ export function CheckoutModal({
 
         {midPayment && action?.type === 'wait' && (
           <div className="py-2 text-center">
-            <Smartphone size={28} className="mx-auto text-brand-600" />
-            <p className="mt-3 font-medium text-ink-900">Check your phone</p>
+            {/* "Check your phone" is true of a wallet and false of a card. A
+                card buyer who has already answered an OTP is waiting on their
+                bank, and telling them to look at a handset sends them hunting
+                for a prompt that is never coming. */}
+            {chosen === 'mobile_money' ? (
+              <>
+                <Smartphone size={28} className="mx-auto text-brand-600" />
+                <p className="mt-3 font-medium text-ink-900">Check your phone</p>
+              </>
+            ) : (
+              <>
+                <Loader2 size={28} className="mx-auto animate-spin text-brand-600" />
+                <p className="mt-3 font-medium text-ink-900">Confirming your payment</p>
+              </>
+            )}
             <p className="mx-auto mt-1 max-w-xs text-sm text-ink-600">{action.message}</p>
             <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-ink-400">
               <Loader2 size={12} className="animate-spin" />

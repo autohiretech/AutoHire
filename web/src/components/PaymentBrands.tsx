@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { PaymentMethodType } from '@autohire/shared';
 
 /**
@@ -180,6 +181,61 @@ export function BankMark() {
       </svg>
       Bank
     </span>
+  );
+}
+
+/**
+ * A card brand at a size you can actually read across a room.
+ *
+ * The marks above are sized to ride inside a method row, next to a label that
+ * already says "card". These stand alone — on a screen whose only button is
+ * "Pay", the strip of brands *is* the answer to the one question a renter has
+ * before pressing it: will mine work? So they get a real tile, not a footnote.
+ */
+function BrandTile({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      className="inline-flex h-11 w-[68px] items-center justify-center rounded-xl border border-ink-200 bg-white shadow-sm"
+    >
+      {children}
+    </span>
+  );
+}
+
+/** The card networks AutoHire takes, drawn big. */
+export function AcceptedCards({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flex flex-wrap items-center gap-2.5 ${className}`}>
+      <BrandTile label="Visa">
+        <span className="text-lg font-black italic tracking-tight" style={{ color: '#1A1F71' }}>
+          VISA
+        </span>
+      </BrandTile>
+
+      <BrandTile label="Mastercard">
+        <svg width="44" height="28" viewBox="0 0 44 28" aria-hidden="true">
+          <circle cx="18" cy="14" r="9" fill="#EB001B" />
+          <circle cx="26" cy="14" r="9" fill="#F79E1B" fillOpacity="0.85" />
+        </svg>
+      </BrandTile>
+
+      <BrandTile label="American Express">
+        <span
+          className="rounded px-2 py-1 text-[11px] font-black tracking-tight text-white"
+          style={{ backgroundColor: '#2E77BC' }}
+        >
+          AMEX
+        </span>
+      </BrandTile>
+
+      <BrandTile label="Discover">
+        <span className="text-[11px] font-black tracking-tight" style={{ color: '#1A1F36' }}>
+          DISC<span style={{ color: '#FF6000' }}>●</span>VER
+        </span>
+      </BrandTile>
+    </div>
   );
 }
 
