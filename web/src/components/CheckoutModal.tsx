@@ -187,16 +187,17 @@ export function CheckoutModal({
   onClose,
   checkoutBase,
   paymentLink,
-  fallback,
   amountLabel,
 }: {
   open: boolean;
   onClose: () => void;
   /** PayHold's public session URL. Null when sessions are unavailable. */
   checkoutBase: string | null;
+  /**
+   * PayHold's hosted page. Held only so a frame that a provider refuses has
+   * somewhere to send the renter — never opened by any path of our own.
+   */
   paymentLink: string;
-  /** Our own picker, shown when PayHold cannot describe the methods itself. */
-  fallback: React.ReactNode;
   amountLabel: string;
 }) {
   const [methods, setMethods] = useState<CheckoutMethod[] | null>(null);
@@ -209,8 +210,9 @@ export function CheckoutModal({
     'choosing' | 'starting' | 'acting' | 'validating' | 'paid' | 'failed'
   >('choosing');
   const [error, setError] = useState<string | null>(null);
+  /** Bumped to re-ask for the method list. `methods` alone is not a trigger. */
+  const [attempt, setAttempt] = useState(0);
   const polling = useRef<number | null>(null);
-
 
   // Read what this renter may pay with, in PayHold's own words. No credential:
   // the session token in the path is the credential.
@@ -223,14 +225,16 @@ export function CheckoutModal({
         if (live) setMethods(d.methods ?? []);
       })
       .catch(() => {
-        // Leave `methods` null so our own picker shows instead of an error —
-        // the renter can still pay, they just see our labels rather than theirs.
-        if (live) setMethods(null);
+        // Empty, not null. There used to be a picker of ours waiting behind
+        // this branch, and its only exit was PayHold's hosted page — so a
+        // transient network failure quietly became the very handoff this modal
+        // exists to prevent. An empty list shows the retry below instead.
+        if (live) setMethods([]);
       });
     return () => {
       live = false;
     };
-  }, [open, checkoutBase]);
+  }, [open, checkoutBase, attempt]);
 
   /**
    * Watch the deal, not the session.
@@ -288,7 +292,13 @@ export function CheckoutModal({
   }
 
   async function start(method: string) {
-    if (!checkoutBase) return window.location.assign(paymentLink);
+    // No session, no payment. This used to navigate to PayHold's hosted page,
+    // which meant the one condition nobody tests — a session that failed to
+    // open — was also the one that undid the whole flow.
+    if (!checkoutBase) {
+      setError('We could not start this payment. Nothing has been charged.');
+      return;
+    }
     setStage('starting');
     setError(null);
     try {
@@ -437,9 +447,10 @@ export function CheckoutModal({
 
         {(stage === 'choosing' || stage === 'starting') && (
           <>
-            {/* PayHold's own list when we have a session; ours when we don't.
-                Its labels beat ours because it knows which rails are switched on
-                in this market today. */}
+            {/* PayHold's list, and only PayHold's. It knows which rails are
+                switched on in this market today; a list of ours never will,
+                and the one we used to keep here for emergencies led out of the
+                app. */}
             {methods && methods.length > 0 ? (
               <div className="grid gap-2.5">
                 {methods.map((m) => {
@@ -542,8 +553,31 @@ export function CheckoutModal({
                   );
                 })}
               </div>
+            ) : methods === null ? (
+              <p className="flex items-center justify-center gap-2 py-6 text-sm text-ink-500">
+                <Loader2 size={14} className="animate-spin" />
+                Loading your payment options…
+              </p>
             ) : (
-              fallback
+              <div className="py-4 text-center">
+                <p className="font-medium text-ink-900">
+                  We can't take a payment for this trip right now
+                </p>
+                <p className="mx-auto mt-1 max-w-xs text-sm text-ink-600">
+                  Nothing has been charged and the car is still available. This is usually
+                  temporary — try again in a moment.
+                </p>
+                <Button
+                  variant="outline"
+                  className="mt-4 w-full"
+                  onClick={() => {
+                    setMethods(null);
+                    setAttempt((n) => n + 1);
+                  }}
+                >
+                  Try again
+                </Button>
+              </div>
             )}
 
             {error && <p className="text-sm text-red-600">{error}</p>}
