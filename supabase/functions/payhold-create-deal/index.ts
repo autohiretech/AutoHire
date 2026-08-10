@@ -18,6 +18,7 @@ import {
   createCheckoutSession,
   createDeal,
   payholdConfigured,
+  sessionToken,
   toMinorUnits,
 } from '../_shared/payhold.ts';
 
@@ -247,13 +248,13 @@ Deno.serve(async (req: Request) => {
      * still perfectly payable without one. Falling back is a worse experience,
      * not a broken booking.
      */
-    let session: { token: string; expiresAt: string } | null = null;
+    let checkoutToken: string | null = null;
     try {
       const s = await createCheckoutSession(
         deal.id,
         `${Deno.env.get('ALLOWED_ORIGIN') ?? 'https://autohiretech.pages.dev'}/trips`,
       );
-      if (s?.token) session = { token: s.token, expiresAt: s.expires_at };
+      checkoutToken = sessionToken(s);
     } catch (e) {
       console.warn('checkout session unavailable, falling back to payment_link:', e);
     }
@@ -265,8 +266,9 @@ Deno.serve(async (req: Request) => {
         paymentLink: payment_link,
         // Where the browser can read methods and start the payment without a
         // credential. Null when sessions are unavailable.
-        checkoutToken: session?.token ?? null,
-        checkoutBase: session ? `${PAYHOLD_PUBLIC}/checkout/public/${session.token}` : null,
+        checkoutBase: checkoutToken
+          ? `${PAYHOLD_PUBLIC}/checkout/public/${checkoutToken}`
+          : null,
         amount: deal.amount,
         currency: deal.currency,
         total,

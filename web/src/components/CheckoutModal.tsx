@@ -4,6 +4,92 @@ import { Button, Input, Label, Modal } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
 import type { PaymentMethodType } from '@autohire/shared';
 
+/**
+ * The provider's payment page, running inside the modal.
+ *
+ * Flutterwave's hosted checkout sets no `X-Frame-Options` and no
+ * `frame-ancestors`, so it embeds — which is what lets a renter in Rwanda pay
+ * without the page ever changing. Stripe Checkout refuses framing outright, so
+ * markets on that rail are detected here and sent the whole tab instead.
+ *
+ * A refused frame still fires `load`, so the event proves nothing. What
+ * separates them is reachability: a frame that really loaded the provider is
+ * cross-origin and reading its location throws, while a blocked one sits on
+ * `about:blank`, same-origin and readable. The throw is the success signal.
+ */
+function PayFrame({
+  url,
+  momo,
+  amountLabel,
+}: {
+  url: string;
+  momo: boolean;
+  amountLabel: string;
+}) {
+  const frame = useRef<HTMLIFrameElement | null>(null);
+  const [blocked, setBlocked] = useState(false);
+
+  const check = useCallback(() => {
+    const win = frame.current?.contentWindow;
+    if (!win) return;
+    try {
+      const href = win.location.href;
+      if (href === 'about:blank' || href === '') setBlocked(true);
+    } catch {
+      /* cross-origin — it loaded, which is what we want */
+    }
+  }, []);
+
+  // Nothing rendered after a beat means a blocker suppressed it entirely.
+  useEffect(() => {
+    const t = setTimeout(check, 4000);
+    return () => clearTimeout(t);
+  }, [check]);
+
+  if (blocked) {
+    return (
+      <div className="py-4 text-center">
+        <p className="font-medium text-ink-900">One more step</p>
+        <p className="mt-1 text-sm text-ink-600">
+          Your bank needs its own page to finish this payment securely.
+        </p>
+        <Button className="mt-4 w-full" onClick={() => window.location.assign(url)}>
+          Continue · {amountLabel}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {momo && (
+        <p className="mb-2.5 flex items-start gap-1.5 text-xs text-ink-600">
+          <Smartphone size={13} className="mt-0.5 shrink-0 text-brand-600" />
+          Confirm the prompt on your phone — this updates on its own once you do.
+        </p>
+      )}
+      <div className="overflow-hidden rounded-xl border border-ink-200">
+        <iframe
+          ref={frame}
+          src={url}
+          onLoad={check}
+          title="Payment"
+          className="block w-full"
+          style={{ height: 520 }}
+          // No `allow-top-navigation`: the payment page must not be able to move
+          // the booking out from under the renter.
+          sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+          allow="payment *"
+        />
+      </div>
+      <p className="mt-2.5 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+        <Loader2 size={12} className="animate-spin" />
+        Waiting for your payment to clear…
+      </p>
+    </div>
+  );
+}
+
 /** One method as PayHold describes it — its words, not ours. */
 export interface CheckoutMethod {
   method: string;
@@ -73,9 +159,10 @@ export function CheckoutModal({
   const [chosen, setChosen] = useState<string | null>(null);
   const [network, setNetwork] = useState('');
   const [phone, setPhone] = useState('');
-  const [stage, setStage] = useState<'choosing' | 'starting' | 'awaiting' | 'paid' | 'failed'>(
-    'choosing',
-  );
+  const [stage, setStage] = useState<
+    'choosing' | 'starting' | 'paying' | 'paid' | 'failed'
+  >('choosing');
+  const [providerUrl, setProviderUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const polling = useRef<number | null>(null);
 
@@ -103,7 +190,7 @@ export function CheckoutModal({
 
   // Watch for the money landing while the renter is on their handset.
   useEffect(() => {
-    if (stage !== 'awaiting' || !checkoutBase) return;
+    if (stage !== 'paying' || !checkoutBase) return;
     const tick = async () => {
       try {
         const r = await fetch(checkoutBase);
@@ -139,13 +226,12 @@ export function CheckoutModal({
       const data = (await res.json()) as { payment_link?: string; error?: { message?: string } };
       if (!res.ok) throw new Error(data?.error?.message ?? 'Could not start the payment.');
 
-      // Mobile money is approved on the handset — there is nowhere to send
-      // anyone, so we wait here. Everything else ends on the provider's page.
-      if (method === 'mobile_money') {
-        setStage('awaiting');
-        return;
-      }
-      window.location.assign(data.payment_link ?? paymentLink);
+      // The provider's page finishes the payment, and it can run right here:
+      // Flutterwave sets no frame headers, so it embeds. Stripe markets refuse,
+      // which `PayFrame` detects and turns into a redirect — so this is a
+      // preference for staying put, never a requirement.
+      setProviderUrl(data.payment_link ?? paymentLink);
+      setStage('paying');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the payment.');
       setStage('choosing');
@@ -153,10 +239,21 @@ export function CheckoutModal({
   }
 
   const title =
-    stage === 'paid' ? 'Payment received' : stage === 'awaiting' ? 'Check your phone' : 'How do you want to pay?';
+    stage === 'paid'
+      ? 'Payment received'
+      : stage === 'paying'
+        ? 'Complete your payment'
+        : 'How do you want to pay?';
 
   return (
-    <Modal open={open} onClose={stage === 'awaiting' ? () => {} : onClose} title={title}>
+    <Modal
+      open={open}
+      // Not dismissable mid-payment: the provider is mid-charge behind this and
+      // closing would lose the renter's place in it.
+      onClose={stage === 'paying' ? () => {} : onClose}
+      title={title}
+      className={stage === 'paying' ? 'max-w-xl' : undefined}
+    >
       <div className="space-y-4">
         {stage === 'paid' && (
           <div className="py-4 text-center">
@@ -171,16 +268,12 @@ export function CheckoutModal({
           </div>
         )}
 
-        {stage === 'awaiting' && (
-          <div className="py-4 text-center">
-            <Smartphone size={28} className="mx-auto text-brand-600" />
-            <p className="mt-3 font-medium text-ink-900">Approve the payment on your phone</p>
-            <p className="mt-1 text-sm text-ink-600">
-              We've sent a prompt for {amountLabel}. Enter your PIN to confirm — this page updates
-              on its own.
-            </p>
-            <Loader2 size={18} className="mx-auto mt-4 animate-spin text-ink-400" />
-          </div>
+        {stage === 'paying' && providerUrl && (
+          <PayFrame
+            url={providerUrl}
+            momo={chosen === 'mobile_money'}
+            amountLabel={amountLabel}
+          />
         )}
 
         {stage === 'failed' && (

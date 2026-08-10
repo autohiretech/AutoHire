@@ -550,9 +550,25 @@ export function withdraw(
  * a second payable link for the same trip.
  */
 export interface CheckoutSession {
-  token: string;
-  payment_link: string;
+  id: string;
+  deal_id: string;
+  status: string;
+  /**
+   * The renter-facing checkout URL. Its last path segment is the session token,
+   * which is what the public routes are addressed by — PayHold returns the URL
+   * rather than the bare token, so callers derive it.
+   */
+  url: string;
+  method: string | null;
+  network: string | null;
+  provider: string | null;
   expires_at: string;
+}
+
+/** The session token, as the public routes want it. */
+export function sessionToken(session: CheckoutSession): string | null {
+  const last = session.url?.split('/').filter(Boolean).pop();
+  return last || null;
 }
 
 export function createCheckoutSession(
