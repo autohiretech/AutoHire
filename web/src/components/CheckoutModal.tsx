@@ -39,6 +39,10 @@ type NextAction =
       client_secret: string;
       return_url: string;
     }
+  /** The card needs a PIN. The answer goes back to `/authorize` with the card. */
+  | { type: 'pin'; message: string }
+  /** The card needs its billing address. `fields` says what to ask for. */
+  | { type: 'avs'; message: string; fields: string[] }
   /** The provider collects the details itself, in this page, from its own script. */
   | {
       type: 'element';
@@ -76,6 +80,50 @@ function marksFor(method: string): PaymentMethodType | null {
     return method as PaymentMethodType;
   }
   return null;
+}
+
+/** The rail names its address fields tersely; a renter should not have to. */
+const AVS_LABEL: Record<string, string> = {
+  address: 'Street address',
+  city: 'City',
+  state: 'State or province',
+  zipcode: 'Postal code',
+  country: 'Country',
+};
+
+const AVS_AUTOCOMPLETE: Record<string, string> = {
+  address: 'billing street-address',
+  city: 'billing address-level2',
+  state: 'billing address-level1',
+  zipcode: 'billing postal-code',
+  country: 'billing country-name',
+};
+
+/** Groups of four, the way the number is printed on the card. */
+function formatCardNumber(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 19);
+  return digits.replace(/(.{4})/g, '$1 ').trim();
+}
+
+/** `MM/YY`, with the slash inserted rather than demanded. */
+function formatExpiry(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 4);
+  return digits.length <= 2 ? digits : `${digits.slice(0, 2)}/${digits.slice(2)}`;
+}
+
+/**
+ * Enough to be worth sending — not a validity claim.
+ *
+ * Deliberately loose: the issuer decides whether a card is good, and a stricter
+ * check here would reject a legitimate card on a rule we got wrong. This only
+ * stops an obviously half-filled form reaching the rail.
+ */
+function cardLooksComplete(card: { number: string; expiry: string; cvv: string }): boolean {
+  return (
+    card.number.replace(/\D/g, '').length >= 13 &&
+    /^\d{2}\/\d{2}$/.test(card.expiry) &&
+    card.cvv.length >= 3
+  );
 }
 
 /** Deal states that mean the money is with PayHold and the trip is being made. */
@@ -303,6 +351,19 @@ export function CheckoutModal({
   const [network, setNetwork] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  /**
+   * The card, held in memory for exactly as long as the rail needs it.
+   *
+   * A PIN or address demand is answered by resending the whole card, so it has
+   * to survive between two requests. It lives here and nowhere else — no
+   * storage, no logging, and cleared the moment the payment settles or the
+   * modal closes. This is the SAQ D surface, and keeping it this small is the
+   * only mitigation available once the fields are ours.
+   */
+  const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
+  const [pin, setPin] = useState('');
+  const [avs, setAvs] = useState<Record<string, string>>({});
+  const cardAttempt = useRef(0);
   const [action, setAction] = useState<NextAction | null>(null);
   const [stage, setStage] = useState<
     'choosing' | 'starting' | 'acting' | 'validating' | 'paid' | 'failed'
@@ -430,6 +491,7 @@ export function CheckoutModal({
           method,
           ...(network ? { network } : {}),
           ...(phone.trim() ? { phone: phone.trim() } : {}),
+          ...(method === 'card' && card.number.trim() ? { card: cardPayload() } : {}),
         }),
       });
       const data = (await res.json()) as {
@@ -442,6 +504,55 @@ export function CheckoutModal({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the payment.');
       setStage('choosing');
+    }
+  }
+
+  /** The card in the rail's shape. Split here so the form can stay friendly. */
+  function cardPayload() {
+    const [mm = '', yy = ''] = card.expiry.split('/').map((p) => p.trim());
+    return {
+      number: card.number.replace(/\s+/g, ''),
+      cvv: card.cvv.trim(),
+      expiry_month: mm.padStart(2, '0'),
+      // Two digits is what the rail wants; renters type either.
+      expiry_year: yy.length === 4 ? yy.slice(2) : yy,
+      name: card.name.trim() || undefined,
+    };
+  }
+
+  /**
+   * Answer the PIN or address the issuer asked for.
+   *
+   * Goes to `/authorize` rather than `/pay`: `/pay` completes the checkout
+   * session, and this continues a charge that call already started. The card
+   * goes again because the rail wants the whole payload back — which is exactly
+   * why it was kept in memory rather than stored anywhere.
+   */
+  async function authorize(auth: Record<string, string>) {
+    if (!checkoutBase) return;
+    setStage('validating');
+    setError(null);
+    cardAttempt.current += 1;
+    try {
+      const res = await fetch(`${checkoutBase}/authorize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          card: cardPayload(),
+          authorization: auth,
+          attempt: cardAttempt.current,
+        }),
+      });
+      const data = (await res.json()) as {
+        next_action?: NextAction;
+        error?: { message?: string };
+      };
+      if (!res.ok) throw new Error(data?.error?.message ?? 'That could not be verified.');
+      apply(data.next_action, undefined);
+      setPin('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That could not be verified.');
+      setStage('acting');
     }
   }
 
@@ -496,7 +607,15 @@ export function CheckoutModal({
             <p className="mt-1 text-sm text-ink-600">
               We're setting up your trip — it'll appear in My trips in a moment.
             </p>
-            <Button className="mt-4 w-full" onClick={onClose}>
+            <Button
+              className="mt-4 w-full"
+              onClick={() => {
+                // The SAQ D surface closes here. Nothing reads it again, and
+                // leaving it in a live component is the one avoidable risk.
+                setCard({ number: '', expiry: '', cvv: '', name: '' });
+                onClose();
+              }}
+            >
               Done
             </Button>
           </div>
@@ -557,6 +676,68 @@ export function CheckoutModal({
                 onClick={submitOtp}
               >
                 {busy ? 'Checking…' : 'Confirm payment'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {midPayment && action?.type === 'pin' && (
+          <div className="py-1">
+            <div className="text-center">
+              <ShieldCheck size={26} className="mx-auto text-brand-600" />
+              <p className="mt-2.5 font-medium text-ink-900">Enter your card PIN</p>
+              <p className="mx-auto mt-1 max-w-xs text-sm text-ink-600">{action.message}</p>
+            </div>
+            <div className="mx-auto mt-4 max-w-xs">
+              <Label htmlFor="card-pin">PIN</Label>
+              <Input
+                id="card-pin"
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="••••"
+                autoFocus
+              />
+              {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+              <Button
+                className="mt-3 w-full"
+                disabled={pin.length < 4 || busy}
+                onClick={() => authorize({ mode: 'pin', pin })}
+              >
+                {busy ? 'Checking…' : 'Continue'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {midPayment && action?.type === 'avs' && (
+          <div className="py-1">
+            <div className="text-center">
+              <ShieldCheck size={26} className="mx-auto text-brand-600" />
+              <p className="mt-2.5 font-medium text-ink-900">Confirm your billing address</p>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-ink-600">{action.message}</p>
+            </div>
+            <div className="mx-auto mt-4 max-w-sm space-y-2.5">
+              {action.fields.map((field) => (
+                <div key={field}>
+                  <Label htmlFor={`avs-${field}`}>{AVS_LABEL[field] ?? field}</Label>
+                  <Input
+                    id={`avs-${field}`}
+                    value={avs[field] ?? ''}
+                    onChange={(e) => setAvs({ ...avs, [field]: e.target.value })}
+                    autoComplete={AVS_AUTOCOMPLETE[field]}
+                  />
+                </div>
+              ))}
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <Button
+                className="w-full"
+                disabled={action.fields.some((f) => !(avs[f] ?? '').trim()) || busy}
+                onClick={() => authorize({ mode: 'avs_noauth', ...avs })}
+              >
+                {busy ? 'Checking…' : 'Continue'}
               </Button>
             </div>
           </div>
@@ -682,11 +863,66 @@ export function CheckoutModal({
                       )}
 
                       {isChosen && m.method === 'card' && (
-                        <p className="flex items-start gap-1.5 border-t border-brand-200/70 px-3.5 pb-3.5 pt-3 text-xs text-ink-600">
-                          <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
-                          The card form opens right here, and it is our payment provider's own —
-                          your number never passes through AutoHire.
-                        </p>
+                        <div className="space-y-2.5 border-t border-brand-200/70 px-3.5 pb-3.5 pt-3">
+                          <div>
+                            <Label htmlFor="card-number">Card number</Label>
+                            <Input
+                              id="card-number"
+                              value={card.number}
+                              onChange={(e) =>
+                                setCard({ ...card, number: formatCardNumber(e.target.value) })
+                              }
+                              placeholder="4242 4242 4242 4242"
+                              inputMode="numeric"
+                              autoComplete="cc-number"
+                              maxLength={23}
+                            />
+                          </div>
+                          <div className="flex gap-2.5">
+                            <div className="flex-1">
+                              <Label htmlFor="card-expiry">Expiry</Label>
+                              <Input
+                                id="card-expiry"
+                                value={card.expiry}
+                                onChange={(e) =>
+                                  setCard({ ...card, expiry: formatExpiry(e.target.value) })
+                                }
+                                placeholder="MM/YY"
+                                inputMode="numeric"
+                                autoComplete="cc-exp"
+                                maxLength={5}
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <Label htmlFor="card-cvv">CVV</Label>
+                              <Input
+                                id="card-cvv"
+                                value={card.cvv}
+                                onChange={(e) =>
+                                  setCard({ ...card, cvv: e.target.value.replace(/\D/g, '') })
+                                }
+                                placeholder="123"
+                                inputMode="numeric"
+                                autoComplete="cc-csc"
+                                maxLength={4}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label htmlFor="card-name">Name on card</Label>
+                            <Input
+                              id="card-name"
+                              value={card.name}
+                              onChange={(e) => setCard({ ...card, name: e.target.value })}
+                              placeholder="As printed on the card"
+                              autoComplete="cc-name"
+                            />
+                          </div>
+                          <p className="flex items-start gap-1.5 pt-0.5 text-xs text-ink-500">
+                            <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
+                            Sent straight to our payment provider, encrypted. We never store it.
+                          </p>
+                        </div>
                       )}
 
                       {isChosen && m.method !== 'mobile_money' && m.method !== 'card' && (
@@ -736,7 +972,8 @@ export function CheckoutModal({
                 disabled={
                   !chosen ||
                   stage === 'starting' ||
-                  (chosen === 'mobile_money' && phone.trim().length < 8)
+                  (chosen === 'mobile_money' && phone.trim().length < 8) ||
+                  (chosen === 'card' && !cardLooksComplete(card))
                 }
                 onClick={() => chosen && start(chosen)}
               >

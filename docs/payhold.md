@@ -587,7 +587,14 @@ Flutterwave frames — and the link goes in the modal.
   the charge is direct — `POST /charges?type=mobile_money_rwanda` rather than
   the hosted `/payments` — so there is no provider page in it anywhere. If the
   network asks for a code, that box appears in the same modal.
-- **Card is Flutterwave's own form, framed inside our modal.** The fields live
+- **Card on the Stripe rail is Stripe's Payment Element, mounted in our modal.**
+  Each input is its own iframe served from Stripe, so the number never enters
+  AutoHire's DOM and we stay **SAQ A** there. This is the rail every renter
+  outside Africa lands on: `currenciesFor()` quotes them in USD or EUR and the
+  Stripe card rail is the only one serving those currencies.
+- **Card on the Flutterwave rail is our own form — and that is PCI SAQ D.**
+  See the section below; it is a deliberate, recorded decision.
+- **The framed Flutterwave page** remains for anything else. The fields live
   in Flutterwave's origin, so **the card number never enters AutoHire's DOM**
   and we stay PCI **SAQ A**. This is why they are not `<input>` elements of
   ours: owning those fields alone moves AutoHire to SAQ D, and PayHold §6
@@ -807,3 +814,45 @@ screen a payable host cannot use.
   `GET /deals/:id`, which is why the page is capped rather than unbounded.
 - **No CSV or statement export**, so a host reconciling against their own bank
   has to read the screen.
+
+
+## The card decision, on the record
+
+**AutoHire collects raw card fields on the Flutterwave rail. That puts AutoHire
+in PCI DSS scope at SAQ D**, not SAQ A: roughly 300 controls, quarterly ASV
+scans and an annual attestation, and it is an ongoing obligation rather than a
+one-off. It was taken deliberately, after the alternatives were put and
+declined twice, because Flutterwave offers nothing in between: a hosted page,
+or a full-viewport script carrying its own method picker, and no field-level
+embed of the kind Stripe and PayPal both have.
+
+Where the exposure actually is, so it can be reviewed:
+
+| | |
+|---|---|
+| In AutoHire's DOM | the card, in React state in `CheckoutModal`, for the life of one payment |
+| Sent to | `payhold-create-deal`'s checkout session → `POST /checkout/public/:token/pay` |
+| Stored by AutoHire | nothing — no column, no storage, no logging; cleared on Done |
+| Stored by PayHold | nothing — encrypted in the request and forwarded |
+| On the wire to the rail | 3DES-ECB under the tenant's encryption key, as `client` |
+
+**Why the card is held in memory at all.** Flutterwave answers a card with a
+demand for a PIN or a billing address, and the answer is the *whole payload
+again* plus that extra factor. Something has to hold it between the two calls.
+The browser does, because the alternative is PayHold caching cards server-side,
+which is worse in every way.
+
+### PayHold's §6 exception is per tenant and defaults to off
+
+`Settings.raw_card_relay` is `false` for every tenant, and `startCharge` refuses
+a card payload from anyone who has not switched it on. So PayHold's "never
+handles card numbers" stays structurally true for every other tenant; AutoHire's
+decision is AutoHire's alone. Turning it on for a tenant is the moment that
+tenant takes SAQ D, and it should not be done without them saying so in writing.
+
+### What would remove the obligation
+
+Flutterwave shipping a hosted-fields product, or routing AutoHire's African card
+volume through a rail that has one. Neither is in our gift today. If Flutterwave
+does ship one, deleting our card inputs and dropping back to SAQ A is a small
+change — the `payment_element` action already exists and Stripe already uses it.
