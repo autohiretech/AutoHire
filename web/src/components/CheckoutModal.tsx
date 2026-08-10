@@ -5,7 +5,16 @@ import {
   useElements,
   useStripe,
 } from '@stripe/react-stripe-js';
-import { CheckCircle2, Loader2, Lock, ShieldCheck, Smartphone } from 'lucide-react';
+import {
+  Check,
+  CheckCircle2,
+  Copy,
+  Landmark,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  Smartphone,
+} from 'lucide-react';
 import { Button, Input, Label, Modal } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
 import { getStripeFor } from '@/lib/stripe';
@@ -38,6 +47,20 @@ type NextAction =
       publishable_key: string;
       client_secret: string;
       return_url: string;
+    }
+  /**
+   * Pay us from your own banking app, into an account minted for this charge.
+   * Nothing to collect and nowhere to go — the account number is the whole
+   * instruction, so it belongs in this modal and not on anybody's page.
+   */
+  | {
+      type: 'transfer';
+      account: string;
+      bank: string;
+      amount: string;
+      reference: string;
+      expires_at: string | null;
+      note: string | null;
     }
   /** The card needs a PIN. The answer goes back to `/authorize` with the card. */
   | { type: 'pin'; message: string }
@@ -80,6 +103,49 @@ function marksFor(method: string): PaymentMethodType | null {
     return method as PaymentMethodType;
   }
   return null;
+}
+
+/**
+ * One line of bank details, copyable where it matters.
+ *
+ * An account number and an amount get retyped into a banking app on a phone,
+ * and a digit dropped there is a payment that never matches the booking. The
+ * copy button is the whole point of rendering these ourselves rather than
+ * sending the renter to a page that also just prints them.
+ */
+function TransferRow({
+  label,
+  value,
+  copy = false,
+}: {
+  label: string;
+  value: string;
+  copy?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+      <span className="text-xs text-ink-500">{label}</span>
+      <span className="flex items-center gap-2">
+        <span className="font-mono text-sm font-medium text-ink-900">{value}</span>
+        {copy && (
+          <button
+            type="button"
+            aria-label={`Copy ${label}`}
+            className="text-ink-400 transition-colors hover:text-brand-600"
+            onClick={() => {
+              navigator.clipboard?.writeText(value);
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1500);
+            }}
+          >
+            {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+          </button>
+        )}
+      </span>
+    </div>
+  );
 }
 
 /** The rail names its address fields tersely; a renter should not have to. */
@@ -691,6 +757,39 @@ export function CheckoutModal({
                 {busy ? 'Checking…' : 'Confirm payment'}
               </Button>
             </div>
+          </div>
+        )}
+
+        {midPayment && action?.type === 'transfer' && (
+          <div className="py-1">
+            <div className="text-center">
+              <Landmark size={26} className="mx-auto text-brand-600" />
+              <p className="mt-2.5 font-medium text-ink-900">Transfer from your bank</p>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-ink-600">
+                Send exactly this amount to the account below. It's held for this booking
+                only.
+              </p>
+            </div>
+
+            <div className="mt-4 divide-y divide-ink-100 overflow-hidden rounded-xl border border-ink-200">
+              <TransferRow label="Bank" value={action.bank} />
+              <TransferRow label="Account number" value={action.account} copy />
+              <TransferRow label="Amount" value={action.amount} copy />
+              <TransferRow label="Reference" value={action.reference} copy />
+            </div>
+
+            {action.note && <p className="mt-2.5 text-xs text-ink-500">{action.note}</p>}
+            {action.expires_at && (
+              <p className="mt-2.5 text-center text-xs text-amber-700">
+                This account expires — complete the transfer soon, or start again for a fresh
+                one.
+              </p>
+            )}
+
+            <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+              <Loader2 size={12} className="animate-spin" />
+              We'll confirm as soon as it lands — don't close this window.
+            </p>
           </div>
         )}
 

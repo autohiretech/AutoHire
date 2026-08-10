@@ -90,7 +90,7 @@ export function PayholdPayment({
           it — a renter deciding how to pay should still see what they are
           paying for. */}
       <Button
-        className="h-14 w-full rounded-xl text-lg font-semibold shadow-sm"
+        className="h-[52px] w-full rounded-xl text-base font-semibold shadow-sm"
         size="lg"
         disabled={disabled || busy}
         onClick={pay}
@@ -98,8 +98,8 @@ export function PayholdPayment({
         {busy ? 'Opening…' : `Pay ${label}`}
       </Button>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-      <p className="mt-3.5 flex items-center justify-center gap-1.5 text-center text-sm text-ink-500">
-        <Lock size={14} className="shrink-0 text-ink-400" />
+      <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[13px] text-ink-500">
+        <Lock size={13} className="shrink-0 text-ink-400" />
         Your money is held until the trip is done — the host is paid after you both confirm the
         car came back.
       </p>

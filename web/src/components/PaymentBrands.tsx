@@ -197,7 +197,7 @@ function BrandTile({ label, children }: { label: string; children: ReactNode }) 
     <span
       role="img"
       aria-label={label}
-      className="inline-flex h-11 w-[68px] items-center justify-center rounded-xl border border-ink-200 bg-white shadow-sm"
+      className="inline-flex h-9 w-14 items-center justify-center rounded-lg border border-ink-200 bg-white shadow-sm"
     >
       {children}
     </span>
@@ -207,23 +207,23 @@ function BrandTile({ label, children }: { label: string; children: ReactNode }) 
 /** The card networks AutoHire takes, drawn big. */
 export function AcceptedCards({ className = '' }: { className?: string }) {
   return (
-    <div className={`flex flex-wrap items-center gap-2.5 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       <BrandTile label="Visa">
-        <span className="text-lg font-black italic tracking-tight" style={{ color: '#1A1F71' }}>
+        <span className="text-sm font-black italic tracking-tight" style={{ color: '#1A1F71' }}>
           VISA
         </span>
       </BrandTile>
 
       <BrandTile label="Mastercard">
-        <svg width="44" height="28" viewBox="0 0 44 28" aria-hidden="true">
-          <circle cx="18" cy="14" r="9" fill="#EB001B" />
-          <circle cx="26" cy="14" r="9" fill="#F79E1B" fillOpacity="0.85" />
+        <svg width="36" height="22" viewBox="0 0 36 22" aria-hidden="true">
+          <circle cx="14" cy="11" r="7.5" fill="#EB001B" />
+          <circle cx="21" cy="11" r="7.5" fill="#F79E1B" fillOpacity="0.85" />
         </svg>
       </BrandTile>
 
       <BrandTile label="American Express">
         <span
-          className="rounded px-2 py-1 text-[11px] font-black tracking-tight text-white"
+          className="rounded px-1.5 py-0.5 text-[10px] font-black tracking-tight text-white"
           style={{ backgroundColor: '#2E77BC' }}
         >
           AMEX
@@ -231,7 +231,7 @@ export function AcceptedCards({ className = '' }: { className?: string }) {
       </BrandTile>
 
       <BrandTile label="Discover">
-        <span className="text-[11px] font-black tracking-tight" style={{ color: '#1A1F36' }}>
+        <span className="text-[10px] font-black tracking-tight" style={{ color: '#1A1F36' }}>
           DISC<span style={{ color: '#FF6000' }}>●</span>VER
         </span>
       </BrandTile>

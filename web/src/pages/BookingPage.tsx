@@ -263,30 +263,30 @@ export function BookingPage() {
   const pickerless = PAYMENTS_PAYHOLD || PAYMENTS_EXTERNAL || africanLive;
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <section className="mx-auto max-w-5xl px-4 py-8 sm:py-9">
       <button
         type="button"
         onClick={() => navigate(`/cars/${id}`)}
         aria-label="Back"
-        className="mb-6 flex h-10 w-10 items-center justify-center rounded-full border border-ink-200 text-ink-700 transition hover:bg-ink-50"
+        className="mb-5 flex h-9 w-9 items-center justify-center rounded-full border border-ink-200 text-ink-700 transition hover:bg-ink-50"
       >
         <ArrowLeft size={18} />
       </button>
 
-      <h1 className="text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl">Confirm and pay</h1>
-      <p className="mt-2 max-w-xl text-base text-ink-500">
+      <h1 className="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">Confirm and pay</h1>
+      <p className="mt-1.5 max-w-xl text-sm text-ink-500">
         Check the car and the dates, then pay. Nothing reaches the host until the trip is over.
       </p>
 
-      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_minmax(0,440px)] lg:gap-10">
+      <div className="mt-7 grid grid-cols-1 gap-7 lg:grid-cols-[1fr_minmax(0,400px)] lg:gap-9">
         {/* Left: payment methods */}
-        <div className="min-w-0 space-y-6">
+        <div className="min-w-0 space-y-5">
           <Card>
-            <CardBody className="p-5 sm:p-7">
-              <h2 className="text-xl font-semibold text-ink-900 sm:text-2xl">
+            <CardBody className="p-5 sm:p-6">
+              <h2 className="text-lg font-semibold text-ink-900 sm:text-xl">
                 How do you want to pay?
               </h2>
-              <p className="mb-5 mt-1.5 text-sm text-ink-500">
+              <p className="mb-4 mt-1 text-sm text-ink-500">
                 {pickerless
                   ? 'Choose your method on the next step — you stay right here on AutoHire.'
                   : 'Pick a method below and enter your details.'}
@@ -376,11 +376,11 @@ export function BookingPage() {
               {/* The cards we take, drawn where the renter is deciding. On the
                   picker rails the method rows already carry these marks. */}
               {pickerless && (
-                <div className="mt-6 border-t border-ink-100 pt-5">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-ink-400">
+                <div className="mt-5 border-t border-ink-100 pt-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
                     Cards accepted
                   </p>
-                  <AcceptedCards className="mt-3" />
+                  <AcceptedCards className="mt-2.5" />
                 </div>
               )}
 
@@ -406,29 +406,29 @@ export function BookingPage() {
               before pressing Pay, answered on the page instead of in a help
               centre they would have to go looking for. */}
           <Card>
-            <CardBody className="p-5 sm:p-7">
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-ink-900">
-                <ShieldCheck size={20} className="text-brand-600" />
+            <CardBody className="p-5 sm:p-6">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-ink-900">
+                <ShieldCheck size={18} className="text-brand-600" />
                 Your payment is protected
               </h2>
-              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <SafetyPoint
-                  icon={<Lock size={18} />}
+                  icon={<Lock size={16} />}
                   title="Encrypted, and never stored here"
                   body="Your card details travel over an encrypted connection straight to our payment provider. AutoHire never keeps your card number."
                 />
                 <SafetyPoint
-                  icon={<Wallet size={18} />}
+                  icon={<Wallet size={16} />}
                   title="Held, not handed over"
                   body="We hold the full amount from the moment you book. The host is paid only after you both confirm the car came back."
                 />
                 <SafetyPoint
-                  icon={<CalendarCheck size={18} />}
+                  icon={<CalendarCheck size={16} />}
                   title="Free cancellation"
                   body={`Cancel before ${formatDate(startDate)} and the full ${money(total)} comes back to you, automatically.`}
                 />
                 <SafetyPoint
-                  icon={<BadgeCheck size={18} />}
+                  icon={<BadgeCheck size={16} />}
                   title="Verified people only"
                   body="Every renter passes an identity check before they can book, and hosts are reviewed after each trip."
                 />
@@ -446,7 +446,7 @@ export function BookingPage() {
               <Img
                 src={listing.photos[0]}
                 alt={listing.title}
-                className="aspect-[16/10] w-full object-cover"
+                className="aspect-[16/9] w-full object-cover"
               />
               {superhost && (
                 <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-ink-800 shadow-sm backdrop-blur">
@@ -455,17 +455,17 @@ export function BookingPage() {
               )}
             </div>
 
-            <CardBody className="space-y-5 p-5 sm:p-6">
+            <CardBody className="space-y-4 p-5 sm:p-5">
               <div>
-                <h2 className="text-xl font-semibold leading-snug text-ink-900">{listing.title}</h2>
-                <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-500">
+                <h2 className="text-lg font-semibold leading-snug text-ink-900">{listing.title}</h2>
+                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-500">
                   <span className="inline-flex items-center gap-1">
-                    <MapPin size={14} className="text-ink-400" />
+                    <MapPin size={13} className="text-ink-400" />
                     {listing.location}
                   </span>
                   {listing.ratingCount ? (
                     <span className="inline-flex items-center gap-1 font-medium text-ink-800">
-                      <Star size={14} className="fill-ink-900 text-ink-900" />
+                      <Star size={13} className="fill-ink-900 text-ink-900" />
                       {listing.ratingAvg?.toFixed(2)}
                       <span className="font-normal text-ink-500">({listing.ratingCount} trips)</span>
                     </span>
@@ -473,35 +473,35 @@ export function BookingPage() {
                     <span>New listing</span>
                   )}
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <SpecChip icon={<Users size={13} />} label={`${listing.seats} seats`} />
-                  <SpecChip icon={<Cog size={13} />} label={listing.transmission} />
-                  <SpecChip icon={<Fuel size={13} />} label={listing.fuel} />
-                  <SpecChip icon={<Calendar size={13} />} label={`${listing.year}`} />
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <SpecChip icon={<Users size={12} />} label={`${listing.seats} seats`} />
+                  <SpecChip icon={<Cog size={12} />} label={listing.transmission} />
+                  <SpecChip icon={<Fuel size={12} />} label={listing.fuel} />
+                  <SpecChip icon={<Calendar size={12} />} label={`${listing.year}`} />
                 </div>
               </div>
 
               {host && (
-                <div className="flex items-center gap-3 border-t border-ink-100 pt-4">
-                  <Avatar name={host.businessName || host.fullName} src={host.avatarUrl} size="md" />
+                <div className="flex items-center gap-2.5 border-t border-ink-100 pt-3.5">
+                  <Avatar name={host.businessName || host.fullName} src={host.avatarUrl} size="sm" />
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-ink-900">
+                    <p className="truncate text-sm font-medium text-ink-900">
                       Hosted by {host.businessName || host.fullName}
                     </p>
-                    <p className="text-sm text-ink-500">
+                    <p className="text-[13px] text-ink-500">
                       {instant ? 'Books instantly' : 'Approves each request'}
                     </p>
                   </div>
                 </div>
               )}
 
-              <div className="flex items-start justify-between border-t border-ink-100 pt-4">
+              <div className="flex items-start justify-between border-t border-ink-100 pt-3.5">
                 <div>
-                  <p className="font-semibold text-ink-900">Your trip</p>
-                  <p className="mt-0.5 text-base text-ink-700">
+                  <p className="text-sm font-semibold text-ink-900">Your trip</p>
+                  <p className="mt-0.5 text-sm text-ink-700">
                     {formatDate(startDate)} – {formatDate(endDate)}
                   </p>
-                  <p className="text-sm text-ink-500">
+                  <p className="text-[13px] text-ink-500">
                     {days} day{days === 1 ? '' : 's'} · free cancellation until{' '}
                     {formatDate(startDate)}
                   </p>
@@ -514,9 +514,9 @@ export function BookingPage() {
                 </Link>
               </div>
 
-              <div className="border-t border-ink-100 pt-4">
-                <p className="font-semibold text-ink-900">Price details</p>
-                <div className="mt-2.5 space-y-2 text-base">
+              <div className="border-t border-ink-100 pt-3.5">
+                <p className="text-sm font-semibold text-ink-900">Price details</p>
+                <div className="mt-2 space-y-1.5 text-sm">
                   <div className="flex justify-between text-ink-600">
                     <span>
                       {money(listing.pricePerDayRwf)} × {days} day{days === 1 ? '' : 's'}
@@ -527,13 +527,13 @@ export function BookingPage() {
                     <span>Service fee</span>
                     <span>{money(serviceFee)}</span>
                   </div>
-                  <div className="flex items-baseline justify-between border-t border-ink-100 pt-3 font-bold text-ink-900">
-                    <span className="text-lg">Total</span>
-                    <span className="text-2xl">{money(total)}</span>
+                  <div className="flex items-baseline justify-between border-t border-ink-100 pt-2.5 font-bold text-ink-900">
+                    <span className="text-base">Total</span>
+                    <span className="text-xl">{money(total)}</span>
                   </div>
                 </div>
-                <div className="mt-4 flex items-start gap-2 rounded-xl bg-brand-50/70 p-3.5 text-sm text-ink-600">
-                  <ShieldCheck size={18} className="mt-0.5 shrink-0 text-brand-600" />
+                <div className="mt-3.5 flex items-start gap-2 rounded-xl bg-brand-50/70 p-3 text-[13px] leading-relaxed text-ink-600">
+                  <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-600" />
                   <span>
                     <span className="font-semibold text-ink-800">Payment held securely.</span> Your
                     payment is held from the moment you book and only released to the host once you
@@ -561,13 +561,13 @@ function SafetyPoint({
   body: string;
 }) {
   return (
-    <div className="flex gap-3">
-      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+    <div className="flex gap-2.5">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
         {icon}
       </span>
       <div className="min-w-0">
-        <p className="font-medium text-ink-900">{title}</p>
-        <p className="mt-0.5 text-sm leading-relaxed text-ink-500">{body}</p>
+        <p className="text-sm font-medium text-ink-900">{title}</p>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-ink-500">{body}</p>
       </div>
     </div>
   );
@@ -576,7 +576,7 @@ function SafetyPoint({
 /** A small fact about the car — seats, gearbox, fuel, year. */
 function SpecChip({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-50 px-2.5 py-1 text-xs font-medium capitalize text-ink-700">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-50 px-2 py-0.5 text-[11px] font-medium capitalize text-ink-700">
       <span className="text-ink-400">{icon}</span>
       {label}
     </span>
