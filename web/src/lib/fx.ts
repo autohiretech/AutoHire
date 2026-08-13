@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { client } from '@/lib/client';
-import { BASE_CURRENCY, type CurrencyCode } from '@/lib/currency';
+import { BASE_CURRENCY } from '@/lib/currency';
 
 /**
  * Foreign-exchange rates, quoted against USD (1 USD = `rates[code]` units of
@@ -41,8 +41,8 @@ export function useFxRates() {
  */
 export function convert(
   amount: number,
-  from: CurrencyCode,
-  to: CurrencyCode,
+  from: string,
+  to: string,
   fx: FxRates,
 ): number | null {
   if (from === to) return amount;

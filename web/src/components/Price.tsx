@@ -30,7 +30,7 @@ export function Price({
   const converted = convert(amount, currency, display, fx);
   // If we can't convert (missing rate), just show the native price as-is.
   const shown = converted ?? amount;
-  const shownCurrency: CurrencyCode = converted === null ? currency : display;
+  const shownCurrency: string = converted === null ? currency : display;
   const isEstimate = shownCurrency !== currency;
 
   return (

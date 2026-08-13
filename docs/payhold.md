@@ -794,9 +794,12 @@ screen a payable host cannot use.
   deal for a host with no `payhold_seller_id` rather than take a renter's money
   for a trip that cannot be settled. `ReconnectPayouts` now prompts them on the
   dashboard (see step 9), but their cars stay unbookable until they act.
-- **Confirmations are not wired to the trip UI.** `payhold-confirm` exists and
-  is correct; no button calls it yet. Until one does, releases depend on
-  PayHold's `auto_complete_after_hours` timer.
+- **Instant-book confirmations are auto-wired; the trip-UI button is not.**
+  `payhold-confirm` still has no UI button, but `payhold-webhook` now
+  auto-confirms **both** sides for `booking_mode = 'instant'` the moment
+  PayHold reports `order.funded_held` — so an instant-book hold releases with
+  neither party acting, then clears on PayHold's window. Rentals still depend
+  on the trip-return confirm (button TBD) or the auto-release timer.
 - **Disputes go both ways now, but no button raises one.** `payhold-dispute`
   pushes a case to PayHold — which is what freezes the payout — and the webhook
   mirrors PayHold's back. Neither the trip screen nor `/admin` calls it yet, so

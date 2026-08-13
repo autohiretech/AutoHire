@@ -22,6 +22,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
+  confirmDeal,
   getDeal,
   payholdConfigured,
   payholdWebhookConfigured,
@@ -123,6 +124,21 @@ async function createBooking(admin: SupabaseClient, deal: Deal): Promise<Respons
       .maybeSingle();
     if (raced.data) return json({ booking: raced.data.id, duplicate: true }, 200);
     return json({ error: insErr.message }, 409);
+  }
+
+  // Instant bookings carry no manual confirmation step — the payment is the
+  // confirmation. Auto-confirm both sides here so PayHold releases the hold
+  // without waiting on the renter or the host. `confirmDeal` is the same call
+  // the (currently unwired) `payhold-confirm` endpoint makes; doing it server
+  // side keeps the trip flowing with no UI button. A failure is non-fatal:
+  // PayHold's auto-release timer still releases the hold after `auto_release_days`.
+  if (listing.booking_mode === 'instant') {
+    try {
+      await confirmDeal(deal.id, 'buyer');
+      await confirmDeal(deal.id, 'seller');
+    } catch (e) {
+      console.error('instant-book auto-confirm failed', { deal: deal.id, error: String(e) });
+    }
   }
 
   return json({ booking: inserted.id }, 200);

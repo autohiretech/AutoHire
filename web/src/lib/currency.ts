@@ -42,10 +42,10 @@ export function isCurrencyCode(v: string): v is CurrencyCode {
  */
 export function formatMoney(
   amount: number,
-  code: CurrencyCode,
+  code: string,
   opts: { decimals?: number } = {},
 ): string {
-  const meta = CURRENCIES[code] ?? CURRENCIES.USD;
+  const meta = (code in CURRENCIES ? CURRENCIES[code as CurrencyCode] : CURRENCIES.USD) ?? CURRENCIES.USD;
   const decimals = opts.decimals ?? 0;
   try {
     return new Intl.NumberFormat(meta.locale, {

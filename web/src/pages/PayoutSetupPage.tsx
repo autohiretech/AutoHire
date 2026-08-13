@@ -18,7 +18,7 @@ import {
 import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { COUNTRIES } from '@/lib/country';
+import { useCountry } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
   PAYMENTS_LIVE,
@@ -60,6 +60,7 @@ const PROVIDER_NAME: Record<PayoutProvider, string> = {
  * when a renter switches to hosting.
  */
 export function PayoutSetupPage() {
+  const { countries } = useCountry();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: me, isLoading } = useCurrentUser();
@@ -318,7 +319,7 @@ export function PayoutSetupPage() {
               <option value="" disabled>
                 Select your country
               </option>
-              {COUNTRIES.map((c) => (
+              {countries.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.flag} {c.name}
                 </option>

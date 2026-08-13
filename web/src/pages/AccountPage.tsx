@@ -16,7 +16,7 @@ import type { Host, UserProfile } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useAuth } from '@/lib/auth';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { COUNTRIES } from '@/lib/country';
+import { useCountry } from '@/lib/country';
 import { normalizePhone } from '@/lib/phone';
 import {
   Avatar,
@@ -338,6 +338,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
  * this; until then it's set here.
  */
 function CountryField({ profile }: { profile: UserProfile }) {
+  const { countries } = useCountry();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -371,7 +372,7 @@ function CountryField({ profile }: { profile: UserProfile }) {
         <option value="" disabled>
           Select your country
         </option>
-        {COUNTRIES.map((c) => (
+        {countries.map((c) => (
           <option key={c.code} value={c.code}>
             {c.flag} {c.name}
           </option>

@@ -23,7 +23,7 @@ import { SERVICE_FEE_RATE } from '@/lib/types';
 import { client } from '@/lib/client';
 import { useCanRent, useIsBusinessHost } from '@/lib/account';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { useCountry, COUNTRIES } from '@/lib/country';
+import { useCountry } from '@/lib/country';
 import { cn } from '@/lib/cn';
 import { getSupabase } from '@/lib/supabase';
 import { getStripe } from '@/lib/stripe';
@@ -658,12 +658,13 @@ function BillingFields({
   zip: string;
   setZip: (z: string) => void;
 }) {
+  const { countries } = useCountry();
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div>
         <Label htmlFor="bill-country">Country / region</Label>
         <Select id="bill-country" value={country} onChange={(e) => setCountry(e.target.value)}>
-          {COUNTRIES.map((c) => (
+          {countries.map((c) => (
             <option key={c.code} value={c.code}>
               {c.name}
             </option>
