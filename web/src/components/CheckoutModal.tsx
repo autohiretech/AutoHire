@@ -109,6 +109,30 @@ export interface CheckoutMethod {
   note?: string | null;
 }
 
+/**
+ * A method is identified by both its type and its rail, because PayHold can
+ * offer the same method (e.g. `card`) on more than one provider (Stripe and
+ * Flutterwave) in one market. Using only `method` as the key collapsed the two
+ * into a single row and made the choice meaningless — both rows shared the key,
+ * and starting the payment could only ever name `method`, so it fell to
+ * PayHold's default rail.
+ */
+export function methodKey(m: CheckoutMethod): string {
+  return `${m.method}:${m.provider ?? ''}`;
+}
+
+/** Human name for a rail, shown so identical methods stay distinguishable. */
+const PROVIDER_LABEL: Record<string, string> = {
+  stripe: 'Stripe',
+  flutterwave: 'Flutterwave',
+  paypal: 'PayPal',
+};
+
+function providerLabel(provider?: string): string | null {
+  if (!provider) return null;
+  return PROVIDER_LABEL[provider] ?? provider;
+}
+
 interface PublicCheckout {
   deal?: { description?: string; amount?: number; currency?: string; status?: string };
   methods?: CheckoutMethod[];
@@ -552,7 +576,10 @@ export function CheckoutModal({
   amountLabel: string;
 }) {
   const [methods, setMethods] = useState<CheckoutMethod[] | null>(null);
+  /** The chosen method, keyed by `methodKey` so two rails stay distinct. */
   const [chosen, setChosen] = useState<string | null>(null);
+  /** The method object the key resolves to — what we actually start with. */
+  const selected = methods?.find((m) => methodKey(m) === chosen) ?? null;
   const [network, setNetwork] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -585,8 +612,7 @@ export function CheckoutModal({
    * would make the renter type the same card twice, into two different forms,
    * one of which then throws it away.
    */
-  const collectsCardHere =
-    methods?.find((m) => m.method === chosen)?.provider === 'flutterwave';
+  const collectsCardHere = selected?.provider === 'flutterwave';
   const polling = useRef<number | null>(null);
   /**
    * Whether this PayHold has `/confirm`. Assumed yes and unset on the first
@@ -715,7 +741,7 @@ export function CheckoutModal({
     setStage('acting');
   }
 
-  async function start(method: string) {
+  async function start(m: CheckoutMethod) {
     // No session, no payment. This used to navigate to PayHold's hosted page,
     // which meant the one condition nobody tests — a session that failed to
     // open — was also the one that undid the whole flow.
@@ -730,10 +756,11 @@ export function CheckoutModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          method,
+          method: m.method,
+          ...(m.provider ? { provider: m.provider } : {}),
           ...(network ? { network } : {}),
           ...(phone.trim() ? { phone: phone.trim() } : {}),
-          ...(method === 'card' && collectsCardHere ? { card: cardPayload() } : {}),
+          ...(m.method === 'card' && collectsCardHere ? { card: cardPayload() } : {}),
         }),
       });
       const data = (await res.json()) as {
@@ -917,7 +944,7 @@ export function CheckoutModal({
                 card buyer who has already answered an OTP is waiting on their
                 bank, and telling them to look at a handset sends them hunting
                 for a prompt that is never coming. */}
-            {chosen === 'mobile_money' ? (
+            {selected?.method === 'mobile_money' ? (
               <>
                 <Smartphone size={28} className="mx-auto text-brand-600" />
                 <p className="mt-3 font-medium text-ink-900">Check your phone</p>
@@ -1109,10 +1136,12 @@ export function CheckoutModal({
               <div className="grid gap-2.5">
                 {methods.map((m) => {
                   const mark = marksFor(m.method);
-                  const isChosen = chosen === m.method;
+                  const key = methodKey(m);
+                  const isChosen = chosen === key;
+                  const prov = providerLabel(m.provider);
                   return (
                     <div
-                      key={m.method}
+                      key={key}
                       className={
                         'rounded-xl border transition-all ' +
                         (isChosen
@@ -1123,7 +1152,7 @@ export function CheckoutModal({
                       <button
                         type="button"
                         onClick={() => {
-                          setChosen(m.method);
+                          setChosen(key);
                           setNetwork(m.networks?.[0] ?? '');
                         }}
                         className="flex w-full items-start gap-3 p-3.5 text-left"
@@ -1131,6 +1160,11 @@ export function CheckoutModal({
                         <span className="min-w-0 flex-1">
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="font-semibold text-ink-900">{m.label}</span>
+                            {prov && (
+                              <span className="rounded-full bg-ink-100 px-2 py-0.5 text-[11px] font-medium text-ink-600">
+                                {prov}
+                              </span>
+                            )}
                             {mark && (
                               <span className="flex flex-wrap items-center gap-1.5">
                                 <MethodMarks method={mark} />
@@ -1304,12 +1338,12 @@ export function CheckoutModal({
                 className="w-full"
                 size="lg"
                 disabled={
-                  !chosen ||
+                  !selected ||
                   stage === 'starting' ||
-                  (chosen === 'mobile_money' && phone.trim().length < 8) ||
-                  (chosen === 'card' && collectsCardHere && !cardLooksComplete(card))
+                  (selected.method === 'mobile_money' && phone.trim().length < 8) ||
+                  (selected.method === 'card' && collectsCardHere && !cardLooksComplete(card))
                 }
-                onClick={() => chosen && start(chosen)}
+                onClick={() => selected && start(selected)}
               >
                 {stage === 'starting' ? 'Starting…' : `Pay ${amountLabel}`}
               </Button>
