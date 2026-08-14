@@ -40,28 +40,72 @@ const CATEGORY_WORDS: { match: RegExp; value: CarCategory }[] = [
 /** Longest first so a two-word city ("New York") wins over any shorter substring. */
 const CITY_MATCHES = [...ALL_CITIES].sort((a, b) => b.length - a.length);
 
-/** Turn a natural-language request into listing filters (best-effort). */
+/**
+ * Connective words that carry no search meaning on their own ("a car for 5
+ * people in Kigali" → once "5 people" and "Kigali" are pulled out as filters,
+ * these are what's left over). Stripped so they never pollute the keyword
+ * search that catches makes/models/titles the structured filters don't.
+ */
+const FILLER_WORDS_RE =
+  /\b(a|an|the|i|me|my|we|us|need|needs|needed|want|wants|wanted|looking|look|for|with|without|in|at|near|around|please|some|any|to|is|are|of|and|or|car|cars|vehicle|vehicles|rent|renting|rental|hire|hiring|book|booking)\b/gi;
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Turn a natural-language request into listing filters (best-effort). Any
+ * words consumed by a recognized filter (a category, "automatic", a city
+ * name, ...) are stripped from a working copy of the query; whatever's left —
+ * typically a make/model or other free text — comes back as `filters.query`
+ * so it still narrows results via keyword search instead of being silently
+ * dropped once *any* structured filter is recognized.
+ */
 export function interpretQuery(query: string): ListingFilters {
   const q = query.toLowerCase();
   const filters: ListingFilters = {};
+  let remaining = q;
 
   const cat = CATEGORY_WORDS.find((c) => c.match.test(q));
-  if (cat) filters.category = cat.value;
+  if (cat) {
+    filters.category = cat.value;
+    remaining = remaining.replace(cat.match, ' ');
+  }
 
-  if (/\bautomatic|\bauto\b/.test(q)) filters.transmission = 'automatic';
-  else if (/\bmanual\b/.test(q)) filters.transmission = 'manual';
+  if (/\bautomatic\b|\bauto\b/.test(q)) {
+    filters.transmission = 'automatic';
+    remaining = remaining.replace(/\bautomatic\b|\bauto\b/g, ' ');
+  } else if (/\bmanual\b/.test(q)) {
+    filters.transmission = 'manual';
+    remaining = remaining.replace(/\bmanual\b/g, ' ');
+  }
 
-  if (/\b(company|business|agency|fleet)\b/.test(q)) filters.ownerType = 'business';
-  else if (/\b(individual|private|person)\b/.test(q)) filters.ownerType = 'individual';
+  if (/\b(company|business|agency|fleet)\b/.test(q)) {
+    filters.ownerType = 'business';
+    remaining = remaining.replace(/\b(company|business|agency|fleet)\b/g, ' ');
+  } else if (/\b(individual|private|person)\b/.test(q)) {
+    filters.ownerType = 'individual';
+    remaining = remaining.replace(/\b(individual|private|person)\b/g, ' ');
+  }
 
   const city = CITY_MATCHES.find((c) => q.includes(c.toLowerCase()));
-  if (city) filters.city = city;
+  if (city) {
+    filters.city = city;
+    remaining = remaining.replace(new RegExp(escapeRegExp(city.toLowerCase()), 'g'), ' ');
+  }
 
   // Seats: "7 people", "5 seats", "family" (5+), "group" (7+).
   const seatMatch = q.match(/(\d+)\s*(?:people|persons?|seats?|passengers?|pax)/);
-  if (seatMatch) filters.minSeats = Number(seatMatch[1]);
-  else if (/\bfamily\b/.test(q)) filters.minSeats = 5;
-  else if (/\bgroup\b/.test(q)) filters.minSeats = 7;
+  if (seatMatch) {
+    filters.minSeats = Number(seatMatch[1]);
+    remaining = remaining.replace(seatMatch[0], ' ');
+  } else if (/\bfamily\b/.test(q)) {
+    filters.minSeats = 5;
+    remaining = remaining.replace(/\bfamily\b/g, ' ');
+  } else if (/\bgroup\b/.test(q)) {
+    filters.minSeats = 7;
+    remaining = remaining.replace(/\bgroup\b/g, ' ');
+  }
 
   // Price: "under 50000", "below 40k", "cheap/budget/affordable".
   const priceMatch = q.match(/(?:under|below|less than|max|up to)\s*(?:rwf|rf)?\s*([\d,]+)\s*(k)?/);
@@ -69,9 +113,14 @@ export function interpretQuery(query: string): ListingFilters {
     let n = Number(priceMatch[1].replace(/,/g, ''));
     if (priceMatch[2]) n *= 1000;
     if (n > 0) filters.maxPriceRwf = n;
+    remaining = remaining.replace(priceMatch[0], ' ');
   } else if (/\b(cheap|cheapest|budget|affordable|low[-\s]?cost)\b/.test(q)) {
     filters.maxPriceRwf = 40000;
+    remaining = remaining.replace(/\b(cheap|cheapest|budget|affordable|low[-\s]?cost)\b/g, ' ');
   }
+
+  remaining = remaining.replace(FILLER_WORDS_RE, ' ').replace(/\s+/g, ' ').trim();
+  if (remaining) filters.query = remaining;
 
   return filters;
 }

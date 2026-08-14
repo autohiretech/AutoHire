@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CalendarDays, Check, Clock, MapPin, MessageSquare, Upload } from 'lucide-react';
+import { ArrowLeft, Camera, CalendarDays, Check, Clock, MapPin, MessageSquare, Upload, X } from 'lucide-react';
 import type { Booking, CheckPhoto, Host, Review, ReviewDirection } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
 import { TRIP_STATE_META, TRIP_TIMELINE } from '@/lib/trips';
 import { StarRatingInput } from '@/components/StarRatingInput';
+import { CameraCapture } from '@/components/CameraCapture';
 import { Img } from '@/components/Img';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
@@ -99,7 +100,7 @@ export function TripDetailPage() {
   }
 
   return (
-    <section className="mx-auto max-w-4xl px-4 py-8">
+    <section className="mx-auto max-w-6xl px-4 py-8">
       <Link
         to={amHost ? '/dashboard' : '/trips'}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
@@ -289,9 +290,12 @@ function SignOffRow({ who, at }: { who: string; at?: string | null }) {
 }
 
 /**
- * One handoff phase (pickup or return). Both the renter and host must confirm
- * with proof photos; the trip only advances when both have signed off. The
- * current user can confirm their own side while the phase is open.
+ * One handoff phase (pickup or return). Proof photos are optional — a party
+ * can just tap Confirm — but if they want a record, a dedicated camera button
+ * opens the device camera directly rather than a generic file chooser, plus a
+ * gallery option for photos already taken. The trip only advances once both
+ * renter and host have signed off; the current user can confirm their own
+ * side while the phase is open.
  */
 function HandoffPanel({
   booking,
@@ -306,6 +310,12 @@ function HandoffPanel({
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+
+  // Local previews for the not-yet-uploaded files — revoked as soon as the
+  // selection changes so we don't leak blob URLs.
+  const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
 
   const isRenter = meId === booking.renterId;
   const isHost = meId === booking.hostId;
@@ -323,12 +333,20 @@ function HandoffPanel({
   const bothDone = !!renterAt && !!hostAt;
   const canConfirm = phaseOpen && (isRenter || isHost) && !myDone;
 
+  function addFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    setFiles((fs) => [...fs, ...Array.from(list)]);
+  }
+
+  function removeFile(index: number) {
+    setFiles((fs) => fs.filter((_, i) => i !== index));
+  }
+
   async function confirm() {
-    if (files.length === 0) return;
     setBusy(true);
     setError(null);
     try {
-      const urls = await client.uploadPhotos(files);
+      const urls = files.length > 0 ? await client.uploadPhotos(files) : [];
       await client.confirmHandoff(booking.id, phase, urls);
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
@@ -385,31 +403,71 @@ function HandoffPanel({
         )}
 
         {canConfirm && (
-          <div className="space-y-2 rounded-lg bg-ink-50 p-3">
+          <div className="space-y-2.5 rounded-lg bg-ink-50 p-3">
             <p className="text-xs font-medium text-ink-700">
-              Confirm your side with proof photos:
+              Confirm your side — proof photos are optional.
             </p>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={busy}
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-              className="block w-full text-xs text-ink-600 file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-brand-700"
-            />
+
+            {files.length > 0 && (
+              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+                {previews.map((url, i) => (
+                  <div key={url} className="relative">
+                    <img src={url} alt="" className="h-14 w-full rounded-md border border-ink-200 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      aria-label="Remove photo"
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-ink-900 text-white"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCameraOpen(true)}
+                disabled={busy}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50"
+              >
+                <Camera size={14} /> Take photo
+              </button>
+              <label className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50">
+                <Upload size={14} /> From gallery
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={busy}
+                  onChange={(e) => {
+                    addFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                  className="sr-only"
+                />
+              </label>
+            </div>
+
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <Button
-              size="sm"
-              className="w-full"
-              disabled={busy || files.length === 0}
-              onClick={confirm}
-            >
-              <Upload size={14} />
-              {busy ? 'Confirming…' : `Confirm ${phase} (${files.length} photo${files.length === 1 ? '' : 's'})`}
+            <Button size="sm" className="w-full" disabled={busy} onClick={confirm}>
+              {busy
+                ? 'Confirming…'
+                : files.length > 0
+                  ? `Confirm ${phase} (${files.length} photo${files.length === 1 ? '' : 's'})`
+                  : `Confirm ${phase}`}
             </Button>
           </div>
         )}
       </CardBody>
+
+      <CameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(file) => setFiles((fs) => [...fs, file])}
+      />
     </Card>
   );
 }

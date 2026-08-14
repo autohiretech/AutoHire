@@ -18,26 +18,12 @@ import {
 import type { EarningStage, EarningTrip, PayoutDestination } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { formatMoney, type CurrencyCode } from '@/lib/currency';
+import { formatMoneyMinor } from '@/lib/currency';
 import { formatDate } from '@/lib/format';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { Badge, Button, Card, CardBody, CardHeader, Spinner, toast } from '@/components/ui';
 
-/** Currencies with no minor unit — PayHold sends these as-is, not ×100. */
-const ZERO_DECIMAL = new Set(['RWF', 'UGX', 'JPY', 'KRW', 'VND', 'XAF', 'XOF']);
-
-/**
- * PayHold speaks minor units (integers, always) and `formatMoney` takes major.
- * Getting this wrong shows a host 100× their balance, so it goes through one
- * function rather than being inlined at each call site.
- */
-function money(minor: number, currency: string): string {
-  const code = currency.toUpperCase();
-  const zero = ZERO_DECIMAL.has(code);
-  return formatMoney(zero ? minor : minor / 100, code as CurrencyCode, {
-    decimals: zero ? 0 : 2,
-  });
-}
+const money = formatMoneyMinor;
 
 /**
  * Every stage a host's money passes through, in order, each said plainly.

@@ -45,29 +45,6 @@ insert into fx_rates (base, quote, rate, source) values
 on conflict (base, quote, as_of) do nothing;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- DAILY REFRESH — pick ONE of these; both call the same Edge Function:
---
---  (A) Dashboard cron (easiest): Supabase Dashboard → Edge Functions →
---      refresh-fx-rates → "Cron" → schedule `15 0 * * *` (00:15 UTC daily).
---      No SQL, no keys in the DB.
---
---  (B) pg_cron in the database (uncomment below). Requires the pg_cron + pg_net
---      extensions and your project's anon key. It POSTs to the function daily.
---
--- create extension if not exists pg_cron;
--- create extension if not exists pg_net;
---
--- select cron.schedule(
---   'refresh-fx-rates-daily',
---   '15 0 * * *',                         -- 00:15 UTC every day
---   $$
---   select net.http_post(
---     url     := 'https://gsnoggfofbmzamxxyazc.supabase.co/functions/v1/refresh-fx-rates',
---     headers := jsonb_build_object(
---       'Content-Type', 'application/json',
---       'Authorization', 'Bearer <YOUR_ANON_KEY>'   -- from Dashboard → API
---     )
---   );
---   $$
--- );
+-- DAILY REFRESH — scheduled by migration-051 (pg_cron, 00:15 UTC). The
+-- function has verify_jwt = false, so no key is needed in the DB at all.
 -- ─────────────────────────────────────────────────────────────────────────────

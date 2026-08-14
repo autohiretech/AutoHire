@@ -13,7 +13,7 @@ const DISMISS_KEY = 'autohire.locationPrompted';
  * keyless reverse-geocode to map coordinates → country.
  */
 export function LocationPrompt() {
-  const { country, setCountry, countries } = useCountry();
+  const { country, setCountry, countries, setCurrency } = useCountry();
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -42,6 +42,9 @@ export function LocationPrompt() {
           const match = countries.find((c) => c.code === code);
           if (match) {
             setCountry(match.code);
+            // Geolocation is as strong a signal of "their currency" as it gets —
+            // matches the promise in the banner's own copy above.
+            setCurrency(match.currency);
             toast.success(`Showing cars in ${match.name}, prices in ${match.currency}.`);
           } else {
             toast.info(

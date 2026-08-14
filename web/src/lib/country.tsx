@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { client } from '@/lib/client';
 import type { PayoutCountry } from '@/lib/payments';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 export interface Country {
   /** ISO 3166-1 alpha-2 code. Also the value stored on `Listing.country`. */
@@ -70,10 +71,54 @@ function loadInitial(countries: Country[]): Country {
   return countries.find((c) => c.code === saved) ?? fallback;
 }
 
+/** Bare currency code shown in the picker when no country's home currency matches it. */
+function genericCurrency(code: string): Country {
+  return { code, name: code, flag: '💱', currency: code };
+}
+
+/**
+ * A handful of currencies are shared by many sovereign countries (USD alone is
+ * legal tender in the US, Ecuador, Panama, Timor-Leste, Zimbabwe, …). Picking
+ * "whichever member PayHold happens to list first" reads as wrong — USD showed
+ * up tagged Timor-Leste rather than the US just because of array order. These
+ * are the currencies with a globally recognized reference country/area instead
+ * of an arbitrary member state; anything else shared falls back to the bare
+ * [[genericCurrency]] badge rather than guess.
+ */
+const CURRENCY_REFERENCE: Record<string, Country> = {
+  USD: { code: 'US', name: 'United States', flag: '🇺🇸', currency: 'USD' },
+  EUR: { code: 'EU', name: 'Euro area', flag: '🇪🇺', currency: 'EUR' },
+  GBP: { code: 'GB', name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP' },
+  XAF: { code: 'XAF', name: 'Central African CFA franc', flag: '🌍', currency: 'XAF' },
+  XOF: { code: 'XOF', name: 'West African CFA franc', flag: '🌍', currency: 'XOF' },
+};
+
 interface CountryValue {
+  /** The market being browsed — filters the catalogue. */
   country: Country;
   setCountry: (code: string) => void;
   countries: Country[];
+  /**
+   * The currency prices are DISPLAYED in — independent of `country`, so
+   * browsing any market's cars shows prices in whatever currency the shopper
+   * picked. A car is still charged in its own listing currency at checkout;
+   * PayHold separately picks the renter's actual charge currency from their
+   * account country (see payhold-create-deal), same as this defaults from.
+   *
+   * Never persisted — always resolved fresh from the renter's own account
+   * country (or the browse market as a fallback) on every load, rather than
+   * sticking to whatever was picked last session.
+   */
+  currency: string;
+  setCurrency: (code: string) => void;
+  /**
+   * Every currency PayHold can actually collect, tenant-wide — from its
+   * `payment-options` `currencies` field, not derived from `countries`. A
+   * currency a rail can collect need not be any one country's home currency
+   * (USD collects almost everywhere), so deriving one from the other
+   * under-counts; this is the authority.
+   */
+  currencies: Country[];
 }
 
 const CountryContext = createContext<CountryValue | null>(null);
@@ -81,6 +126,11 @@ const CountryContext = createContext<CountryValue | null>(null);
 export function CountryProvider({ children }: { children: ReactNode }) {
   const [countries, setCountries] = useState<Country[]>(FALLBACK_COUNTRIES);
   const [country, setCountryState] = useState<Country>(() => loadInitialReference());
+  const [currencyCodes, setCurrencyCodes] = useState<string[]>(FALLBACK_COUNTRIES.map((c) => c.currency));
+  // In-memory only — never localStorage. An explicit pick lasts the tab, then
+  // resolves fresh (account country → browse market) on the next load.
+  const [currencyCode, setCurrencyCode] = useState<string | null>(null);
+  const { data: me } = useCurrentUser();
 
   // Resolve the initial selection once we know the fallback list. Defined as a
   // function so the effect below can re-resolve against the live list.
@@ -94,13 +144,18 @@ export function CountryProvider({ children }: { children: ReactNode }) {
       try {
         const opts = await client.payholdPayoutCountries();
         if (!active) return;
-        const next = toCountries(opts);
+        const next = toCountries(opts.countries);
         if (next.length) {
           setCountries(next);
           // Re-resolve the saved choice against the live list; if the saved
           // country is no longer listed, fall back to the default.
           setCountryState(loadInitial(next));
         }
+        // Union with country-derived currencies as a defensive fallback —
+        // `opts.currencies` should already be a superset, but a market's own
+        // home currency should never go missing if that list is ever short.
+        const union = new Set([...opts.currencies, ...next.map((c) => c.currency)]);
+        if (union.size) setCurrencyCodes([...union]);
       } catch {
         // Keep the fallback list — better a short list than none, and the
         // payout screen falls back to its own hardcoded rules otherwise.
@@ -121,9 +176,44 @@ export function CountryProvider({ children }: { children: ReactNode }) {
     [countries],
   );
 
+  const setCurrency = useCallback((code: string) => setCurrencyCode(code), []);
+
+  // Every PayHold-collectible currency, in picker form — a matching country's
+  // flag/name stands in where the pairing is unambiguous (this is genuinely the
+  // currency that country accepts, and the only one that does), a curated
+  // reference stands in for currencies several countries share, and anything
+  // left just gets the bare code rather than an arbitrary/misleading country.
+  const currencies = useMemo(() => {
+    const byCurrency = new Map<string, Country[]>();
+    for (const c of countries) {
+      const list = byCurrency.get(c.currency);
+      if (list) list.push(c);
+      else byCurrency.set(c.currency, [c]);
+    }
+    return currencyCodes
+      .map((code) => {
+        const matches = byCurrency.get(code);
+        if (matches?.length === 1) return matches[0];
+        return CURRENCY_REFERENCE[code] ?? genericCurrency(code);
+      })
+      .sort((a, b) => a.currency.localeCompare(b.currency));
+  }, [countries, currencyCodes]);
+
+  // Default the display currency to the renter's own account country — the
+  // same field payhold-create-deal already reads to pick their real charge
+  // currency — so browsing and checkout agree on "their" currency without the
+  // shopper doing anything. Only a fallback: an explicit pick this session
+  // always wins, and signed-out / no-account-country shoppers get the browse
+  // market's currency instead.
+  const profileCurrency = useMemo(() => {
+    if (!me?.country) return undefined;
+    return countries.find((c) => c.code === me.country)?.currency;
+  }, [me?.country, countries]);
+  const currency = currencyCode ?? profileCurrency ?? country.currency;
+
   const value = useMemo<CountryValue>(
-    () => ({ country, setCountry, countries }),
-    [country, setCountry, countries],
+    () => ({ country, setCountry, countries, currency, setCurrency, currencies }),
+    [country, setCountry, countries, currency, setCurrency, currencies],
   );
 
   return <CountryContext.Provider value={value}>{children}</CountryContext.Provider>;

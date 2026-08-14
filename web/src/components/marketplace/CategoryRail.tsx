@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-react';
 import type { CarCategory } from '@autohire/shared';
 import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES } from '@/lib/categories';
@@ -65,6 +65,27 @@ export function CategoryRail({
         className="-mx-4 overflow-x-auto scroll-px-4 px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="flex gap-3 pb-1">
+          <button
+            type="button"
+            onClick={() => onSelect(undefined)}
+            aria-pressed={!value}
+            className={cn(
+              'flex w-20 shrink-0 flex-col items-center gap-2 rounded-xl border p-3 text-center transition-colors',
+              !value
+                ? 'border-brand-300 bg-brand-50 text-brand-700'
+                : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300 hover:bg-ink-50',
+            )}
+          >
+            <span
+              className={cn(
+                'flex h-10 w-10 items-center justify-center rounded-full',
+                !value ? 'bg-brand-100 text-brand-700' : 'bg-ink-100 text-ink-500',
+              )}
+            >
+              <LayoutGrid size={20} />
+            </span>
+            <span className="text-xs font-medium">All</span>
+          </button>
           {CAR_CATEGORIES.map(({ value: cat, label, icon: Icon }) => {
             const active = value === cat;
             return (

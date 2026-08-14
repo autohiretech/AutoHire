@@ -6,7 +6,9 @@ import { SearchResultsPage } from '@/pages/SearchResultsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { CarDetailPage } from '@/pages/CarDetailPage';
 import { HostProfilePage } from '@/pages/HostProfilePage';
+import { HostsPage } from '@/pages/HostsPage';
 import { CityPage } from '@/pages/CityPage';
+import { CitiesPage } from '@/pages/CitiesPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { EarningsPage } from '@/pages/EarningsPage';
 import { PayoutSetupPage } from '@/pages/PayoutSetupPage';
@@ -36,7 +38,9 @@ export default function App() {
         <Route index element={<HomePage />} />
         <Route path="search" element={<SearchResultsPage />} />
         <Route path="cars/:id" element={<CarDetailPage />} />
+        <Route path="hosts" element={<HostsPage />} />
         <Route path="hosts/:id" element={<HostProfilePage />} />
+        <Route path="cities" element={<CitiesPage />} />
         <Route path="cities/:city" element={<CityPage />} />
         {/* Public so a guest's browser watchlist still has a home; the page
             itself turns away host and company accounts (renters only). */}

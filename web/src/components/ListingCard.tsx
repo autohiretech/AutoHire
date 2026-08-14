@@ -1,23 +1,16 @@
 import { Link } from 'react-router-dom';
 import { Building2, User } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
-import { cn } from '@/lib/cn';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
 import { Badge, Card, CardBody, Rating } from '@/components/ui';
 
 /**
- * Listing summary card used on the browse grid (A1). Links to the car detail
- * page (A2), whose CTA continues into the booking flow (A3). The `compact`
- * variant shrinks the image and padding for the denser marketplace grid.
+ * Listing summary card used on every browse grid (home, search, watchlist) so
+ * a car looks the same size wherever it's shown. Links to the car detail page
+ * (A2), whose CTA continues into the booking flow (A3).
  */
-export function ListingCard({
-  listing,
-  compact = false,
-}: {
-  listing: Listing;
-  compact?: boolean;
-}) {
+export function ListingCard({ listing }: { listing: Listing }) {
   const isBusiness = listing.ownerType === 'business';
 
   return (
@@ -26,45 +19,33 @@ export function ListingCard({
         <Img
           src={listing.photos[0]}
           alt={listing.title}
-          className={cn(
-            'w-full object-cover transition-transform duration-300 group-hover:scale-105',
-            compact ? 'h-32' : 'h-44',
-          )}
+          className="h-44 w-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
-        <CardBody className={cn(compact && 'p-3 sm:p-3')}>
+        <CardBody>
           <div className="mb-1 flex items-center justify-between gap-2">
             <Badge tone={isBusiness ? 'accent' : 'brand'}>
               {isBusiness ? (
                 <>
-                  <Building2 size={12} /> {compact ? 'Business' : 'Business host'}
+                  <Building2 size={12} /> Business host
                 </>
               ) : (
                 <>
-                  <User size={12} /> {compact ? 'Individual' : 'Individual host'}
+                  <User size={12} /> Individual host
                 </>
               )}
             </Badge>
             <Rating value={listing.ratingAvg} count={listing.ratingCount} />
           </div>
-          <h3 className={cn('line-clamp-1 font-semibold text-ink-900', compact && 'text-sm')}>
-            {listing.title}
-          </h3>
-          <p className={cn('text-ink-500', compact ? 'text-xs' : 'text-sm')}>{listing.location}</p>
-          {!compact && (
-            <p className="mt-0.5 text-xs text-ink-400 capitalize">
-              {listing.category} · {listing.transmission} · {listing.seats} seats
-            </p>
-          )}
-          <div className={cn('flex items-center justify-between', compact ? 'mt-2' : 'mt-3')}>
-            <span className={cn('font-semibold text-ink-900', compact && 'text-sm')}>
+          <h3 className="line-clamp-1 font-semibold text-ink-900">{listing.title}</h3>
+          <p className="text-sm text-ink-500">{listing.location}</p>
+          <p className="mt-0.5 text-xs text-ink-400 capitalize">
+            {listing.category} · {listing.transmission} · {listing.seats} seats
+          </p>
+          <div className="mt-3 flex items-center">
+            <span className="font-semibold text-ink-900">
               <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} />
               <span className="font-normal text-ink-500"> / day</span>
             </span>
-            {!compact && (
-              <Badge tone={listing.bookingMode === 'instant' ? 'success' : 'neutral'}>
-                {listing.bookingMode === 'instant' ? 'Instant book' : 'Request to book'}
-              </Badge>
-            )}
           </div>
         </CardBody>
       </Card>

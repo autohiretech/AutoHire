@@ -82,7 +82,7 @@ export function PayoutSetupPage() {
     retry: false,
   });
 
-  const known = payoutCountries?.find((c) => c.code === payoutCountry) ?? null;
+  const known = payoutCountries?.countries.find((c) => c.code === payoutCountry) ?? null;
   const availability = payoutAvailability(payoutCountry, PAYMENTS_PAYHOLD ? known : undefined);
   const methods = availability.state === 'ok' ? availability.methods : [];
   const countryName = known?.name ?? 'your country';

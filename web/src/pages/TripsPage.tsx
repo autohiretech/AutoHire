@@ -26,7 +26,7 @@ export function TripsPage() {
   const listingsById = new Map((listingsQuery.data ?? []).map((l) => [l.id, l]));
 
   return (
-    <section className="mx-auto max-w-4xl px-4 py-8">
+    <section className="mx-auto max-w-6xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-bold text-ink-900">My trips</h1>
 
       {isLoading ? (

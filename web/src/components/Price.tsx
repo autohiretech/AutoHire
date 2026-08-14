@@ -5,9 +5,10 @@ import { cn } from '@/lib/cn';
 
 /**
  * Renders a money amount in the shopper's selected display currency (from the
- * header country selector), converting from the listing's native currency via
- * live FX rates. When the two differ we prefix "≈" (it's an estimate — the car
- * is charged in its home currency) and optionally show the native price beneath.
+ * header currency selector — independent of the market/country they're
+ * browsing), converting from the listing's native currency via live FX rates.
+ * When the two differ we prefix "≈" (it's an estimate — the car is charged in
+ * its home currency) and optionally show the native price beneath.
  */
 export function Price({
   amount,
@@ -21,9 +22,8 @@ export function Price({
   className?: string;
   showNative?: boolean;
 }) {
-  const { country } = useCountry();
+  const { currency: display } = useCountry();
   const fx = useFxRates();
-  const display = country.currency;
   // Listings pre-date multi-currency; anything unknown/undefined is RWF.
   const currency: CurrencyCode = isCurrencyCode(rawCurrency) ? rawCurrency : 'RWF';
 

@@ -7,17 +7,16 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  LayoutGrid,
   Leaf,
-  MapPin,
   PlusCircle,
   Search,
   ShieldCheck,
-  Sparkles,
   Star,
   TrendingUp,
   Zap,
 } from 'lucide-react';
-import type { Host, Listing } from '@autohire/shared';
+import type { Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
@@ -28,6 +27,7 @@ import { CategoryRail } from '@/components/marketplace/CategoryRail';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
 import { AiMode } from '@/components/marketplace/AiMode';
+import { BrowseTabs } from '@/components/marketplace/BrowseTabs';
 import { useAppMode } from '@/lib/appMode';
 import { useCountry } from '@/lib/country';
 import { citiesFor } from '@/lib/cities';
@@ -55,15 +55,13 @@ const PAGE_SIZE = 36;
  */
 const CARD_GRID = 'grid grid-cols-2 gap-5 lg:grid-cols-3';
 
-type Tab = 'cars' | 'hosts' | 'cities';
-
 /**
- * The browse state we remember (per tab session) so clicking into a car and
+ * The browse state we remember (per session) so clicking into a car and
  * coming back lands on the same page/filters instead of resetting to page 1.
  * Pairs with <ScrollMemory> which restores the scroll offset.
  */
 const BROWSE_KEY = 'autohire.home-browse';
-type BrowseState = { filters: ListingFilters; tab: Tab; topRanked: boolean; page: number };
+type BrowseState = { filters: ListingFilters; topRanked: boolean; page: number };
 function loadBrowse(): Partial<BrowseState> {
   if (typeof sessionStorage === 'undefined') return {};
   try {
@@ -85,21 +83,13 @@ export function HomePage() {
   // Restore where the user was browsing (read once on mount).
   const [savedBrowse] = useState(loadBrowse);
   const [filters, setFilters] = useState<ListingFilters>(savedBrowse.filters ?? {});
-  // AI Mode lives in the URL (?view=ai) so navigating "home" (the logo → "/")
-  // clears it and returns to the dashboard, instead of getting stuck because
-  // the route didn't change.
-  const [searchParams, setSearchParams] = useSearchParams();
+  // AI Mode lives in the URL (?view=ai), toggled by <BrowseTabs> links, so
+  // navigating "home" (the logo → "/") clears it and returns to the dashboard
+  // instead of getting stuck because the route didn't change.
+  const [searchParams] = useSearchParams();
   const aiMode = searchParams.get('view') === 'ai';
-  const setAiMode = (next: boolean | ((v: boolean) => boolean)) => {
-    const on = typeof next === 'function' ? next(aiMode) : next;
-    const params = new URLSearchParams(searchParams);
-    if (on) params.set('view', 'ai');
-    else params.delete('view');
-    setSearchParams(params, { replace: true });
-  };
   const [aiBusy, setAiBusy] = useState(false);
   const [text, setText] = useState('');
-  const [tab, setTab] = useState<Tab>(savedBrowse.tab ?? 'cars');
   const [topRanked, setTopRanked] = useState(savedBrowse.topRanked ?? false);
   const [page, setPage] = useState(savedBrowse.page ?? 0);
   // Category groups are an accordion so the sidebar stays compact — vehicles open
@@ -122,13 +112,10 @@ export function HomePage() {
   // Filtered, PAGINATED pull that drives the recommended grid — one page at a
   // time (with the total count) instead of every car at once.
   const { data: pageData, isLoading } = useQuery({
-    queryKey: ['listings-page', scoped, topRanked, page],
-    queryFn: () =>
-      client.listListingsPage(scoped, page, PAGE_SIZE, topRanked ? 'rating' : undefined),
+    queryKey: ['listings-page', scoped, page],
+    queryFn: () => client.listListingsPage(scoped, page, PAGE_SIZE),
     placeholderData: keepPreviousData, // keep the old page visible while the next loads
   });
-  const { data: hosts } = useQuery({ queryKey: ['hosts'], queryFn: () => client.listHosts() });
-
   // A city only exists in one market, so a city left over from the previous country
   // (or restored from a past session) would filter the grid down to nothing. Drop it.
   useEffect(() => {
@@ -151,11 +138,11 @@ export function HomePage() {
   // Remember the browse state so returning lands here (see <ScrollMemory> too).
   useEffect(() => {
     try {
-      sessionStorage.setItem(BROWSE_KEY, JSON.stringify({ filters, tab, topRanked, page }));
+      sessionStorage.setItem(BROWSE_KEY, JSON.stringify({ filters, topRanked, page }));
     } catch {
       /* storage full/disabled — non-critical */
     }
-  }, [filters, tab, topRanked, page]);
+  }, [filters, topRanked, page]);
 
   function setFilter<K extends keyof ListingFilters>(key: K, value: ListingFilters[K]) {
     setFilters((prev) => {
@@ -189,7 +176,6 @@ export function HomePage() {
       navigate(`/search?q=${encodeURIComponent(q)}`);
       return;
     }
-    setTab('cars');
     scrollToResults();
   }
 
@@ -204,47 +190,9 @@ export function HomePage() {
 
   return (
     <div className="bg-gradient-to-b from-brand-50 to-white">
-      {/* ── Tab bar + AI Mode ─────────────────────────────────────────────── */}
+      {/* ── Mode switch + section nav ────────────────────────────────────── */}
       <div className="mx-auto max-w-[1500px] px-4 pt-8">
-        <div className="flex items-center justify-center gap-5 text-lg font-semibold sm:gap-7">
-          <button
-            type="button"
-            onClick={() => setAiMode((v) => !v)}
-            className={cn(
-              'flex items-center gap-1.5 transition-colors',
-              aiMode ? 'text-accent-600' : 'text-ink-500 hover:text-ink-800',
-            )}
-          >
-            AI Mode <Sparkles size={16} className={aiMode ? 'text-accent-500' : 'text-accent-400'} />
-          </button>
-          <span className="h-5 w-px bg-ink-200" />
-          {(
-            [
-              { key: 'cars', label: 'Cars' },
-              { key: 'hosts', label: 'Hosts' },
-              { key: 'cities', label: 'Cities' },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => {
-                setAiMode(false);
-                setTab(t.key);
-                scrollToResults();
-              }}
-              className={cn(
-                'relative pb-1 transition-colors',
-                tab === t.key && !aiMode ? 'text-brand-600' : 'text-ink-700 hover:text-ink-900',
-              )}
-            >
-              {t.label}
-              {tab === t.key && !aiMode && (
-                <span className="absolute inset-x-0 -bottom-0.5 mx-auto h-0.5 w-6 rounded-full bg-brand-600" />
-              )}
-            </button>
-          ))}
-        </div>
+        <BrowseTabs />
 
         {/* ── Fused search box (standard mode only) ────────────────────────── */}
         {!aiMode && (
@@ -263,14 +211,7 @@ export function HomePage() {
                 aria-label="Search cars"
                 className="w-full text-base text-ink-900 outline-none placeholder:text-ink-400"
               />
-              <div className="mt-3 flex items-center justify-between border-t border-ink-100 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setAiMode((v) => !v)}
-                  className="flex items-center gap-2 text-sm font-medium text-ink-500 transition-colors hover:text-ink-800"
-                >
-                  <Sparkles size={18} /> Describe with AI
-                </button>
+              <div className="mt-3 flex items-center justify-end border-t border-ink-100 pt-3">
                 <button
                   type="submit"
                   disabled={aiBusy}
@@ -329,7 +270,6 @@ export function HomePage() {
             value={filters.category}
             onSelect={(cat) => {
               setFilter('category', cat);
-              setTab('cars');
               scrollToResults();
             }}
           />
@@ -339,6 +279,22 @@ export function HomePage() {
               slideshow scrolls past, so it stays put while the car grid scrolls. */}
           <aside className="hidden rounded-2xl border border-ink-100 bg-white p-2 shadow-card lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
             <p className="px-3 py-2 text-sm font-semibold text-ink-900">Categories for you</p>
+            <button
+              type="button"
+              onClick={() => {
+                setFilter('category', undefined);
+                scrollToResults();
+              }}
+              className={cn(
+                'mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
+                !filters.category
+                  ? 'bg-brand-50 font-medium text-brand-700'
+                  : 'text-ink-700 hover:bg-ink-50',
+              )}
+            >
+              <LayoutGrid size={17} className={!filters.category ? 'text-brand-600' : 'text-ink-400'} />
+              All categories
+            </button>
             {CATEGORY_GROUPS.map((group) => {
               const items = CAR_CATEGORIES.filter((c) => c.group === group);
               // Open if the user toggled it open, or the active category lives here.
@@ -370,7 +326,6 @@ export function HomePage() {
                               type="button"
                               onClick={() => {
                                 setFilter('category', active ? undefined : value);
-                                setTab('cars');
                                 scrollToResults();
                               }}
                               className={cn(
@@ -396,76 +351,45 @@ export function HomePage() {
             })}
           </aside>
 
-          {/* Car results (tab-driven) — the categories rail filters these. */}
+          {/* Car results — the categories rail filters these. */}
           <section className="min-w-0">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold text-ink-900">
-            {tab === 'hosts'
-              ? 'Verified hosts'
-              : tab === 'cities'
-                ? 'Browse by city'
-                : topRanked
-                  ? 'Top ranked cars'
-                  : 'Recommended for you'}
+            {topRanked ? 'Top ranked cars' : 'Recommended for you'}
           </h2>
-          {tab === 'cars' && (
-            <div className="flex items-center gap-3">
-              <span className="hidden items-center gap-1 text-xs text-ink-400 sm:flex">
-                <ShieldCheck size={14} className="text-ink-400" /> All hosts verified
-              </span>
-              <button
-                type="button"
-                onClick={() => setFilter('fuel', filters.fuel === 'electric' ? undefined : 'electric')}
-                aria-pressed={filters.fuel === 'electric'}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                  filters.fuel === 'electric'
-                    ? 'border-brand-300 bg-brand-50 text-brand-700'
-                    : 'border-ink-200 text-ink-600 hover:bg-ink-50',
-                )}
-              >
-                <Zap size={15} /> Electric
-              </button>
-              <button
-                type="button"
-                onClick={() => setTopRanked((v) => !v)}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                  topRanked
-                    ? 'border-brand-300 bg-brand-50 text-brand-700'
-                    : 'border-ink-200 text-ink-600 hover:bg-ink-50',
-                )}
-              >
-                <TrendingUp size={15} /> Top ranked
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <span className="hidden items-center gap-1 text-xs text-ink-400 sm:flex">
+              <ShieldCheck size={14} className="text-ink-400" /> All hosts verified
+            </span>
+            <button
+              type="button"
+              onClick={() => setFilter('fuel', filters.fuel === 'electric' ? undefined : 'electric')}
+              aria-pressed={filters.fuel === 'electric'}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                filters.fuel === 'electric'
+                  ? 'border-brand-300 bg-brand-50 text-brand-700'
+                  : 'border-ink-200 text-ink-600 hover:bg-ink-50',
+              )}
+            >
+              <Zap size={15} /> Electric
+            </button>
+            <button
+              type="button"
+              onClick={() => setTopRanked((v) => !v)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                topRanked
+                  ? 'border-brand-300 bg-brand-50 text-brand-700'
+                  : 'border-ink-200 text-ink-600 hover:bg-ink-50',
+              )}
+            >
+              <TrendingUp size={15} /> Top ranked
+            </button>
+          </div>
         </div>
 
-        {tab === 'cities' ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {citiesFor(country.code).map((c) => (
-              <Link
-                key={c}
-                to={`/cities/${encodeURIComponent(c)}`}
-                className="flex flex-col items-center gap-2 rounded-2xl border border-ink-200 bg-white p-6 text-center text-ink-700 shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-ink-300 hover:shadow-card-hover"
-              >
-                <MapPin size={22} className="text-ink-400" />
-                <span className="text-sm font-medium">{c}</span>
-              </Link>
-            ))}
-          </div>
-        ) : tab === 'hosts' ? (
-          hosts && hosts.length > 0 ? (
-            <div className="grid grid-cols-2 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {hosts.map((h) => (
-                <HostCard key={h.id} host={h} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState label="No hosts to show yet." />
-          )
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="flex justify-center py-16">
             <Spinner size={28} />
           </div>
@@ -717,40 +641,6 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
         </div>
       )}
     </div>
-  );
-}
-
-/** Compact host tile for the Hosts tab — links to the host's public profile. */
-function HostCard({ host }: { host: Host }) {
-  const isBusiness = host.ownerType === 'business';
-  const name = host.businessName || host.fullName;
-  return (
-    <Link
-      to={`/hosts/${host.id}`}
-      className="flex flex-col items-center rounded-2xl border border-ink-100 bg-white p-4 text-center shadow-card transition-all duration-200 hover:-translate-y-1 hover:shadow-card-hover"
-    >
-      {host.avatarUrl ? (
-        <img src={host.avatarUrl} alt={name} className="h-14 w-14 rounded-full object-cover" />
-      ) : (
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-100 text-lg font-semibold text-brand-700">
-          {name.charAt(0).toUpperCase()}
-        </span>
-      )}
-      <p className="mt-2 line-clamp-1 text-sm font-semibold text-ink-900">{name}</p>
-      <p className="text-xs capitalize text-ink-500">
-        {isBusiness ? 'Business host' : 'Individual host'}
-      </p>
-      <div className="mt-2 flex items-center gap-2 text-xs text-ink-600">
-        <span className="flex items-center gap-1">
-          <CarFront size={13} className="text-ink-400" /> {host.vehicleCount}
-        </span>
-        {host.verification === 'verified' && (
-          <span className="flex items-center gap-1 text-brand-600">
-            <ShieldCheck size={13} /> Verified
-          </span>
-        )}
-      </div>
-    </Link>
   );
 }
 

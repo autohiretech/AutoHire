@@ -114,7 +114,7 @@ Deno.serve(async (req: Request) => {
         start_date: startDate,
         end_date: endDate,
         days,
-        state: listing.booking_mode === 'instant' ? 'confirmed' : 'requested',
+        state: 'confirmed',
         subtotal_rwf: subtotal,
         service_fee_rwf: serviceFee,
         total_rwf: subtotal + serviceFee,

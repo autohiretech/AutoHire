@@ -75,6 +75,28 @@ function mapRows<T>(rows: Record<string, unknown>[] | null): T[] {
 }
 
 /**
+ * Split a search string into individual keywords. Listing search then ANDs
+ * one `.or()` filter per keyword (chained PostgREST filters combine with AND),
+ * so "toyota kigali" needs each word to hit *some* field rather than needing
+ * the whole phrase to appear verbatim in one column — the caller isn't
+ * required to type an exact title/make/model to get a match.
+ */
+function keywordsOf(query: string | undefined): string[] {
+  return (query ?? '').trim().split(/\s+/).filter(Boolean);
+}
+
+/** One keyword, matched case-insensitively across every field worth searching. */
+function keywordConditions(word: string): string {
+  // Commas and parens are PostgREST's own filter-syntax delimiters, and `%`/`*`
+  // are ilike/PostgREST wildcards — strip them so a stray character in the
+  // search box can't break the query or widen the match unexpectedly.
+  const safe = word.replace(/[%*,()]/g, '');
+  if (!safe) return 'id.eq.__no_match__';
+  const t = `%${safe}%`;
+  return `title.ilike.${t},make.ilike.${t},model.ilike.${t},city.ilike.${t},location.ilike.${t}`;
+}
+
+/**
  * The message behind "Edge Function returned a non-2xx status code".
  *
  * supabase-js turns every non-2xx into that one sentence and hands the
@@ -173,10 +195,7 @@ export const supabaseClient = {
     if (filters.fuel) q = q.eq('fuel', filters.fuel);
     if (filters.minSeats) q = q.gte('seats', filters.minSeats);
     if (filters.maxPriceRwf) q = q.lte('price_per_day_rwf', filters.maxPriceRwf);
-    if (filters.query) {
-      const t = `%${filters.query}%`;
-      q = q.or(`title.ilike.${t},make.ilike.${t},model.ilike.${t}`);
-    }
+    for (const word of keywordsOf(filters.query)) q = q.or(keywordConditions(word));
     // Ordering goes last: `.order()` returns a transform builder with no `.eq()`.
     const ordered = q.order('rating_avg', { ascending: false }).order('id', { ascending: true });
     return mapRows<Listing>(await run(ordered));
@@ -184,14 +203,14 @@ export const supabaseClient = {
   /**
    * Paginated listings — same filters as `listListings`, but returns one page
    * plus the total match count so the browse grid can show page controls instead
-   * of every car at once. `sort: 'rating'` ranks by rating (highest first);
-   * otherwise results are ordered by id for stable paging.
+   * of every car at once. Always ranked best-rated first (then by id for stable
+   * paging), so "Recommended for you" leads with the highest-rated cars and the
+   * rest follow in the same order.
    */
   async listListingsPage(
     filters: ListingFilters = {},
     page = 0,
     pageSize = 24,
-    sort?: 'rating',
   ): Promise<{ items: Listing[]; total: number }> {
     let base = sb().from('listings').select('*', { count: 'exact' });
     if (filters.country) base = base.eq('country', filters.country);
@@ -202,18 +221,25 @@ export const supabaseClient = {
     if (filters.fuel) base = base.eq('fuel', filters.fuel);
     if (filters.minSeats) base = base.gte('seats', filters.minSeats);
     if (filters.maxPriceRwf) base = base.lte('price_per_day_rwf', filters.maxPriceRwf);
-    if (filters.query) {
-      const t = `%${filters.query}%`;
-      base = base.or(`title.ilike.${t},make.ilike.${t},model.ilike.${t}`);
-    }
-    const ordered =
-      sort === 'rating'
-        ? base.order('rating_avg', { ascending: false }).order('id', { ascending: true })
-        : base.order('id', { ascending: true });
+    for (const word of keywordsOf(filters.query)) base = base.or(keywordConditions(word));
+    const ordered = base.order('rating_avg', { ascending: false }).order('id', { ascending: true });
     const from = page * pageSize;
     const { data, error, count } = await ordered.range(from, from + pageSize - 1);
     if (error) throw new Error(error.message);
     return { items: mapRows<Listing>(data as Record<string, unknown>[]), total: count ?? 0 };
+  },
+  /**
+   * How many listings exist per country, e.g. `{ RW: 812, US: 3 }`. Powers the
+   * country selector: it lets the selector show which of PayHold's many markets
+   * actually have cars in AutoHire, without fetching every listing's full row.
+   */
+  async listingCountsByCountry(): Promise<Record<string, number>> {
+    const rows = await run(sb().from('listings').select('country'));
+    const counts: Record<string, number> = {};
+    for (const row of rows as { country: string }[]) {
+      counts[row.country] = (counts[row.country] ?? 0) + 1;
+    }
+    return counts;
   },
   /**
    * Live foreign-exchange rates (quoted against USD) from the `fx_rates` table,
@@ -379,6 +405,13 @@ export const supabaseClient = {
      * rides in the deal's metadata and PayHold stores metadata verbatim.
      */
     payerRef?: string;
+    /**
+     * Which market to charge the card as, when it isn't the renter's own
+     * account country — PayHold prices the deal in whatever currency that
+     * market's rails serve, so this is how a renter paying with a foreign card
+     * gets charged in a currency it actually accepts.
+     */
+    buyerCountry?: string;
   }): Promise<{
     dealId: string;
     paymentLink: string;
@@ -595,21 +628,26 @@ export const supabaseClient = {
   },
 
   /**
-   * Which countries PayHold can collect in and pay out to.
+   * Which countries PayHold can collect in and pay out to, and — separately —
+   * every currency it can collect tenant-wide (`currencies`). That second list
+   * is the authority for "what currencies does PayHold accept": it is not the
+   * same set as `countries.map(c => c.currency)`, since a currency a rail can
+   * collect need not be any one country's *home* currency (USD collects almost
+   * everywhere, for instance), so deriving one from the other under-counts.
    *
    * The payout screen asks this before offering anything, because the answer
    * used to be a hardcoded eight-country list that promised Bank and Card to
    * markets PayHold refuses. Tenant-wide and slow-moving, so it is cached hard
    * on both sides.
    */
-  async payholdPayoutCountries(): Promise<PayoutCountry[]> {
+  async payholdPayoutCountries(): Promise<{ countries: PayoutCountry[]; currencies: string[] }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-payment-options', {
       method: 'GET',
     });
     if (error) throw await fnError(error);
-    const payload = data as { countries?: PayoutCountry[]; error?: string };
+    const payload = data as { countries?: PayoutCountry[]; currencies?: string[]; error?: string };
     if (payload?.error) throw new Error(payload.error);
-    return payload.countries ?? [];
+    return { countries: payload.countries ?? [], currencies: payload.currencies ?? [] };
   },
 
   /** Where this host's money can be sent, on its own — the narrow read. */

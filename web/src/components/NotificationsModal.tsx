@@ -125,22 +125,29 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
   const unread = list.filter((n) => !n.read).length;
   const selected = list.find((n) => n.id === selectedId) ?? null;
 
-  const openDetail = (n: AppNotification) => {
-    if (!n.read) readMutation.mutate(n.id);
-    setSelectedId(n.id);
-  };
-
   // Close resets to the list so it doesn't reopen mid-detail next time.
   const close = () => {
     setSelectedId(null);
     onClose();
   };
 
-  const action = selected ? actionFor(selected, isHost) : null;
   const go = (to: string) => {
     close();
     navigate(to);
   };
+
+  // A tap should land you on the thing itself — the booking, the watched car —
+  // not a summary screen with one more button to press. Only notifications with
+  // nowhere specific to go (a plain verification nudge, say) fall back to the
+  // in-modal detail view, since there's nothing else to show them.
+  const openNotification = (n: AppNotification) => {
+    if (!n.read) readMutation.mutate(n.id);
+    const action = actionFor(n, isHost);
+    if (action) go(action.to);
+    else setSelectedId(n.id);
+  };
+
+  const action = selected ? actionFor(selected, isHost) : null;
 
   return (
     <div className="fixed inset-0 z-50">
@@ -200,7 +207,7 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
           ) : list.length > 0 ? (
             <ul className="divide-y divide-ink-100">
               {list.map((n) => (
-                <NotificationRow key={n.id} notification={n} onOpen={() => openDetail(n)} />
+                <NotificationRow key={n.id} notification={n} onOpen={() => openNotification(n)} />
               ))}
             </ul>
           ) : (

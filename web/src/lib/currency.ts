@@ -33,6 +33,21 @@ export function isCurrencyCode(v: string): v is CurrencyCode {
   return v in CURRENCIES;
 }
 
+/** Currencies with no minor unit — PayHold sends these as-is, not ×100. */
+const ZERO_DECIMAL_MINOR = new Set(['RWF', 'UGX', 'JPY', 'KRW', 'VND', 'XAF', 'XOF']);
+
+/**
+ * Format an amount PayHold quoted in minor units (integers, always — 1000 =
+ * 10.00) as major-unit money. Getting this wrong shows 100× the real amount,
+ * so every PayHold amount (deals, payouts, balances) goes through this one
+ * function rather than being converted inline at each call site.
+ */
+export function formatMoneyMinor(minor: number, code: string): string {
+  const upper = code.toUpperCase();
+  const zero = ZERO_DECIMAL_MINOR.has(upper);
+  return formatMoney(zero ? minor : minor / 100, upper, { decimals: zero ? 0 : 2 });
+}
+
 /**
  * Format an amount in the given currency, e.g. `formatMoney(45000, 'RWF')` →
  * "RWF 45,000", `formatMoney(1200, 'CNY')` → "CN¥ 1,200". Daily rental prices

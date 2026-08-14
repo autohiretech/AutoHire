@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -14,9 +14,10 @@ import {
 } from 'lucide-react';
 import type { Host, UserProfile } from '@autohire/shared';
 import { client } from '@/lib/client';
+import { cn } from '@/lib/cn';
 import { useAuth } from '@/lib/auth';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { useCountry } from '@/lib/country';
+import { useCountry, type Country } from '@/lib/country';
 import { normalizePhone } from '@/lib/phone';
 import {
   Avatar,
@@ -28,7 +29,6 @@ import {
   Input,
   Label,
   Modal,
-  Select,
   Spinner,
 } from '@/components/ui';
 
@@ -343,6 +343,35 @@ function CountryField({ profile }: { profile: UserProfile }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  const selected = countries.find((c) => c.code === profile.country);
+  const label = (c: Country) => `${c.flag} ${c.name}`;
+
+  // Show the saved country when idle; typing takes over as a live filter and
+  // reverts to the saved value on blur/close if nothing was picked.
+  useEffect(() => {
+    if (!open) setQuery(selected ? label(selected) : '');
+  }, [open, selected?.code]);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || (selected && q === label(selected).toLowerCase())) return countries;
+    return countries.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
+    );
+  }, [countries, query, selected]);
 
   async function save(code: string) {
     if (!code || code === profile.country) return;
@@ -360,24 +389,75 @@ function CountryField({ profile }: { profile: UserProfile }) {
     }
   }
 
+  function choose(c: Country) {
+    setOpen(false);
+    void save(c.code);
+  }
+
   return (
-    <div>
+    <div ref={boxRef} className="relative">
       <Label htmlFor="account-country">Country</Label>
-      <Select
+      <Input
         id="account-country"
-        value={profile.country ?? ''}
+        value={query}
         disabled={busy}
-        onChange={(e) => save(e.target.value)}
-      >
-        <option value="" disabled>
-          Select your country
-        </option>
-        {countries.map((c) => (
-          <option key={c.code} value={c.code}>
-            {c.flag} {c.name}
-          </option>
-        ))}
-      </Select>
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          setActive(0);
+        }}
+        onFocus={(e) => {
+          setOpen(true);
+          e.target.select();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setOpen(true);
+            setActive((a) => Math.min(a + 1, results.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive((a) => Math.max(a - 1, 0));
+          } else if (e.key === 'Enter' && open && results[active]) {
+            e.preventDefault();
+            choose(results[active]);
+          } else if (e.key === 'Escape') {
+            setOpen(false);
+          }
+        }}
+        placeholder="Search countries…"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        autoComplete="off"
+      />
+      {open && (
+        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg">
+          {results.length === 0 ? (
+            <li className="px-3 py-4 text-center text-sm text-ink-400">
+              No countries match &ldquo;{query}&rdquo;
+            </li>
+          ) : (
+            results.map((c, i) => (
+              <li key={c.code}>
+                <button
+                  type="button"
+                  onMouseEnter={() => setActive(i)}
+                  onClick={() => choose(c)}
+                  className={cn(
+                    'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
+                    i === active && 'bg-ink-50',
+                    c.code === profile.country && 'font-medium text-brand-700',
+                  )}
+                >
+                  <span className="w-5 shrink-0 text-center">{c.flag}</span>
+                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
       <p className="mt-1 text-xs text-ink-500">
         {profile.role === 'owner'
           ? 'Where you get paid — it decides which payout methods you can use.'

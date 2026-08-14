@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useBackToBrowse } from '@/lib/useBackToBrowse';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Star, Wrench } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
@@ -25,6 +26,7 @@ export function WatchlistPage() {
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const canRent = useCanRent();
   const signedIn = !!me;
+  const backToBrowse = useBackToBrowse();
 
   const serverQuery = useQuery({
     queryKey: ['watchedListings'],
@@ -72,9 +74,13 @@ export function WatchlistPage() {
         <p className="mt-1 text-sm text-ink-500">
           A watch tells you when a car is free to book, which host and company accounts can't do.
         </p>
-        <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+        <button
+          type="button"
+          onClick={backToBrowse}
+          className="mt-3 inline-block text-sm text-brand-600 hover:underline"
+        >
           Back to browse
-        </Link>
+        </button>
       </div>
     );
   }

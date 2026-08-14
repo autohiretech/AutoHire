@@ -103,7 +103,16 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ error: 'Invalid or expired session.' }, 401);
     const uid = userData.user.id;
 
-    const { listingId, startDate, endDate, preferredMethod, payerRef } = await req.json();
+    const { listingId, startDate, endDate, preferredMethod, payerRef, buyerCountry } = await req.json();
+
+    // Which market to charge the renter's card as. Defaults to their profile's
+    // country below, but a renter paying with a foreign card can name a
+    // different one here — PayHold prices the deal in whatever currency that
+    // market's rails serve, so this is how "charge me in a currency my card
+    // actually accepts" is answered without asking them to change their
+    // account's country just to pay for one trip.
+    const buyerCountryOverride =
+      typeof buyerCountry === 'string' && buyerCountry.trim() ? buyerCountry.trim().toUpperCase() : '';
 
     // Where the renter wants to be charged — a MoMo number, a PayPal address.
     // Never a card: those are typed on PayHold's checkout.
@@ -210,9 +219,10 @@ Deno.serve(async (req: Request) => {
       description: `AutoHire — ${listing.title} (${days} day${days === 1 ? '' : 's'})`,
       amount: toMinorUnits(total, currency),
       currency,
-      // The renter's own country, not the car's market. They differ whenever
-      // someone rents abroad, and this one decides what they can pay with.
-      buyerCountry: (renter?.country as string | null) ?? undefined,
+      // The renter's own country, not the car's market — unless they picked a
+      // different one for this payment. Either way, this is what decides what
+      // they can pay with and which currency their card is actually charged in.
+      buyerCountry: buyerCountryOverride || (renter?.country as string | null) || undefined,
       expectedCompleteAt: new Date(endDate).toISOString(),
       // Everything the webhook needs to build the trip. It reads these from the
       // deal, never from its own payload — see payhold-webhook.

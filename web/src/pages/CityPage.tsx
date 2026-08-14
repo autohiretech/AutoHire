@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CarFront, MapPin } from 'lucide-react';
 import { client } from '@/lib/client';
+import { useBackToBrowse } from '@/lib/useBackToBrowse';
 import { CarAvailabilityCard } from '@/components/CarAvailabilityCard';
 import { Card, CardBody, Spinner } from '@/components/ui';
 
@@ -12,6 +13,7 @@ import { Card, CardBody, Spinner } from '@/components/ui';
  */
 export function CityPage() {
   const { city = '' } = useParams();
+  const backToBrowse = useBackToBrowse();
   const cityName = decodeURIComponent(city);
 
   const { data: listings = [], isLoading } = useQuery({
@@ -21,9 +23,13 @@ export function CityPage() {
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-6">
-      <Link to="/" className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800">
+      <button
+        type="button"
+        onClick={backToBrowse}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+      >
         <ArrowLeft size={16} /> Back to browse
-      </Link>
+      </button>
 
       <div className="flex items-center gap-3">
         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
@@ -49,7 +55,7 @@ export function CityPage() {
             <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-ink-500">
               <CarFront size={28} className="text-ink-300" />
               <p className="text-sm">No cars listed in {cityName} yet.</p>
-              <Link to="/" className="text-sm font-medium text-brand-600 hover:underline">
+              <Link to="/cities" className="text-sm font-medium text-brand-600 hover:underline">
                 Browse other cities
               </Link>
             </CardBody>

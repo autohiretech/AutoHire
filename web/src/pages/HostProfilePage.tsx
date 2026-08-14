@@ -1,7 +1,8 @@
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Building2, CarFront, ShieldCheck, Star, User } from 'lucide-react';
 import { client } from '@/lib/client';
+import { useBackToBrowse } from '@/lib/useBackToBrowse';
 import { CarAvailabilityCard } from '@/components/CarAvailabilityCard';
 import { Avatar, Badge, Card, CardBody, Spinner } from '@/components/ui';
 
@@ -19,6 +20,7 @@ function memberSince(iso?: string): string | null {
  */
 export function HostProfilePage() {
   const { id = '' } = useParams();
+  const backToBrowse = useBackToBrowse();
 
   const hostQuery = useQuery({ queryKey: ['host', id], queryFn: () => client.getHost(id) });
   const listingsQuery = useQuery({
@@ -41,9 +43,13 @@ export function HostProfilePage() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
         <p className="font-medium text-ink-900">Host not found</p>
-        <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+        <button
+          type="button"
+          onClick={backToBrowse}
+          className="mt-3 inline-block text-sm text-brand-600 hover:underline"
+        >
           Back to browse
-        </Link>
+        </button>
       </div>
     );
   }
@@ -55,12 +61,13 @@ export function HostProfilePage() {
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-6">
-      <Link
-        to="/"
+      <button
+        type="button"
+        onClick={backToBrowse}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
       >
         <ArrowLeft size={16} /> Back to browse
-      </Link>
+      </button>
 
       {/* Header */}
       <Card>

@@ -6,6 +6,7 @@ import { cn } from '@/lib/cn';
 import { Avatar, Button } from '@/components/ui';
 import { useNotifications } from '@/components/NotificationsProvider';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
+import { CurrencySelector } from '@/components/marketplace/CurrencySelector';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCanRent } from '@/lib/account';
@@ -104,6 +105,7 @@ export function Header() {
 
         <div className="flex items-center gap-2">
           <CountrySelector />
+          <CurrencySelector />
           {user ? (
             <>
               {me?.role === 'admin' && (

@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Award,
-  CalendarCheck,
   Car,
   Check,
   ChevronLeft,
@@ -29,6 +28,7 @@ import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { useCanRent, useIsBusinessHost, useIsHost } from '@/lib/account';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useBackToBrowse } from '@/lib/useBackToBrowse';
 import { SERVICE_FEE_RATE } from '@/lib/types';
 import { formatDate, formatRwf } from '@/lib/format';
 import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
@@ -62,14 +62,7 @@ function hostingDuration(joinedAt: string): string {
 export function CarDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  // Return to the browse list the user came from — <ScrollMemory> + the saved
-  // browse state put them back on the same page/scroll. Fall back to home if
-  // they opened this car directly (no in-app history to go back to).
-  const backToBrowse = () => {
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (idx > 0) navigate(-1);
-    else navigate('/');
-  };
+  const backToBrowse = useBackToBrowse();
   const [messaging, setMessaging] = useState(false);
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
@@ -113,16 +106,20 @@ export function CarDetailPage() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
         <p className="font-medium text-ink-900">Listing not found</p>
-        <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+        <button
+          type="button"
+          onClick={backToBrowse}
+          className="mt-3 inline-block text-sm text-brand-600 hover:underline"
+        >
           Back to browse
-        </Link>
+        </button>
       </div>
     );
   }
 
   const host = hostQuery.data;
   const reviews = reviewsQuery.data ?? [];
-  const instant = listing.bookingMode === 'instant';
+  const instant = true;
   const photos = listing.photos;
   // You can message the host unless you ARE the host or you're in host mode.
   const canMessage = !isHost && !!me && me.id !== listing.hostId;
@@ -181,13 +178,6 @@ export function CarDetailPage() {
     .join(' · ');
 
   const highlights: { icon: LucideIcon; title: string; body: string }[] = [];
-  if (instant) {
-    highlights.push({
-      icon: CalendarCheck,
-      title: 'Instant booking',
-      body: 'Your trip is confirmed right away — no waiting on approval.',
-    });
-  }
   if (host?.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5) {
     highlights.push({
       icon: Award,
@@ -222,14 +212,6 @@ export function CarDetailPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-ink-900 sm:text-[28px]">{listing.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <span
-              className={cn(
-                'inline-flex items-center rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white',
-                instant ? 'bg-brand-600' : 'bg-accent-600',
-              )}
-            >
-              {instant ? 'Instant book' : 'Request to book'}
-            </span>
             <p className="capitalize text-sm text-ink-600">{subtitle}</p>
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
@@ -502,9 +484,6 @@ export function CarDetailPage() {
                 <span className="text-ink-500">/ day</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge tone={instant ? 'success' : 'neutral'}>
-                  {instant ? 'Instant book' : 'Request to book'}
-                </Badge>
                 {listing.status === 'maintenance' && (
                   <Badge tone="warning">
                     In maintenance

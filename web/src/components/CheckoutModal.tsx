@@ -18,6 +18,7 @@ import {
 import { Button, Input, Label, Modal } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
 import { getStripeFor } from '@/lib/stripe';
+import { formatMoneyMinor } from '@/lib/currency';
 import type { PaymentMethodType } from '@autohire/shared';
 
 /**
@@ -576,6 +577,16 @@ export function CheckoutModal({
   amountLabel: string;
 }) {
   const [methods, setMethods] = useState<CheckoutMethod[] | null>(null);
+  /**
+   * What PayHold will actually charge — its `presentment_amount` /
+   * `presentment_currency`, which can differ from the listing's own currency
+   * when the renter's market can't be charged that one directly (see
+   * `presentmentCurrencyFor` in payhold-backend). Shown before any method is
+   * chosen so the renter sees the real number, in the real currency, with a
+   * plain way to back out (the modal's own close button) if it's not what
+   * they expected — rather than only finding out on PayHold's own page.
+   */
+  const [deal, setDeal] = useState<PublicCheckout['deal'] | null>(null);
   /** The chosen method, keyed by `methodKey` so two rails stay distinct. */
   const [chosen, setChosen] = useState<string | null>(null);
   /** The method object the key resolves to — what we actually start with. */
@@ -629,7 +640,10 @@ export function CheckoutModal({
     fetch(checkoutBase)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: PublicCheckout) => {
-        if (live) setMethods(d.methods ?? []);
+        if (live) {
+          setMethods(d.methods ?? []);
+          setDeal(d.deal ?? null);
+        }
       })
       .catch(() => {
         // Empty, not null. There used to be a picker of ours waiting behind
@@ -1128,6 +1142,25 @@ export function CheckoutModal({
 
         {(stage === 'choosing' || stage === 'starting') && (
           <>
+            {/* The real charge, from PayHold's own record of this deal — its
+                presentment amount and currency, which is what actually gets
+                charged and can differ from the listing's own currency. Shown
+                before any method is picked, with the modal's own close button
+                as the plain way to back out if this isn't what was expected. */}
+            {deal?.currency && deal.amount != null && (
+              <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3.5 text-center">
+                <p className="text-xs font-medium uppercase tracking-wide text-brand-700">
+                  You'll be charged
+                </p>
+                <p className="mt-0.5 text-xl font-bold text-ink-900">
+                  {formatMoneyMinor(deal.amount, deal.currency)}
+                </p>
+                <p className="mt-1 text-xs text-ink-500">
+                  The exact amount and currency PayHold will charge you.
+                </p>
+              </div>
+            )}
+
             {/* PayHold's list, and only PayHold's. It knows which rails are
                 switched on in this market today; a list of ours never will,
                 and the one we used to keep here for emergencies led out of the

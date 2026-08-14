@@ -11,6 +11,7 @@ import { ModelCombobox } from '@/components/ModelCombobox';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
 import { isLikelyUrl, normalizeUrl } from '@/lib/location';
 import { useCountry } from '@/lib/country';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { citiesFor } from '@/lib/cities';
 import { CAR_CATEGORIES, CATEGORY_GROUPS, isMachine } from '@/lib/categories';
 
@@ -40,9 +41,12 @@ export function ListCarPage() {
   const { id: editId } = useParams();
   const editing = !!editId;
 
-  // A car is registered in a country — defaults to the host's current country
-  // (the one picked in the header). The currency follows the country.
-  const { country: userCountry, countries } = useCountry();
+  // A car is registered in the host's account country — set on the Account
+  // page, not chosen per-listing. That's the one thing that stops a host's
+  // fleet from spreading across markets they don't actually operate in.
+  const { countries } = useCountry();
+  const { data: me } = useCurrentUser();
+  const accountCountry = me?.country;
 
   // In edit mode, load the existing listing to prefill the form.
   const existingQuery = useQuery({
@@ -60,12 +64,10 @@ export function ListCarPage() {
   const [transmission, setTransmission] = useState<Transmission>('automatic');
   const [fuel, setFuel] = useState<FuelType>('petrol');
   const [pricePerDay, setPricePerDay] = useState('40000');
-  const [country, setCountry] = useState<string>(userCountry.code);
-  const [city, setCity] = useState<string>(citiesFor(userCountry.code)[0] ?? 'Kigali');
+  const [city, setCity] = useState('');
   const [location, setLocation] = useState('');
   const [coords, setCoords] = useState<LatLng | null>(null);
   const [locationUrl, setLocationUrl] = useState('');
-  const [bookingMode, setBookingMode] = useState<'instant' | 'request'>('instant');
   const [status, setStatus] = useState<'available' | 'maintenance'>('available');
   const [maintenanceUntil, setMaintenanceUntil] = useState('');
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
@@ -102,12 +104,10 @@ export function ListCarPage() {
     setTransmission(existing.transmission);
     setFuel(existing.fuel);
     setPricePerDay(String(existing.pricePerDayRwf));
-    setCountry(existing.country ?? 'RW');
     setCity(existing.city);
     setLocation(existing.location);
     setCoords(existing.lat != null && existing.lng != null ? { lat: existing.lat, lng: existing.lng } : null);
     setLocationUrl(existing.locationUrl ?? '');
-    setBookingMode(existing.bookingMode);
     setStatus(existing.status);
     setMaintenanceUntil(existing.maintenanceUntil ?? '');
     setPhotoUrls(existing.photos);
@@ -115,9 +115,21 @@ export function ListCarPage() {
   }, [existing]);
 
   // Country drives the currency (RW→RWF, AE→AED, CN→CNY, US→USD) and the city list.
-  const selectedCountry = countries.find((c) => c.code === country) ?? countries[0];
-  const currency = selectedCountry.currency;
-  const cities = citiesFor(country);
+  // It's not a form field: it's the host's account country, set on the Account
+  // page, so a car can never end up listed in a market the host doesn't operate in.
+  const selectedCountry = countries.find((c) => c.code === accountCountry);
+  const currency = selectedCountry?.currency ?? 'RWF';
+  const cities = accountCountry ? citiesFor(accountCountry) : [];
+
+  // Default the city once the account country is known — but only for a new
+  // listing. In edit mode the prefill effect above already set the existing
+  // listing's city, and that shouldn't be clobbered just because the list
+  // reloaded.
+  useEffect(() => {
+    if (editing || !accountCountry) return;
+    setCity((prev) => (cities.includes(prev) ? prev : (cities[0] ?? '')));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountCountry, editing]);
 
   // A tractor has a cab, not seats, and runs on power, not fuel — relabel the shared
   // fields rather than maintaining a second form for machinery.
@@ -131,12 +143,6 @@ export function ListCarPage() {
   });
   const blockedNonElectric =
     !machine && fuel !== 'electric' && !!quota && !quota.canAddNonElectric;
-
-  function onCountryChange(next: string) {
-    setCountry(next);
-    const list = citiesFor(next);
-    if (!list.includes(city)) setCity(list[0] ?? '');
-  }
 
   const today = new Date().toISOString().slice(0, 10);
   // In maintenance requires a valid back-in-service date (today or later).
@@ -155,6 +161,7 @@ export function ListCarPage() {
   });
 
   const valid =
+    !!accountCountry &&
     title.trim() &&
     make.trim() &&
     model.trim() &&
@@ -170,7 +177,7 @@ export function ListCarPage() {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!valid) return;
+    if (!valid || !accountCountry) return;
     mutation.mutate({
       title: title.trim(),
       category,
@@ -182,12 +189,12 @@ export function ListCarPage() {
       fuel,
       pricePerDayRwf: Number(pricePerDay),
       priceCurrency: currency,
-      country,
+      country: accountCountry,
       location: location.trim(),
       city,
       photos: photoUrls,
       features: toList(features),
-      bookingMode,
+      bookingMode: 'instant',
       status,
       maintenanceUntil: status === 'maintenance' ? maintenanceUntil : null,
       lat: coords?.lat ?? null,
@@ -339,17 +346,30 @@ export function ListCarPage() {
           </CardHeader>
           <CardBody className="space-y-4">
             <div>
-              <Label htmlFor="country">Country</Label>
-              <Select id="country" value={country} onChange={(e) => onCountryChange(e.target.value)}>
-                {countries.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.flag} {c.name}
-                  </option>
-                ))}
-              </Select>
-              <p className="mt-1 text-xs text-ink-400">
-                Where the car is located. It's priced in {currency}. Defaults to your country.
-              </p>
+              <Label>Country</Label>
+              {accountCountry ? (
+                <>
+                  <div className="flex h-10 items-center rounded-lg border border-ink-200 bg-ink-50 px-3 text-sm text-ink-700">
+                    {selectedCountry?.flag} {selectedCountry?.name ?? accountCountry}
+                  </div>
+                  <p className="mt-1 text-xs text-ink-400">
+                    Where the car is located. It's priced in {currency}. This follows your account's
+                    country — change it on the{' '}
+                    <Link to="/account" className="text-brand-600 hover:underline">
+                      Account
+                    </Link>{' '}
+                    page, not per listing.
+                  </p>
+                </>
+              ) : (
+                <p className="rounded-lg border border-accent-200 bg-accent-50 px-3 py-2.5 text-sm text-accent-800">
+                  Set your country on the{' '}
+                  <Link to="/account" className="font-medium underline">
+                    Account
+                  </Link>{' '}
+                  page before listing a car — that's where it'll be listed.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
@@ -399,27 +419,14 @@ export function ListCarPage() {
                 <p className="mt-1 text-sm text-red-600">That doesn't look like a valid link.</p>
               )}
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="price">Price per day ({currency})</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  value={pricePerDay}
-                  onChange={(e) => setPricePerDay(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="mode">Booking mode</Label>
-                <Select
-                  id="mode"
-                  value={bookingMode}
-                  onChange={(e) => setBookingMode(e.target.value as 'instant' | 'request')}
-                >
-                  <option value="instant">Instant book — confirm automatically</option>
-                  <option value="request">Request to book — you approve</option>
-                </Select>
-              </div>
+            <div>
+              <Label htmlFor="price">Price per day ({currency})</Label>
+              <Input
+                id="price"
+                type="number"
+                value={pricePerDay}
+                onChange={(e) => setPricePerDay(e.target.value)}
+              />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>

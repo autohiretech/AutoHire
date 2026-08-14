@@ -15,7 +15,8 @@ import type { ListingFilters } from '@/lib/types';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES } from '@/lib/categories';
-import { buildSummary, interpretQuery } from '@/lib/demoAi';
+import { interpretQuery } from '@/lib/demoAi';
+import { formatRwf } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
 import { ListingCard } from '@/components/ListingCard';
 import { Img } from '@/components/Img';
@@ -25,11 +26,12 @@ import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
 
 /**
- * Listing grid: 2 / 3 / 4 fixed columns. A short final row leaves empty cells rather
- * than stretching its cards — under flex `grow` a row of one card blew up to full
- * width and no longer matched the cards above it.
+ * Listing grid: 2 / 3 fixed columns, matching the home page's grid so a car
+ * looks the same size wherever it's browsed. A short final row leaves empty
+ * cells rather than stretching its cards — under flex `grow` a row of one
+ * card blew up to full width and no longer matched the cards above it.
  */
-const CARD_GRID = 'grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4';
+const CARD_GRID = 'grid grid-cols-2 gap-5 lg:grid-cols-3';
 
 /** "Select by" refinement chips → the ListingFilters patch each one applies. */
 const SELECT_BY: { label: string; patch: ListingFilters }[] = [
@@ -42,6 +44,27 @@ const SELECT_BY: { label: string; patch: ListingFilters }[] = [
   { label: '7+ seats', patch: { minSeats: 7 } },
   { label: 'Under RWF 50k', patch: { maxPriceRwf: 50000 } },
 ];
+
+/** A plain, factual one-liner under the "Deep search results" heading — no chat framing. */
+function describeResults(listings: Listing[]): string {
+  const prices = listings.map((l) => l.pricePerDayRwf);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const cats = Array.from(new Set(listings.map((l) => l.category)));
+  const cities = Array.from(new Set(listings.map((l) => l.city)));
+  const business = listings.filter((l) => l.ownerType === 'business').length;
+  const individual = listings.length - business;
+
+  const priceLine = min === max ? `${formatRwf(min)}/day` : `${formatRwf(min)}–${formatRwf(max)}/day`;
+  const hostLine =
+    business && individual
+      ? `${business} agency and ${individual} individual host${individual === 1 ? '' : 's'}`
+      : business
+        ? `${business} verified agenc${business === 1 ? 'y' : 'ies'}`
+        : `${individual} individual host${individual === 1 ? '' : 's'}`;
+
+  return `${priceLine} · ${cats.join(', ')} · from ${hostLine} around ${cities.slice(0, 3).join(', ')}.`;
+}
 
 /**
  * Search results page (Alibaba "Products / Deep Search" style). A plain search
@@ -89,11 +112,10 @@ export function SearchResultsPage() {
     setExtra({});
   }, [q, country.code]);
 
-  const aiFilters = useMemo(() => interpretQuery(q), [q]);
-  const base = useMemo<ListingFilters>(
-    () => (Object.keys(aiFilters).length ? aiFilters : q ? { query: q } : {}),
-    [aiFilters, q],
-  );
+  // interpretQuery already folds any free text it doesn't recognize as a
+  // structured filter into `.query`, so a search like "automatic toyota" keeps
+  // "toyota" as a keyword instead of losing it once "automatic" is matched.
+  const base = useMemo<ListingFilters>(() => interpretQuery(q), [q]);
   // Results are scoped to the selected market. If the query itself names a city in a
   // different market ("SUVs in Dubai" while browsing Rwanda), follow the city instead
   // of returning an empty grid.
@@ -159,13 +181,6 @@ export function SearchResultsPage() {
             <Search size={16} /> Search
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate('/?view=ai')}
-          className="hidden shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-accent-600 hover:text-accent-700 sm:flex"
-        >
-          <Sparkles size={16} /> Discover a new way to search with AI
-        </button>
       </form>
 
       {/* Deep search heading + AI summary */}
@@ -174,8 +189,8 @@ export function SearchResultsPage() {
         <h1 className="text-lg font-bold text-ink-900">Deep search results</h1>
         <span className="text-sm text-ink-400">for “{q || 'all cars'}”</span>
       </div>
-      {!isLoading && (
-        <p className="mt-1.5 max-w-4xl text-sm text-ink-600">{buildSummary(q || 'cars', results)}</p>
+      {!isLoading && results.length > 0 && (
+        <p className="mt-1.5 max-w-4xl text-sm text-ink-600">{describeResults(results)}</p>
       )}
 
       {/* Featured host / supplier block */}
@@ -271,7 +286,7 @@ export function SearchResultsPage() {
             </p>
             <div className={CARD_GRID}>
               {results.map((l) => (
-                <ListingCard key={l.id} listing={l} compact />
+                <ListingCard key={l.id} listing={l} />
               ))}
             </div>
           </>

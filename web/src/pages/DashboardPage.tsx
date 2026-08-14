@@ -259,24 +259,27 @@ export function DashboardPage() {
   }, [listings, bookingsByCar, search, filter]);
 
   // Jump from a stat tile to the matching cars: switch to the fleet view, set the
-  // quick-filter, and on mobile drop back to the list so the result is visible.
+  // quick-filter, and below the two-pane breakpoint drop back to the list so the
+  // result is visible. Mirrors the `lg:` split in the JSX below — a tablet in
+  // portrait is too narrow for a 320px rail + detail pane, so it stays single-pane
+  // alongside phones and only real desktop/landscape-tablet widths split.
   const focusFilter = (next: CarFilter) => {
     setView('cars');
     setFilter(next);
-    if (!window.matchMedia('(min-width: 768px)').matches) setSelectedId(null);
+    if (!window.matchMedia('(min-width: 1024px)').matches) setSelectedId(null);
   };
 
-  // Auto-select the first car on desktop so the right pane isn't empty; on mobile
+  // Auto-select the first car once there's room for a detail pane; below that,
   // keep the list visible until the host taps a car.
   useEffect(() => {
     if (selectedId || listings.length === 0) return;
-    if (window.matchMedia('(min-width: 768px)').matches) setSelectedId(listings[0].id);
+    if (window.matchMedia('(min-width: 1024px)').matches) setSelectedId(listings[0].id);
   }, [listings, selectedId]);
 
   const selected = listings.find((l) => l.id === selectedId) ?? null;
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-8">
+    <section className="mx-auto max-w-[1500px] px-4 py-6 sm:py-8">
       {/* Header + summary — subtle brand-tinted band */}
       <div className="relative overflow-hidden rounded-2xl border border-ink-100 bg-gradient-to-br from-brand-50 via-white to-ink-50 px-5 py-6 shadow-card">
         <div
@@ -308,7 +311,7 @@ export function DashboardPage() {
 
       {/* Stat cards — each metric its own card with a tinted icon chip and a live
           secondary indicator. Fleet counts filter the list; money cards are totals. */}
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
           icon={Car}
           label="Vehicles"
@@ -435,38 +438,53 @@ export function DashboardPage() {
       ) : listings.length === 0 ? (
         <EmptyFleet />
       ) : (
-        <div className="mt-6 grid gap-6 md:grid-cols-[320px_1fr]">
-          {/* Car list */}
-          <aside className={cn(selected && 'hidden md:block')}>
-            <div className="relative mb-3">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-              <Input
-                placeholder="Search your listings"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
+        <div className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
+          {/* Car list — sticks in place on desktop so it stays reachable while
+              the detail pane on the right scrolls (mirrors the home page's
+              category sidebar). Splits into two panes at `lg` (1024px) rather
+              than `md` (768px) — a tablet in portrait is too narrow for a
+              320px rail plus a detail pane, so it gets the same full-width
+              single-pane view as a phone. */}
+          <aside
+            className={cn(
+              selected && 'hidden lg:block',
+              'lg:sticky lg:top-20 lg:flex lg:max-h-[calc(100vh-6rem)] lg:flex-col',
+            )}
+          >
+            {/* The search bar stays visible while the list scrolls, at every
+                screen size — not just desktop — same sticky-under-the-header
+                treatment as the app header itself. */}
+            <div className="sticky top-16 z-10 bg-ink-50/95 pb-3 pt-1 backdrop-blur lg:static lg:z-auto lg:shrink-0 lg:bg-transparent lg:py-0 lg:backdrop-blur-none">
+              <div className="relative mb-3">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+                <Input
+                  placeholder="Search your listings"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
+              {/* Active-filter indicator — the stat bar above is the filter control;
+                  this just shows what's applied and offers a one-tap clear. */}
+              {filter !== 'all' && (
+                <div className="mb-3 flex items-center justify-between rounded-lg bg-ink-100 px-3 py-1.5 text-xs">
+                  <span className="font-medium text-ink-600">
+                    Showing{' '}
+                    {filter === 'requests' ? 'cars with requests' : filter === 'trip' ? 'cars on a trip' : 'overdue cars'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFilter('all')}
+                    className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline"
+                  >
+                    <X size={12} /> Clear
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Active-filter indicator — the stat bar above is the filter control;
-                this just shows what's applied and offers a one-tap clear. */}
-            {filter !== 'all' && (
-              <div className="mb-3 flex items-center justify-between rounded-lg bg-ink-50 px-3 py-1.5 text-xs">
-                <span className="font-medium text-ink-600">
-                  Showing{' '}
-                  {filter === 'requests' ? 'cars with requests' : filter === 'trip' ? 'cars on a trip' : 'overdue cars'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setFilter('all')}
-                  className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline"
-                >
-                  <X size={12} /> Clear
-                </button>
-              </div>
-            )}
-
-            <ul className="space-y-2">
+            <ul className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">
               {filtered.map((l) => (
                 <CarListRow
                   key={l.id}
@@ -498,8 +516,14 @@ export function DashboardPage() {
             </ul>
           </aside>
 
-          {/* Car detail */}
-          <div className={cn(!selected && 'hidden md:block')}>
+          {/* Car detail — sticks alongside the list and scrolls internally, so
+              picking a different car never means re-scrolling the page to see it. */}
+          <div
+            className={cn(
+              !selected && 'hidden lg:block',
+              'lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain',
+            )}
+          >
             {selected ? (
               <CarDetail
                 listing={selected}
@@ -653,7 +677,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 /** Placeholder bars that match the master–detail layout so it doesn't jump on load. */
 function FleetSkeleton() {
   return (
-    <div className="mt-6 grid animate-pulse gap-6 md:grid-cols-[320px_1fr]">
+    <div className="mt-6 grid animate-pulse gap-6 lg:grid-cols-[320px_1fr]">
       <div className="space-y-2">
         <div className="h-10 rounded-lg bg-ink-100" />
         {Array.from({ length: 4 }).map((_, i) => (
@@ -666,7 +690,7 @@ function FleetSkeleton() {
           </div>
         ))}
       </div>
-      <div className="hidden h-72 rounded-[var(--radius-card)] border border-ink-200 bg-ink-50/60 md:block" />
+      <div className="hidden h-72 rounded-[var(--radius-card)] border border-ink-200 bg-ink-50/60 lg:block" />
     </div>
   );
 }
@@ -795,7 +819,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-800 md:hidden"
+          className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-800 lg:hidden"
         >
           <ChevronLeft size={16} /> Fleet
         </button>
@@ -931,31 +955,51 @@ function RequestRow({ booking }: { booking: Booking }) {
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-ink-200 p-3 sm:flex-row sm:items-center">
-      <div className="flex-1">
-        <p className="text-sm font-medium text-ink-900">
-          {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
-          <span className="font-normal text-ink-500">
-            {' '}
-            · {booking.days} day{booking.days === 1 ? '' : 's'}
-          </span>
-        </p>
-        <p className="mt-0.5 text-sm font-semibold text-ink-900">{formatRwf(booking.totalRwf)}</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={() => setProfileOpen(true)}>
-          <UserRound size={15} /> Profile
-        </Button>
-        <Button variant="outline" size="sm" onClick={messageRenter} disabled={messaging}>
-          <MessageSquare size={15} /> {messaging ? '…' : 'Message'}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => decide('decline')} disabled={mutation.isPending}>
-          Decline
-        </Button>
-        <Button size="sm" onClick={() => decide('approve')} disabled={mutation.isPending}>
-          Approve
-        </Button>
-      </div>
+    <Card>
+      <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-ink-900">
+            {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
+            <span className="font-normal text-ink-500">
+              {' '}
+              · {booking.days} day{booking.days === 1 ? '' : 's'}
+            </span>
+          </p>
+          <p className="mt-0.5 text-sm font-semibold text-ink-900">{formatRwf(booking.totalRwf)}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Secondary, lower-weight actions — a look before deciding. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setProfileOpen(true)}
+            aria-label="View renter profile"
+            title="View profile"
+            className="px-2"
+          >
+            <UserRound size={16} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={messageRenter}
+            disabled={messaging}
+            aria-label="Message renter"
+            title="Message"
+            className="px-2"
+          >
+            {messaging ? <Spinner size={14} /> : <MessageSquare size={16} />}
+          </Button>
+          <span className="mx-0.5 h-5 w-px bg-ink-200" />
+          {/* The actual decision — kept as the visually heavy buttons. */}
+          <Button variant="outline" size="sm" onClick={() => decide('decline')} disabled={mutation.isPending}>
+            Decline
+          </Button>
+          <Button size="sm" onClick={() => decide('approve')} disabled={mutation.isPending}>
+            Approve
+          </Button>
+        </div>
+      </CardBody>
 
       <RequesterModal
         open={profileOpen}
@@ -987,7 +1031,7 @@ function RequestRow({ booking }: { booking: Booking }) {
           </p>
         }
       />
-    </div>
+    </Card>
   );
 }
 

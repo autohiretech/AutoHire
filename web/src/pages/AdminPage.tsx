@@ -643,7 +643,6 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
         <Spec label="Transmission" value={l.transmission} />
         <Spec label="Fuel" value={l.fuel} highlight={l.fuel === 'electric'} />
         <Spec label="Price / day" value={`${l.priceCurrency} ${l.pricePerDayRwf.toLocaleString()}`} />
-        <Spec label="Booking" value={l.bookingMode} />
         <Spec label="Rating" value={l.ratingCount ? `${l.ratingAvg} (${l.ratingCount})` : '—'} />
         <Spec label="Country" value={l.country} />
       </dl>

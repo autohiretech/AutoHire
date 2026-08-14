@@ -100,7 +100,7 @@ async function createBooking(admin: SupabaseClient, deal: Deal): Promise<Respons
       start_date: startDate,
       end_date: endDate,
       days,
-      state: listing.booking_mode === 'instant' ? 'confirmed' : 'requested',
+      state: 'confirmed',
       subtotal_rwf: subtotal,
       service_fee_rwf: serviceFee,
       total_rwf: total,
@@ -126,19 +126,17 @@ async function createBooking(admin: SupabaseClient, deal: Deal): Promise<Respons
     return json({ error: insErr.message }, 409);
   }
 
-  // Instant bookings carry no manual confirmation step — the payment is the
-  // confirmation. Auto-confirm both sides here so PayHold releases the hold
-  // without waiting on the renter or the host. `confirmDeal` is the same call
-  // the (currently unwired) `payhold-confirm` endpoint makes; doing it server
-  // side keeps the trip flowing with no UI button. A failure is non-fatal:
-  // PayHold's auto-release timer still releases the hold after `auto_release_days`.
-  if (listing.booking_mode === 'instant') {
-    try {
-      await confirmDeal(deal.id, 'buyer');
-      await confirmDeal(deal.id, 'seller');
-    } catch (e) {
-      console.error('instant-book auto-confirm failed', { deal: deal.id, error: String(e) });
-    }
+  // All bookings are instant — the payment is the confirmation. Auto-confirm
+  // both sides here so PayHold releases the hold without waiting on the renter
+  // or the host. `confirmDeal` is the same call the (currently unwired)
+  // `payhold-confirm` endpoint makes; doing it server side keeps the trip
+  // flowing with no UI button. A failure is non-fatal: PayHold's auto-release
+  // timer still releases the hold after `auto_release_days`.
+  try {
+    await confirmDeal(deal.id, 'buyer');
+    await confirmDeal(deal.id, 'seller');
+  } catch (e) {
+    console.error('instant-book auto-confirm failed', { deal: deal.id, error: String(e) });
   }
 
   return json({ booking: inserted.id }, 200);

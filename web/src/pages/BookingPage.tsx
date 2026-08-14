@@ -23,6 +23,7 @@ import { SERVICE_FEE_RATE } from '@/lib/types';
 import { client } from '@/lib/client';
 import { useCanRent, useIsBusinessHost } from '@/lib/account';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useBackToBrowse } from '@/lib/useBackToBrowse';
 import { useCountry } from '@/lib/country';
 import { cn } from '@/lib/cn';
 import { getSupabase } from '@/lib/supabase';
@@ -74,6 +75,7 @@ function addDays(iso: string, n: number): string {
 export function BookingPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const backToBrowse = useBackToBrowse();
   const location = useLocation();
   const queryClient = useQueryClient();
   const canRent = useCanRent();
@@ -152,9 +154,13 @@ export function BookingPage() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
         <p className="font-medium text-ink-900">Listing not found</p>
-        <Link to="/" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+        <button
+          type="button"
+          onClick={backToBrowse}
+          className="mt-3 inline-block text-sm text-brand-600 hover:underline"
+        >
           Back to browse
-        </Link>
+        </button>
       </div>
     );
   }
@@ -235,7 +241,7 @@ export function BookingPage() {
   // by the renter's nationality or their header market selection.
   const cur: CurrencyCode = isCurrencyCode(listing.priceCurrency) ? listing.priceCurrency : 'RWF';
   const money = (n: number) => formatMoney(n, cur);
-  const instant = listing.bookingMode === 'instant';
+  const instant = true;
   const superhost = host?.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5;
 
   // African-market cars accept mobile money and route to Flutterwave; others are
@@ -487,9 +493,6 @@ export function BookingPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-ink-900">
                       Hosted by {host.businessName || host.fullName}
-                    </p>
-                    <p className="text-[13px] text-ink-500">
-                      {instant ? 'Books instantly' : 'Approves each request'}
                     </p>
                   </div>
                 </div>

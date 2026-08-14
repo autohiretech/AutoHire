@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock } from 'lucide-react';
+import { Landmark, Lock } from 'lucide-react';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useCountry } from '@/lib/country';
 import { CheckoutModal } from '@/components/CheckoutModal';
-import { Button } from '@/components/ui';
+import { Button, Label, Select } from '@/components/ui';
 
 /**
  * Opening checkout. Nothing else.
@@ -41,6 +42,7 @@ export function PayholdPayment({
   disabled: boolean;
 }) {
   const { data: me } = useCurrentUser();
+  const { countries } = useCountry();
 
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState<string | null>(null);
@@ -48,10 +50,20 @@ export function PayholdPayment({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Where the renter pays FROM decides what they can pay with — not the car's
-  // market. Someone in Kigali renting in Dubai still pays the way Rwanda can.
-  // PayHold reads this off the deal; we only need it to explain a refusal.
+  // Where the renter pays FROM decides what they can pay with, and which
+  // currency their card is actually charged in — not the car's market. Someone
+  // in Kigali renting in Dubai still pays the way Rwanda can. Defaults to their
+  // account country but is editable here: a renter whose card is foreign (or
+  // who simply prefers to be charged in a currency other than their account's)
+  // picks a different market for this one payment instead of being stuck with
+  // whatever their profile says.
   const payerCountry = me?.country ?? '';
+  const [payAsCountry, setPayAsCountry] = useState('');
+  useEffect(() => {
+    if (payerCountry && !payAsCountry) setPayAsCountry(payerCountry);
+  }, [payerCountry, payAsCountry]);
+  const chargeCountry = payAsCountry || payerCountry;
+  const chargeCurrency = countries.find((c) => c.code === chargeCountry)?.currency;
 
   async function pay() {
     setBusy(true);
@@ -61,6 +73,7 @@ export function PayholdPayment({
         listingId,
         startDate,
         endDate,
+        ...(chargeCountry && chargeCountry !== payerCountry ? { buyerCountry: chargeCountry } : {}),
       });
       setCheckoutBase(base);
       setLink(paymentLink);
@@ -82,6 +95,33 @@ export function PayholdPayment({
             <Link to="/account" className="font-medium text-brand-600 underline">
               Set your country
             </Link>
+          </p>
+        </div>
+      )}
+
+      {/* Which currency the card gets charged in, not which cars are shown —
+          that's the header's country selector. Changing it here only affects
+          this one payment; it never touches the account's saved country. */}
+      {payerCountry && countries.length > 0 && (
+        <div className="mb-4 rounded-xl border border-ink-200 bg-ink-50/60 p-3">
+          <Label htmlFor="pay-as-country" className="flex items-center gap-1.5 text-ink-700">
+            <Landmark size={14} className="text-ink-400" /> Charge my card as
+          </Label>
+          <Select
+            id="pay-as-country"
+            value={chargeCountry}
+            onChange={(e) => setPayAsCountry(e.target.value)}
+          >
+            {countries.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name} — {c.currency}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1.5 text-xs text-ink-500">
+            {chargeCurrency
+              ? `Your card will be charged in ${chargeCurrency}. PayHold converts the total automatically.`
+              : "PayHold picks the currency your card accepts once you continue."}
           </p>
         </div>
       )}

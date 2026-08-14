@@ -6,8 +6,9 @@ import { playPing } from '@/lib/sound';
 
 /**
  * Live updates via Supabase Realtime. Subscribes to Postgres changes on the
- * messages, conversations and notifications tables and invalidates the matching
- * React Query caches, so chat threads, unread badges and notifications refresh
+ * messages, conversations, notifications, bookings and payouts tables and
+ * invalidates the matching React Query caches, so chat threads, unread badges,
+ * notifications and the host dashboard (requests, trip status, payouts) refresh
  * without a manual reload. Refetches are still RLS-guarded, so a change event
  * only ever pulls the current user's own rows.
  *
@@ -59,6 +60,24 @@ export function useRealtime() {
           // A notification row only ever belongs to me (RLS), so any new one is mine.
           if (payload.eventType === 'INSERT') playPing();
         },
+      )
+      // A booking is visible to its renter and its host — RLS scopes the event to
+      // whichever side I am, so the host dashboard (new requests, pickup/return
+      // handoffs) and a renter's trip list both pick up changes without polling.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'bookings' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
+          queryClient.invalidateQueries({ queryKey: ['bookings'] });
+        },
+      )
+      // Payout rows only ever belong to the host they're for (RLS), so a status
+      // change (scheduled → paid) lands on the dashboard as it happens.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payouts' },
+        () => queryClient.invalidateQueries({ queryKey: ['ownerPayouts'] }),
       )
       .subscribe();
 

@@ -9,14 +9,16 @@
 // open.er-api.com (free, no API key). If a day's fetch fails, yesterday's rows
 // stay in place — the app never breaks (it reads the newest as_of per currency).
 //
+// Stores EVERY currency the provider returns, not a hardcoded allowlist — a
+// prior allowlist of 4 currencies silently left every other market's seed rate
+// (EUR, KES, TZS, UGX, …) frozen forever, since new PayHold markets never got
+// added here. Storing the full set means a new market just works.
+//
 // No secrets to set: Supabase injects SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
 // Deploy:  supabase functions deploy refresh-fx-rates
 //   (JWT verification is off so the scheduler can call it — see config.toml.)
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-// Currencies AutoHire prices/displays in. Keep in sync with web/src/lib/currency.ts.
-const CURRENCIES = ['USD', 'RWF', 'AED', 'CNY'];
 
 Deno.serve(async () => {
   try {
@@ -27,14 +29,16 @@ Deno.serve(async () => {
     }
 
     const asOf = new Date().toISOString().slice(0, 10); // yyyy-mm-dd (UTC)
-    const rows = CURRENCIES.filter((c) => data.rates[c] != null).map((c) => ({
-      base: 'USD',
-      quote: c,
-      rate: data.rates[c],
-      as_of: asOf,
-      source: 'open.er-api.com',
-      updated_at: new Date().toISOString(),
-    }));
+    const rows = Object.entries(data.rates as Record<string, number>)
+      .filter(([code, rate]) => /^[A-Z]{3}$/.test(code) && typeof rate === 'number' && rate > 0)
+      .map(([code, rate]) => ({
+        base: 'USD',
+        quote: code,
+        rate,
+        as_of: asOf,
+        source: 'open.er-api.com',
+        updated_at: new Date().toISOString(),
+      }));
 
     const admin = createClient(
       Deno.env.get('SUPABASE_URL')!,
