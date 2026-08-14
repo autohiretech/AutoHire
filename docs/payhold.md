@@ -79,6 +79,7 @@ What "Send it now" actually does, from `request_withdrawal`:
 | [`payhold-create-deal`](../supabase/functions/payhold-create-deal/index.ts) | Checkout → deal → hosted payment link. |
 | [`payhold-webhook`](../supabase/functions/payhold-webhook/index.ts) | Signed events → bookings, refunds, disputes. |
 | [`payhold-register-seller`](../supabase/functions/payhold-register-seller/index.ts) | Host's payout destination → PayHold seller. |
+| [`payhold-ensure-seller`](../supabase/functions/payhold-ensure-seller/index.ts) | Host role → PayHold seller, no destination. Undeployed — see step 6. |
 | [`payhold-balance`](../supabase/functions/payhold-balance/index.ts) | GET wallet totals, POST withdraw (optionally to a chosen destination). |
 | [`payhold-earnings`](../supabase/functions/payhold-earnings/index.ts) | Per-trip money, its stage, and the host's payout destinations. |
 | [`payhold-confirm`](../supabase/functions/payhold-confirm/index.ts) | One side confirms a finished trip. |
@@ -103,7 +104,7 @@ What "Send it now" actually does, from `request_withdrawal`:
 | `GET /deals/:id` | `getDeal` | `payhold-webhook` (the trust boundary), `payhold-earnings` (one per trip) |
 | `POST /deals/:id/confirm` | `confirmDeal` | `payhold-confirm` |
 | `POST /deals/:id/refund` | `refundDeal` | `payhold-refund` |
-| `POST /sellers` | `createSeller` | `payhold-register-seller` — the first destination |
+| `POST /sellers` | `createSeller` | `payhold-register-seller` — the first destination; `payhold-ensure-seller` — no destination, at role change |
 | `POST /sellers/:id/destinations` | `addSellerDestination` | `payhold-register-seller` — every later one |
 | `GET /sellers/:id/capabilities` | `sellerCapabilities` | `payhold-seller`, `payhold-register-seller`, `payhold-balance` |
 | `GET /sellers/:id/balance` | `sellerBalance` | `payhold-balance` |
@@ -123,6 +124,7 @@ judgement made in their dashboard. Resolutions come back by webhook.
 | `payhold-create-deal` | POST | renter | Opens the deal, returns the hosted checkout link |
 | `payhold-confirm` | POST | renter or host | Confirms this side of a finished trip |
 | `payhold-register-seller` | POST | host | Saves their payout destination, first or changed — the only place the raw number exists |
+| `payhold-ensure-seller` | POST | host | Registers them as a seller with no destination, right after they toggle to host mode. Idempotent |
 | `payhold-seller` | GET | host (admin: `?hostId=`) | Their seller record, capabilities and destinations |
 | `payhold-seller/capabilities` | GET | host | Just the can-I-be-paid answer |
 | `payhold-seller/destinations` | GET | host | Just where the money can go |
@@ -274,11 +276,30 @@ Pages) is built with `VITE_PAYMENTS_PAYHOLD=true` — its bundle calls
 the site actually serving traffic is Cloudflare Pages, where the `VITE_*`
 values are set in the Pages project's build environment. Change the flag there.
 
-**PayHold's Sellers list being empty is step 9, not a fault.** A seller row is
-only ever created when a host opens `/payouts/setup` and types their raw
-number — see below for why nothing can create one on their behalf. Check
+**PayHold's Sellers list being empty is step 9, not a fault.** Until
+`payhold-ensure-seller` is deployed, a seller row is only ever created when a
+host opens `/payouts/setup` and types their raw number. Check
 `payhold-register-seller`'s function logs to tell "no host has tried" from
 "hosts are hitting an error".
+
+**`payhold-ensure-seller` (14 Aug 2026, undeployed) changes what "nothing can
+create one on their behalf" meant.** That sentence was true against the
+PayHold that existed when this doc was written: `POST /v1/sellers` required a
+country, a rail and a raw destination in the same request, so a seller record
+could not exist without one. PayHold's `20260814000001` made the destination
+optional — a seller can be `{ name, external_user_id }` and nothing else, and
+money accrues against them from their first deal exactly as it does for any
+other seller; only the *payout* waits, on the same eligibility gate an
+unverified destination already produces. `payhold-ensure-seller` is wired into
+`toggleRole()` in `AccountPage.tsx` and registers a destination-less seller the
+moment someone becomes a host — before they have typed anything. It does not
+replace `payhold-register-seller`, which is still the only place a raw number
+is ever typed and tokenized; it just means that function usually finds a
+seller already on file by the time a host reaches it, and goes straight to
+adding a destination rather than creating one from nothing.
+Once deployed, PayHold's Sellers list fills in as soon as hosts toggle role,
+not once they finish payout setup — check `payhold-ensure-seller`'s logs
+rather than `payhold-register-seller`'s to tell the two states apart.
 
 Still undeployed: `payhold-seller`, `payhold-dispute`, `payhold-refund` (all
 404). They are unreleased work, not part of this flow.
@@ -359,6 +380,7 @@ supabase secrets set \
 
 supabase functions deploy payhold-create-deal
 supabase functions deploy payhold-register-seller
+supabase functions deploy payhold-ensure-seller
 supabase functions deploy payhold-seller
 supabase functions deploy payhold-balance
 supabase functions deploy payhold-earnings

@@ -518,6 +518,32 @@ export const supabaseClient = {
   },
 
   /**
+   * Register a host as a PayHold seller with no payout destination — called
+   * right after switching to host mode, before they have typed anything.
+   *
+   * Money can accrue against a seller in this state; only a payout is blocked,
+   * on PayHold's own eligibility gate. This is deliberately a *different*
+   * operation from `registerPayholdSeller`, which is the only place a raw
+   * destination is ever typed and tokenized — that one still runs when the
+   * host reaches payout setup, and finds a seller already here to add a
+   * destination to rather than creating one from scratch.
+   *
+   * Idempotent: a host who already has one gets `alreadyLinked: true` back
+   * rather than a second attempt at PayHold.
+   */
+  async ensurePayholdSeller(): Promise<{ sellerId: string; alreadyLinked: boolean }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-ensure-seller', {
+      body: {},
+    });
+    if (error) throw await fnError(error);
+    const payload = data as { sellerId?: string; alreadyLinked?: boolean; error?: string };
+    if (payload?.error || !payload?.sellerId) {
+      throw new Error(payload?.error ?? 'Could not register you as a seller.');
+    }
+    return { sellerId: payload.sellerId, alreadyLinked: payload.alreadyLinked ?? false };
+  },
+
+  /**
    * This host's wallet, read live from PayHold — never cached in our database,
    * because a stale balance is one a host makes plans against.
    *

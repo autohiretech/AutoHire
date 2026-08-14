@@ -19,6 +19,7 @@ import { useAuth } from '@/lib/auth';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry, type Country } from '@/lib/country';
 import { normalizePhone } from '@/lib/phone';
+import { PAYMENTS_PAYHOLD } from '@/lib/payments';
 import {
   Avatar,
   Badge,
@@ -201,6 +202,20 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       await client.updateProfile(
         isHost ? { role: 'renter' } : { role: 'owner', ownerType: 'individual' },
       );
+
+      // Becomes a PayHold seller with no payout destination yet — money can
+      // start accruing against them the moment they list a car, rather than
+      // only once they reach payout setup. Best-effort and non-blocking: it
+      // is safe to skip here, because `registerPayholdSeller` on the payout
+      // setup screen does the identical get-or-create the first time a
+      // destination is actually typed. A host must never be blocked from
+      // becoming a host by a PayHold hiccup.
+      if (becomingHost && PAYMENTS_PAYHOLD) {
+        client.ensurePayholdSeller().catch((e) => {
+          console.error('ensurePayholdSeller failed', e);
+        });
+      }
+
       // Mode, nav and host/renter pages all key off the role — refresh broadly.
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       queryClient.invalidateQueries({ queryKey: ['ownerHost'] });

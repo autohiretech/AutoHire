@@ -369,14 +369,22 @@ export function refundDeal(id: string, reason: string, amount?: number): Promise
 
 export interface CreateSellerInput {
   name: string;
-  country: string;
-  payoutProvider: PayoutProvider;
+  /**
+   * `country`, `payoutProvider` and `destination` are optional together — as of
+   * PayHold's `20260814000001`, a seller can be registered with no destination
+   * at all. That is what `payhold-ensure-seller` does the moment someone
+   * becomes a host: money can start accruing against them before they have
+   * typed a payout number. Sending one of the three without the others is
+   * refused rather than silently dropped, same as on PayHold's side.
+   */
+  country?: string;
+  payoutProvider?: PayoutProvider;
   /**
    * The raw MoMo number or bank account. PayHold tokenizes it with the provider
    * and drops it — it is never written to a column on either side. AutoHire
    * holds it only for the duration of this call.
    */
-  destination: string;
+  destination?: string;
   payoutCurrency?: string;
   /**
    * The host's `profiles.id`. Sent so the seller can be found again from our
