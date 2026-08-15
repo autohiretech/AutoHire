@@ -104,13 +104,14 @@ async function changeDestination(
   uid: string,
   sellerId: string,
   method: PayoutMethod,
+  payoutProvider: PayoutProvider,
   raw: string,
   country: string,
 ): Promise<Response> {
   let destination;
   try {
     ({ destination } = await addSellerDestination(sellerId, {
-      payoutProvider: payoutProviderFor(method, country),
+      payoutProvider,
       destination: raw,
       // PayHold defaults country and currency from the seller's own row, and it
       // should: a host swapping MoMo for a bank account has not moved country,
@@ -230,6 +231,25 @@ Deno.serve(async (req: Request) => {
     const country = String(profile.country).toUpperCase();
     const raw = String(destination).trim();
 
+    // Computed once, here, so registering and changing a destination refuse
+    // the exact same combinations rather than two call sites drifting apart.
+    // `null` means no PayHold rail reaches this method in this country at
+    // all — Card in one of Flutterwave's African corridors, today — and a
+    // destination created anyway would sit at `blocked` forever rather than
+    // ever being fixable by the host.
+    const payoutProvider = payoutProviderFor(method as PayoutMethod, country);
+    if (!payoutProvider) {
+      return json(
+        {
+          error:
+            `${METHOD_LABEL[method as PayoutMethod] ?? method} isn't a way to get paid in ` +
+            `this market yet — try Mobile Money or Bank instead.`,
+          code: 'unsupported_payout_method',
+        },
+        400,
+      );
+    }
+
     // A host who already has a seller is CHANGING where they are paid, not
     // registering. Those are different operations and PayHold treats them as
     // such: a second `POST /sellers` under the same handle is refused, because
@@ -246,6 +266,7 @@ Deno.serve(async (req: Request) => {
         uid,
         String(profile.payhold_seller_id),
         method as PayoutMethod,
+        payoutProvider,
         raw,
         country,
       );
@@ -333,7 +354,7 @@ Deno.serve(async (req: Request) => {
           (profile.business_name as string | null) ?? (profile.full_name as string) ??
             'AutoHire host',
         country,
-        payoutProvider: payoutProviderFor(method as 'momo' | 'bank' | 'card', country),
+        payoutProvider,
         destination: raw,
         // Our own id for this host. PayHold refuses a second registration under
         // it rather than quietly accepting one, which is what makes a

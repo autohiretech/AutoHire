@@ -868,11 +868,25 @@ export function fromMinorUnits(amount: number, currency: string): number {
 }
 
 /**
- * Which PayHold rail a host's payout destination is tokenized against.
+ * Which PayHold rail a host's payout destination is tokenized against, or
+ * `null` when no rail actually reaches this method in this country.
  *
  * Mobile money is Flutterwave's, everywhere it exists. A bank account goes to
  * Flutterwave inside its African corridors and to Stripe Connect outside them,
  * which is the same split `payoutProviderFor` makes in the web app.
+ *
+ * `card` used to fall through to `stripe_connect` unconditionally, including
+ * inside the African corridors — where Stripe cannot reach a recipient at
+ * all (African payouts always ride Flutterwave, per docs/payhold.md) and
+ * Flutterwave has no card payout of its own. Offering it there was already
+ * fixed on the web app's method picker (`payoutMethodsFromRoute` in
+ * `web/src/lib/payments.ts`, driven by PayHold's own per-country route
+ * instead of a static guess), but this function is the one place every
+ * registration and every destination change actually goes through, so it is
+ * the backstop against a stale client, a direct API call, or the picker's own
+ * next bug reaching PayHold with the same dead-end combination. `null` here
+ * is what lets the caller refuse before tokenizing anything, instead of
+ * creating a destination that will sit at `blocked` forever.
  */
 /** Every destination type a host can pick in the app. */
 export type PayoutMethod =
@@ -885,12 +899,15 @@ export type PayoutMethod =
   | 'alipay'
   | 'wechat_pay';
 
-export function payoutProviderFor(method: PayoutMethod, countryCode: string): PayoutProvider {
+export function payoutProviderFor(
+  method: PayoutMethod,
+  countryCode: string,
+): PayoutProvider | null {
   const african = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CM', 'CI', 'SN', 'ZM', 'ET']);
+  const isAfrican = african.has(countryCode.toUpperCase());
   if (method === 'momo') return 'flutterwave_momo';
-  if (method === 'bank') {
-    return african.has(countryCode.toUpperCase()) ? 'flutterwave_bank' : 'stripe_connect';
-  }
+  if (method === 'bank') return isAfrican ? 'flutterwave_bank' : 'stripe_connect';
+  if (method === 'card') return isAfrican ? null : 'stripe_connect';
   // The wallets are their own rails on PayHold, not a flavour of card. Mapping
   // them onto `stripe_connect` would demand an `acct_…` for a destination that
   // is an email address.
