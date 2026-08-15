@@ -109,6 +109,15 @@ export interface CheckoutMethod {
   networks?: string[];
   schemes?: { code: string; label: string }[];
   note?: string | null;
+  /**
+   * What choosing THIS method charges right now, in the deal's presentment
+   * currency — not always the same as `deal.amount`. A split deal (hourly:
+   * 50% now, 50% on return) prices card at the first installment, but a
+   * method with no reusable credential — mobile money — can never fund the
+   * automatic second charge, so PayHold prices it at the full amount instead.
+   * See `availableMethods` in payhold-backend.
+   */
+  amount?: number;
 }
 
 /**
@@ -1204,17 +1213,26 @@ export function CheckoutModal({
                 presentment amount and currency, which is what actually gets
                 charged and can differ from the listing's own currency. Shown
                 before any method is picked, with the modal's own close button
-                as the plain way to back out if this isn't what was expected. */}
-            {deal?.currency && deal.amount != null && (
+                as the plain way to back out if this isn't what was expected.
+                Once a method is chosen, `selected.amount` overrides it: a
+                split deal (hourly) prices card at the 50% first installment,
+                but any method with no reusable credential to fund the
+                automatic second charge — mobile money, bank transfer, a
+                wallet — at the full amount instead, and showing the deal's
+                flat number here would tell that payer they're paying a
+                deposit when PayHold is about to charge them in full. */}
+            {deal?.currency && (selected?.amount ?? deal.amount) != null && (
               <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3.5 text-center">
                 <p className="text-xs font-medium uppercase tracking-wide text-brand-700">
                   You'll be charged
                 </p>
                 <p className="mt-0.5 text-xl font-bold text-ink-900">
-                  {formatMoneyMinor(deal.amount, deal.currency)}
+                  {formatMoneyMinor((selected?.amount ?? deal.amount)!, deal.currency)}
                 </p>
                 <p className="mt-1 text-xs text-ink-500">
-                  The exact amount and currency PayHold will charge you.
+                  {selected && deal.amount != null && selected.amount !== deal.amount
+                    ? `${selected.label} can't be charged again automatically, so this pays the full amount now instead of a deposit.`
+                    : 'The exact amount and currency PayHold will charge you.'}
                 </p>
               </div>
             )}

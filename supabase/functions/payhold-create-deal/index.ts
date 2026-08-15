@@ -306,10 +306,16 @@ Deno.serve(async (req: Request) => {
       expectedCompleteAt: isHourly ? hourlyExpectedCompleteAt : dailyExpectedCompleteAt,
       ...(isHourly
         ? {
-            // The whole booking is split — the second half is not optional,
-            // so PayHold itself only offers a payment method that can fund
-            // it (card) at checkout. See METHOD_SUPPORTS_REUSE in PayHold's
-            // own _shared/rails.ts.
+            // The whole booking is split. PayHold still offers every method
+            // it would otherwise — it does not exclude mobile money — but a
+            // method with no reusable credential (mobile money; see
+            // METHOD_SUPPORTS_REUSE in PayHold's own _shared/rails.ts) can
+            // never fund the automatic second charge, so PayHold prices that
+            // choice at the full amount instead of the 50% deposit and
+            // collapses the split the moment the renter picks it. The
+            // renter-facing amount for whichever method they choose comes
+            // from PayHold's own per-method `amount`, not from `subtotal`
+            // below — see CheckoutModal.
             splitPercent: 50,
             overageRate: toMinorUnits(pricePerHour, currency),
             overageUnitSeconds: 3600,
