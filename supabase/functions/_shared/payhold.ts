@@ -718,6 +718,38 @@ export function paymentOptions(): Promise<PaymentOptions> {
   return call('/payment-options', { method: 'GET' });
 }
 
+/** How a seller in one specific country is actually paid, from `payoutRoute`. */
+export interface PayoutCountryRoute {
+  country: { code: string; name: string; flag: string };
+  payout: {
+    provider: 'flutterwave' | 'stripe' | null;
+    /** `momo`/`bank` are Flutterwave's; `connect` is Stripe's — never both at once. */
+    kind: 'momo' | 'bank' | 'connect' | null;
+    currency: string;
+    blocked: boolean;
+    verified: boolean;
+    reason: string;
+  };
+  rails_verified: boolean;
+}
+
+/**
+ * The one thing `paymentOptions()`'s bulk list cannot answer: what a seller in
+ * THIS country can actually be paid with. The bulk list's `can_payout` is a
+ * country-level boolean; it says nothing about which methods work inside a
+ * payable country, and AutoHire used to fill that gap with a local guess (see
+ * `payoutMethodsFor` in the web app) that offered PayPal, Venmo, Cash App,
+ * Alipay and WeChat Pay as payout methods everywhere those brands are known —
+ * none of which PayHold can actually pay out to today (§9: declared and
+ * disabled, no live adapter) — and offered Card in Flutterwave's African
+ * corridors, where Stripe cannot reach a recipient and Flutterwave has no card
+ * payout at all. Either one leaves a host's first payout stuck at `blocked`
+ * weeks after they thought they had finished setup.
+ */
+export function payoutRouteFor(country: string): Promise<PayoutCountryRoute> {
+  return call(`/payment-options?payout_country=${encodeURIComponent(country)}`, { method: 'GET' });
+}
+
 // ---------------------------------------------------------------------------
 // Disputes
 // ---------------------------------------------------------------------------

@@ -83,7 +83,25 @@ export function PayoutSetupPage() {
   });
 
   const known = payoutCountries?.countries.find((c) => c.code === payoutCountry) ?? null;
-  const availability = payoutAvailability(payoutCountry, PAYMENTS_PAYHOLD ? known : undefined);
+
+  // The bulk list above only says whether `payoutCountry` can be paid at all;
+  // this is what actually decides which methods to offer inside it — see
+  // `payoutMethodsFromRoute`. Asked only once the bulk check already says
+  // `can_payout`, so a host in a closed market costs one PayHold call instead
+  // of two.
+  const { data: payoutRoute } = useQuery({
+    queryKey: ['payholdPayoutRoute', payoutCountry],
+    queryFn: () => client.payholdPayoutRoute(payoutCountry),
+    enabled: PAYMENTS_PAYHOLD && !!payoutCountry && !!known?.can_payout,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+
+  const availability = payoutAvailability(
+    payoutCountry,
+    PAYMENTS_PAYHOLD ? known : undefined,
+    PAYMENTS_PAYHOLD ? payoutRoute?.payout : undefined,
+  );
   const methods = availability.state === 'ok' ? availability.methods : [];
   const countryName = known?.name ?? 'your country';
 

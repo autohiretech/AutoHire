@@ -43,7 +43,7 @@ import {
 import { getSupabase } from '@/lib/supabase';
 import { getCurrentUserId } from '@/lib/identity';
 import { PAYMENTS_PAYHOLD } from '@/lib/payments';
-import type { PayoutCountry } from '@/lib/payments';
+import type { PayoutCountry, PayoutCountryRoute } from '@/lib/payments';
 
 /**
  * The Supabase-backed data client — the single implementation the app runs on.
@@ -719,6 +719,23 @@ export const supabaseClient = {
     const payload = data as { countries?: PayoutCountry[]; currencies?: string[]; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return { countries: payload.countries ?? [], currencies: payload.currencies ?? [] };
+  },
+
+  /**
+   * What THIS country can actually be paid with — `payoutRoute`'s own
+   * decision, the same one `route_payout` would reach. The bulk list above can
+   * only say whether a country is payable at all; this is what the payout
+   * screen uses to decide which methods to offer inside one that is.
+   */
+  async payholdPayoutRoute(country: string): Promise<PayoutCountryRoute> {
+    const { data, error } = await getSupabase().functions.invoke(
+      `payhold-payment-options?country=${encodeURIComponent(country)}`,
+      { method: 'GET' },
+    );
+    if (error) throw await fnError(error);
+    const payload = data as PayoutCountryRoute & { error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return payload;
   },
 
   /** Where this host's money can be sent, on its own — the narrow read. */

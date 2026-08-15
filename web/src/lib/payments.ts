@@ -96,6 +96,46 @@ export interface PayoutCountry {
   closed_reason: string | null;
 }
 
+/** One country's actual payout route, as PayHold's `payoutRoute` decides it. */
+export interface PayoutCountryRoute {
+  country: { code: string; name: string; flag: string };
+  payout: {
+    provider: 'flutterwave' | 'stripe' | null;
+    kind: 'momo' | 'bank' | 'connect' | null;
+    currency: string;
+    blocked: boolean;
+    verified: boolean;
+    reason: string;
+  };
+  rails_verified: boolean;
+}
+
+/**
+ * Which methods a `payoutRoute` answer actually supports — the specific fix
+ * for the gap `payoutMethodsFor` left even after the bulk `can_payout` check
+ * landed. A country being payable at all said nothing about which methods
+ * work inside it: PayPal, Venmo, Cash App, Alipay and WeChat Pay were offered
+ * as payout methods wherever those brands are known, when none of the five
+ * has a live payout adapter on PayHold yet (§9: declared and disabled), and
+ * Card was offered in Flutterwave's African corridors, where Stripe cannot
+ * reach a recipient and Flutterwave has no card payout at all — either one is
+ * a host who picks a method, saves a number, and finds their first payout
+ * stuck at `blocked` weeks later with nothing they can do about it.
+ *
+ * Flutterwave never offers `card` — it settles to a wallet or a bank account,
+ * never a card — and Stripe Connect can send to either a bank account or a
+ * debit card, so `connect` offers both.
+ */
+export function payoutMethodsFromRoute(
+  route: PayoutCountryRoute['payout'] | null | undefined,
+): PayoutMethodType[] {
+  if (!route || route.blocked) return [];
+  if (route.provider === 'flutterwave' && route.kind === 'momo') return ['momo', 'bank'];
+  if (route.provider === 'flutterwave' && route.kind === 'bank') return ['bank'];
+  if (route.provider === 'stripe' && route.kind === 'connect') return ['bank', 'card'];
+  return [];
+}
+
 /**
  * What a host in this country can actually do — the answer the setup screen
  * needs, rather than a method list that may lead nowhere.
@@ -125,6 +165,16 @@ export type PayoutAvailability =
 export function payoutAvailability(
   countryCode: string,
   known: PayoutCountry | null | undefined,
+  /**
+   * The per-country route, when it has loaded — see `payholdPayoutRoute`.
+   * Optional and separate from `known` on purpose: the bulk list only says
+   * whether a country is payable, and loads faster (one cached copy for
+   * every host); the route says which methods actually work inside it, and
+   * only ever needs asking about the signed-in host's own country. A `state:
+   * 'ok'` with this still loading falls back to `payoutMethodsFor` exactly as
+   * a missing `known` does — wrong the old way, not a blocked screen.
+   */
+  route?: PayoutCountryRoute['payout'] | null,
 ): PayoutAvailability {
   // No answer from PayHold — a cold cache, or the function is not deployed.
   // Fall back to the old list rather than blocking a host who may be perfectly
@@ -134,15 +184,15 @@ export function payoutAvailability(
   if (known.restricted) return { state: 'restricted' };
   if (!known.can_payout) return { state: 'unavailable', reason: known.closed_reason };
 
-  // PayHold says it can pay this country, so offer what the market has.
-  //
-  // This used to return `unsupported` for everything outside the Flutterwave
-  // corridors, which was right when Bank and Card were the only options there
-  // and both wanted a Stripe `acct_…` nobody could produce. Now that the wallet
-  // rails are methods in their own right, that blanket refusal hides real
-  // choices — a US host was shown a wall where PayPal, Venmo and Cash App now
-  // belong.
-  const methods = payoutMethodsFor(countryCode);
+  // PayHold says it can pay this country. `route` is the authority on which
+  // methods actually work inside it — see `payoutMethodsFromRoute` — and
+  // falls back to the local guess only while it is still loading, the same
+  // "wrong the old way beats a dead screen" reasoning as the `!known` branch
+  // above. Once it has loaded, an empty result from a route that is not
+  // itself blocked would be new — every route PayHold can name maps to at
+  // least one method today — so that case is treated as `unsupported` rather
+  // than silently offering nothing.
+  const methods = route ? payoutMethodsFromRoute(route) : payoutMethodsFor(countryCode);
   if (methods.length === 0) return { state: 'unsupported' };
   return { state: 'ok', methods };
 }
