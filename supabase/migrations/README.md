@@ -35,6 +35,7 @@ npx supabase db push --linked
 | `…048_payhold_disputes_and_refunds` | `partially_refunded` payment status; unique index on `disputes.payhold_dispute_id` |
 | `…053_hourly_and_overage_pricing` | Hourly rentals (`listings.hourly_booking_enabled`/`price_per_hour_rwf`/`overage_multiplier`; `bookings.rental_type`/`pickup_time`/`estimated_hours`/`deposit_amount_rwf`) and settlement (`bookings.actual_hours`/`final_amount_rwf`/`amount_owed_rwf`), locked the same way amounts/dates already are |
 | `…054_exclusive_pricing_mode` | Replaces `hourly_booking_enabled` with `listings.pricing_mode` (`daily`/`hourly`, exclusive) and makes `price_per_day_rwf` nullable — a car is priced one way or the other, not both |
+| `…055_host_resolves_amount_owed` | Lets the host lower (never raise) `bookings.amount_owed_rwf` — they collected it themselves outside PayHold, or are waiving some or all of it |
 
 040 goes first because 045 and 047 both widen check constraints on the columns
 it creates — run either before it and they fail on a column that does not exist.

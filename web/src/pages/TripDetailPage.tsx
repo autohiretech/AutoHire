@@ -6,14 +6,14 @@ import type { Booking, CheckPhoto, Host, Review, ReviewDirection } from '@autohi
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
-import { formatDate, formatRwf } from '@/lib/format';
+import { formatDate, formatRwf, formatTime } from '@/lib/format';
 import { TRIP_STATE_META, TRIP_TIMELINE } from '@/lib/trips';
 import { StarRatingInput } from '@/components/StarRatingInput';
 import { CameraCapture } from '@/components/CameraCapture';
 import { Img } from '@/components/Img';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
-import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner, toast } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, CardHeader, Input, Rating, Spinner, toast } from '@/components/ui';
 
 export function TripDetailPage() {
   const { id = '' } = useParams();
@@ -228,6 +228,11 @@ export function TripDetailPage() {
             </CardBody>
           </Card>
 
+          {/* The timer starts the moment both sides confirm pickup — shows
+              when, and the limit before a late-return charge (daily) or just
+              the estimate (hourly, which bills actual time regardless). */}
+          {!isCancelled && <TripTimer booking={booking} />}
+
           {/* Two-sided handoff — both renter and host sign off with proof. */}
           {!isCancelled && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -290,6 +295,7 @@ export function TripDetailPage() {
                     ? `Actual time used came to ${formatRwf(booking.amountOwedRwf)} more than the deposit.`
                     : `Returned more than 2 hours late — ${formatRwf(booking.amountOwedRwf)} owed for the extra time.`}{' '}
                   This isn't charged automatically — the host follows up directly.
+                  {amHost && <AmountOwedResolver booking={booking} />}
                 </div>
               )}
             </CardBody>
@@ -317,6 +323,66 @@ export function TripDetailPage() {
   );
 }
 
+/**
+ * Host-only: record what actually happened with an outstanding amount —
+ * collected it themselves outside PayHold (Mark fully collected), or waive
+ * some or all of it (type a lower number and Save). Never a charge — there
+ * is no way to charge a renter again once their deal has funded.
+ */
+function AmountOwedResolver({ booking }: { booking: Booking }) {
+  const queryClient = useQueryClient();
+  const [amount, setAmount] = useState(String(booking.amountOwedRwf));
+
+  const mutation = useMutation({
+    mutationFn: (newAmount: number) => client.adjustAmountOwed(booking.id, newAmount),
+    onSuccess: () => {
+      toast.success('Saved.');
+      queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't save that."),
+  });
+
+  const parsed = Number(amount);
+  const validAmount = Number.isFinite(parsed) && parsed >= 0 && parsed <= booking.amountOwedRwf;
+
+  return (
+    <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
+      <p className="text-xs text-amber-800">
+        Collected it yourself, or waiving some of it? This only updates the record here — nothing
+        is charged.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="number"
+          min={0}
+          max={booking.amountOwedRwf}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="h-8 max-w-28 text-sm"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!validAmount || parsed === booking.amountOwedRwf || mutation.isPending}
+          onClick={() => mutation.mutate(parsed)}
+        >
+          Save
+        </Button>
+        <Button
+          size="sm"
+          disabled={mutation.isPending}
+          onClick={() => {
+            setAmount('0');
+            mutation.mutate(0);
+          }}
+        >
+          Mark fully collected
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className={cn('flex justify-between', strong ? 'font-semibold text-ink-900' : 'text-ink-600')}>
@@ -341,6 +407,69 @@ function SignOffRow({ who, at }: { who: string; at?: string | null }) {
         </span>
       )}
     </div>
+  );
+}
+
+/** The later of two handoff timestamps, or null if neither side has signed yet. */
+function latestIso(a?: string | null, b?: string | null): string | null {
+  if (!a && !b) return null;
+  if (!a) return b!;
+  if (!b) return a;
+  return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
+}
+
+/**
+ * Shows the moment the trip actually started (both sides confirmed pickup)
+ * and, alongside it, the limit that matters for how this booking is priced:
+ * for a daily car, the exact instant a late-return charge starts (the agreed
+ * time plus the 2-hour grace payhold-settle-usage checks); for an hourly car,
+ * just the estimate — going past it isn't a penalty, it's simply billed at
+ * actual time used once the trip ends.
+ */
+function TripTimer({ booking }: { booking: Booking }) {
+  const pickupIso = latestIso(booking.pickupRenterAt, booking.pickupHostAt);
+  if (!pickupIso) return null;
+
+  let limitAt: Date | null = null;
+  let limitLabel = '';
+  if (booking.rentalType === 'hourly') {
+    if (booking.estimatedHours != null) {
+      limitAt = new Date(new Date(pickupIso).getTime() + booking.estimatedHours * 3_600_000);
+      limitLabel = 'Estimated return';
+    }
+  } else if (booking.expectedReturnTime) {
+    const hhmm = booking.expectedReturnTime.slice(0, 5);
+    const agreedAt = new Date(`${booking.endDate}T${hhmm}:00Z`);
+    limitAt = new Date(agreedAt.getTime() + 2 * 3_600_000); // the same 2hr grace payhold-settle-usage applies
+    limitLabel = 'Return by (incl. 2hr grace)';
+  }
+
+  const stillRunning = booking.state !== 'completed' && !['cancelled', 'declined'].includes(booking.state);
+  const pastLimit = !!limitAt && Date.now() > limitAt.getTime();
+
+  return (
+    <Card>
+      <CardBody className="space-y-2 text-sm">
+        <p className="flex items-center gap-1.5 font-semibold text-ink-900">
+          <Clock size={15} className="text-brand-600" /> Trip timer
+        </p>
+        <Row label="Picked up" value={`${formatDate(pickupIso)} at ${formatTime(pickupIso)}`} />
+        {limitAt && (
+          <Row label={limitLabel} value={`${formatDate(limitAt.toISOString())} at ${formatTime(limitAt.toISOString())}`} />
+        )}
+        {limitAt && stillRunning && (
+          <p className={cn('text-xs', pastLimit ? 'text-red-600' : 'text-ink-500')}>
+            {booking.rentalType === 'hourly'
+              ? pastLimit
+                ? 'Past the estimate — that’s fine, the final bill is based on actual time used.'
+                : 'Still within the estimate.'
+              : pastLimit
+                ? 'Past the grace period — a late-return amount will apply once returned.'
+                : 'Still within the free return window.'}
+          </p>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 

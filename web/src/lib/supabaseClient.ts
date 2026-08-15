@@ -890,6 +890,26 @@ export const supabaseClient = {
     return data as { actualHours: number; finalAmountRwf: number | null; amountOwedRwf: number };
   },
 
+  /**
+   * The host records what actually happened with an outstanding amount —
+   * they collected it themselves outside PayHold (pass 0), or they're
+   * waiving some or all of it. This never charges anyone: PayHold has no way
+   * to add money to a deal it has already funded, and this doesn't try to
+   * build one. `booking_enforce_update` (migration 055) is what actually
+   * enforces the host-only, never-increase rule — this is a plain update.
+   */
+  async adjustAmountOwed(bookingId: string, newAmountOwedRwf: number): Promise<Booking> {
+    const row = await run(
+      sb()
+        .from('bookings')
+        .update({ amount_owed_rwf: newAmountOwedRwf })
+        .eq('id', bookingId)
+        .select('*')
+        .maybeSingle(),
+    );
+    return mapRow<Booking>(row) as Booking;
+  },
+
   /** Admin: disburse a scheduled host payout via its provider. */
   async disbursePayout(payoutId: string): Promise<unknown> {
     const { data, error } = await getSupabase().functions.invoke('flutterwave-transfer', {
