@@ -477,37 +477,35 @@ export function CarDetailPage() {
                     This car is in maintenance — available from {formatDate(maintUntil)}.
                   </p>
                 )}
-                <div className="mt-4 max-w-sm space-y-4">
+                <div className="mt-4">
+                  <DateRangeCalendar
+                    single
+                    months={1}
+                    value={{ start: pickupDate, end: pickupDate }}
+                    onChange={(r) => setPickupDate(r.start)}
+                    minDate={pickupMin}
+                    isUnavailable={isUnavailable}
+                  />
+                </div>
+                <div className="mt-4 grid max-w-sm grid-cols-2 gap-3">
                   <div>
-                    <Label htmlFor="pickup-date">Pickup day</Label>
+                    <Label htmlFor="pickup-time-detail">Pickup time</Label>
                     <Input
-                      id="pickup-date"
-                      type="date"
-                      min={pickupMin}
-                      value={pickupDate ?? ''}
-                      onChange={(e) => setPickupDate(e.target.value || null)}
+                      id="pickup-time-detail"
+                      type="time"
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="pickup-time-detail">Pickup time</Label>
-                      <Input
-                        id="pickup-time-detail"
-                        type="time"
-                        value={pickupTime}
-                        onChange={(e) => setPickupTime(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="estimated-hours-detail">Hours</Label>
-                      <Input
-                        id="estimated-hours-detail"
-                        type="number"
-                        min={1}
-                        value={estimatedHours}
-                        onChange={(e) => setEstimatedHours(Math.max(1, Number(e.target.value) || 1))}
-                      />
-                    </div>
+                  <div>
+                    <Label htmlFor="estimated-hours-detail">Hours</Label>
+                    <Input
+                      id="estimated-hours-detail"
+                      type="number"
+                      min={1}
+                      value={estimatedHours}
+                      onChange={(e) => setEstimatedHours(Math.max(1, Number(e.target.value) || 1))}
+                    />
                   </div>
                 </div>
                 {datesChosen && (

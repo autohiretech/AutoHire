@@ -41,6 +41,10 @@ function monthCells(year: number, month: number): (string | null)[] {
  * Airbnb-style range picker. Renders `months` months side by side; click a start
  * day then a return day. Days before `minDate` or for which `isUnavailable`
  * returns true are disabled, and a range can't span an unavailable day.
+ *
+ * Pass `single` for a one-day pickup calendar (an hourly booking) instead of
+ * a range — every click just moves the one selected day, rather than opening
+ * a second click toward a range.
  */
 export function DateRangeCalendar({
   value,
@@ -48,12 +52,14 @@ export function DateRangeCalendar({
   minDate,
   isUnavailable,
   months = 2,
+  single = false,
 }: {
   value: DateRange;
   onChange: (r: DateRange) => void;
   minDate: string;
   isUnavailable: (isoDate: string) => boolean;
   months?: number;
+  single?: boolean;
 }) {
   const [cursor, setCursor] = useState(() => {
     const base = fromIso(value.start ?? minDate);
@@ -74,6 +80,10 @@ export function DateRangeCalendar({
   }
 
   function pick(day: string) {
+    if (single) {
+      onChange({ start: day, end: day });
+      return;
+    }
     const { start, end } = value;
     // Start a fresh selection on the first click, after a complete range, or
     // when clicking on/before the current start.
