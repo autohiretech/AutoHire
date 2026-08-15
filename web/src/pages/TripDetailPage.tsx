@@ -20,6 +20,14 @@ export function TripDetailPage() {
   const { data: me } = useCurrentUser();
   const navigate = useNavigate();
   const [messaging, setMessaging] = useState(false);
+  // A PayHold refund isn't instant — booking.state only flips to 'cancelled'
+  // once the refund.succeeded webhook lands, which can be seconds away. Without
+  // this, the button stays up and a second tap lands on "This booking cannot be
+  // cancelled" from the server, which reads as a failure when the first click
+  // actually worked. Reset on navigating to a different trip, since this
+  // component can be reused across route changes.
+  const [cancelRequested, setCancelRequested] = useState(false);
+  useEffect(() => setCancelRequested(false), [id]);
 
   const bookingQuery = useQuery({
     queryKey: ['booking', id],
@@ -51,6 +59,7 @@ export function TripDetailPage() {
           ? (result.message ?? "Refund on its way — this trip updates once it lands.")
           : 'Booking cancelled.',
       );
+      setCancelRequested(true);
       queryClient.invalidateQueries({ queryKey: ['booking', booking!.id] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
@@ -81,15 +90,21 @@ export function TripDetailPage() {
 
   const listing = listingQuery.data;
   const host = hostQuery.data;
-  const state = TRIP_STATE_META[booking.state];
-  const isCancelled = booking.state === 'cancelled' || booking.state === 'declined';
+  const isActuallyCancelled = booking.state === 'cancelled' || booking.state === 'declined';
+  // Requested but the server hasn't caught up yet — PayHold's webhook is what
+  // actually flips booking.state, a moment after the request that started it.
+  const isCancelling = cancelRequested && !isActuallyCancelled;
+  const isCancelled = isActuallyCancelled || isCancelling;
+  const state = isCancelling ? { label: 'Cancelling…', tone: 'danger' as const } : TRIP_STATE_META[booking.state];
   const currentStep = TRIP_TIMELINE.indexOf(booking.state);
   const amHost = me?.id === booking.hostId;
   const isParticipant = me?.id === booking.renterId || amHost;
   // Renter cancels before the trip starts; host cancels a confirmed/pickup trip.
-  const canCancel = amHost
-    ? ['confirmed', 'pickup'].includes(booking.state)
-    : me?.id === booking.renterId && ['requested', 'confirmed'].includes(booking.state);
+  const canCancel =
+    !cancelRequested &&
+    (amHost
+      ? ['confirmed', 'pickup'].includes(booking.state)
+      : me?.id === booking.renterId && ['requested', 'confirmed'].includes(booking.state));
 
   function onCancel() {
     if (window.confirm('Cancel this booking? The renter will be refunded and the dates freed.')) {
@@ -171,9 +186,14 @@ export function TripDetailPage() {
               <h2 className="font-semibold text-ink-900">Trip progress</h2>
             </CardHeader>
             <CardBody>
-              {isCancelled ? (
+              {isCancelling ? (
                 <p className="text-sm text-ink-500">
-                  This trip was {state.label.toLowerCase()}.
+                  Cancellation requested — the refund is on its way. This page updates once
+                  PayHold confirms it landed.
+                </p>
+              ) : isCancelled ? (
+                <p className="text-sm text-ink-500">
+                  This trip was {TRIP_STATE_META[booking.state].label.toLowerCase()}.
                 </p>
               ) : (
                 <ol className="space-y-4">
