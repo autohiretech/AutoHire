@@ -19,6 +19,7 @@ import { Button, Input, Label, Modal } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
 import { getStripeFor } from '@/lib/stripe';
 import { formatMoneyMinor } from '@/lib/currency';
+import { client } from '@/lib/client';
 import type { PaymentMethodType } from '@autohire/shared';
 
 /**
@@ -564,6 +565,8 @@ export function CheckoutModal({
   checkoutBase,
   paymentLink,
   amountLabel,
+  dealId,
+  onPaid,
 }: {
   open: boolean;
   onClose: () => void;
@@ -575,6 +578,15 @@ export function CheckoutModal({
    */
   paymentLink: string;
   amountLabel: string;
+  /**
+   * The deal this checkout is for — how the trip is found once it's paid.
+   * `payhold-webhook`, not this modal, writes the booking row, so there is a
+   * real (usually sub-second, but not always) gap between PayHold saying the
+   * deal funded and that row existing to send the renter to.
+   */
+  dealId?: string | null;
+  /** Called once the booking behind `dealId` exists, so the caller can navigate. */
+  onPaid?: (bookingId: string) => void;
 }) {
   const [methods, setMethods] = useState<CheckoutMethod[] | null>(null);
   /**
@@ -707,6 +719,43 @@ export function CheckoutModal({
       if (polling.current) window.clearInterval(polling.current);
     };
   }, [open, stage, checkoutBase]);
+
+  /**
+   * The trip itself, once PayHold says the deal is funded. `stage === 'paid'`
+   * only means the deal settled at PayHold — `payhold-webhook` still has to
+   * receive that event and write the booking row, which is not instant, so
+   * this polls for the row rather than assuming it is already there. Gives up
+   * after ~20s: `onPaid` never firing is not an error, it just means the
+   * renter sees "Done" instead of being moved automatically, and the trip
+   * still shows up in My trips a moment later regardless.
+   */
+  useEffect(() => {
+    if (stage !== 'paid' || !dealId || !onPaid) return;
+    let cancelled = false;
+    let tries = 0;
+
+    const tick = async () => {
+      tries += 1;
+      try {
+        const booking = await client.getBookingByDealId(dealId);
+        if (cancelled) return;
+        if (booking) {
+          onPaid(booking.id);
+          return;
+        }
+      } catch {
+        /* a dropped lookup is not a failure — keep trying until the timeout */
+      }
+      if (!cancelled && tries < 10) {
+        window.setTimeout(tick, 2000);
+      }
+    };
+
+    tick();
+    return () => {
+      cancelled = true;
+    };
+  }, [stage, dealId, onPaid]);
 
   /**
    * Whatever PayHold answered, applied.
@@ -918,8 +967,15 @@ export function CheckoutModal({
             <CheckCircle2 size={30} className="mx-auto text-emerald-600" />
             <p className="mt-3 font-medium text-ink-900">Your money is held safely</p>
             <p className="mt-1 text-sm text-ink-600">
-              We're setting up your trip — it'll appear in My trips in a moment.
+              {dealId && onPaid
+                ? "We're setting up your trip — taking you there now."
+                : "We're setting up your trip — it'll appear in My trips in a moment."}
             </p>
+            {dealId && onPaid && (
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+                <Loader2 size={12} className="animate-spin" /> Opening your trip…
+              </p>
+            )}
             <Button
               className="mt-4 w-full"
               onClick={() => {

@@ -309,6 +309,18 @@ export const supabaseClient = {
     return mapRow<Booking>(await run(sb().from('bookings').select('*').eq('id', id).maybeSingle()));
   },
   /**
+   * Find the trip a PayHold deal paid for. The booking itself is written by
+   * `payhold-webhook`, not by the browser that just finished checkout, so
+   * there is a real gap — sometimes a couple of seconds — between PayHold
+   * saying the deal funded and this row existing. Callers should poll rather
+   * than treat one `undefined` as "no booking."
+   */
+  async getBookingByDealId(dealId: string): Promise<Booking | undefined> {
+    return mapRow<Booking>(
+      await run(sb().from('bookings').select('*').eq('payhold_deal_id', dealId).maybeSingle()),
+    );
+  },
+  /**
    * Finalise a booking. There is no client-side insert: the `confirm-booking`
    * Edge Function recomputes the amounts and writes the row with the service
    * role, so the renter can't set their own price, days or status. RLS blocks

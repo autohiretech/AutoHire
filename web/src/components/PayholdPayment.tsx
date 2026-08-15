@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Landmark, Lock } from 'lucide-react';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -43,10 +43,12 @@ export function PayholdPayment({
 }) {
   const { data: me } = useCurrentUser();
   const { countries } = useCountry();
+  const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const [checkoutBase, setCheckoutBase] = useState<string | null>(null);
+  const [dealId, setDealId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,7 +71,7 @@ export function PayholdPayment({
     setBusy(true);
     setError(null);
     try {
-      const { paymentLink, checkoutBase: base } = await client.createPayholdDeal({
+      const { dealId: newDealId, paymentLink, checkoutBase: base } = await client.createPayholdDeal({
         listingId,
         startDate,
         endDate,
@@ -77,6 +79,7 @@ export function PayholdPayment({
       });
       setCheckoutBase(base);
       setLink(paymentLink);
+      setDealId(newDealId);
       setOpen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the payment.');
@@ -150,10 +153,22 @@ export function PayholdPayment({
           setOpen(false);
           setLink(null);
           setCheckoutBase(null);
+          setDealId(null);
         }}
         checkoutBase={checkoutBase}
         paymentLink={link ?? ''}
         amountLabel={label}
+        dealId={dealId}
+        // Straight to the trip the moment it exists — the renter just paid
+        // for it, and the only reason to leave them here is a page they
+        // no longer need.
+        onPaid={(bookingId) => {
+          setOpen(false);
+          setLink(null);
+          setCheckoutBase(null);
+          setDealId(null);
+          navigate(`/trips/${bookingId}`);
+        }}
       />
     </>
   );
