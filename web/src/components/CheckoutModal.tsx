@@ -1229,11 +1229,16 @@ export function CheckoutModal({
                 <p className="mt-0.5 text-xl font-bold text-ink-900">
                   {formatMoneyMinor((selected?.amount ?? deal.amount)!, deal.currency)}
                 </p>
-                <p className="mt-1 text-xs text-ink-500">
-                  {selected && deal.amount != null && selected.amount !== deal.amount
-                    ? `${selected.label} can't be charged again automatically, so this pays the full amount now instead of a deposit.`
-                    : 'The exact amount and currency PayHold will charge you.'}
-                </p>
+                {selected && deal.amount != null && selected.amount !== deal.amount ? (
+                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">
+                    {selected.label} can't be charged again automatically, so this pays the
+                    full amount now instead of a deposit.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-ink-500">
+                    The exact amount and currency PayHold will charge you.
+                  </p>
+                )}
               </div>
             )}
 
