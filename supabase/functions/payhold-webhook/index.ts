@@ -22,7 +22,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
-  confirmDeal,
   getDeal,
   payholdConfigured,
   payholdWebhookConfigured,
@@ -126,19 +125,15 @@ async function createBooking(admin: SupabaseClient, deal: Deal): Promise<Respons
     return json({ error: insErr.message }, 409);
   }
 
-  // All bookings are instant — the payment is the confirmation. Auto-confirm
-  // both sides here so PayHold releases the hold without waiting on the renter
-  // or the host. `confirmDeal` is the same call the (currently unwired)
-  // `payhold-confirm` endpoint makes; doing it server side keeps the trip
-  // flowing with no UI button. A failure is non-fatal: PayHold's auto-release
-  // timer still releases the hold after `auto_release_days`.
-  try {
-    await confirmDeal(deal.id, 'buyer');
-    await confirmDeal(deal.id, 'seller');
-  } catch (e) {
-    console.error('instant-book auto-confirm failed', { deal: deal.id, error: String(e) });
-  }
-
+  // Deliberately NOT auto-confirmed. This used to call confirmDeal('buyer')
+  // and confirmDeal('seller') immediately here, which released the hold to
+  // the host within a second of the booking existing — before the renter had
+  // picked up the car, on a rental of any length. Confirmation is now the
+  // renter's and host's own return-handoff confirm in the app (see
+  // confirmHandoff() / payhold-confirm), which is the only thing that should
+  // be able to tell PayHold a trip actually happened. PayHold's own
+  // auto-release timer (`auto_release_days`) is what protects a host whose
+  // renter never confirms anything — this function does not need to race it.
   return json({ booking: inserted.id }, 200);
 }
 
