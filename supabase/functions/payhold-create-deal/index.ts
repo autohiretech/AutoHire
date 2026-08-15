@@ -17,6 +17,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   createCheckoutSession,
   createDeal,
+  DAILY_OVERAGE_GRACE_HOURS,
   payholdConfigured,
   sessionToken,
   toMinorUnits,
@@ -247,34 +248,84 @@ Deno.serve(async (req: Request) => {
     const pricePerHour = Number(listing.price_per_hour_rwf ?? 0);
     const overageRate = Math.round(pricePerHour * Number(listing.overage_multiplier ?? 2));
 
-    // For an hourly booking, `subtotal`/`total` are what THIS deal funds — the
-    // 50% deposit — not the estimated full cost. The rest is settled after the
-    // trip against actual pickup-to-return time (payhold-settle-usage), never
-    // charged through this deal: PayHold has no way to add money to a deal
-    // already funded.
+    // `subtotal` is the 50% deposit charged now; `total` is what's actually
+    // due at booking (deposit + service fee). For an hourly car the OTHER
+    // half plus any time beyond the estimate is collected automatically by
+    // PayHold itself — split_percent/overage_rate below — the moment both
+    // sides confirm the trip is over, on the card the renter paid with. An
+    // early return still needs payhold-settle-usage's own refund, since
+    // PayHold's split always collects the full second half; it cannot know
+    // the trip ran short.
     const estimatedTotal = isHourly ? hours * pricePerHour : (listing.price_per_day_rwf as number) * days;
     const subtotal = isHourly ? Math.round(estimatedTotal / 2) : estimatedTotal;
     const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
     const total = subtotal + serviceFee;
+    // The full deal amount for a split hourly booking — estimatedTotal plus
+    // the SAME service fee `total` already carries, so the fee's rwf amount
+    // is unchanged from today; only half of it is now collected at booking
+    // and half at return, since PayHold's split has no way to charge a fee
+    // up front and a rental cost on a schedule.
+    const dealAmount = isHourly ? estimatedTotal + serviceFee : total;
 
     // Always the car's own currency — the renter's market never re-denominates
     // it. PayHold converts to something the renter's country can actually be
     // charged in and carries the FX itself.
     const currency = String(listing.price_currency ?? 'RWF').toUpperCase();
 
+    // The moment the ESTIMATE says the car should be back.
+    //
+    //   hourly — pickup plus the hours the renter asked for. Late past this
+    //            is what PayHold's overage charges for, at the same flat
+    //            per-hour rate this booking already uses — hourly has never
+    //            charged a penalty rate, only the daily case does.
+    //   daily  — end_date at the agreed return time, plus the same 2-hour
+    //            grace AutoHire has always given a daily return before it
+    //            counts as late. Pushing PayHold's own deadline out by the
+    //            grace, rather than leaving it at the bare agreed time, is
+    //            what keeps PayHold's automatic charge from firing earlier
+    //            than a renter has ever been told to expect.
+    const hourlyExpectedCompleteAt = new Date(
+      new Date(`${startDate}T${pickupTime}:00Z`).getTime() + hours * 3_600_000,
+    ).toISOString();
+    const dailyExpectedCompleteAt = new Date(
+      new Date(`${endDate}T${pickupTime}:00Z`).getTime() + DAILY_OVERAGE_GRACE_HOURS * 3_600_000,
+    ).toISOString();
+
     const { deal, payment_link } = await createDeal({
       buyerRef: uid,
       sellerId,
       description: isHourly
-        ? `AutoHire — ${listing.title} (${hours}hr estimate, 50% deposit)`
+        ? `AutoHire — ${listing.title} (${hours}hr estimate, 50% now + auto-settled on return)`
         : `AutoHire — ${listing.title} (${days} day${days === 1 ? '' : 's'})`,
-      amount: toMinorUnits(total, currency),
+      amount: toMinorUnits(dealAmount, currency),
       currency,
       // The renter's own country, not the car's market — unless they picked a
       // different one for this payment. Either way, this is what decides what
       // they can pay with and which currency their card is actually charged in.
       buyerCountry: buyerCountryOverride || (renter?.country as string | null) || undefined,
-      expectedCompleteAt: new Date(endDate).toISOString(),
+      expectedCompleteAt: isHourly ? hourlyExpectedCompleteAt : dailyExpectedCompleteAt,
+      ...(isHourly
+        ? {
+            // The whole booking is split — the second half is not optional,
+            // so PayHold itself only offers a payment method that can fund
+            // it (card) at checkout. See METHOD_SUPPORTS_REUSE in PayHold's
+            // own _shared/rails.ts.
+            splitPercent: 50,
+            overageRate: toMinorUnits(pricePerHour, currency),
+            overageUnitSeconds: 3600,
+          }
+        : {
+            // No split — the full amount is charged up front exactly as
+            // today. Overage is conditional on a late return, so mobile
+            // money stays offered here: if it never happens, nothing needed
+            // a reusable credential in the first place, and if it does, the
+            // charge attempt fails the same way it does for any provider
+            // with no saved method — the trip pauses and the host collects
+            // the penalty themselves, the way this always worked before
+            // PayHold could ever attempt it automatically.
+            overageRate: toMinorUnits(overageRate, currency),
+            overageUnitSeconds: 3600,
+          }),
       // Everything the webhook needs to build the trip. It reads these from the
       // deal, never from its own payload — see payhold-webhook.
       metadata: {

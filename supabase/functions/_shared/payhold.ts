@@ -61,6 +61,18 @@ export const PAST_HOLD: readonly DealStatus[] = [
   'paid_out',
 ];
 
+/**
+ * A daily return coming back within this many hours of the agreed time is
+ * on time; past it, the late-return penalty applies. Shared between
+ * `payhold-create-deal` (which pushes PayHold's own `expected_complete_at`
+ * out by this much, so PayHold's automatic overage collection does not
+ * start charging before AutoHire's own grace period would) and
+ * `payhold-settle-usage` (which still computes the same window for a
+ * pre-overage-wiring deal, and for its own display numbers). One constant
+ * rather than two, so the two cannot drift apart.
+ */
+export const DAILY_OVERAGE_GRACE_HOURS = 2;
+
 export interface Deal {
   id: string;
   buyer_ref: string;
@@ -78,6 +90,16 @@ export interface Deal {
   payout_due_at: string | null;
   released_at: string | null;
   fee_amount: number;
+  /**
+   * Installment billing (PayHold's, not a spec section — see its root
+   * CLAUDE.md). Null `split_percent` means the whole `amount` was charged
+   * up front; a non-null `balance_amount` of 0 means the split deal's
+   * second installment has already been collected.
+   */
+  split_percent: number | null;
+  balance_amount: number | null;
+  overage_rate: number | null;
+  overage_unit_seconds: number | null;
   /** What we attached at creation. This is how a deal is bound to a booking. */
   metadata: Record<string, string>;
   created_at: string;
@@ -307,6 +329,21 @@ export interface CreateDealInput {
   /** When the trip ends — PayHold's completion clock reads it. */
   expectedCompleteAt?: string;
   /**
+   * Charge this percentage of `amount` now; the rest is collected
+   * automatically, on the card the renter paid with, the moment both sides
+   * confirm the trip is over. Omit for the old behaviour: all of `amount`
+   * charged up front.
+   */
+  splitPercent?: number;
+  /**
+   * Per-unit price for a late return, in `currency`'s minor units — charged
+   * on top of the split's second installment if the trip is confirmed
+   * returned after `expectedCompleteAt`. Requires `overageUnitSeconds` and
+   * `expectedCompleteAt` together.
+   */
+  overageRate?: number;
+  overageUnitSeconds?: number;
+  /**
    * Bound to the deal and returned by GET /deals/:id. This is the only trusted
    * route from a payment back to a trip: the webhook reads the booking's
    * particulars from here, never from its own payload.
@@ -335,6 +372,10 @@ export function createDeal(input: CreateDealInput): Promise<CreateDealResult> {
       currency: input.currency,
       buyer_country: input.buyerCountry,
       expected_complete_at: input.expectedCompleteAt,
+      ...(input.splitPercent === undefined ? {} : { split_percent: input.splitPercent }),
+      ...(input.overageRate === undefined
+        ? {}
+        : { overage_rate: input.overageRate, overage_unit_seconds: input.overageUnitSeconds }),
       completion_policy: {
         // AutoHire's own name for the event that ends the work. PayHold stores
         // it verbatim and hands it back; it does not interpret it.

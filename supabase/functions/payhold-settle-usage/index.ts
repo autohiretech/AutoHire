@@ -9,35 +9,70 @@
 //
 // What it does with the answer differs by how the booking was priced:
 //
-//   hourly — the renter paid a 50% deposit against an ESTIMATE. If actual use
-//            cost less, the difference is refunded through PayHold right now
-//            (refundDeal, on the original deposit deal) — that's returning
-//            money PayHold already holds, the one thing this system still does
-//            automatically. If actual use cost MORE, the difference is
-//            recorded in amount_owed_rwf and nothing is charged: PayHold has
-//            no way to add money to a deal it has already funded, and
-//            collecting it is the host's job outside this system.
+//   hourly, split deal (payhold-create-deal set split_percent — every hourly
+//            deal created after this comment was written) — the renter's
+//            OTHER 50% and any time beyond the estimate are collected
+//            automatically by PayHold itself, on the card the renter paid
+//            with, the instant both sides confirm the trip is over. That
+//            covers on-time and late returns correctly on its own. It cannot
+//            cover an EARLY one: PayHold's split always collects the full
+//            second half, with no way to know the trip ran short. So this
+//            function's only remaining job for a split deal is: if actual use
+//            cost LESS than the full estimate, refund the difference — the
+//            one direction PayHold's own mechanism cannot express. If actual
+//            use cost the same or more, this does nothing; PayHold already
+//            handled it (or, for a renter with no saved card — mobile money
+//            has no reusable credential — the trip is paused pending the
+//            host resolving it, which this function has no part in).
 //
-//   daily  — no money moves either way. A return more than the 2-hour grace
-//            past the agreed time (end_date + expected_return_time) writes
-//            the overage to amount_owed_rwf, display-only, same reasoning.
+//   hourly, pre-split deal (booked before this shipped, no split_percent on
+//            the deal) — the old behaviour, kept for bookings already in
+//            flight: refund if actual use cost less than the deposit, else
+//            record the shortfall in amount_owed_rwf uncollected. Detected by
+//            re-reading the deal rather than a booking-table flag, since the
+//            deal itself is the one thing that cannot be migrated after the
+//            fact.
+//
+//   daily, overage-wired deal (payhold-create-deal set overage_rate — every
+//            daily deal created after this comment was written) — no split,
+//            the full amount was already charged up front exactly as
+//            before. A return past the 2-hour grace is what PayHold's own
+//            overage collection charges the penalty rate for, automatically,
+//            at confirmation — on whichever payment method the renter used;
+//            unlike hourly this is never certain to happen, so mobile money
+//            stays offered at checkout for a daily booking (see PayHold's
+//            METHOD_SUPPORTS_REUSE). If it cannot collect — no saved card —
+//            the trip pauses the same way an hourly one would, and the host
+//            claims the penalty from the renter themselves, physically,
+//            outside PayHold, the way this always worked before automatic
+//            collection existed at all. This function has nothing to add
+//            either way.
+//
+//   daily, pre-overage-wiring deal (booked before this shipped, no
+//            overage_rate on the deal) — the old behaviour, kept for
+//            bookings already in flight: a return more than the 2-hour
+//            grace past the agreed time (end_date + expected_return_time)
+//            writes the overage to amount_owed_rwf, display-only, uncollected
+//            by anything.
 //
 // Secrets:  PAYHOLD_* (see _shared/payhold.ts), ALLOWED_ORIGIN
 // Deploy:   supabase functions deploy payhold-settle-usage
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { PayHoldError, payholdConfigured, refundDeal, toMinorUnits } from '../_shared/payhold.ts';
+import {
+  DAILY_OVERAGE_GRACE_HOURS,
+  getDeal,
+  PayHoldError,
+  payholdConfigured,
+  refundDeal,
+  toMinorUnits,
+} from '../_shared/payhold.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
-
-// A day booking coming back within this many hours of the agreed time is on
-// time. Past it, every extra hour is billed at the listing's overage rate.
-// Fixed for this pass rather than a per-listing setting — see the plan.
-const OVERAGE_GRACE_HOURS = 2;
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -70,7 +105,7 @@ Deno.serve(async (req: Request) => {
     const { data: booking } = await admin
       .from('bookings')
       .select(
-        'id, renter_id, host_id, state, rental_type, end_date, expected_return_time, price_per_hour_rwf, overage_rate_rwf, deposit_amount_rwf, total_rwf, charge_currency, payhold_deal_id, actual_hours, final_amount_rwf, amount_owed_rwf, amount_exceeded_rwf, pickup_renter_at, pickup_host_at, return_renter_at, return_host_at',
+        'id, renter_id, host_id, state, rental_type, end_date, expected_return_time, price_per_hour_rwf, overage_rate_rwf, deposit_amount_rwf, total_rwf, estimated_hours, charge_currency, payhold_deal_id, actual_hours, final_amount_rwf, amount_owed_rwf, amount_exceeded_rwf, pickup_renter_at, pickup_host_at, return_renter_at, return_host_at',
       )
       .eq('id', bookingId)
       .maybeSingle();
@@ -115,46 +150,107 @@ Deno.serve(async (req: Request) => {
     let amountOwed = 0;
     let refunded: number | null = null;
 
+    // Which regime this deal was created under. Re-read from PayHold rather
+    // than trusted from a booking-table flag: the deal itself is the one
+    // thing already-in-flight bookings cannot be migrated to, so it is the
+    // only honest source for "does this one auto-collect or not," for both
+    // the hourly split and the daily overage below.
+    const deal = booking.payhold_deal_id
+      ? await getDeal(booking.payhold_deal_id as string).catch(() => null)
+      : null;
+
     if (booking.rental_type === 'hourly') {
       const rate = Number(booking.price_per_hour_rwf ?? 0);
       const deposit = Number(booking.deposit_amount_rwf ?? 0);
       finalAmount = actualHours * rate;
-      const diff = deposit - finalAmount; // positive: renter overpaid the deposit
 
-      if (diff > 0 && booking.payhold_deal_id) {
-        const currency = (booking.charge_currency as string | null) ?? 'RWF';
-        try {
-          await refundDeal(
-            booking.payhold_deal_id as string,
-            'Hourly rental settled: actual time used came in under the deposit estimate.',
-            toMinorUnits(diff, currency),
-          );
-          refunded = diff;
-        } catch (e) {
-          // Don't write settlement numbers on a failed refund — leaving
-          // actual_hours null keeps the idempotency guard above open so a
-          // retry can still attempt the refund instead of silently dropping
-          // it once the booking looks "settled".
-          const message = e instanceof PayHoldError ? e.message : String(e);
-          console.error('payhold-settle-usage: refund failed', { bookingId, diff, message });
-          return json({ error: `Could not refund the deposit difference: ${message}`, code: 'refund_failed' }, 502);
+      if (deal?.split_percent != null) {
+        // The split deal. PayHold has already collected the other half, plus
+        // any time beyond the estimate, automatically — or the trip is
+        // paused pending the host, if it could not (no saved card). Either
+        // way this function has nothing to add UNLESS the trip ran short of
+        // the estimate, which PayHold's fixed split cannot express: it always
+        // collects the full estimated amount, so an early return means it
+        // collected more than was actually owed.
+        const estimatedHours = Number(booking.estimated_hours ?? 0);
+        const estimatedTotal = estimatedHours * rate;
+        const overpaid = estimatedTotal - finalAmount; // positive: trip ran short
+
+        if (overpaid > 0 && booking.payhold_deal_id) {
+          const currency = (booking.charge_currency as string | null) ?? 'RWF';
+          try {
+            await refundDeal(
+              booking.payhold_deal_id as string,
+              'Hourly rental settled: actual time used came in under the booked estimate.',
+              toMinorUnits(overpaid, currency),
+            );
+            refunded = overpaid;
+          } catch (e) {
+            const message = e instanceof PayHoldError ? e.message : String(e);
+            console.error('payhold-settle-usage: refund failed', { bookingId, overpaid, message });
+            return json(
+              { error: `Could not refund the shortfall: ${message}`, code: 'refund_failed' },
+              502,
+            );
+          }
         }
-      } else if (diff < 0) {
-        amountOwed = -diff;
+        // actualHours >= estimatedHours: nothing to do here. PayHold's own
+        // split_percent + overage_rate collected exactly this, or is paused
+        // waiting on the host — either way amount_owed_rwf is not this
+        // function's concern for a split deal, and is left at 0.
+      } else {
+        // Pre-split deal: today's behaviour, unchanged, for a booking created
+        // before this shipped.
+        const diff = deposit - finalAmount; // positive: renter overpaid the deposit
+
+        if (diff > 0 && booking.payhold_deal_id) {
+          const currency = (booking.charge_currency as string | null) ?? 'RWF';
+          try {
+            await refundDeal(
+              booking.payhold_deal_id as string,
+              'Hourly rental settled: actual time used came in under the deposit estimate.',
+              toMinorUnits(diff, currency),
+            );
+            refunded = diff;
+          } catch (e) {
+            // Don't write settlement numbers on a failed refund — leaving
+            // actual_hours null keeps the idempotency guard above open so a
+            // retry can still attempt the refund instead of silently dropping
+            // it once the booking looks "settled".
+            const message = e instanceof PayHoldError ? e.message : String(e);
+            console.error('payhold-settle-usage: refund failed', { bookingId, diff, message });
+            return json(
+              { error: `Could not refund the deposit difference: ${message}`, code: 'refund_failed' },
+              502,
+            );
+          }
+        } else if (diff < 0) {
+          amountOwed = -diff;
+        }
       }
-    } else if (booking.expected_return_time) {
-      // Naive, same as the rest of this schema — no per-market timezone
-      // handling exists anywhere else in AutoHire either. Postgres reads a
-      // `time` column back as "HH:MM:SS"; slice to "HH:MM" so appending our
-      // own ":00Z" below can't double up on seconds.
+    } else if (deal?.overage_rate == null && booking.expected_return_time) {
+      // Pre-overage-wiring deal: today's behaviour, unchanged, for a booking
+      // created before payhold-create-deal started sending overage_rate for
+      // daily listings. Naive, same as the rest of this schema — no
+      // per-market timezone handling exists anywhere else in AutoHire
+      // either. Postgres reads a `time` column back as "HH:MM:SS"; slice to
+      // "HH:MM" so appending our own ":00Z" below can't double up on
+      // seconds.
       const hhmm = String(booking.expected_return_time).slice(0, 5);
       const agreedReturnAt = new Date(`${booking.end_date}T${hhmm}:00Z`);
       const excessMs = returnAt.getTime() - agreedReturnAt.getTime();
-      if (excessMs > OVERAGE_GRACE_HOURS * 3_600_000) {
+      if (excessMs > DAILY_OVERAGE_GRACE_HOURS * 3_600_000) {
         const overageHours = Math.ceil(excessMs / 3_600_000);
         amountOwed = overageHours * Number(booking.overage_rate_rwf ?? 0);
       }
     }
+    // A daily deal with overage_rate set: nothing to do here. PayHold's own
+    // overage collection charges the penalty automatically at confirmation
+    // if the return was late — the same grace period baked into
+    // expected_complete_at at creation — or pauses the deal pending the
+    // host if the renter paid by a method with no saved credential. Either
+    // way amount_owed_rwf is not this function's concern for it, the same
+    // reasoning as the hourly split case above.
 
     await admin
       .from('bookings')
