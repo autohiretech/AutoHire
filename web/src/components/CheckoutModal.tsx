@@ -118,21 +118,16 @@ export interface CheckoutMethod {
  * into a single row and made the choice meaningless — both rows shared the key,
  * and starting the payment could only ever name `method`, so it fell to
  * PayHold's default rail.
+ *
+ * The rail itself is never shown for this — see `CheckoutMethod.provider`'s
+ * own comment. Two rows sharing a method and nothing to tell them apart on
+ * screen is a real, narrow gap this leaves open (currently only reachable
+ * where PayHold quotes card on both Stripe and Flutterwave in one market);
+ * closing it wants a renter-facing differentiator — a scheme list, say —
+ * rather than the acquirer's name standing in for one.
  */
 export function methodKey(m: CheckoutMethod): string {
   return `${m.method}:${m.provider ?? ''}`;
-}
-
-/** Human name for a rail, shown so identical methods stay distinguishable. */
-const PROVIDER_LABEL: Record<string, string> = {
-  stripe: 'Stripe',
-  flutterwave: 'Flutterwave',
-  paypal: 'PayPal',
-};
-
-function providerLabel(provider?: string): string | null {
-  if (!provider) return null;
-  return PROVIDER_LABEL[provider] ?? provider;
 }
 
 interface PublicCheckout {
@@ -1234,7 +1229,6 @@ export function CheckoutModal({
                   const mark = marksFor(m.method);
                   const key = methodKey(m);
                   const isChosen = chosen === key;
-                  const prov = providerLabel(m.provider);
                   return (
                     <div
                       key={key}
@@ -1256,11 +1250,6 @@ export function CheckoutModal({
                         <span className="min-w-0 flex-1">
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="font-semibold text-ink-900">{m.label}</span>
-                            {prov && (
-                              <span className="rounded-full bg-ink-100 px-2 py-0.5 text-[11px] font-medium text-ink-600">
-                                {prov}
-                              </span>
-                            )}
                             {mark && (
                               <span className="flex flex-wrap items-center gap-1.5">
                                 <MethodMarks method={mark} />
