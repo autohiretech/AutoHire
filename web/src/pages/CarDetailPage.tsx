@@ -60,6 +60,23 @@ function hostingDuration(joinedAt: string): string {
   return `${years} year${years === 1 ? '' : 's'} hosting`;
 }
 
+/**
+ * The calendar date an hourly booking returns on, derived from the hours
+ * chosen rather than fixed to the pickup day. Every blocked-date and clash
+ * check in this codebase treats `endDate` as exclusive (a booking from Aug 20
+ * to Aug 22 holds the 20th and 21st, not the 22nd) — so `startDate === endDate`
+ * made a same-day hourly pickup invisible to both checks, on top of failing
+ * the "return after pick-up" validation on the server. One rolled-over block
+ * of 24 hours is one extra day, minimum one, so even a 2-hour booking holds
+ * its one pickup day rather than holding none.
+ */
+function hourlyReturnDate(pickupDate: string, hours: number): string {
+  const days = Math.max(1, Math.ceil(hours / 24));
+  const d = new Date(pickupDate);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 export function CarDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -182,7 +199,12 @@ export function CarDetailPage() {
     if (!datesChosen) return goToCalendar();
     navigate(`/cars/${listing.id}/book`, {
       state: isHourlyListing
-        ? { startDate: pickupDate, endDate: pickupDate, pickupTime, estimatedHours }
+        ? {
+            startDate: pickupDate,
+            endDate: hourlyReturnDate(pickupDate!, estimatedHours),
+            pickupTime,
+            estimatedHours,
+          }
         : { startDate: range.start, endDate: range.end },
     });
   };
