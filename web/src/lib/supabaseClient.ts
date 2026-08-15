@@ -42,6 +42,7 @@ import {
 } from '@/lib/types';
 import { getSupabase } from '@/lib/supabase';
 import { getCurrentUserId } from '@/lib/identity';
+import { PAYMENTS_PAYHOLD } from '@/lib/payments';
 import type { PayoutCountry } from '@/lib/payments';
 
 /**
@@ -839,6 +840,21 @@ export const supabaseClient = {
     await getSupabase().functions.invoke('capture-payment', { body: { bookingId } });
   },
 
+  /**
+   * Tell PayHold this side is satisfied with the return handoff. Which side
+   * (buyer/seller) comes from the caller's own session on the server, never
+   * from here — see `payhold-confirm`. PayHold releases the hold once BOTH
+   * sides have confirmed, atomically on its side; this is one of the two
+   * confirmations, not the release itself.
+   */
+  async confirmPayholdDeal(bookingId: string): Promise<{ dealStatus: string }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-confirm', {
+      body: { bookingId },
+    });
+    if (error) throw await fnError(error);
+    return data as { dealStatus: string };
+  },
+
   /** Admin: disburse a scheduled host payout via its provider. */
   async disbursePayout(payoutId: string): Promise<unknown> {
     const { data, error } = await getSupabase().functions.invoke('flutterwave-transfer', {
@@ -872,9 +888,24 @@ export const supabaseClient = {
       }),
     );
     const booking = mapRow<Booking>(row as Record<string, unknown>) as Booking;
-    // Trip just started (both sides signed pickup) → capture the escrow hold.
-    // Best-effort: a failed/undeployed capture must never block the handoff.
-    if (booking.state === 'active') {
+    if (PAYMENTS_PAYHOLD) {
+      // Confirming the RETURN is what `payhold-confirm` is for — it is this
+      // caller's own side of "I'm satisfied with how this trip ended", and
+      // PayHold releases the hold once both the renter's and the host's
+      // confirmation have landed. Fired every time either side confirms a
+      // return, not just once both have — each call is only ever this
+      // caller's own side. Best-effort: a booking not paid through PayHold
+      // (`too_early`/409 before the trip is even active is the other case
+      // this can hit) must never block the handoff itself.
+      if (phase === 'return') {
+        supabaseClient.confirmPayholdDeal(booking.id).catch((e) => {
+          console.error('confirmPayholdDeal failed', e);
+        });
+      }
+    } else if (booking.state === 'active') {
+      // Pre-PayHold rail: trip just started (both sides signed pickup) →
+      // capture the escrow hold directly. Best-effort: a failed/undeployed
+      // capture must never block the handoff.
       supabaseClient.capturePayment(booking.id).catch(() => {});
     }
     return booking;
