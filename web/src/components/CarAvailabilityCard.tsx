@@ -6,6 +6,7 @@ import { client } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
+import { listingHeadlinePrice } from '@/lib/pricing';
 import { Badge, Card, CardBody } from '@/components/ui';
 
 type Availability = { tone: 'success' | 'accent' | 'warning'; label: string };
@@ -44,6 +45,7 @@ export function CarAvailabilityCard({ listing }: { listing: Listing }) {
     queryFn: () => client.getBookedRanges(listing.id),
   });
   const { now, upcoming } = availabilityFor(listing, ranges);
+  const price = listingHeadlinePrice(listing);
 
   return (
     <Link to={`/cars/${listing.id}`} className="group block h-full focus:outline-none">
@@ -63,8 +65,8 @@ export function CarAvailabilityCard({ listing }: { listing: Listing }) {
           <p className="line-clamp-1 text-xs text-ink-500">{listing.location}</p>
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-sm font-semibold text-ink-900">
-              <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} />
-              <span className="font-normal text-ink-500"> / day</span>
+              <Price amount={price.amount} currency={listing.priceCurrency} />
+              <span className="font-normal text-ink-500"> / {price.unit}</span>
             </span>
             <span className="inline-flex shrink-0 items-center gap-1 text-xs text-ink-500">
               <Star size={12} className="fill-accent-500 text-accent-500" />

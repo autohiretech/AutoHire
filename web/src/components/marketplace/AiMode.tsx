@@ -18,6 +18,7 @@ import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatRwf } from '@/lib/format';
 import { CAR_CATEGORIES } from '@/lib/categories';
+import { listingHeadlinePrice } from '@/lib/pricing';
 import { buildSummary, describeThought, interpretQuery } from '@/lib/demoAi';
 import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
@@ -381,8 +382,8 @@ function AiCarCard({ listing }: { listing: Listing }) {
         </span>
         <h4 className="line-clamp-2 text-sm font-medium text-ink-900">{listing.title}</h4>
         <p className="mt-1 text-sm font-semibold text-ink-900">
-          {formatRwf(listing.pricePerDayRwf)}
-          <span className="font-normal text-ink-400"> /day</span>
+          {formatRwf(listingHeadlinePrice(listing).amount)}
+          <span className="font-normal text-ink-400"> /{listingHeadlinePrice(listing).unit}</span>
         </p>
         <p className="mt-0.5 text-xs text-ink-500">{listing.location}</p>
         <div className="mt-1.5 flex items-center gap-2 text-xs text-ink-500">

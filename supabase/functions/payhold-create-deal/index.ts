@@ -174,14 +174,28 @@ Deno.serve(async (req: Request) => {
     const { data: listing, error: listErr } = await admin
       .from('listings')
       .select(
-        'title, price_per_day_rwf, price_currency, country, host_id, blocked_dates, hourly_booking_enabled, price_per_hour_rwf, overage_multiplier',
+        'title, price_per_day_rwf, price_currency, country, host_id, blocked_dates, pricing_mode, price_per_hour_rwf, overage_multiplier',
       )
       .eq('id', listingId)
       .single();
     if (listErr || !listing) return json({ error: 'Listing not found.' }, 404);
     if (listing.host_id === uid) return json({ error: 'You cannot book your own car.' }, 403);
-    if (isHourly && !listing.hourly_booking_enabled) {
-      return json({ error: 'This car is not available for hourly booking.', code: 'hourly_not_enabled' }, 400);
+    // A car is priced one way or the other, never both — the renter's choice
+    // has to match exactly what the host set, not just be compatible with it.
+    // Normalized (isHourly ? 'hourly' : 'daily'), not the raw body value, so
+    // an old caller sending no rentalType at all still reads as 'daily'
+    // rather than failing this check on `undefined`.
+    if ((isHourly ? 'hourly' : 'daily') !== listing.pricing_mode) {
+      return json(
+        {
+          error:
+            listing.pricing_mode === 'hourly'
+              ? 'This car is booked by the hour, not by the day.'
+              : 'This car is booked by the day, not by the hour.',
+          code: 'wrong_rental_type',
+        },
+        400,
+      );
     }
 
     const blocked = new Set<string>((listing.blocked_dates as string[] | null) ?? []);

@@ -33,6 +33,7 @@ import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
 import { formatMoney } from '@/lib/currency';
+import { listingHeadlinePrice } from '@/lib/pricing';
 import { PAYMENTS_PAYHOLD } from '@/lib/payments';
 import { PAYOUT_CHANNEL_LABEL, PAYOUT_STATUS_META } from '@/lib/payouts';
 import { hostTripHint } from '@/lib/trips';
@@ -75,14 +76,13 @@ const isOverdue = (b: Booking) => LIVE_STATES.includes(b.state) && b.endDate < t
 
 /** Counts + host earnings for a set of bookings (host keeps the subtotal). */
 /**
- * The day rate, in the listing's own currency (never hardcoded RWF — a car
- * in Dubai or Shanghai is priced in AED/CNY, not RWF). Adds the hourly rate
- * alongside when the host has opted the car into hourly booking.
+ * The car's own headline rate, in its own currency (never hardcoded RWF — a
+ * car in Dubai or Shanghai is priced in AED/CNY, not RWF). A car is priced by
+ * the day OR the hour, never both, so this shows exactly one.
  */
 function listingPriceLabel(listing: Listing): string {
-  const day = `${formatMoney(listing.pricePerDayRwf, listing.priceCurrency)}/day`;
-  if (!listing.hourlyBookingEnabled || listing.pricePerHourRwf == null) return day;
-  return `${day} · ${formatMoney(listing.pricePerHourRwf, listing.priceCurrency)}/hr`;
+  const { amount, unit } = listingHeadlinePrice(listing);
+  return `${formatMoney(amount, listing.priceCurrency)}/${unit}`;
 }
 
 function bookingStats(bookings: Booking[]) {
@@ -1093,22 +1093,23 @@ function CarManage({ listing }: { listing: Listing }) {
         </Link>
       </div>
 
-      {/* Pricing */}
-      <div>
-        <p className="mb-1.5 text-sm font-medium text-ink-700">Price per day ({listing.priceCurrency})</p>
-        <div className="flex items-center gap-2">
-          <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="max-w-40" />
-          <Button
-            size="sm"
-            disabled={!priceChanged || mutation.isPending}
-            onClick={() => mutation.mutate({ pricePerDayRwf: Number(price) })}
-          >
-            Save
-          </Button>
+      {/* Pricing — a car is priced by the day OR the hour, never both; which
+          one is fixed on the car's edit page (Pricing mode), not here. */}
+      {listing.pricingMode === 'daily' ? (
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-ink-700">Price per day ({listing.priceCurrency})</p>
+          <div className="flex items-center gap-2">
+            <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="max-w-40" />
+            <Button
+              size="sm"
+              disabled={!priceChanged || mutation.isPending}
+              onClick={() => mutation.mutate({ pricePerDayRwf: Number(price) })}
+            >
+              Save
+            </Button>
+          </div>
         </div>
-      </div>
-
-      {listing.hourlyBookingEnabled && (
+      ) : (
         <div>
           <p className="mb-1.5 text-sm font-medium text-ink-700">Price per hour ({listing.priceCurrency})</p>
           <div className="flex items-center gap-2">

@@ -1050,9 +1050,9 @@ export const supabaseClient = {
         | 'seats'
         | 'transmission'
         | 'fuel'
+        | 'pricingMode'
         | 'pricePerDayRwf'
         | 'priceCurrency'
-        | 'hourlyBookingEnabled'
         | 'pricePerHourRwf'
         | 'overageMultiplier'
         | 'country'
@@ -1079,9 +1079,9 @@ export const supabaseClient = {
       seats: 'seats',
       transmission: 'transmission',
       fuel: 'fuel',
+      pricingMode: 'pricing_mode',
       pricePerDayRwf: 'price_per_day_rwf',
       priceCurrency: 'price_currency',
-      hourlyBookingEnabled: 'hourly_booking_enabled',
       pricePerHourRwf: 'price_per_hour_rwf',
       overageMultiplier: 'overage_multiplier',
       country: 'country',
@@ -1171,9 +1171,9 @@ export const supabaseClient = {
           seats: input.seats,
           transmission: input.transmission,
           fuel: input.fuel,
-          price_per_day_rwf: input.pricePerDayRwf,
+          pricing_mode: input.pricingMode,
+          price_per_day_rwf: input.pricePerDayRwf ?? null,
           price_currency: input.priceCurrency ?? 'RWF',
-          hourly_booking_enabled: input.hourlyBookingEnabled ?? false,
           price_per_hour_rwf: input.pricePerHourRwf ?? null,
           overage_multiplier: input.overageMultiplier ?? 2,
           country: input.country ?? 'RW',

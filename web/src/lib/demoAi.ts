@@ -3,6 +3,7 @@ import type { ListingFilters } from '@/lib/types';
 import type { Listing } from '@autohire/shared';
 import { formatRwf } from '@/lib/format';
 import { ALL_CITIES } from '@/lib/cities';
+import { listingHeadlinePrice } from '@/lib/pricing';
 
 /**
  * Demo "AI" for AI Mode — a local stand-in for the ai-search Edge Function so
@@ -143,7 +144,7 @@ export function buildSummary(query: string, listings: Listing[]): string {
   if (!listings.length) {
     return `I couldn't find any cars matching “${query.trim()}” right now. Try widening the request — a different category, city, or a higher daily budget.`;
   }
-  const prices = listings.map((l) => l.pricePerDayRwf);
+  const prices = listings.map((l) => listingHeadlinePrice(l).amount);
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const cats = Array.from(new Set(listings.map((l) => l.category)));

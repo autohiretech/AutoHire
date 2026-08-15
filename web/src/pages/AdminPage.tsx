@@ -40,6 +40,7 @@ import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
 import { formatDate, formatRwf, timeAgo } from '@/lib/format';
+import { listingHeadlinePrice } from '@/lib/pricing';
 import {
   DISPUTE_STATUS_META,
   FLAG_REASON_LABEL,
@@ -604,7 +605,8 @@ function UserListingsSection({ hostId, count }: { hostId: string; count: number 
 /** One listing: collapsed summary; click to expand its full details + bookings. */
 function ListingRow({ listing: l }: { listing: Listing }) {
   const [open, setOpen] = useState(false);
-  const price = `${formatRwf(l.pricePerDayRwf)}/day`;
+  const headline = listingHeadlinePrice(l);
+  const price = `${formatRwf(headline.amount)}/${headline.unit}`;
   return (
     <div className="rounded-lg border border-ink-200">
       <button
@@ -642,7 +644,10 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
         <Spec label="Seats" value={`${l.seats}`} />
         <Spec label="Transmission" value={l.transmission} />
         <Spec label="Fuel" value={l.fuel} highlight={l.fuel === 'electric'} />
-        <Spec label="Price / day" value={`${l.priceCurrency} ${l.pricePerDayRwf.toLocaleString()}`} />
+        <Spec
+          label={l.pricingMode === 'hourly' ? 'Price / hour' : 'Price / day'}
+          value={`${l.priceCurrency} ${listingHeadlinePrice(l).amount.toLocaleString()}`}
+        />
         <Spec label="Rating" value={l.ratingCount ? `${l.ratingAvg} (${l.ratingCount})` : '—'} />
         <Spec label="Country" value={l.country} />
       </dl>

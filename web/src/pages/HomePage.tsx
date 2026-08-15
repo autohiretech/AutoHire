@@ -26,6 +26,7 @@ import { ListingCard } from '@/components/ListingCard';
 import { CategoryRail } from '@/components/marketplace/CategoryRail';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
+import { listingHeadlinePrice } from '@/lib/pricing';
 import { AiMode } from '@/components/marketplace/AiMode';
 import { BrowseTabs } from '@/components/marketplace/BrowseTabs';
 import { useAppMode } from '@/lib/appMode';
@@ -566,8 +567,8 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
           </div>
           <div className="absolute bottom-4 left-4 flex items-center gap-2 text-white">
             <span className="rounded-md bg-black/55 px-2.5 py-1 text-sm font-semibold backdrop-blur-sm">
-              <Price amount={car.pricePerDayRwf} currency={car.priceCurrency} />
-              <span className="font-normal text-white/70"> /day</span>
+              <Price amount={listingHeadlinePrice(car).amount} currency={car.priceCurrency} />
+              <span className="font-normal text-white/70"> /{listingHeadlinePrice(car).unit}</span>
             </span>
             {car.ratingCount > 0 && (
               <span className="flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-sm backdrop-blur-sm">

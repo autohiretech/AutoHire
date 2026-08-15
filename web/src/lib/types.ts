@@ -46,14 +46,15 @@ export interface CreateListingInput {
   seats: number;
   transmission: Listing['transmission'];
   fuel: Listing['fuel'];
-  pricePerDayRwf: number;
+  /** A car is priced one way or the other — never both. */
+  pricingMode: Listing['pricingMode'];
+  /** Required when pricingMode is 'daily'; omit/null for an hourly-only car. */
+  pricePerDayRwf: number | null;
   /** Currency the price is in; defaults to the host's country currency ('RWF'). */
   priceCurrency?: string;
-  /** Can this car be booked by the hour instead of by the day? Defaults to false. */
-  hourlyBookingEnabled?: boolean;
-  /** The host's per-hour rate. Required when hourlyBookingEnabled is true. */
+  /** Required when pricingMode is 'hourly'; omit/null for a daily-only car. */
   pricePerHourRwf?: number | null;
-  /** Late-return overage multiplier on pricePerHourRwf. Defaults to 2. */
+  /** Late-return overage multiplier on pricePerHourRwf. Only used in 'daily' mode. Defaults to 2. */
   overageMultiplier?: number;
   /** ISO country the car sits in; defaults to the host's country ('RW'). */
   country?: string;

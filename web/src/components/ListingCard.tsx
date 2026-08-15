@@ -3,6 +3,7 @@ import { Building2, User } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
+import { listingHeadlinePrice } from '@/lib/pricing';
 import { Badge, Card, CardBody, Rating } from '@/components/ui';
 
 /**
@@ -12,6 +13,7 @@ import { Badge, Card, CardBody, Rating } from '@/components/ui';
  */
 export function ListingCard({ listing }: { listing: Listing }) {
   const isBusiness = listing.ownerType === 'business';
+  const price = listingHeadlinePrice(listing);
 
   return (
     <Link to={`/cars/${listing.id}`} className="group block h-full min-w-0 focus:outline-none">
@@ -43,10 +45,10 @@ export function ListingCard({ listing }: { listing: Listing }) {
           </p>
           <div className="mt-3 flex items-center gap-2">
             <span className="font-semibold text-ink-900">
-              <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} />
-              <span className="font-normal text-ink-500"> / day</span>
+              <Price amount={price.amount} currency={listing.priceCurrency} />
+              <span className="font-normal text-ink-500"> / {price.unit}</span>
             </span>
-            {listing.hourlyBookingEnabled && <Badge tone="brand">By the hour, too</Badge>}
+            {listing.pricingMode === 'hourly' && <Badge tone="brand">Hourly</Badge>}
           </div>
         </CardBody>
       </Card>

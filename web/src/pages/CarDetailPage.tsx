@@ -34,9 +34,10 @@ import { formatDate, formatRwf } from '@/lib/format';
 import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
 import { isMachine } from '@/lib/categories';
 import { readLocalWatchlist, writeLocalWatchlist } from '@/lib/watchlist';
+import { listingHeadlinePrice } from '@/lib/pricing';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
-import { Avatar, Badge, Button, Card, CardBody, Rating, Spinner, toast } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, Input, Label, Rating, Spinner, toast } from '@/components/ui';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
 import { RequesterModal, VERIF_TONE } from '@/components/RequesterModal';
@@ -66,6 +67,10 @@ export function CarDetailPage() {
   const [messaging, setMessaging] = useState(false);
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
+  // Only used for an hourly-only car — a single pickup day, not a range.
+  const [pickupDate, setPickupDate] = useState<string | null>(null);
+  const [pickupTime, setPickupTime] = useState('10:00');
+  const [estimatedHours, setEstimatedHours] = useState(4);
   const calendarRef = useRef<HTMLDivElement>(null);
   const isHost = useIsHost();
   // Hosts and company accounts are view-only on a listing — no booking.
@@ -136,13 +141,23 @@ export function CarDetailPage() {
   const isUnavailable = (d: string) =>
     listing.blockedDates.includes(d) ||
     bookedRanges.some((r) => r.startDate <= d && d < r.endDate);
-  const datesChosen = !!(range.start && range.end);
-  const nights = datesChosen
-    ? Math.max(1, Math.round((new Date(range.end!).getTime() - new Date(range.start!).getTime()) / 86_400_000))
-    : 0;
-  const subtotal = nights * listing.pricePerDayRwf;
+  // A car is priced by the day OR the hour, never both — the two pickers
+  // below are mutually exclusive, not a choice the renter makes here.
+  const isHourlyListing = listing.pricingMode === 'hourly';
+  const datesChosen = isHourlyListing ? !!pickupDate : !!(range.start && range.end);
+  const nights =
+    !isHourlyListing && datesChosen
+      ? Math.max(1, Math.round((new Date(range.end!).getTime() - new Date(range.start!).getTime()) / 86_400_000))
+      : 0;
+  // For an hourly car this is an ESTIMATE — what's actually due now is 50% of
+  // it (subtotal below), settled against actual pickup-to-return time after
+  // the trip. See docs/payhold.md: PayHold can't add money to a funded deal.
+  const estimatedTotal = isHourlyListing
+    ? estimatedHours * (listing.pricePerHourRwf ?? 0)
+    : nights * (listing.pricePerDayRwf ?? 0);
+  const subtotal = isHourlyListing ? Math.round(estimatedTotal / 2) : estimatedTotal;
   const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
-  const total = subtotal + serviceFee;
+  const total = subtotal + serviceFee; // what's due now
   // The price breakdown stays in the car's own currency (the one the host set),
   // regardless of the renter's market. The headline above still shows a converted
   // estimate for convenience via <Price>.
@@ -165,7 +180,11 @@ export function CarDetailPage() {
     if (!canRent) return;
     if (needsVerification) return navigate('/verification');
     if (!datesChosen) return goToCalendar();
-    navigate(`/cars/${listing.id}/book`, { state: { startDate: range.start, endDate: range.end } });
+    navigate(`/cars/${listing.id}/book`, {
+      state: isHourlyListing
+        ? { startDate: pickupDate, endDate: pickupDate, pickupTime, estimatedHours }
+        : { startDate: range.start, endDate: range.end },
+    });
   };
 
   const subtitle = [
@@ -438,37 +457,112 @@ export function CarDetailPage() {
             )}
           </div>
 
-          {/* Choose dates */}
+          {/* Choose when — a single pickup day + hours for an hourly car, a
+              date range for a daily one. Never both. */}
           <div ref={calendarRef} className="border-t border-ink-200 py-6">
-            <h2 className="text-lg font-semibold text-ink-900">
-              {datesChosen ? `${nights} night${nights === 1 ? '' : 's'} in ${listing.location}` : 'Choose your dates'}
-            </h2>
-            <p className="mt-0.5 text-sm text-ink-500">
-              {datesChosen
-                ? `${formatDate(range.start!)} – ${formatDate(range.end!)}`
-                : 'Add your trip dates to see the total and reserve.'}
-            </p>
-            {listing.status === 'maintenance' && maintUntil && (
-              <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-                This car is in maintenance — available from {formatDate(maintUntil)}.
-              </p>
-            )}
-            <div className="mt-4">
-              <DateRangeCalendar
-                value={range}
-                onChange={setRange}
-                minDate={pickupMin}
-                isUnavailable={isUnavailable}
-              />
-            </div>
-            {datesChosen && (
-              <button
-                type="button"
-                onClick={() => setRange({ start: null, end: null })}
-                className="mt-3 text-sm font-medium text-brand-600 hover:underline"
-              >
-                Clear dates
-              </button>
+            {isHourlyListing ? (
+              <>
+                <h2 className="text-lg font-semibold text-ink-900">
+                  {datesChosen
+                    ? `${estimatedHours} hour${estimatedHours === 1 ? '' : 's'} in ${listing.location}`
+                    : 'Choose your pickup'}
+                </h2>
+                <p className="mt-0.5 text-sm text-ink-500">
+                  {datesChosen
+                    ? `${formatDate(pickupDate!)} at ${pickupTime}`
+                    : 'Pick a day, a time and how long you need it — the full price updates as you go.'}
+                </p>
+                {listing.status === 'maintenance' && maintUntil && (
+                  <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                    This car is in maintenance — available from {formatDate(maintUntil)}.
+                  </p>
+                )}
+                <div className="mt-4 max-w-sm space-y-4">
+                  <div>
+                    <Label htmlFor="pickup-date">Pickup day</Label>
+                    <Input
+                      id="pickup-date"
+                      type="date"
+                      min={pickupMin}
+                      value={pickupDate ?? ''}
+                      onChange={(e) => setPickupDate(e.target.value || null)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="pickup-time-detail">Pickup time</Label>
+                      <Input
+                        id="pickup-time-detail"
+                        type="time"
+                        value={pickupTime}
+                        onChange={(e) => setPickupTime(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="estimated-hours-detail">Hours</Label>
+                      <Input
+                        id="estimated-hours-detail"
+                        type="number"
+                        min={1}
+                        value={estimatedHours}
+                        onChange={(e) => setEstimatedHours(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {datesChosen && (
+                  <div className="mt-5 max-w-sm space-y-2 rounded-xl border border-ink-200 bg-ink-50/60 p-4 text-sm">
+                    <div className="flex justify-between text-ink-600">
+                      <span>
+                        {money(listing.pricePerHourRwf ?? 0)} × {estimatedHours} hr
+                        {estimatedHours === 1 ? '' : 's'}
+                      </span>
+                      <span>{money(estimatedTotal)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-ink-200 pt-2 font-semibold text-ink-900">
+                      <span>Full price (estimated)</span>
+                      <span>{money(estimatedTotal)}</span>
+                    </div>
+                    <p className="pt-1 text-xs text-ink-500">
+                      You pay {money(total)} now (50% deposit + service fee). The rest settles from
+                      actual pickup-to-return time once the trip is done.
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold text-ink-900">
+                  {datesChosen ? `${nights} night${nights === 1 ? '' : 's'} in ${listing.location}` : 'Choose your dates'}
+                </h2>
+                <p className="mt-0.5 text-sm text-ink-500">
+                  {datesChosen
+                    ? `${formatDate(range.start!)} – ${formatDate(range.end!)}`
+                    : 'Add your trip dates to see the total and reserve.'}
+                </p>
+                {listing.status === 'maintenance' && maintUntil && (
+                  <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                    This car is in maintenance — available from {formatDate(maintUntil)}.
+                  </p>
+                )}
+                <div className="mt-4">
+                  <DateRangeCalendar
+                    value={range}
+                    onChange={setRange}
+                    minDate={pickupMin}
+                    isUnavailable={isUnavailable}
+                  />
+                </div>
+                {datesChosen && (
+                  <button
+                    type="button"
+                    onClick={() => setRange({ start: null, end: null })}
+                    className="mt-3 text-sm font-medium text-brand-600 hover:underline"
+                  >
+                    Clear dates
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -479,19 +573,10 @@ export function CarDetailPage() {
             <CardBody className="space-y-4">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-2xl font-bold text-ink-900">
-                  <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} showNative />
+                  <Price amount={listingHeadlinePrice(listing).amount} currency={listing.priceCurrency} showNative />
                 </span>
-                <span className="text-ink-500">/ day</span>
+                <span className="text-ink-500">/ {listingHeadlinePrice(listing).unit}</span>
               </div>
-              {listing.hourlyBookingEnabled && listing.pricePerHourRwf != null && (
-                <p className="-mt-2.5 text-sm text-ink-500">
-                  or{' '}
-                  <span className="font-medium text-ink-900">
-                    <Price amount={listing.pricePerHourRwf} currency={listing.priceCurrency} />
-                  </span>{' '}
-                  / hour — pick "By hour" at checkout
-                </p>
-              )}
               <div className="flex flex-wrap gap-2">
                 {listing.status === 'maintenance' && (
                   <Badge tone="warning">
@@ -517,24 +602,41 @@ export function CarDetailPage() {
               ) : (
                 <>
                   {/* Date fields — open the calendar below */}
-                  <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-ink-300 text-sm">
+                  {isHourlyListing ? (
                     <button
                       type="button"
                       onClick={goToCalendar}
-                      className="border-r border-ink-300 p-2.5 text-left hover:bg-ink-50"
+                      className="w-full rounded-lg border border-ink-300 p-2.5 text-left text-sm hover:bg-ink-50"
                     >
                       <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
-                        Pick-up
+                        Pickup
                       </span>
-                      <span className="text-ink-900">{range.start ? formatDate(range.start) : 'Add date'}</span>
-                    </button>
-                    <button type="button" onClick={goToCalendar} className="p-2.5 text-left hover:bg-ink-50">
-                      <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
-                        Return
+                      <span className="text-ink-900">
+                        {pickupDate
+                          ? `${formatDate(pickupDate)} at ${pickupTime} · ${estimatedHours}h`
+                          : 'Add pickup details'}
                       </span>
-                      <span className="text-ink-900">{range.end ? formatDate(range.end) : 'Add date'}</span>
                     </button>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-ink-300 text-sm">
+                      <button
+                        type="button"
+                        onClick={goToCalendar}
+                        className="border-r border-ink-300 p-2.5 text-left hover:bg-ink-50"
+                      >
+                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                          Pick-up
+                        </span>
+                        <span className="text-ink-900">{range.start ? formatDate(range.start) : 'Add date'}</span>
+                      </button>
+                      <button type="button" onClick={goToCalendar} className="p-2.5 text-left hover:bg-ink-50">
+                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                          Return
+                        </span>
+                        <span className="text-ink-900">{range.end ? formatDate(range.end) : 'Add date'}</span>
+                      </button>
+                    </div>
+                  )}
 
                   <Button className="w-full" size="lg" onClick={reserve}>
                     {needsVerification
@@ -551,11 +653,30 @@ export function CarDetailPage() {
                     <p className="text-center text-xs text-ink-400">You won't be charged yet</p>
                   )}
 
-                  {datesChosen && (
+                  {datesChosen && isHourlyListing && (
                     <div className="space-y-2 border-t border-ink-100 pt-3 text-sm">
                       <div className="flex justify-between text-ink-600">
                         <span>
-                          {money(listing.pricePerDayRwf)} × {nights} night{nights === 1 ? '' : 's'}
+                          {money(listing.pricePerHourRwf ?? 0)} × {estimatedHours} hr
+                          {estimatedHours === 1 ? '' : 's'} (full price)
+                        </span>
+                        <span>{money(estimatedTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-ink-600">
+                        <span>Deposit (50%) + service fee</span>
+                        <span>{money(total)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-ink-100 pt-2 font-semibold text-ink-900">
+                        <span>Due now</span>
+                        <span>{money(total)}</span>
+                      </div>
+                    </div>
+                  )}
+                  {datesChosen && !isHourlyListing && (
+                    <div className="space-y-2 border-t border-ink-100 pt-3 text-sm">
+                      <div className="flex justify-between text-ink-600">
+                        <span>
+                          {money(listing.pricePerDayRwf ?? 0)} × {nights} night{nights === 1 ? '' : 's'}
                         </span>
                         <span>{money(subtotal)}</span>
                       </div>
@@ -605,15 +726,17 @@ export function CarDetailPage() {
                 <>
                   <p className="truncate text-base font-bold text-ink-900">{money(total)}</p>
                   <p className="text-xs text-ink-500">
-                    total · {nights} night{nights === 1 ? '' : 's'}
+                    {isHourlyListing
+                      ? `due now · ${estimatedHours}h estimated at ${money(estimatedTotal)}`
+                      : `total · ${nights} night${nights === 1 ? '' : 's'}`}
                   </p>
                 </>
               ) : (
                 <>
                   <p className="text-base font-bold text-ink-900">
-                    <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} />
+                    <Price amount={listingHeadlinePrice(listing).amount} currency={listing.priceCurrency} />
                   </p>
-                  <p className="text-xs text-ink-500">per day</p>
+                  <p className="text-xs text-ink-500">per {listingHeadlinePrice(listing).unit}</p>
                 </>
               )}
             </div>

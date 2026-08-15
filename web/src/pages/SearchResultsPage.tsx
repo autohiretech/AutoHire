@@ -21,6 +21,7 @@ import { useAuth } from '@/lib/auth';
 import { ListingCard } from '@/components/ListingCard';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
+import { listingHeadlinePrice } from '@/lib/pricing';
 import { Avatar, Spinner, toast } from '@/components/ui';
 import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
@@ -47,7 +48,7 @@ const SELECT_BY: { label: string; patch: ListingFilters }[] = [
 
 /** A plain, factual one-liner under the "Deep search results" heading — no chat framing. */
 function describeResults(listings: Listing[]): string {
-  const prices = listings.map((l) => l.pricePerDayRwf);
+  const prices = listings.map((l) => listingHeadlinePrice(l).amount);
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const cats = Array.from(new Set(listings.map((l) => l.category)));
@@ -381,7 +382,8 @@ function FeaturedSupplier({
                 </div>
                 <p className="mt-1 line-clamp-1 text-xs text-ink-600">{c.title}</p>
                 <p className="text-sm font-semibold text-ink-900">
-                  <Price amount={c.pricePerDayRwf} currency={c.priceCurrency} />
+                  <Price amount={listingHeadlinePrice(c).amount} currency={c.priceCurrency} />
+                  <span className="text-ink-400"> /{listingHeadlinePrice(c).unit}</span>
                 </p>
               </Link>
             ))}

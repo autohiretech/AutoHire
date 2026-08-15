@@ -278,25 +278,29 @@ export interface Listing {
   transmission: Transmission;
   fuel: FuelType;
   /**
-   * Daily price, expressed in `priceCurrency`. (Named `…Rwf` for legacy reasons
-   * — Rwanda was the only market — but the amount is now whatever `priceCurrency`
-   * says; a Nairobi car holds KES, a Dubai car holds AED.)
+   * A car is priced one way or the other, never both — pricingMode says
+   * which. (Named `…Rwf` for legacy reasons — Rwanda was the only market —
+   * but the amount is now whatever `priceCurrency` says; a Nairobi car holds
+   * KES, a Dubai car holds AED.)
    */
-  pricePerDayRwf: number;
+  pricingMode: BookingRentalType;
+  /** Set only when pricingMode is 'daily' — null for an hourly-only car. */
+  pricePerDayRwf: number | null;
   /** ISO 4217 currency the car is priced + charged in. Defaults to 'RWF'. */
   priceCurrency: string;
-  /** Host opt-in: can this car be booked by the hour instead of by the day? */
-  hourlyBookingEnabled: boolean;
   /**
    * The host's own per-hour rate. Suggested in the listing form as
-   * pricePerDayRwf / 24, but stored explicitly and host-editable. Required
-   * when hourlyBookingEnabled is true; also the base for the overage rate.
+   * pricePerDayRwf / 24 when switching modes, but stored explicitly and
+   * host-editable. Set only when pricingMode is 'hourly' — null otherwise.
+   * Also the base for the overage rate below.
    */
   pricePerHourRwf: number | null;
   /**
    * Late-return overage is billed at pricePerHourRwf × overageMultiplier —
-   * "the host will choose the rate if it is price of hour times 2". Set once,
-   * at listing time. Defaults to 2.
+   * "the host will choose the rate if it is price of hour times 2". Only
+   * meaningful for a 'daily' car (an 'hourly' one already bills actual usage,
+   * so there is no "late" to bill extra for). Set once, at listing time.
+   * Defaults to 2.
    */
   overageMultiplier: number;
   /** ISO 3166-1 alpha-2 market this car belongs to, e.g. 'RW', 'KE', 'AE'. */

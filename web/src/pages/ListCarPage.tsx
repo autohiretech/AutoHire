@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Zap } from 'lucide-react';
 import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
+import { cn } from '@/lib/cn';
 import type { CreateListingInput } from '@/lib/types';
 import { Button, Card, CardBody, CardHeader, Input, Label, Select, Spinner } from '@/components/ui';
 import { Img } from '@/components/Img';
@@ -64,14 +65,17 @@ export function ListCarPage() {
   const [seats, setSeats] = useState('5');
   const [transmission, setTransmission] = useState<Transmission>('automatic');
   const [fuel, setFuel] = useState<FuelType>('petrol');
+  // A car is priced by the day or by the hour — never both.
+  const [pricingMode, setPricingMode] = useState<'daily' | 'hourly'>('daily');
   const [pricePerDay, setPricePerDay] = useState('40000');
   // Defaults to the account country's currency until the host picks their
   // own — same "suggested until touched" pattern as the hourly rate below.
   const [priceCurrency, setPriceCurrency] = useState('');
   const [priceCurrencyTouched, setPriceCurrencyTouched] = useState(false);
-  const [hourlyBookingEnabled, setHourlyBookingEnabled] = useState(false);
-  // Tracks whether the host has typed their own hourly rate, so the day-price
-  // field can keep suggesting one (day / 24) without clobbering an edit.
+  // Tracks whether the host has typed their own hourly rate, so it can keep
+  // suggesting one (day / 24) without clobbering an edit — the suggestion
+  // only really matters right after switching modes, when there's often
+  // already a day price to base it on.
   const [pricePerHourTouched, setPricePerHourTouched] = useState(false);
   const [pricePerHour, setPricePerHour] = useState('1667');
   const [overageMultiplier, setOverageMultiplier] = useState('2');
@@ -118,10 +122,10 @@ export function ListCarPage() {
     setSeats(String(existing.seats));
     setTransmission(existing.transmission);
     setFuel(existing.fuel);
-    setPricePerDay(String(existing.pricePerDayRwf));
+    setPricingMode(existing.pricingMode);
+    if (existing.pricePerDayRwf != null) setPricePerDay(String(existing.pricePerDayRwf));
     setPriceCurrency(existing.priceCurrency);
     setPriceCurrencyTouched(true);
-    setHourlyBookingEnabled(existing.hourlyBookingEnabled);
     if (existing.pricePerHourRwf != null) {
       setPricePerHour(String(existing.pricePerHourRwf));
       setPricePerHourTouched(true);
@@ -204,9 +208,9 @@ export function ListCarPage() {
   if (!(Number(year) > 1980)) missing.push('a valid year');
   if (!(Number(seats) > 0)) missing.push(machine ? 'cab seats' : 'seats');
   if (!location.trim()) missing.push('the pickup area');
-  if (!(Number(pricePerDay) > 0)) missing.push('a price per day');
-  if (hourlyBookingEnabled && !(Number(pricePerHour) > 0)) missing.push('an hourly price');
-  if (!(Number(overageMultiplier) > 0)) missing.push('a late-return rate');
+  if (pricingMode === 'daily' && !(Number(pricePerDay) > 0)) missing.push('a price per day');
+  if (pricingMode === 'hourly' && !(Number(pricePerHour) > 0)) missing.push('a price per hour');
+  if (pricingMode === 'daily' && !(Number(overageMultiplier) > 0)) missing.push('a late-return rate');
   if (locationUrl.trim() && !isLikelyUrl(locationUrl)) missing.push('a valid location link');
   if (!statusValid) missing.push('a back-in-service date');
   if (blockedNonElectric) missing.push('an electric vehicle — the fleet quota is full for other fuel types');
@@ -228,11 +232,12 @@ export function ListCarPage() {
       seats: Number(seats),
       transmission,
       fuel,
-      pricePerDayRwf: Number(pricePerDay),
+      pricingMode,
+      // Both prices are kept even when their mode is off, so switching back
+      // doesn't lose what was typed — the database only requires the ACTIVE
+      // mode's price to be set, and only the active one is ever charged.
+      pricePerDayRwf: Number(pricePerDay) > 0 ? Number(pricePerDay) : null,
       priceCurrency: currency,
-      hourlyBookingEnabled,
-      // Kept even while hourly is off, so re-enabling later doesn't lose it —
-      // the check constraint only requires it be set while enabled.
       pricePerHourRwf: Number(pricePerHour) > 0 ? Number(pricePerHour) : null,
       overageMultiplier: Number(overageMultiplier),
       country: accountCountry,
@@ -473,19 +478,71 @@ export function ListCarPage() {
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-ink-900">Pricing</h2>
-            <p className="mt-0.5 text-sm text-ink-500">Your day rate, and two optional ways to earn more.</p>
+            <p className="mt-0.5 text-sm text-ink-500">
+              Choose how this {machine ? 'machine' : 'car'} is booked — by the day, or by the hour.
+            </p>
           </CardHeader>
           <CardBody className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="price">Price per day</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  value={pricePerDay}
-                  onChange={(e) => setPricePerDay(e.target.value)}
-                />
+            <div>
+              <Label>Booking type</Label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPricingMode('daily')}
+                  className={cn(
+                    'flex-1 rounded-lg border px-3 py-2 text-sm font-medium',
+                    pricingMode === 'daily'
+                      ? 'border-ink-900 bg-ink-900 text-white'
+                      : 'border-ink-200 text-ink-700',
+                  )}
+                >
+                  Per day
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPricingMode('hourly')}
+                  className={cn(
+                    'flex-1 rounded-lg border px-3 py-2 text-sm font-medium',
+                    pricingMode === 'hourly'
+                      ? 'border-ink-900 bg-ink-900 text-white'
+                      : 'border-ink-200 text-ink-700',
+                  )}
+                >
+                  Per hour
+                </button>
               </div>
+              <p className="mt-1.5 text-xs text-ink-400">
+                {pricingMode === 'hourly'
+                  ? 'Renters pay a 50% deposit up front and are settled against actual pickup-to-return time — no day price on this car.'
+                  : 'Renters book by the calendar day, paid in full up front.'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {pricingMode === 'daily' ? (
+                <div>
+                  <Label htmlFor="price">Price per day</Label>
+                  <Input
+                    id="price"
+                    type="number"
+                    value={pricePerDay}
+                    onChange={(e) => setPricePerDay(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="price-per-hour">Price per hour</Label>
+                  <Input
+                    id="price-per-hour"
+                    type="number"
+                    value={pricePerHour}
+                    onChange={(e) => {
+                      setPricePerHour(e.target.value);
+                      setPricePerHourTouched(true);
+                    }}
+                  />
+                </div>
+              )}
               <div>
                 <Label htmlFor="price-currency">Currency</Label>
                 <Select
@@ -506,67 +563,33 @@ export function ListCarPage() {
               </div>
             </div>
 
-            <div className="border-t border-ink-100 pt-5">
-              <label className="flex items-start gap-2 rounded-lg border border-ink-200 p-3 text-sm text-ink-600">
-                <input
-                  type="checkbox"
-                  checked={hourlyBookingEnabled}
-                  onChange={(e) => setHourlyBookingEnabled(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
-                />
-                <span>
-                  <span className="font-medium text-ink-900">Optional: allow hourly bookings</span> —
-                  renters can book this {machine ? 'machine' : 'car'} by the hour instead of by the
-                  day. They pay a 50% deposit up front and are settled against actual
-                  pickup-to-return time.
-                </span>
-              </label>
-              {hourlyBookingEnabled && (
-                <div className="mt-3">
-                  <Label htmlFor="price-per-hour">Price per hour ({currency})</Label>
+            {pricingMode === 'daily' && (
+              <div className="border-t border-ink-100 pt-5">
+                <Label htmlFor="overage-multiplier">Late-return rate</Label>
+                <p className="mb-1.5 text-xs text-ink-500">
+                  A car returned more than 2 hours past the agreed time is billed extra for the
+                  hours over, at a multiple of an implied hourly price (day price ÷ 24).
+                </p>
+                <div className="flex items-center gap-2">
                   <Input
-                    id="price-per-hour"
+                    id="overage-multiplier"
                     type="number"
-                    value={pricePerHour}
-                    onChange={(e) => {
-                      setPricePerHour(e.target.value);
-                      setPricePerHourTouched(true);
-                    }}
+                    step="0.1"
+                    min="0"
+                    className="max-w-28"
+                    value={overageMultiplier}
+                    onChange={(e) => setOverageMultiplier(e.target.value)}
                   />
-                  <p className="mt-1 text-xs text-ink-400">
-                    Suggested from your day price ÷ 24 — edit it if hourly rentals should be priced
-                    differently.
-                  </p>
+                  <span className="text-sm text-ink-500">× hourly price</span>
                 </div>
-              )}
-            </div>
-
-            <div className="border-t border-ink-100 pt-5">
-              <Label htmlFor="overage-multiplier">Late-return rate</Label>
-              <p className="mb-1.5 text-xs text-ink-500">
-                Applies to every booking, hourly or not — a car returned more than 2 hours past the
-                agreed time is billed extra for the hours over. Set as a multiple of the hourly
-                price{hourlyBookingEnabled ? '' : ' above (day price ÷ 24, since hourly isn’t on)'}.
-              </p>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="overage-multiplier"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  className="max-w-28"
-                  value={overageMultiplier}
-                  onChange={(e) => setOverageMultiplier(e.target.value)}
-                />
-                <span className="text-sm text-ink-500">× hourly price</span>
+                <p className="mt-1.5 text-xs text-ink-400">
+                  {Number(pricePerHour) > 0 && Number(overageMultiplier) > 0
+                    ? `Currently ${Math.round(Number(pricePerHour) * Number(overageMultiplier)).toLocaleString()} ${currency} per extra hour, after the grace period.`
+                    : ''}{' '}
+                  Shown to you on the trip so you can follow up — never charged automatically.
+                </p>
               </div>
-              <p className="mt-1.5 text-xs text-ink-400">
-                {Number(pricePerHour) > 0 && Number(overageMultiplier) > 0
-                  ? `Currently ${Math.round(Number(pricePerHour) * Number(overageMultiplier)).toLocaleString()} ${currency} per extra hour, after the grace period.`
-                  : ''}{' '}
-                Shown to you on the trip so you can follow up — never charged automatically.
-              </p>
-            </div>
+            )}
           </CardBody>
         </Card>
 
