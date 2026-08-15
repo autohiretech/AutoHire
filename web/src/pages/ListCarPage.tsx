@@ -14,6 +14,7 @@ import { useCountry } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { citiesFor } from '@/lib/cities';
 import { CAR_CATEGORIES, CATEGORY_GROUPS, isMachine } from '@/lib/categories';
+import { CURRENCIES, type CurrencyCode } from '@/lib/currency';
 
 const FUELS: { value: FuelType; label: string }[] = [
   { value: 'petrol', label: 'Petrol' },
@@ -64,6 +65,10 @@ export function ListCarPage() {
   const [transmission, setTransmission] = useState<Transmission>('automatic');
   const [fuel, setFuel] = useState<FuelType>('petrol');
   const [pricePerDay, setPricePerDay] = useState('40000');
+  // Defaults to the account country's currency until the host picks their
+  // own — same "suggested until touched" pattern as the hourly rate below.
+  const [priceCurrency, setPriceCurrency] = useState('');
+  const [priceCurrencyTouched, setPriceCurrencyTouched] = useState(false);
   const [hourlyBookingEnabled, setHourlyBookingEnabled] = useState(false);
   // Tracks whether the host has typed their own hourly rate, so the day-price
   // field can keep suggesting one (day / 24) without clobbering an edit.
@@ -80,6 +85,10 @@ export function ListCarPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [features, setFeatures] = useState('');
+  // Only nag about what's missing after the host actually tries to submit —
+  // showing a checklist of everything blank the moment the page loads would
+  // just be noise on an empty form.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   async function onPickPhotos(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -110,6 +119,8 @@ export function ListCarPage() {
     setTransmission(existing.transmission);
     setFuel(existing.fuel);
     setPricePerDay(String(existing.pricePerDayRwf));
+    setPriceCurrency(existing.priceCurrency);
+    setPriceCurrencyTouched(true);
     setHourlyBookingEnabled(existing.hourlyBookingEnabled);
     if (existing.pricePerHourRwf != null) {
       setPricePerHour(String(existing.pricePerHourRwf));
@@ -126,11 +137,14 @@ export function ListCarPage() {
     setFeatures(existing.features.join(', '));
   }, [existing]);
 
-  // Country drives the currency (RW→RWF, AE→AED, CN→CNY, US→USD) and the city list.
-  // It's not a form field: it's the host's account country, set on the Account
-  // page, so a car can never end up listed in a market the host doesn't operate in.
+  // Country still drives the city list and the default currency (RW→RWF,
+  // AE→AED, CN→CNY, US→USD) — a car still can't end up in a market the host
+  // doesn't operate in. Currency itself is now a field: a host taking foreign
+  // bookings (e.g. a UAE host pricing in USD for tourists) can override the
+  // suggestion, same pattern as the hourly rate below.
   const selectedCountry = countries.find((c) => c.code === accountCountry);
-  const currency = selectedCountry?.currency ?? 'RWF';
+  const suggestedCurrency = selectedCountry?.currency ?? 'RWF';
+  const currency = priceCurrencyTouched ? priceCurrency : suggestedCurrency;
   const cities = accountCountry ? citiesFor(accountCountry) : [];
 
   // Default the city once the account country is known — but only for a new
@@ -180,25 +194,30 @@ export function ListCarPage() {
     },
   });
 
-  const valid =
-    !!accountCountry &&
-    title.trim() &&
-    make.trim() &&
-    model.trim() &&
-    location.trim() &&
-    Number(year) > 1980 &&
-    Number(seats) > 0 &&
-    Number(pricePerDay) > 0 &&
-    (!hourlyBookingEnabled || Number(pricePerHour) > 0) &&
-    Number(overageMultiplier) > 0 &&
-    photoUrls.length > 0 &&
-    !uploading &&
-    statusValid &&
-    !blockedNonElectric &&
-    (!locationUrl.trim() || isLikelyUrl(locationUrl));
+  // What's stopping Publish, in plain language — shown near the button rather
+  // than leaving a host to guess why it's greyed out.
+  const missing: string[] = [];
+  if (!accountCountry) missing.push('your account country (set it on the Account page)');
+  if (!title.trim()) missing.push('a listing title');
+  if (!make.trim()) missing.push('the make');
+  if (!model.trim()) missing.push('the model');
+  if (!(Number(year) > 1980)) missing.push('a valid year');
+  if (!(Number(seats) > 0)) missing.push(machine ? 'cab seats' : 'seats');
+  if (!location.trim()) missing.push('the pickup area');
+  if (!(Number(pricePerDay) > 0)) missing.push('a price per day');
+  if (hourlyBookingEnabled && !(Number(pricePerHour) > 0)) missing.push('an hourly price');
+  if (!(Number(overageMultiplier) > 0)) missing.push('a late-return rate');
+  if (locationUrl.trim() && !isLikelyUrl(locationUrl)) missing.push('a valid location link');
+  if (!statusValid) missing.push('a back-in-service date');
+  if (blockedNonElectric) missing.push('an electric vehicle — the fleet quota is full for other fuel types');
+  if (photoUrls.length === 0) missing.push('at least one photo');
+  if (uploading) missing.push('the photo upload to finish');
+
+  const valid = missing.length === 0;
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    setSubmitAttempted(true);
     if (!valid || !accountCountry) return;
     mutation.mutate({
       title: title.trim(),
@@ -369,7 +388,8 @@ export function ListCarPage() {
 
         <Card>
           <CardHeader>
-            <h2 className="font-semibold text-ink-900">Location & pricing</h2>
+            <h2 className="font-semibold text-ink-900">Location</h2>
+            <p className="mt-0.5 text-sm text-ink-500">Where renters pick it up.</p>
           </CardHeader>
           <CardBody className="space-y-4">
             <div>
@@ -380,12 +400,13 @@ export function ListCarPage() {
                     {selectedCountry?.flag} {selectedCountry?.name ?? accountCountry}
                   </div>
                   <p className="mt-1 text-xs text-ink-400">
-                    Where the car is located. It's priced in {currency}. This follows your account's
-                    country — change it on the{' '}
+                    Where the car is located. This follows your account's country — change it on
+                    the{' '}
                     <Link to="/account" className="text-brand-600 hover:underline">
                       Account
                     </Link>{' '}
-                    page, not per listing.
+                    page, not per listing. The price currency below can still differ — useful if
+                    you mostly book foreign renters.
                   </p>
                 </>
               ) : (
@@ -446,68 +467,117 @@ export function ListCarPage() {
                 <p className="mt-1 text-sm text-red-600">That doesn't look like a valid link.</p>
               )}
             </div>
-            <div>
-              <Label htmlFor="price">Price per day ({currency})</Label>
-              <Input
-                id="price"
-                type="number"
-                value={pricePerDay}
-                onChange={(e) => setPricePerDay(e.target.value)}
-              />
-            </div>
-            <label className="flex items-start gap-2 rounded-lg border border-ink-200 p-3 text-sm text-ink-600">
-              <input
-                type="checkbox"
-                checked={hourlyBookingEnabled}
-                onChange={(e) => setHourlyBookingEnabled(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
-              />
-              <span>
-                <span className="font-medium text-ink-900">Allow hourly bookings</span> — renters can
-                book this {machine ? 'machine' : 'car'} by the hour instead of by the day. They pay a
-                50% deposit up front and are settled against actual pickup-to-return time.
-              </span>
-            </label>
-            {hourlyBookingEnabled && (
-              <div>
-                <Label htmlFor="price-per-hour">Price per hour ({currency})</Label>
-                <Input
-                  id="price-per-hour"
-                  type="number"
-                  value={pricePerHour}
-                  onChange={(e) => {
-                    setPricePerHour(e.target.value);
-                    setPricePerHourTouched(true);
-                  }}
-                />
-                <p className="mt-1 text-xs text-ink-400">
-                  Suggested from your day price ÷ 24 — edit it if hourly rentals should be priced
-                  differently.
-                </p>
-              </div>
-            )}
-            <div>
-              <Label htmlFor="overage-multiplier">Late-return rate (× hourly price)</Label>
-              <Input
-                id="overage-multiplier"
-                type="number"
-                step="0.1"
-                min="0"
-                value={overageMultiplier}
-                onChange={(e) => setOverageMultiplier(e.target.value)}
-              />
-              <p className="mt-1 text-xs text-ink-400">
-                If a day booking comes back more than 2 hours late, each extra hour is billed at your
-                hourly price × this multiplier
-                {Number(pricePerHour) > 0 && Number(overageMultiplier) > 0
-                  ? ` — currently ${Math.round(Number(pricePerHour) * Number(overageMultiplier)).toLocaleString()} ${currency}/hr after the grace period`
-                  : ''}
-                . This is shown to the host, not charged automatically.
-              </p>
-            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <h2 className="font-semibold text-ink-900">Pricing</h2>
+            <p className="mt-0.5 text-sm text-ink-500">Your day rate, and two optional ways to earn more.</p>
+          </CardHeader>
+          <CardBody className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label htmlFor="status">Availability</Label>
+                <Label htmlFor="price">Price per day</Label>
+                <Input
+                  id="price"
+                  type="number"
+                  value={pricePerDay}
+                  onChange={(e) => setPricePerDay(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="price-currency">Currency</Label>
+                <Select
+                  id="price-currency"
+                  value={currency}
+                  onChange={(e) => {
+                    setPriceCurrency(e.target.value as CurrencyCode);
+                    setPriceCurrencyTouched(true);
+                  }}
+                >
+                  {Object.keys(CURRENCIES).map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                      {code === suggestedCurrency ? ' (your market)' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            <div className="border-t border-ink-100 pt-5">
+              <label className="flex items-start gap-2 rounded-lg border border-ink-200 p-3 text-sm text-ink-600">
+                <input
+                  type="checkbox"
+                  checked={hourlyBookingEnabled}
+                  onChange={(e) => setHourlyBookingEnabled(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>
+                  <span className="font-medium text-ink-900">Optional: allow hourly bookings</span> —
+                  renters can book this {machine ? 'machine' : 'car'} by the hour instead of by the
+                  day. They pay a 50% deposit up front and are settled against actual
+                  pickup-to-return time.
+                </span>
+              </label>
+              {hourlyBookingEnabled && (
+                <div className="mt-3">
+                  <Label htmlFor="price-per-hour">Price per hour ({currency})</Label>
+                  <Input
+                    id="price-per-hour"
+                    type="number"
+                    value={pricePerHour}
+                    onChange={(e) => {
+                      setPricePerHour(e.target.value);
+                      setPricePerHourTouched(true);
+                    }}
+                  />
+                  <p className="mt-1 text-xs text-ink-400">
+                    Suggested from your day price ÷ 24 — edit it if hourly rentals should be priced
+                    differently.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-ink-100 pt-5">
+              <Label htmlFor="overage-multiplier">Late-return rate</Label>
+              <p className="mb-1.5 text-xs text-ink-500">
+                Applies to every booking, hourly or not — a car returned more than 2 hours past the
+                agreed time is billed extra for the hours over. Set as a multiple of the hourly
+                price{hourlyBookingEnabled ? '' : ' above (day price ÷ 24, since hourly isn’t on)'}.
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="overage-multiplier"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  className="max-w-28"
+                  value={overageMultiplier}
+                  onChange={(e) => setOverageMultiplier(e.target.value)}
+                />
+                <span className="text-sm text-ink-500">× hourly price</span>
+              </div>
+              <p className="mt-1.5 text-xs text-ink-400">
+                {Number(pricePerHour) > 0 && Number(overageMultiplier) > 0
+                  ? `Currently ${Math.round(Number(pricePerHour) * Number(overageMultiplier)).toLocaleString()} ${currency} per extra hour, after the grace period.`
+                  : ''}{' '}
+                Shown to you on the trip so you can follow up — never charged automatically.
+              </p>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <h2 className="font-semibold text-ink-900">Availability</h2>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="status">Status</Label>
                 <Select
                   id="status"
                   value={status}
@@ -608,6 +678,17 @@ export function ListCarPage() {
               ? mutation.error.message
               : `Could not ${editing ? 'save the changes' : 'create the listing'}.`}
           </p>
+        )}
+
+        {submitAttempted && missing.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-800">
+            <p className="font-medium">Before you can publish, you still need:</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+              {missing.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div className="flex justify-end gap-3">

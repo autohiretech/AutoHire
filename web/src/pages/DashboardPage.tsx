@@ -32,6 +32,7 @@ import type { Booking, Host, Listing, Payout } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
+import { formatMoney } from '@/lib/currency';
 import { PAYMENTS_PAYHOLD } from '@/lib/payments';
 import { PAYOUT_CHANNEL_LABEL, PAYOUT_STATUS_META } from '@/lib/payouts';
 import { hostTripHint } from '@/lib/trips';
@@ -73,6 +74,17 @@ const isOpen = (b: Booking) => !CLOSED_STATES.includes(b.state);
 const isOverdue = (b: Booking) => LIVE_STATES.includes(b.state) && b.endDate < todayISO();
 
 /** Counts + host earnings for a set of bookings (host keeps the subtotal). */
+/**
+ * The day rate, in the listing's own currency (never hardcoded RWF — a car
+ * in Dubai or Shanghai is priced in AED/CNY, not RWF). Adds the hourly rate
+ * alongside when the host has opted the car into hourly booking.
+ */
+function listingPriceLabel(listing: Listing): string {
+  const day = `${formatMoney(listing.pricePerDayRwf, listing.priceCurrency)}/day`;
+  if (!listing.hourlyBookingEnabled || listing.pricePerHourRwf == null) return day;
+  return `${day} · ${formatMoney(listing.pricePerHourRwf, listing.priceCurrency)}/hr`;
+}
+
 function bookingStats(bookings: Booking[]) {
   const completed = bookings.filter((b) => b.state === 'completed');
   return {
@@ -770,7 +782,7 @@ function CarListRow({
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium text-ink-900">{listing.title}</p>
           <p className="truncate text-xs text-ink-500">
-            {formatRwf(listing.pricePerDayRwf)}/day{activity ? ` · ${activity}` : ''}
+            {listingPriceLabel(listing)}{activity ? ` · ${activity}` : ''}
           </p>
           <span className="mt-1 inline-flex flex-wrap gap-1">
             <Badge tone={status.tone}>{status.label}</Badge>
@@ -832,7 +844,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
             </div>
             <p className="mt-0.5 text-sm text-ink-500">{listing.location}</p>
             <p className="mt-0.5 flex items-center gap-2 text-sm text-ink-600">
-              <span className="font-semibold text-ink-900">{formatRwf(listing.pricePerDayRwf)}/day</span>
+              <span className="font-semibold text-ink-900">{listingPriceLabel(listing)}</span>
               <span className="inline-flex items-center gap-1 text-ink-500">
                 <Star size={13} className="fill-accent-500 text-accent-500" />
                 {listing.ratingCount ? listing.ratingAvg?.toFixed(1) : 'New'}
@@ -1039,12 +1051,16 @@ function RequestRow({ booking }: { booking: Booking }) {
 function CarManage({ listing }: { listing: Listing }) {
   const queryClient = useQueryClient();
   const [price, setPrice] = useState(String(listing.pricePerDayRwf));
+  const [hourlyPrice, setHourlyPrice] = useState(String(listing.pricePerHourRwf ?? ''));
   const [newDate, setNewDate] = useState('');
   const [maintDate, setMaintDate] = useState(listing.maintenanceUntil ?? '');
 
   const mutation = useMutation({
-    mutationFn: (patch: Partial<Pick<Listing, 'pricePerDayRwf' | 'blockedDates' | 'status' | 'maintenanceUntil'>>) =>
-      client.updateListing(listing.id, patch),
+    mutationFn: (
+      patch: Partial<
+        Pick<Listing, 'pricePerDayRwf' | 'pricePerHourRwf' | 'blockedDates' | 'status' | 'maintenanceUntil'>
+      >,
+    ) => client.updateListing(listing.id, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ownerListings'] });
       queryClient.invalidateQueries({ queryKey: ['listing', listing.id] });
@@ -1056,6 +1072,8 @@ function CarManage({ listing }: { listing: Listing }) {
   const today = new Date().toISOString().slice(0, 10);
   const inMaintenance = listing.status === 'maintenance';
   const priceChanged = Number(price) !== listing.pricePerDayRwf && Number(price) > 0;
+  const hourlyPriceChanged =
+    Number(hourlyPrice) !== (listing.pricePerHourRwf ?? 0) && Number(hourlyPrice) > 0;
 
   function addBlockedDate() {
     if (!newDate || listing.blockedDates.includes(newDate)) return;
@@ -1077,7 +1095,7 @@ function CarManage({ listing }: { listing: Listing }) {
 
       {/* Pricing */}
       <div>
-        <p className="mb-1.5 text-sm font-medium text-ink-700">Price per day (RWF)</p>
+        <p className="mb-1.5 text-sm font-medium text-ink-700">Price per day ({listing.priceCurrency})</p>
         <div className="flex items-center gap-2">
           <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="max-w-40" />
           <Button
@@ -1089,6 +1107,27 @@ function CarManage({ listing }: { listing: Listing }) {
           </Button>
         </div>
       </div>
+
+      {listing.hourlyBookingEnabled && (
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-ink-700">Price per hour ({listing.priceCurrency})</p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              value={hourlyPrice}
+              onChange={(e) => setHourlyPrice(e.target.value)}
+              className="max-w-40"
+            />
+            <Button
+              size="sm"
+              disabled={!hourlyPriceChanged || mutation.isPending}
+              onClick={() => mutation.mutate({ pricePerHourRwf: Number(hourlyPrice) })}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Maintenance */}
       <div>
