@@ -240,7 +240,13 @@ export function BookingPage() {
   const inMaintenance = listing.status === 'maintenance';
   const maintUntil = listing.maintenanceUntil ?? undefined;
   const afterMaintenance = !inMaintenance || (!!maintUntil && startDate >= maintUntil);
-  const datesValid = new Date(endDate) > new Date(startDate) && startDate >= today && afterMaintenance;
+  // An hourly booking picks one pickup day, not a range — the detail page's
+  // calendar sends startDate === endDate for it (see CarDetailPage.tsx's
+  // navigate state). Requiring endDate > startDate unconditionally rejected
+  // every hourly booking regardless of what the calendar showed.
+  const datesValid = listing.pricingMode === 'hourly'
+    ? startDate >= today && afterMaintenance
+    : new Date(endDate) > new Date(startDate) && startDate >= today && afterMaintenance;
 
   const days = diffDays(startDate, endDate);
   // A car is priced by the day or by the hour, never both — fixed by the
