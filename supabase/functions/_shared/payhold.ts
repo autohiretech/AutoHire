@@ -485,6 +485,20 @@ export function setSellerActive(id: string, active: boolean): Promise<Seller> {
 }
 
 /**
+ * Keep PayHold's record of a seller's name matching AutoHire's own — a
+ * profile edit after registration used to go nowhere, leaving PayHold's
+ * Sellers dashboard showing whoever a host was the day they were registered
+ * even after their profile changed. Same restating-a-known-fact shape as
+ * `setSellerActive`.
+ */
+export function setSellerName(id: string, name: string): Promise<Seller> {
+  return call(`/sellers/${encodeURIComponent(id)}/name`, {
+    method: 'POST',
+    body: { name },
+  });
+}
+
+/**
  * One host's wallet, in two shapes that answer two questions.
  *
  * `balances` is ledger money in the currency the renter was charged.

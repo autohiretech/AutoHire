@@ -557,6 +557,19 @@ export const supabaseClient = {
   },
 
   /**
+   * Push this host's current name to PayHold, so its Sellers dashboard never
+   * shows a name a profile edit already moved past. No-op for a profile with
+   * no `payhold_seller_id` yet — reads it fresh from the profile row itself
+   * rather than trusting whatever the caller has in memory.
+   */
+  async syncPayholdSellerName(): Promise<void> {
+    const { error } = await getSupabase().functions.invoke('payhold-sync-seller-name', {
+      body: {},
+    });
+    if (error) throw await fnError(error);
+  },
+
+  /**
    * This host's wallet, read live from PayHold — never cached in our database,
    * because a stale balance is one a host makes plans against.
    *

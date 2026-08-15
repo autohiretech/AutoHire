@@ -168,6 +168,18 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       await client.updateProfile(
         isCompany ? { businessName: name.trim() } : { fullName: name.trim() },
       );
+
+      // PayHold's Sellers dashboard identifies who money is owed to by this
+      // name — an edit that never reached it would leave that name drifting
+      // from the truth every time a host changed it. Best-effort and
+      // non-blocking, same as the toggleRole() calls below: a host must never
+      // be blocked from saving their own name by a PayHold hiccup.
+      if (isHost && PAYMENTS_PAYHOLD) {
+        client.syncPayholdSellerName().catch((e) => {
+          console.error('syncPayholdSellerName failed', e);
+        });
+      }
+
       refresh();
       setSaved(true);
     } catch (e) {
