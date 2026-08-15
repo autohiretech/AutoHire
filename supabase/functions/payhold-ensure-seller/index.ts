@@ -14,11 +14,19 @@
 // branch usually finds a seller already there by the time a host reaches it,
 // and takes the "change" (add a destination) path from the start.
 //
-// Called once, right after `toggleRole()` flips a profile to `role: 'owner'`.
-// Safe to call again — it is a no-op once `payhold_seller_id` is set — so a
-// retry, a double-click, or a host who somehow reaches this with no PayHold
-// record already linked (an interrupted signup, a profile restored from a
-// backup) all converge rather than erroring or duplicating.
+// Called every time `toggleRole()` flips a profile to `role: 'owner'` —
+// including a *re*-toggle, after `payhold-deactivate-seller` set `active`
+// false on the way out. The already-linked path always calls
+// `setSellerActive(id, true)` rather than checking first, because PayHold's
+// `set_seller_active` only writes an audit row when the value actually moves
+// (`20260815000002`) — so the overwhelmingly common case, a host who was
+// already active, costs one write with no audit noise, and the once-in-a-while
+// reactivation costs nothing extra to detect.
+//
+// Safe to call any number of times — a retry, a double-click, or a host who
+// somehow reaches this with no PayHold record already linked (an interrupted
+// signup, a profile restored from a backup) all converge rather than erroring
+// or duplicating.
 //
 // Secrets:  PAYHOLD_* (see _shared/payhold.ts), ALLOWED_ORIGIN
 // Deploy:   supabase functions deploy payhold-ensure-seller
@@ -28,6 +36,7 @@ import {
   createSeller,
   findSellerByExternalUserId,
   payholdConfigured,
+  setSellerActive,
   type Seller,
 } from '../_shared/payhold.ts';
 
@@ -50,6 +59,16 @@ async function link(admin: SupabaseClient, uid: string, seller: Seller): Promise
     .update({ payhold_seller_id: seller.id })
     .eq('id', uid);
   if (error) return json({ error: error.message }, 500);
+
+  // A freshly created seller is active by default; a re-linked one (found by
+  // handle, because this profile's own link was lost) might not be, if it
+  // went inactive before the link broke. Same no-op-is-free reasoning as the
+  // already-linked path above.
+  if (!seller.active) {
+    await setSellerActive(seller.id, true).catch((e) => {
+      console.error('reactivating seller failed', e);
+    });
+  }
 
   return json({ sellerId: seller.id, kycStatus: seller.kyc_status }, 200);
 }
@@ -91,9 +110,15 @@ Deno.serve(async (req: Request) => {
     }
 
     // Already linked. This is the common case on every call after the first —
-    // toggling host mode off and back on, a page reload, a retry — and it must
-    // stay cheap and silent rather than asking PayHold anything.
+    // toggling host mode off and back on, a page reload, a retry. Always sets
+    // active true rather than checking first: cheap on the common no-change
+    // case (PayHold writes no audit row when the value does not move), and it
+    // is the only path that reactivates a seller `payhold-deactivate-seller`
+    // turned off on a previous toggle back to renter.
     if (profile.payhold_seller_id) {
+      await setSellerActive(profile.payhold_seller_id, true).catch((e) => {
+        console.error('reactivating seller failed', e);
+      });
       return json({ sellerId: profile.payhold_seller_id, alreadyLinked: true }, 200);
     }
 

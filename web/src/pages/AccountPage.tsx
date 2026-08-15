@@ -210,10 +210,19 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       // setup screen does the identical get-or-create the first time a
       // destination is actually typed. A host must never be blocked from
       // becoming a host by a PayHold hiccup.
-      if (becomingHost && PAYMENTS_PAYHOLD) {
-        client.ensurePayholdSeller().catch((e) => {
-          console.error('ensurePayholdSeller failed', e);
-        });
+      if (PAYMENTS_PAYHOLD) {
+        if (becomingHost) {
+          client.ensurePayholdSeller().catch((e) => {
+            console.error('ensurePayholdSeller failed', e);
+          });
+        } else {
+          // Switching back to renter. Status only on PayHold's side — money
+          // already owed to them keeps moving on its own schedule — so this
+          // is best-effort and non-blocking exactly like the host direction.
+          client.deactivatePayholdSeller().catch((e) => {
+            console.error('deactivatePayholdSeller failed', e);
+          });
+        }
       }
 
       // Mode, nav and host/renter pages all key off the role — refresh broadly.

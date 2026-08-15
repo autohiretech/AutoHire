@@ -66,7 +66,14 @@ const METHOD_LABEL: Record<string, string> = {
  * a column that is empty, never to overwrite what the host told us. The wallets
  * are unambiguous: one rail, one method.
  */
-function methodForProvider(provider: PayoutProvider): string {
+/**
+ * Null when the seller PayHold found has no destination at all — reachable
+ * since `20260814000001` lets `payhold-ensure-seller` create one with none.
+ * The caller falls back to what the host just typed in that case; there is no
+ * rail on file to read one from.
+ */
+function methodForProvider(provider: PayoutProvider | null): string | null {
+  if (!provider) return null;
   const byRail: Partial<Record<PayoutProvider, string>> = {
     flutterwave_momo: 'momo',
     flutterwave_bank: 'bank',
@@ -259,9 +266,13 @@ Deno.serve(async (req: Request) => {
 
       // On a relink the method the host just picked describes a destination we
       // did not store, so it must not overwrite the one on file. Their existing
-      // value stands; only an empty column is filled, and from the rail.
+      // value stands; failing that, the rail on the seller PayHold found; and
+      // if that seller has no destination either — found with nothing to
+      // relink, the case a destination-less `payhold-ensure-seller` record
+      // makes possible — there is nothing to defer to but what they just typed.
       const storedMethod = relinked
-        ? ((profile.payout_method as string | null) ?? methodForProvider(seller.payout_provider))
+        ? ((profile.payout_method as string | null) ?? methodForProvider(seller.payout_provider) ??
+          (method as string))
         : (method as string);
 
       const { error: upErr } = await admin

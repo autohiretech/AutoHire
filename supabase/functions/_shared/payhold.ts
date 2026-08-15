@@ -88,10 +88,17 @@ export interface Deal {
 export interface Seller {
   id: string;
   name: string;
-  country: string;
-  payout_currency: string;
-  payout_provider: PayoutProvider;
-  masked_destination: string;
+  /**
+   * Null until a destination is registered — PayHold's `20260814000001` made
+   * that optional, which is what `payhold-ensure-seller` relies on: a host
+   * gets a seller record the moment they toggle to host mode, before they
+   * have typed a payout number. `country`, `payout_currency` and
+   * `masked_destination` are null together with it.
+   */
+  country: string | null;
+  payout_currency: string | null;
+  payout_provider: PayoutProvider | null;
+  masked_destination: string | null;
   kyc_status: 'pending' | 'verified' | 'restricted' | 'rejected' | 'review_required';
   /**
    * Our own handle for this host — their `profiles.id`. PayHold mints its own
@@ -101,6 +108,13 @@ export interface Seller {
    * from PayHold's dashboard.
    */
   external_user_id: string | null;
+  /**
+   * Whether this host is currently one of our active sellers. Status only —
+   * PayHold's payout path never reads it. `payhold-ensure-seller` sets it true
+   * on every toggle to host mode (including reactivating one that had gone
+   * false); `payhold-deactivate-seller` sets it false on the toggle back.
+   */
+  active: boolean;
 }
 
 /** The rail a destination is tokenized against — provider and method together. */
@@ -453,6 +467,21 @@ export async function findSellerByExternalUserId(
 /** Can this host be paid, and if not, what is missing. */
 export function sellerCapabilities(id: string): Promise<SellerCapabilities> {
   return call(`/sellers/${encodeURIComponent(id)}/capabilities`, { method: 'GET' });
+}
+
+/**
+ * Whether this host is currently one of our active sellers.
+ *
+ * Status only — PayHold's payout path never reads it, so this never blocks or
+ * delays money already owed to a host who stepped back. Unlike `verifySeller`
+ * on PayHold's own client this takes an API key happily: it is us restating a
+ * fact about our own roster, not an attestation.
+ */
+export function setSellerActive(id: string, active: boolean): Promise<Seller> {
+  return call(`/sellers/${encodeURIComponent(id)}/active`, {
+    method: 'POST',
+    body: { active },
+  });
 }
 
 /**

@@ -544,6 +544,19 @@ export const supabaseClient = {
   },
 
   /**
+   * The other direction: marks the signed-in host's PayHold seller inactive.
+   * Status only, and a quiet no-op for a profile with no seller yet — most
+   * renters have never hosted, and "nothing to turn off" is the expected
+   * answer, not a failure.
+   */
+  async deactivatePayholdSeller(): Promise<void> {
+    const { error } = await getSupabase().functions.invoke('payhold-deactivate-seller', {
+      body: {},
+    });
+    if (error) throw await fnError(error);
+  },
+
+  /**
    * This host's wallet, read live from PayHold — never cached in our database,
    * because a stale balance is one a host makes plans against.
    *
