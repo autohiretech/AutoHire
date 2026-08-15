@@ -18,7 +18,7 @@ import {
 import type { EarningStage, EarningTrip, PayoutDestination } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { formatMoneyMinor } from '@/lib/currency';
+import { formatMoney, formatMoneyMinor } from '@/lib/currency';
 import { formatDate } from '@/lib/format';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { Badge, Button, Card, CardBody, CardHeader, Spinner, toast } from '@/components/ui';
@@ -570,6 +570,18 @@ function TripRow({ trip }: { trip: EarningTrip }) {
           <p className="flex items-start gap-1.5 rounded-lg bg-red-50 p-2 text-xs text-red-700">
             <ShieldAlert size={13} className="mt-0.5 shrink-0" />
             {trip.holdReason}
+          </p>
+        )}
+
+        {/* AutoHire's own figure, not PayHold's — an hourly trip that ran over
+            its deposit, or a daily one returned more than 2 hours late.
+            Never charged automatically; this is the reminder to follow up. */}
+        {trip.amountOwedRwf > 0 && (
+          <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+            <ShieldAlert size={13} className="mt-0.5 shrink-0" />
+            {formatMoney(trip.amountOwedRwf, trip.currency)} extra owed
+            {trip.rentalType === 'hourly' ? ' for time beyond the deposit' : ' for a late return'} —
+            follow up with the renter directly.
           </p>
         )}
 

@@ -64,6 +64,12 @@ export function ListCarPage() {
   const [transmission, setTransmission] = useState<Transmission>('automatic');
   const [fuel, setFuel] = useState<FuelType>('petrol');
   const [pricePerDay, setPricePerDay] = useState('40000');
+  const [hourlyBookingEnabled, setHourlyBookingEnabled] = useState(false);
+  // Tracks whether the host has typed their own hourly rate, so the day-price
+  // field can keep suggesting one (day / 24) without clobbering an edit.
+  const [pricePerHourTouched, setPricePerHourTouched] = useState(false);
+  const [pricePerHour, setPricePerHour] = useState('1667');
+  const [overageMultiplier, setOverageMultiplier] = useState('2');
   const [city, setCity] = useState('');
   const [location, setLocation] = useState('');
   const [coords, setCoords] = useState<LatLng | null>(null);
@@ -104,6 +110,12 @@ export function ListCarPage() {
     setTransmission(existing.transmission);
     setFuel(existing.fuel);
     setPricePerDay(String(existing.pricePerDayRwf));
+    setHourlyBookingEnabled(existing.hourlyBookingEnabled);
+    if (existing.pricePerHourRwf != null) {
+      setPricePerHour(String(existing.pricePerHourRwf));
+      setPricePerHourTouched(true);
+    }
+    setOverageMultiplier(String(existing.overageMultiplier));
     setCity(existing.city);
     setLocation(existing.location);
     setCoords(existing.lat != null && existing.lng != null ? { lat: existing.lat, lng: existing.lng } : null);
@@ -130,6 +142,14 @@ export function ListCarPage() {
     setCity((prev) => (cities.includes(prev) ? prev : (cities[0] ?? '')));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountCountry, editing]);
+
+  // Suggest an hourly rate from the day price (day / 24) until the host types
+  // their own — the two prices are independent once touched.
+  useEffect(() => {
+    if (pricePerHourTouched) return;
+    const day = Number(pricePerDay);
+    if (day > 0) setPricePerHour(String(Math.round(day / 24)));
+  }, [pricePerDay, pricePerHourTouched]);
 
   // A tractor has a cab, not seats, and runs on power, not fuel — relabel the shared
   // fields rather than maintaining a second form for machinery.
@@ -169,6 +189,8 @@ export function ListCarPage() {
     Number(year) > 1980 &&
     Number(seats) > 0 &&
     Number(pricePerDay) > 0 &&
+    (!hourlyBookingEnabled || Number(pricePerHour) > 0) &&
+    Number(overageMultiplier) > 0 &&
     photoUrls.length > 0 &&
     !uploading &&
     statusValid &&
@@ -189,6 +211,11 @@ export function ListCarPage() {
       fuel,
       pricePerDayRwf: Number(pricePerDay),
       priceCurrency: currency,
+      hourlyBookingEnabled,
+      // Kept even while hourly is off, so re-enabling later doesn't lose it —
+      // the check constraint only requires it be set while enabled.
+      pricePerHourRwf: Number(pricePerHour) > 0 ? Number(pricePerHour) : null,
+      overageMultiplier: Number(overageMultiplier),
       country: accountCountry,
       location: location.trim(),
       city,
@@ -427,6 +454,56 @@ export function ListCarPage() {
                 value={pricePerDay}
                 onChange={(e) => setPricePerDay(e.target.value)}
               />
+            </div>
+            <label className="flex items-start gap-2 rounded-lg border border-ink-200 p-3 text-sm text-ink-600">
+              <input
+                type="checkbox"
+                checked={hourlyBookingEnabled}
+                onChange={(e) => setHourlyBookingEnabled(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span>
+                <span className="font-medium text-ink-900">Allow hourly bookings</span> — renters can
+                book this {machine ? 'machine' : 'car'} by the hour instead of by the day. They pay a
+                50% deposit up front and are settled against actual pickup-to-return time.
+              </span>
+            </label>
+            {hourlyBookingEnabled && (
+              <div>
+                <Label htmlFor="price-per-hour">Price per hour ({currency})</Label>
+                <Input
+                  id="price-per-hour"
+                  type="number"
+                  value={pricePerHour}
+                  onChange={(e) => {
+                    setPricePerHour(e.target.value);
+                    setPricePerHourTouched(true);
+                  }}
+                />
+                <p className="mt-1 text-xs text-ink-400">
+                  Suggested from your day price ÷ 24 — edit it if hourly rentals should be priced
+                  differently.
+                </p>
+              </div>
+            )}
+            <div>
+              <Label htmlFor="overage-multiplier">Late-return rate (× hourly price)</Label>
+              <Input
+                id="overage-multiplier"
+                type="number"
+                step="0.1"
+                min="0"
+                value={overageMultiplier}
+                onChange={(e) => setOverageMultiplier(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                If a day booking comes back more than 2 hours late, each extra hour is billed at your
+                hourly price × this multiplier
+                {Number(pricePerHour) > 0 && Number(overageMultiplier) > 0
+                  ? ` — currently ${Math.round(Number(pricePerHour) * Number(overageMultiplier)).toLocaleString()} ${currency}/hr after the grace period`
+                  : ''}
+                . This is shown to the host, not charged automatically.
+              </p>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>

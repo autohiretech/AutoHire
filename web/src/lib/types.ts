@@ -49,6 +49,12 @@ export interface CreateListingInput {
   pricePerDayRwf: number;
   /** Currency the price is in; defaults to the host's country currency ('RWF'). */
   priceCurrency?: string;
+  /** Can this car be booked by the hour instead of by the day? Defaults to false. */
+  hourlyBookingEnabled?: boolean;
+  /** The host's per-hour rate. Required when hourlyBookingEnabled is true. */
+  pricePerHourRwf?: number | null;
+  /** Late-return overage multiplier on pricePerHourRwf. Defaults to 2. */
+  overageMultiplier?: number;
   /** ISO country the car sits in; defaults to the host's country ('RW'). */
   country?: string;
   location: string;

@@ -87,6 +87,14 @@ export function BookingPage() {
   const [endDate] = useState(() => picked?.endDate ?? addDays(todayISO(), 4));
   const [method, setMethod] = useState<Method>('card');
 
+  // Every booking now carries a pickup time — it's what a late daily return is
+  // measured against, and what an hourly booking's timer starts from.
+  const [pickupTime, setPickupTime] = useState('10:00');
+  // Hourly is only ever offered when the listing opted in (PayHoldPayment's
+  // rail); every other checkout rail here stays day-only.
+  const [rentalType, setRentalType] = useState<'daily' | 'hourly'>('daily');
+  const [estimatedHours, setEstimatedHours] = useState(4);
+
   const { data: listing, isLoading } = useQuery({
     queryKey: ['listing', id],
     queryFn: () => client.getListing(id),
@@ -234,7 +242,17 @@ export function BookingPage() {
   const datesValid = new Date(endDate) > new Date(startDate) && startDate >= today && afterMaintenance;
 
   const days = diffDays(startDate, endDate);
-  const subtotal = listing.pricePerDayRwf * days;
+  const isHourly = rentalType === 'hourly' && listing.hourlyBookingEnabled;
+  // For an hourly booking this is an ESTIMATE — what's actually charged now is
+  // 50% of it, and the rest is settled against actual pickup-to-return time
+  // once the trip completes (see docs/payhold.md — PayHold has no way to add
+  // money to a deal already funded, so the balance is display-only, not
+  // auto-charged).
+  const estimatedTotal = isHourly
+    ? estimatedHours * (listing.pricePerHourRwf ?? 0)
+    : listing.pricePerDayRwf * days;
+  const depositAmount = isHourly ? Math.round(estimatedTotal / 2) : estimatedTotal;
+  const subtotal = depositAmount;
   const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
   const total = subtotal + serviceFee;
   // Amounts stay in the currency the host set the car in — never re-denominated
@@ -288,6 +306,77 @@ export function BookingPage() {
         {/* Left: payment methods */}
         <div className="min-w-0 space-y-5">
           <Card>
+            <CardBody className="space-y-4 p-5 sm:p-6">
+              <div>
+                <h2 className="text-lg font-semibold text-ink-900 sm:text-xl">
+                  When are you picking it up?
+                </h2>
+                <p className="mt-1 text-sm text-ink-500">
+                  {isHourly
+                    ? 'A late return past your estimate is settled against the actual time used.'
+                    : `Coming back more than 2 hours after ${formatDate(endDate)} at this time bills an overage — see the car's listing.`}
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="pickup-time">Pickup time</Label>
+                <Input
+                  id="pickup-time"
+                  type="time"
+                  value={pickupTime}
+                  onChange={(e) => setPickupTime(e.target.value)}
+                />
+              </div>
+              {PAYMENTS_PAYHOLD && listing.hourlyBookingEnabled && (
+                <div>
+                  <Label>How do you want to book?</Label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRentalType('daily')}
+                      className={cn(
+                        'flex-1 rounded-lg border px-3 py-2 text-sm font-medium',
+                        rentalType === 'daily'
+                          ? 'border-ink-900 bg-ink-900 text-white'
+                          : 'border-ink-200 text-ink-700',
+                      )}
+                    >
+                      By day
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRentalType('hourly')}
+                      className={cn(
+                        'flex-1 rounded-lg border px-3 py-2 text-sm font-medium',
+                        rentalType === 'hourly'
+                          ? 'border-ink-900 bg-ink-900 text-white'
+                          : 'border-ink-200 text-ink-700',
+                      )}
+                    >
+                      By hour
+                    </button>
+                  </div>
+                  {isHourly && (
+                    <div className="mt-3">
+                      <Label htmlFor="estimated-hours">How many hours?</Label>
+                      <Input
+                        id="estimated-hours"
+                        type="number"
+                        min={1}
+                        value={estimatedHours}
+                        onChange={(e) => setEstimatedHours(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                      <p className="mt-1 text-xs text-ink-400">
+                        You pay 50% now ({money(depositAmount)} of an estimated {money(estimatedTotal)}).
+                        The rest is settled from the actual time between pickup and return.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
             <CardBody className="p-5 sm:p-6">
               <h2 className="text-lg font-semibold text-ink-900 sm:text-xl">
                 How do you want to pay?
@@ -313,6 +402,9 @@ export function BookingPage() {
                   listingId={id}
                   startDate={startDate}
                   endDate={endDate}
+                  pickupTime={pickupTime}
+                  rentalType={rentalType}
+                  estimatedHours={isHourly ? estimatedHours : undefined}
                   label={money(total)}
                   disabled={!datesValid}
                 />
@@ -502,11 +594,12 @@ export function BookingPage() {
                 <div>
                   <p className="text-sm font-semibold text-ink-900">Your trip</p>
                   <p className="mt-0.5 text-sm text-ink-700">
-                    {formatDate(startDate)} – {formatDate(endDate)}
+                    {formatDate(startDate)} – {formatDate(endDate)} at {pickupTime}
                   </p>
                   <p className="text-[13px] text-ink-500">
-                    {days} day{days === 1 ? '' : 's'} · free cancellation until{' '}
-                    {formatDate(startDate)}
+                    {isHourly
+                      ? `~${estimatedHours} hour${estimatedHours === 1 ? '' : 's'} · billed on actual time used`
+                      : `${days} day${days === 1 ? '' : 's'} · free cancellation until ${formatDate(startDate)}`}
                   </p>
                 </div>
                 <Link
@@ -520,20 +613,41 @@ export function BookingPage() {
               <div className="border-t border-ink-100 pt-3.5">
                 <p className="text-sm font-semibold text-ink-900">Price details</p>
                 <div className="mt-2 space-y-1.5 text-sm">
-                  <div className="flex justify-between text-ink-600">
-                    <span>
-                      {money(listing.pricePerDayRwf)} × {days} day{days === 1 ? '' : 's'}
-                    </span>
-                    <span>{money(subtotal)}</span>
-                  </div>
+                  {isHourly ? (
+                    <>
+                      <div className="flex justify-between text-ink-600">
+                        <span>
+                          {money(listing.pricePerHourRwf ?? 0)} × {estimatedHours} hr
+                          {estimatedHours === 1 ? '' : 's'} (estimated)
+                        </span>
+                        <span>{money(estimatedTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-ink-600">
+                        <span>Deposit due now (50%)</span>
+                        <span>{money(depositAmount)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-ink-600">
+                      <span>
+                        {money(listing.pricePerDayRwf)} × {days} day{days === 1 ? '' : 's'}
+                      </span>
+                      <span>{money(subtotal)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-ink-600">
                     <span>Service fee</span>
                     <span>{money(serviceFee)}</span>
                   </div>
                   <div className="flex items-baseline justify-between border-t border-ink-100 pt-2.5 font-bold text-ink-900">
-                    <span className="text-base">Total</span>
+                    <span className="text-base">{isHourly ? 'Due now' : 'Total'}</span>
                     <span className="text-xl">{money(total)}</span>
                   </div>
+                  {isHourly && (
+                    <p className="text-[13px] text-ink-500">
+                      The rest is settled after your trip, based on actual pickup-to-return time.
+                    </p>
+                  )}
                 </div>
                 <div className="mt-3.5 flex items-start gap-2 rounded-xl bg-brand-50/70 p-3 text-[13px] leading-relaxed text-ink-600">
                   <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-600" />

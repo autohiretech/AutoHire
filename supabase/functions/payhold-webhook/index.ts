@@ -88,6 +88,17 @@ async function createBooking(admin: SupabaseClient, deal: Deal): Promise<Respons
   const subtotal = Number(deal.metadata.subtotal ?? 0);
   const serviceFee = Number(deal.metadata.serviceFee ?? 0);
   const total = Number(deal.metadata.total ?? 0);
+  const rentalType = deal.metadata.rentalType === 'hourly' ? 'hourly' : 'daily';
+  const pickupTime = deal.metadata.pickupTime || null;
+  const expectedReturnTime = deal.metadata.expectedReturnTime || null;
+  const estimatedHours = deal.metadata.estimatedHours ? Number(deal.metadata.estimatedHours) : null;
+  const pricePerHourRwf = deal.metadata.pricePerHourRwf ? Number(deal.metadata.pricePerHourRwf) : null;
+  const overageRateRwf = deal.metadata.overageRateRwf ? Number(deal.metadata.overageRateRwf) : null;
+  // What this deal actually funded — the deposit for hourly, the full
+  // pre-fee rental cost for daily. Distinct from `subtotal_rwf`/`total_rwf`
+  // only in name, kept as its own column because payhold-settle-usage
+  // compares actual usage against it directly.
+  const depositAmount = Number(deal.metadata.depositAmount ?? subtotal);
 
   const { data: inserted, error: insErr } = await admin
     .from('bookings')
@@ -109,6 +120,13 @@ async function createBooking(admin: SupabaseClient, deal: Deal): Promise<Respons
       // PayHold holds it. It is released when both sides confirm, not by us.
       hold_status: 'held',
       payhold_deal_id: deal.id,
+      rental_type: rentalType,
+      pickup_time: pickupTime,
+      expected_return_time: expectedReturnTime,
+      estimated_hours: estimatedHours,
+      price_per_hour_rwf: pricePerHourRwf,
+      overage_rate_rwf: overageRateRwf,
+      deposit_amount_rwf: depositAmount,
       created_at: new Date().toISOString(),
     })
     .select('id')

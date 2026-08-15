@@ -164,7 +164,9 @@ Deno.serve(async (req: Request) => {
     // and asking PayHold for them would be asking the wrong system.
     const { data: bookings } = await admin
       .from('bookings')
-      .select('id, listing_id, start_date, end_date, days, state, total_rwf, charge_currency, payhold_deal_id, created_at')
+      .select(
+        'id, listing_id, start_date, end_date, days, state, total_rwf, charge_currency, payhold_deal_id, created_at, rental_type, amount_owed_rwf',
+      )
       .eq('host_id', uid)
       .not('payhold_deal_id', 'is', null)
       .order('created_at', { ascending: false })
@@ -246,6 +248,11 @@ Deno.serve(async (req: Request) => {
         paidAt: payout?.paid_at ?? null,
         holdReason: payout?.failure_reason ?? null,
         payoutStatus: payout?.status ?? null,
+
+        // AutoHire's own figure, in whole units — never converted through
+        // toMinorUnits, never PayHold's. See EarningTrip's comment.
+        rentalType: (b.rental_type as string) === 'hourly' ? 'hourly' : 'daily',
+        amountOwedRwf: (b.amount_owed_rwf as number | null) ?? 0,
       };
     });
 

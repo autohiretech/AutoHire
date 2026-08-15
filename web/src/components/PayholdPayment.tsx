@@ -32,12 +32,20 @@ export function PayholdPayment({
   listingId,
   startDate,
   endDate,
+  pickupTime,
+  rentalType,
+  estimatedHours,
   label,
   disabled,
 }: {
   listingId: string;
   startDate: string;
   endDate: string;
+  /** Agreed pickup time-of-day (HH:mm) — what a late return is measured from. */
+  pickupTime: string;
+  rentalType: 'daily' | 'hourly';
+  /** Required when rentalType is 'hourly' — the duration the deposit is against. */
+  estimatedHours?: number;
   label: string;
   disabled: boolean;
 }) {
@@ -75,6 +83,9 @@ export function PayholdPayment({
         listingId,
         startDate,
         endDate,
+        pickupTime,
+        rentalType,
+        ...(estimatedHours !== undefined ? { estimatedHours } : {}),
         ...(chargeCountry && chargeCountry !== payerCountry ? { buyerCountry: chargeCountry } : {}),
       });
       setCheckoutBase(base);

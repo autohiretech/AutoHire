@@ -410,6 +410,12 @@ export const supabaseClient = {
     listingId: string;
     startDate: string;
     endDate: string;
+    /** Agreed pickup time-of-day (HH:mm) — what a late return is measured from. */
+    pickupTime: string;
+    /** Priced by the calendar day, or by actual hours used (50% deposit now). */
+    rentalType: 'daily' | 'hourly';
+    /** Required when rentalType is 'hourly' — the duration the deposit is against. */
+    estimatedHours?: number;
     /** What the renter chose on `/cars/:id/pay`. A preference, not an instruction. */
     preferredMethod?: PaymentMethodType;
     /**
@@ -867,6 +873,23 @@ export const supabaseClient = {
     return data as { dealStatus: string };
   },
 
+  /**
+   * Turn the now-complete pickup/return handoff timestamps into what an hourly
+   * rental actually cost, or what a late daily return owes. Only meaningful
+   * once both sides have signed the return — see `payhold-settle-usage`.
+   */
+  async settleBookingUsage(bookingId: string): Promise<{
+    actualHours: number;
+    finalAmountRwf: number | null;
+    amountOwedRwf: number;
+  }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-settle-usage', {
+      body: { bookingId },
+    });
+    if (error) throw await fnError(error);
+    return data as { actualHours: number; finalAmountRwf: number | null; amountOwedRwf: number };
+  },
+
   /** Admin: disburse a scheduled host payout via its provider. */
   async disbursePayout(payoutId: string): Promise<unknown> {
     const { data, error } = await getSupabase().functions.invoke('flutterwave-transfer', {
@@ -913,6 +936,16 @@ export const supabaseClient = {
         supabaseClient.confirmPayholdDeal(booking.id).catch((e) => {
           console.error('confirmPayholdDeal failed', e);
         });
+        // Only meaningful once BOTH sides have signed the return — this is
+        // the one confirmHandoff() call (whichever side happens to be second)
+        // that sees the booking actually reach 'completed'. Best-effort, same
+        // reasoning as confirmPayholdDeal above: it must never block the
+        // handoff itself.
+        if (booking.state === 'completed') {
+          supabaseClient.settleBookingUsage(booking.id).catch((e) => {
+            console.error('settleBookingUsage failed', e);
+          });
+        }
       }
     } else if (booking.state === 'active') {
       // Pre-PayHold rail: trip just started (both sides signed pickup) →
@@ -1019,6 +1052,9 @@ export const supabaseClient = {
         | 'fuel'
         | 'pricePerDayRwf'
         | 'priceCurrency'
+        | 'hourlyBookingEnabled'
+        | 'pricePerHourRwf'
+        | 'overageMultiplier'
         | 'country'
         | 'location'
         | 'city'
@@ -1045,6 +1081,9 @@ export const supabaseClient = {
       fuel: 'fuel',
       pricePerDayRwf: 'price_per_day_rwf',
       priceCurrency: 'price_currency',
+      hourlyBookingEnabled: 'hourly_booking_enabled',
+      pricePerHourRwf: 'price_per_hour_rwf',
+      overageMultiplier: 'overage_multiplier',
       country: 'country',
       location: 'location',
       city: 'city',
@@ -1134,6 +1173,9 @@ export const supabaseClient = {
           fuel: input.fuel,
           price_per_day_rwf: input.pricePerDayRwf,
           price_currency: input.priceCurrency ?? 'RWF',
+          hourly_booking_enabled: input.hourlyBookingEnabled ?? false,
+          price_per_hour_rwf: input.pricePerHourRwf ?? null,
+          overage_multiplier: input.overageMultiplier ?? 2,
           country: input.country ?? 'RW',
           location: input.location,
           city: input.city,

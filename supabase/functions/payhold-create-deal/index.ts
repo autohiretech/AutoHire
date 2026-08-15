@@ -103,7 +103,22 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ error: 'Invalid or expired session.' }, 401);
     const uid = userData.user.id;
 
-    const { listingId, startDate, endDate, preferredMethod, payerRef, buyerCountry } = await req.json();
+    const {
+      listingId,
+      startDate,
+      endDate,
+      preferredMethod,
+      payerRef,
+      buyerCountry,
+      pickupTime,
+      rentalType,
+      estimatedHours,
+    } = await req.json();
+
+    // Daily unless the renter picked hourly — old callers with no rentalType
+    // still get today's behavior exactly.
+    const isHourly = rentalType === 'hourly';
+    const hours = Number(estimatedHours);
 
     // Which market to charge the renter's card as. Defaults to their profile's
     // country below, but a renter paying with a foreign card can name a
@@ -132,6 +147,12 @@ Deno.serve(async (req: Request) => {
     if (new Date(endDate) <= new Date(startDate)) {
       return json({ error: 'Return date must be after pick-up date.' }, 400);
     }
+    if (!/^\d{2}:\d{2}$/.test(String(pickupTime ?? ''))) {
+      return json({ error: 'pickupTime (HH:mm) is required.' }, 400);
+    }
+    if (isHourly && !(Number.isInteger(hours) && hours > 0)) {
+      return json({ error: 'estimatedHours must be a positive whole number.' }, 400);
+    }
 
     // --- Who may rent ------------------------------------------------------
     const { data: renter } = await admin
@@ -152,11 +173,16 @@ Deno.serve(async (req: Request) => {
     // --- What is being rented ----------------------------------------------
     const { data: listing, error: listErr } = await admin
       .from('listings')
-      .select('title, price_per_day_rwf, price_currency, country, host_id, blocked_dates')
+      .select(
+        'title, price_per_day_rwf, price_currency, country, host_id, blocked_dates, hourly_booking_enabled, price_per_hour_rwf, overage_multiplier',
+      )
       .eq('id', listingId)
       .single();
     if (listErr || !listing) return json({ error: 'Listing not found.' }, 404);
     if (listing.host_id === uid) return json({ error: 'You cannot book your own car.' }, 403);
+    if (isHourly && !listing.hourly_booking_enabled) {
+      return json({ error: 'This car is not available for hourly booking.', code: 'hourly_not_enabled' }, 400);
+    }
 
     const blocked = new Set<string>((listing.blocked_dates as string[] | null) ?? []);
     for (let d = new Date(startDate); d < new Date(endDate); d.setDate(d.getDate() + 1)) {
@@ -204,7 +230,16 @@ Deno.serve(async (req: Request) => {
 
     // --- The money ----------------------------------------------------------
     const days = diffDays(startDate, endDate);
-    const subtotal = (listing.price_per_day_rwf as number) * days;
+    const pricePerHour = Number(listing.price_per_hour_rwf ?? 0);
+    const overageRate = Math.round(pricePerHour * Number(listing.overage_multiplier ?? 2));
+
+    // For an hourly booking, `subtotal`/`total` are what THIS deal funds — the
+    // 50% deposit — not the estimated full cost. The rest is settled after the
+    // trip against actual pickup-to-return time (payhold-settle-usage), never
+    // charged through this deal: PayHold has no way to add money to a deal
+    // already funded.
+    const estimatedTotal = isHourly ? hours * pricePerHour : (listing.price_per_day_rwf as number) * days;
+    const subtotal = isHourly ? Math.round(estimatedTotal / 2) : estimatedTotal;
     const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
     const total = subtotal + serviceFee;
 
@@ -216,7 +251,9 @@ Deno.serve(async (req: Request) => {
     const { deal, payment_link } = await createDeal({
       buyerRef: uid,
       sellerId,
-      description: `AutoHire — ${listing.title} (${days} day${days === 1 ? '' : 's'})`,
+      description: isHourly
+        ? `AutoHire — ${listing.title} (${hours}hr estimate, 50% deposit)`
+        : `AutoHire — ${listing.title} (${days} day${days === 1 ? '' : 's'})`,
       amount: toMinorUnits(total, currency),
       currency,
       // The renter's own country, not the car's market — unless they picked a
@@ -245,6 +282,19 @@ Deno.serve(async (req: Request) => {
         serviceFee: String(serviceFee),
         total: String(total),
         currency,
+        rentalType: isHourly ? 'hourly' : 'daily',
+        pickupTime: String(pickupTime),
+        // Today, "the agreed return time" is the same time-of-day as pickup —
+        // back by this time on endDate. Settlement reads it for the daily
+        // 2-hour-late overage check; an hourly booking is settled on actual
+        // time used and doesn't consult it.
+        expectedReturnTime: String(pickupTime),
+        // Snapshots of the listing's own rates at booking time — immutable
+        // once written, same reasoning as subtotal/serviceFee/total above.
+        pricePerHourRwf: String(pricePerHour),
+        overageRateRwf: String(overageRate),
+        depositAmount: String(subtotal),
+        ...(isHourly ? { estimatedHours: String(hours) } : {}),
       },
     });
 

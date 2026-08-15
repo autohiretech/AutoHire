@@ -264,11 +264,34 @@ export function TripDetailPage() {
               <h2 className="font-semibold text-ink-900">Price details</h2>
             </CardHeader>
             <CardBody className="space-y-2 text-sm">
-              <Row label={`${formatRwf(listing?.pricePerDayRwf ?? 0)} × ${booking.days} days`} value={formatRwf(booking.subtotalRwf)} />
+              {booking.rentalType === 'hourly' ? (
+                <Row
+                  label={`${formatRwf(booking.pricePerHourRwf ?? 0)} × ${booking.estimatedHours ?? '?'} hrs (estimate)`}
+                  value={formatRwf(booking.subtotalRwf)}
+                />
+              ) : (
+                <Row label={`${formatRwf(listing?.pricePerDayRwf ?? 0)} × ${booking.days} days`} value={formatRwf(booking.subtotalRwf)} />
+              )}
               <Row label="Service fee" value={formatRwf(booking.serviceFeeRwf)} />
               <div className="border-t border-ink-100 pt-2">
-                <Row label="Total" value={formatRwf(booking.totalRwf)} strong />
+                <Row label={booking.rentalType === 'hourly' ? 'Deposit paid' : 'Total'} value={formatRwf(booking.totalRwf)} strong />
               </div>
+              {booking.rentalType === 'hourly' && booking.actualHours != null && (
+                <div className="border-t border-ink-100 pt-2">
+                  <Row
+                    label={`Actual usage — ${booking.actualHours} hr${booking.actualHours === 1 ? '' : 's'}`}
+                    value={formatRwf(booking.finalAmountRwf ?? 0)}
+                  />
+                </div>
+              )}
+              {booking.amountOwedRwf > 0 && (
+                <div className="mt-1 rounded-lg bg-amber-50 p-2.5 text-[13px] leading-relaxed text-amber-800">
+                  {booking.rentalType === 'hourly'
+                    ? `Actual time used came to ${formatRwf(booking.amountOwedRwf)} more than the deposit.`
+                    : `Returned more than 2 hours late — ${formatRwf(booking.amountOwedRwf)} owed for the extra time.`}{' '}
+                  This isn't charged automatically — the host follows up directly.
+                </div>
+              )}
             </CardBody>
           </Card>
 

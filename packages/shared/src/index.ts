@@ -285,6 +285,20 @@ export interface Listing {
   pricePerDayRwf: number;
   /** ISO 4217 currency the car is priced + charged in. Defaults to 'RWF'. */
   priceCurrency: string;
+  /** Host opt-in: can this car be booked by the hour instead of by the day? */
+  hourlyBookingEnabled: boolean;
+  /**
+   * The host's own per-hour rate. Suggested in the listing form as
+   * pricePerDayRwf / 24, but stored explicitly and host-editable. Required
+   * when hourlyBookingEnabled is true; also the base for the overage rate.
+   */
+  pricePerHourRwf: number | null;
+  /**
+   * Late-return overage is billed at pricePerHourRwf × overageMultiplier —
+   * "the host will choose the rate if it is price of hour times 2". Set once,
+   * at listing time. Defaults to 2.
+   */
+  overageMultiplier: number;
   /** ISO 3166-1 alpha-2 market this car belongs to, e.g. 'RW', 'KE', 'AE'. */
   country: string;
   location: string; // e.g. "Kimihurura, Kigali"
@@ -320,6 +334,9 @@ export type TripState =
   | 'cancelled'
   | 'declined';
 
+/** Whether a booking was priced by the calendar day or by actual hours used. */
+export type BookingRentalType = 'daily' | 'hourly';
+
 export interface CheckPhoto {
   url: string;
   label: string; // e.g. "Front", "Odometer"
@@ -339,6 +356,32 @@ export interface Booking {
   subtotalRwf: number;
   serviceFeeRwf: number;
   totalRwf: number;
+  /** Priced by the calendar day (existing behavior) or by actual hours used. */
+  rentalType: BookingRentalType;
+  /** Agreed pickup time-of-day. Naive — no timezone, same as start/end dates. */
+  pickupTime?: string | null;
+  /**
+   * The agreed return time-of-day. For a daily booking this is what the
+   * 2-hour late-return grace is measured against; for an hourly booking it is
+   * pickupTime + estimatedHours, fixed at booking creation.
+   */
+  expectedReturnTime?: string | null;
+  /** Hourly bookings only — the duration the renter chose at booking time. */
+  estimatedHours?: number | null;
+  /** Snapshot of the listing's rate(s) at booking time — immutable after. */
+  pricePerHourRwf?: number | null;
+  overageRateRwf?: number | null;
+  /** What was actually funded up front — 50% of the estimate for hourly, totalRwf for daily. */
+  depositAmountRwf?: number | null;
+  /** Written once, by settlement, when the trip reaches 'completed'. */
+  actualHours?: number | null;
+  finalAmountRwf?: number | null;
+  /**
+   * More was owed than was collected — a late daily return past its 2-hour
+   * grace, or hourly usage beyond the deposit. Never collected automatically;
+   * shown on the trip and earnings screens for the host to chase.
+   */
+  amountOwedRwf: number;
   /** Payment state, owned server-side. A booking only exists once it is 'paid'. */
   paymentStatus: PaymentStatus;
   /** Rail that collected this booking — routed from the car's market. */
@@ -590,6 +633,15 @@ export interface EarningTrip {
   paidAt: string | null;
   holdReason: string | null;
   payoutStatus: string | null;
+  rentalType: BookingRentalType;
+  /**
+   * AutoHire's own figure, in WHOLE units of `currency` — unlike gross/net/etc
+   * above, this never came from PayHold and is never converted through
+   * toMinorUnits/fromMinorUnits. More was owed than was collected (hourly
+   * usage past the deposit, or a late daily return); never charged
+   * automatically, only shown.
+   */
+  amountOwedRwf: number;
 }
 
 /** A place a host's money can be sent. */
