@@ -99,14 +99,16 @@ export function DateRangeCalendar({
     onChange({ start, end: day });
   }
 
+  const todayIso = iso(new Date());
+
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
+    <div className="rounded-2xl border border-ink-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
           onClick={() => canGoBack && setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
           disabled={!canGoBack}
-          className="rounded-full p-1.5 text-ink-600 hover:bg-ink-100 disabled:opacity-30"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 text-ink-700 transition-colors hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Previous month"
         >
           <ChevronLeft size={18} />
@@ -114,60 +116,80 @@ export function DateRangeCalendar({
         <button
           type="button"
           onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
-          className="rounded-full p-1.5 text-ink-600 hover:bg-ink-100"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 text-ink-700 transition-colors hover:bg-ink-100"
           aria-label="Next month"
         >
           <ChevronRight size={18} />
         </button>
       </div>
 
-      <div className={cn('grid gap-x-8 gap-y-4', months > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
+      <div className={cn('grid gap-x-8 gap-y-5', months > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
         {Array.from({ length: months }).map((_, m) => {
           const month = new Date(cursor.getFullYear(), cursor.getMonth() + m, 1);
           const cells = monthCells(month.getFullYear(), month.getMonth());
           return (
             <div key={m} className={cn(m > 0 && 'hidden sm:block')}>
-              <p className="mb-2 text-center text-sm font-semibold text-ink-900">
+              <p className="mb-2.5 text-center text-sm font-semibold text-ink-900">
                 {MONTH_NAMES[month.getMonth()]} {month.getFullYear()}
               </p>
-              <div className="grid grid-cols-7 text-center text-[11px] font-medium text-ink-400">
+              <div className="grid grid-cols-7 border-b border-ink-100 pb-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-ink-500">
                 {DAY_LABELS.map((d, i) => (
                   <span key={i} className="py-1">
                     {d}
                   </span>
                 ))}
               </div>
-              <div className="grid grid-cols-7">
+              <div className="mt-1 grid grid-cols-7 gap-y-1">
                 {cells.map((day, i) => {
                   if (!day) return <span key={i} />;
                   const disabled = day < minDate || isUnavailable(day);
+                  const isToday = day === todayIso;
                   const isStart = day === value.start;
                   const isEnd = day === value.end;
                   const inRange =
                     value.start && value.end && day > value.start && day < value.end;
                   const selectedEdge = isStart || isEnd;
                   return (
-                    <button
-                      key={i}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => pick(day)}
-                      className={cn(
-                        'aspect-square text-sm transition-colors',
-                        disabled && 'cursor-not-allowed text-ink-300 line-through',
-                        !disabled && !selectedEdge && !inRange && 'text-ink-800 hover:bg-ink-100 rounded-full',
-                        inRange && 'bg-brand-50 text-brand-700',
-                        selectedEdge && 'bg-brand-600 font-semibold text-white rounded-full',
-                      )}
-                    >
-                      {Number(day.slice(8))}
-                    </button>
+                    <div key={i} className="flex items-center justify-center py-0.5">
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => pick(day)}
+                        title={disabled ? 'Not available' : undefined}
+                        className={cn(
+                          'relative flex h-9 w-9 items-center justify-center text-sm font-medium transition-colors sm:h-10 sm:w-10',
+                          !inRange && 'rounded-full',
+                          disabled && 'cursor-not-allowed bg-ink-100 text-ink-400 line-through',
+                          !disabled &&
+                            !selectedEdge &&
+                            !inRange &&
+                            'text-ink-800 hover:bg-brand-50 hover:text-brand-700',
+                          inRange && 'bg-brand-50 text-brand-700',
+                          selectedEdge && 'bg-brand-600 font-semibold text-white shadow-sm',
+                          isToday && !selectedEdge && 'ring-1 ring-inset ring-brand-400',
+                        )}
+                      >
+                        {Number(day.slice(8))}
+                      </button>
+                    </div>
                   );
                 })}
               </div>
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-ink-100 pt-3 text-xs text-ink-500">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-brand-600" /> {single ? 'Selected' : 'Selected dates'}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full ring-1 ring-inset ring-brand-400" /> Today
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-ink-100 ring-1 ring-inset ring-ink-300" /> Unavailable
+        </span>
       </div>
     </div>
   );
