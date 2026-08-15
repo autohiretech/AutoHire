@@ -448,14 +448,20 @@ Everything hangs off this one variable: the reconnect banner, the payout-setup
 form's registration call, the booking page's checkout, and the earnings link.
 Deployed functions and set secrets are not enough on their own.
 
-**This is the moment every unregistered host's cars become unbookable.** That is
-`payhold-create-deal` refusing to take a renter's money for a trip that cannot
-be settled — correct behaviour, and it will still look like an outage if nobody
-was warned. Flip it at a quiet hour, and tell hosts the day before.
+**This used to be the moment every unregistered host's cars became
+unbookable** — `payhold-create-deal` refusing to take a renter's money for a
+trip that could not be settled, correct behaviour at the time but one that
+looked like an outage if nobody was warned. `payhold-ensure-seller` and
+`payhold-create-deal`'s own inline repair have since closed that: a host with
+no `payhold_seller_id` is registered as a destination-less PayHold seller on
+the spot, at role-toggle time or at booking time, whichever comes first, and
+their cars stay bookable throughout. Flip the flag at a quiet hour regardless —
+this only removes the booking-side risk, not the reason to watch the rollout.
 
 ### 9. Every host re-registers as a seller
 
-**This cannot be automated, and it is not a coding problem.**
+**Getting *paid out* cannot be automated, and it is not a coding problem** —
+becoming bookable again no longer waits on it, see the note above.
 
 `POST /v1/sellers` needs the RAW MoMo or bank number so it can tokenize it.
 AutoHire only ever stored a mask (`••••4242`) — so there is nothing to migrate.
@@ -469,15 +475,18 @@ separate from `SetupChecklist` on purpose — that hides itself once every step 
 done, so a host who onboarded months ago, exactly the host this affects, would
 never have seen it.
 
-Until a host has a `payhold_seller_id`, `payhold-create-deal` refuses to open a
-deal for their cars: better an unbookable listing than a renter's money taken
-for a trip that cannot be settled.
+A host with no `payhold_seller_id` no longer makes their cars unbookable —
+`payhold-create-deal` repairs the link itself, registering a destination-less
+seller on the spot rather than refusing the renter. What actually needs a host
+to act is *payouts*: a destination-less seller can hold money but cannot be
+paid, so a host who has not reconnected earns into a wallet PayHold cannot yet
+send anywhere.
 
 This is why step 7 exists and why it is a curl. An earlier version of this
 runbook said to flip the flag only *after* a host had reconnected — which no
 host could do, because the banner and the registration call are both behind that
 same flag. There is no order of steps 8 and 9 that avoids a window where
-unregistered hosts are unbookable. Shorten the window; you cannot remove it.
+unregistered hosts cannot be paid out. Shorten the window; you cannot remove it.
 
 Watch it close: every host who reconnects appears in PayHold's dashboard →
 **Sellers**, and in AutoHire as a non-null `profiles.payhold_seller_id`.
@@ -813,12 +822,17 @@ screen a payable host cannot use.
   succeeded, plus reads. Deals, webhooks, confirmations, payouts, disputes and
   refunds have still never run against a real endpoint. Expect each first run to
   find something, the way seller registration did.
-- **Hosts registered before PayHold must re-enter their payout destination.**
-  AutoHire only ever stored a mask, and tokenizing `••••4242` would produce a
-  destination that cannot receive money. `payhold-create-deal` refuses to open a
-  deal for a host with no `payhold_seller_id` rather than take a renter's money
-  for a trip that cannot be settled. `ReconnectPayouts` now prompts them on the
-  dashboard (see step 9), but their cars stay unbookable until they act.
+- **Hosts registered before PayHold must still re-enter their payout
+  destination to actually get paid out.** AutoHire only ever stored a mask, and
+  tokenizing `••••4242` would produce a destination that cannot receive money —
+  `ReconnectPayouts` prompts them on the dashboard (see step 9) for that.
+  **Their cars are not unbookable for it, though.** `payhold-ensure-seller`
+  registers a destination-less seller the moment a profile becomes a host, and
+  `payhold-create-deal` now repairs a missing `payhold_seller_id` inline at
+  booking time the same way — so a renter is only ever refused if PayHold
+  itself cannot be reached, never because a real host hasn't finished payout
+  setup. This used to read "cars stay unbookable until they act"; that was true
+  before `payhold-ensure-seller` existed and is not any more.
 - **Instant-book confirmations are auto-wired; the trip-UI button is not.**
   `payhold-confirm` still has no UI button, but `payhold-webhook` now
   auto-confirms **both** sides for `booking_mode = 'instant'` the moment

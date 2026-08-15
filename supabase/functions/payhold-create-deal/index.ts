@@ -17,10 +17,13 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   createCheckoutSession,
   createDeal,
+  createSeller,
   DAILY_OVERAGE_GRACE_HOURS,
+  findSellerByExternalUserId,
   payholdConfigured,
   sessionToken,
   toMinorUnits,
+  type Seller,
 } from '../_shared/payhold.ts';
 
 const cors = {
@@ -218,29 +221,72 @@ Deno.serve(async (req: Request) => {
     // --- Who gets paid ------------------------------------------------------
     //
     // A deal names a seller, so the host must exist in PayHold before their car
-    // can be paid for. They are registered when they set up payouts
-    // (`payhold-register-seller`), which is the only moment the raw destination
-    // exists — AutoHire stores only a mask (••••4242), and tokenizing a mask
-    // would produce a destination that cannot receive money.
+    // can be paid for. That used to mean payouts had to be set up first — the
+    // only door was `payhold-register-seller`, which requires a destination —
+    // so a renter booking a host who had not reached payout setup was refused
+    // outright with a message blaming missing payout methods. As of PayHold's
+    // `20260814000001`, that is no longer true: `POST /v1/sellers` accepts a
+    // bare `{ name, external_user_id }`, money can accrue against a seller with
+    // no payout destination at all, and every host is registered that way the
+    // moment they toggle to `role: 'owner'` — see `payhold-ensure-seller`.
     //
-    // So this cannot self-heal, and refusing is right: taking the renter's
-    // money for a trip whose host has nowhere to be paid would leave us holding
-    // funds we cannot settle.
+    // So by the time a renter reaches checkout, `payhold_seller_id` is normally
+    // already there. A miss here is not "this host hasn't finished setting up
+    // payouts" — it means the *link* is missing (an interrupted toggle, a
+    // profile restored from a backup, an account older than
+    // `payhold-ensure-seller`), and that is exactly what `payhold-ensure-seller`
+    // repairs. So it is repaired here too, inline, rather than turning a fact
+    // about our own bookkeeping into a renter-facing refusal that blames the
+    // host for something they did nothing wrong to cause. The booking only
+    // fails now if PayHold itself cannot be reached to do that repair.
     const { data: host } = await admin
       .from('profiles')
-      .select('id, payhold_seller_id, payout_status')
+      .select('id, full_name, business_name, payhold_seller_id')
       .eq('id', listing.host_id)
       .single();
 
-    const sellerId = host?.payhold_seller_id as string | null;
+    let sellerId = host?.payhold_seller_id as string | null;
     if (!sellerId) {
-      return json(
-        {
-          error: 'This car is not available for booking yet — the host has not finished setting up payouts.',
-          code: 'host_payout_missing',
-        },
-        409,
-      );
+      try {
+        const existing = await findSellerByExternalUserId(listing.host_id).catch(() => null);
+        let seller: Seller;
+        if (existing) {
+          seller = existing;
+        } else {
+          try {
+            ({ seller } = await createSeller({
+              name: (host?.business_name as string | null) ?? (host?.full_name as string) ??
+                'AutoHire host',
+              // No country, no payoutProvider, no destination — this mirrors
+              // `payhold-ensure-seller` exactly: none of that exists yet, and
+              // `payhold-register-seller` is still the only place a raw payout
+              // number is ever typed.
+              externalUserId: listing.host_id,
+            }));
+          } catch (e) {
+            // Two renters racing to book the same never-linked host both reach
+            // the create; PayHold refuses the second on its unique handle.
+            // Re-ask rather than treating that as a real failure.
+            if ((e as { code?: string }).code === 'policy_violation') {
+              const raced = await findSellerByExternalUserId(listing.host_id);
+              if (!raced) throw e;
+              seller = raced;
+            } else {
+              throw e;
+            }
+          }
+        }
+        sellerId = seller.id;
+        await admin.from('profiles').update({ payhold_seller_id: sellerId }).eq('id', listing.host_id);
+      } catch {
+        return json(
+          {
+            error: 'This car is not available for booking right now — please try again in a moment.',
+            code: 'host_registration_unavailable',
+          },
+          409,
+        );
+      }
     }
 
     // --- The money ----------------------------------------------------------
