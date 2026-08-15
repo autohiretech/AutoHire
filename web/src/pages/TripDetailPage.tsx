@@ -13,7 +13,7 @@ import { CameraCapture } from '@/components/CameraCapture';
 import { Img } from '@/components/Img';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
-import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, CardHeader, Rating, Spinner, toast } from '@/components/ui';
 
 export function TripDetailPage() {
   const { id = '' } = useParams();
@@ -41,10 +41,22 @@ export function TripDetailPage() {
   const queryClient = useQueryClient();
   const cancelMutation = useMutation({
     mutationFn: () => client.cancelBooking(booking!.id),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // A PayHold refund isn't instant — the booking's own state only moves
+      // to `cancelled` once the `refund.succeeded` webhook lands, so a
+      // pending result is not the same thing as "nothing happened here" and
+      // gets said as such rather than looking identical to a no-op.
+      toast.success(
+        result.pending
+          ? (result.message ?? "Refund on its way — this trip updates once it lands.")
+          : 'Booking cancelled.',
+      );
       queryClient.invalidateQueries({ queryKey: ['booking', booking!.id] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Could not cancel this booking.');
     },
   });
 

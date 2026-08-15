@@ -944,9 +944,31 @@ export const supabaseClient = {
     const row = await run(sb().from('bookings').update(patch).eq('id', id).select('*').maybeSingle());
     return mapRow<Booking>(row);
   },
-  /** Cancel a booking and refund it (host: confirmed/pickup; renter: requested/confirmed). */
-  async cancelBooking(id: string): Promise<Booking> {
-    const row = await run(
+  /**
+   * Cancel a booking and refund it (host: confirmed/pickup; renter:
+   * requested/confirmed). Under PayHold, refunding is not instant: this sends
+   * the refund to PayHold and the booking's own state moves to `cancelled`
+   * once the `refund.succeeded` webhook confirms the money actually landed —
+   * `pending: true` means exactly that, not a failure.
+   */
+  async cancelBooking(id: string): Promise<{ cancelled: boolean; pending: boolean; message?: string }> {
+    if (PAYMENTS_PAYHOLD) {
+      const { data, error } = await getSupabase().functions.invoke('payhold-cancel-booking', {
+        body: { bookingId: id },
+      });
+      if (error) throw await fnError(error);
+      const payload = data as {
+        cancelled?: boolean;
+        pending?: boolean;
+        message?: string;
+        error?: string;
+      };
+      if (payload?.error) throw new Error(payload.error);
+      return { cancelled: !!payload.cancelled, pending: !!payload.pending, message: payload.message };
+    }
+    // Pre-PayHold rail: no unified refund call exists here, so this keeps the
+    // direct write it always did.
+    await run(
       sb()
         .from('bookings')
         .update({ state: 'cancelled', payment_status: 'refunded' })
@@ -954,7 +976,7 @@ export const supabaseClient = {
         .select('*')
         .single(),
     );
-    return mapRow<Booking>(row) as Booking;
+    return { cancelled: true, pending: false };
   },
   /** A single profile by id (renter or host). */
   async getProfile(id: string): Promise<(UserProfile & Partial<Host>) | undefined> {
