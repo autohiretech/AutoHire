@@ -239,7 +239,7 @@ export function CarDetailPage() {
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-6 pb-28 lg:pb-6">
+    <section className="mx-auto max-w-7xl px-4 py-5 pb-28 lg:pb-5">
       <button
         type="button"
         onClick={backToBrowse}
@@ -281,13 +281,13 @@ export function CarDetailPage() {
       {/* Photo gallery — big hero + thumbnail mosaic (BaT style) */}
       <PhotoGallery photos={photos} title={listing.title} onOpen={(i) => setLightbox(i)} />
 
-      <div className="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_360px]">
+      <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
         {/* Left: content */}
         <div className="min-w-0">
           {isOwner && <OwnerRequests listingId={listing.id} />}
 
           {/* Overview + host */}
-          <div className="flex items-start justify-between gap-4 pb-6">
+          <div className="flex items-start justify-between gap-4 pb-5">
             <div>
               <h2 className="text-lg font-semibold text-ink-900">
                 Hosted by {host ? host.businessName ?? host.fullName : '…'}
@@ -303,7 +303,7 @@ export function CarDetailPage() {
 
           {/* Highlights */}
           {highlights.length > 0 && (
-            <ul className="space-y-4 border-t border-ink-200 py-6">
+            <ul className="space-y-4 border-t border-ink-200 py-5">
               {highlights.map((h) => (
                 <li key={h.title} className="flex items-start gap-4">
                   <h.icon size={22} className="mt-0.5 shrink-0 text-ink-700" />
@@ -317,7 +317,7 @@ export function CarDetailPage() {
           )}
 
           {/* Specs */}
-          <div className="grid grid-cols-2 gap-4 border-t border-ink-200 py-6 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 border-t border-ink-200 py-5 sm:grid-cols-4">
             <Spec icon={Users} label="Seats" value={`${listing.seats}`} />
             <Spec icon={Cog} label="Transmission" value={listing.transmission} />
             <Spec icon={Fuel} label="Fuel" value={listing.fuel} />
@@ -326,7 +326,7 @@ export function CarDetailPage() {
 
           {/* What this car offers */}
           {listing.features.length > 0 && (
-            <div className="border-t border-ink-200 py-6">
+            <div className="border-t border-ink-200 py-5">
               <h2 className="mb-4 text-lg font-semibold text-ink-900">
                 What this {isMachine(listing.category) ? 'machine' : 'car'} offers
               </h2>
@@ -345,7 +345,7 @@ export function CarDetailPage() {
 
           {/* Pickup location */}
           {(listing.lat != null && listing.lng != null) || listing.locationUrl ? (
-            <div className="border-t border-ink-200 py-6">
+            <div className="border-t border-ink-200 py-5">
               <h2 className="mb-3 text-lg font-semibold text-ink-900">Where you'll pick it up</h2>
               <p className="mb-3 flex items-center gap-1.5 text-sm text-ink-600">
                 <MapPin size={15} className="text-brand-600" /> {listing.location}
@@ -361,7 +361,7 @@ export function CarDetailPage() {
 
           {/* Meet your host */}
           {host && (
-            <div className="border-t border-ink-200 py-6">
+            <div className="border-t border-ink-200 py-5">
               <h2 className="mb-4 text-lg font-semibold text-ink-900">Meet your host</h2>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-[260px_1fr]">
                 {/* Host profile card */}
@@ -449,7 +449,7 @@ export function CarDetailPage() {
           )}
 
           {/* Reviews */}
-          <div className="border-t border-ink-200 py-6">
+          <div className="border-t border-ink-200 py-5">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-ink-900">
               {listing.ratingCount ? (
                 <>
@@ -481,7 +481,7 @@ export function CarDetailPage() {
 
           {/* Choose when — a single pickup day + hours for an hourly car, a
               date range for a daily one. Never both. */}
-          <div ref={calendarRef} className="border-t border-ink-200 py-6">
+          <div ref={calendarRef} className="border-t border-ink-200 py-5">
             {isHourlyListing ? (
               <>
                 <h2 className="text-lg font-semibold text-ink-900">
@@ -724,7 +724,7 @@ export function CarDetailPage() {
       </div>
 
       {/* Continue browsing — jump back to the list without losing your place. */}
-      <div className="mt-8 flex flex-col items-center gap-2 border-t border-ink-100 pt-6 text-center">
+      <div className="mt-6 flex flex-col items-center gap-2 border-t border-ink-100 pt-5 text-center">
         <p className="text-sm text-ink-500">Not the one? Keep looking.</p>
         <button
           type="button"
@@ -825,7 +825,7 @@ function PhotoGallery({
       {/* Desktop — hero + thumbnail mosaic */}
       <div
         className={cn(
-          'hidden gap-2 sm:grid sm:h-[340px] lg:h-[460px]',
+          'hidden gap-2 sm:grid sm:h-[300px] lg:h-[400px]',
           rich ? 'grid-cols-4 grid-rows-2' : 'grid-cols-3 grid-rows-2',
         )}
       >
