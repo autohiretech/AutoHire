@@ -165,7 +165,7 @@ Deno.serve(async (req: Request) => {
     const { data: bookings } = await admin
       .from('bookings')
       .select(
-        'id, listing_id, start_date, end_date, days, state, total_rwf, charge_currency, payhold_deal_id, created_at, rental_type, amount_owed_rwf',
+        'id, listing_id, start_date, end_date, days, state, total_rwf, charge_currency, payhold_deal_id, created_at, rental_type, amount_owed_rwf, amount_exceeded_rwf',
       )
       .eq('host_id', uid)
       .not('payhold_deal_id', 'is', null)
@@ -253,6 +253,7 @@ Deno.serve(async (req: Request) => {
         // toMinorUnits, never PayHold's. See EarningTrip's comment.
         rentalType: (b.rental_type as string) === 'hourly' ? 'hourly' : 'daily',
         amountOwedRwf: (b.amount_owed_rwf as number | null) ?? 0,
+        amountExceededRwf: (b.amount_exceeded_rwf as number | null) ?? null,
       };
     });
 

@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
     const { data: booking } = await admin
       .from('bookings')
       .select(
-        'id, renter_id, host_id, state, rental_type, end_date, expected_return_time, price_per_hour_rwf, overage_rate_rwf, deposit_amount_rwf, total_rwf, charge_currency, payhold_deal_id, actual_hours, final_amount_rwf, amount_owed_rwf, pickup_renter_at, pickup_host_at, return_renter_at, return_host_at',
+        'id, renter_id, host_id, state, rental_type, end_date, expected_return_time, price_per_hour_rwf, overage_rate_rwf, deposit_amount_rwf, total_rwf, charge_currency, payhold_deal_id, actual_hours, final_amount_rwf, amount_owed_rwf, amount_exceeded_rwf, pickup_renter_at, pickup_host_at, return_renter_at, return_host_at',
       )
       .eq('id', bookingId)
       .maybeSingle();
@@ -93,6 +93,7 @@ Deno.serve(async (req: Request) => {
           actualHours: booking.actual_hours,
           finalAmountRwf: booking.final_amount_rwf,
           amountOwedRwf: booking.amount_owed_rwf,
+          amountExceededRwf: booking.amount_exceeded_rwf,
           alreadySettled: true,
         },
         200,
@@ -161,10 +162,17 @@ Deno.serve(async (req: Request) => {
         actual_hours: actualHours,
         final_amount_rwf: finalAmount,
         amount_owed_rwf: amountOwed,
+        // Fixed from this moment on — amount_owed_rwf is host-adjustable
+        // afterward (migration 055), this isn't. "Exceeded by" and "still to
+        // pay" are two different questions once a host starts resolving it.
+        amount_exceeded_rwf: amountOwed,
       })
       .eq('id', bookingId);
 
-    return json({ actualHours, finalAmountRwf: finalAmount, amountOwedRwf: amountOwed, refundedRwf: refunded }, 200);
+    return json(
+      { actualHours, finalAmountRwf: finalAmount, amountOwedRwf: amountOwed, amountExceededRwf: amountOwed, refundedRwf: refunded },
+      200,
+    );
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
     return json({ error: e instanceof Error ? e.message : String(e) }, status);

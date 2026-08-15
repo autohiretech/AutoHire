@@ -381,11 +381,20 @@ export interface Booking {
   actualHours?: number | null;
   finalAmountRwf?: number | null;
   /**
-   * More was owed than was collected — a late daily return past its 2-hour
-   * grace, or hourly usage beyond the deposit. Never collected automatically;
-   * shown on the trip and earnings screens for the host to chase.
+   * Still outstanding right now — a late daily return past its 2-hour grace,
+   * or hourly usage beyond the deposit. Never collected automatically; the
+   * host can lower this (mark it collected, or waive part of it) without it
+   * ever going through PayHold, which is why it can drift below
+   * amountExceededRwf.
    */
   amountOwedRwf: number;
+  /**
+   * The original amount it exceeded by, fixed once settlement computes it —
+   * unlike amountOwedRwf, this never changes afterward, so "how much did
+   * this exceed by" survives even after a host has resolved some or all of
+   * it. Null until the trip is settled.
+   */
+  amountExceededRwf?: number | null;
   /** Payment state, owned server-side. A booking only exists once it is 'paid'. */
   paymentStatus: PaymentStatus;
   /** Rail that collected this booking — routed from the car's market. */
@@ -643,9 +652,12 @@ export interface EarningTrip {
    * above, this never came from PayHold and is never converted through
    * toMinorUnits/fromMinorUnits. More was owed than was collected (hourly
    * usage past the deposit, or a late daily return); never charged
-   * automatically, only shown.
+   * automatically, only shown. Host-adjustable (lower only) — see
+   * amountExceededRwf for the fixed original figure.
    */
   amountOwedRwf: number;
+  /** The fixed original overage, before any host adjustment. Null if unsettled. */
+  amountExceededRwf: number | null;
 }
 
 /** A place a host's money can be sent. */

@@ -579,9 +579,12 @@ function TripRow({ trip }: { trip: EarningTrip }) {
         {trip.amountOwedRwf > 0 && (
           <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
             <ShieldAlert size={13} className="mt-0.5 shrink-0" />
-            {formatMoney(trip.amountOwedRwf, trip.currency)} extra owed
-            {trip.rentalType === 'hourly' ? ' for time beyond the deposit' : ' for a late return'} —
-            follow up with the renter directly.
+            {formatMoney(trip.amountOwedRwf, trip.currency)} still to pay
+            {trip.rentalType === 'hourly' ? ' for time beyond the deposit' : ' for a late return'}
+            {!!trip.amountExceededRwf &&
+              trip.amountExceededRwf > trip.amountOwedRwf &&
+              ` (exceeded by ${formatMoney(trip.amountExceededRwf, trip.currency)} — you've already reduced this)`}
+            . Open the trip to mark it collected or reduce it further.
           </p>
         )}
 

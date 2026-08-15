@@ -289,13 +289,21 @@ export function TripDetailPage() {
                   />
                 </div>
               )}
-              {booking.amountOwedRwf > 0 && (
-                <div className="mt-1 rounded-lg bg-amber-50 p-2.5 text-[13px] leading-relaxed text-amber-800">
-                  {booking.rentalType === 'hourly'
-                    ? `Actual time used came to ${formatRwf(booking.amountOwedRwf)} more than the deposit.`
-                    : `Returned more than 2 hours late — ${formatRwf(booking.amountOwedRwf)} owed for the extra time.`}{' '}
-                  This isn't charged automatically — the host follows up directly.
-                  {amHost && <AmountOwedResolver booking={booking} />}
+              {!!booking.amountExceededRwf && booking.amountExceededRwf > 0 && (
+                <div className="mt-1 space-y-1.5 rounded-lg bg-amber-50 p-2.5 text-[13px] leading-relaxed text-amber-800">
+                  <p>
+                    {booking.rentalType === 'hourly'
+                      ? 'Actual time used came in over the deposit.'
+                      : 'Returned more than 2 hours late.'}{' '}
+                    This isn't charged automatically — the host follows up directly.
+                  </p>
+                  <Row label="Exceeded by" value={formatRwf(booking.amountExceededRwf)} />
+                  <Row
+                    label="Still to pay"
+                    value={booking.amountOwedRwf > 0 ? formatRwf(booking.amountOwedRwf) : 'Resolved'}
+                    strong={booking.amountOwedRwf === 0}
+                  />
+                  {amHost && booking.amountOwedRwf > 0 && <AmountOwedResolver booking={booking} />}
                 </div>
               )}
             </CardBody>
