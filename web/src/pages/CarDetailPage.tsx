@@ -483,6 +483,15 @@ export function CarDetailPage() {
                 </span>
                 <span className="text-ink-500">/ day</span>
               </div>
+              {listing.hourlyBookingEnabled && listing.pricePerHourRwf != null && (
+                <p className="-mt-2.5 text-sm text-ink-500">
+                  or{' '}
+                  <span className="font-medium text-ink-900">
+                    <Price amount={listing.pricePerHourRwf} currency={listing.priceCurrency} />
+                  </span>{' '}
+                  / hour — pick "By hour" at checkout
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
                 {listing.status === 'maintenance' && (
                   <Badge tone="warning">

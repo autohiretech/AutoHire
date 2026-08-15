@@ -41,11 +41,12 @@ export function ListingCard({ listing }: { listing: Listing }) {
           <p className="mt-0.5 text-xs text-ink-400 capitalize">
             {listing.category} · {listing.transmission} · {listing.seats} seats
           </p>
-          <div className="mt-3 flex items-center">
+          <div className="mt-3 flex items-center gap-2">
             <span className="font-semibold text-ink-900">
               <Price amount={listing.pricePerDayRwf} currency={listing.priceCurrency} />
               <span className="font-normal text-ink-500"> / day</span>
             </span>
+            {listing.hourlyBookingEnabled && <Badge tone="brand">By the hour, too</Badge>}
           </div>
         </CardBody>
       </Card>
