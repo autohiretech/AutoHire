@@ -17,7 +17,7 @@ import {
   Wallet,
   XCircle,
 } from 'lucide-react';
-import type { EarningStage, EarningTrip } from '@autohire/shared';
+import type { EarningStage, EarningTrip, PayholdBalance } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatMoney, formatMoneyMinor } from '@/lib/currency';
@@ -220,25 +220,70 @@ export function EarningsPage() {
   const withdrawableForCurrency = withdrawable.find((d) => d.currency === currency) ?? null;
 
   return (
-    <section className="mx-auto max-w-3xl px-4 py-8">
+    <section className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="mb-5 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
       >
         <ArrowLeft size={16} /> Back
       </button>
 
-      <div className="flex items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
-          <Wallet size={22} />
-        </span>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Earnings</h1>
-          <p className="mt-0.5 text-sm text-ink-500">
-            Every trip's money, where it is, and when it reaches you.
-          </p>
+      {/* Hero — the same gradient band the host dashboard opens with, so this
+          reads as part of one product rather than a plain settings page
+          bolted onto it. The available figure lives here, not three sections
+          down: it's the one number a host opened this page to see. */}
+      <div className="relative overflow-hidden rounded-2xl border border-ink-100 bg-gradient-to-br from-brand-50 via-white to-ink-50 px-5 py-6 shadow-card sm:px-6">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-brand-200/30 blur-3xl"
+        />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
+              <Wallet size={22} />
+            </span>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-ink-900">Earnings</h1>
+              <p className="mt-0.5 text-sm text-ink-500">Every trip's money, and when it reaches you.</p>
+            </div>
+          </div>
+
+          {balanceForCurrency && (
+            <div className="text-right">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-ink-400">
+                Available to send
+              </p>
+              <p className="mt-0.5 text-3xl font-bold tabular-nums leading-tight text-ink-900">
+                {money(balanceForCurrency.available, balanceForCurrency.currency)}
+              </p>
+            </div>
+          )}
         </div>
+
+        {/* Currency pills — only once there's more than one to choose
+            between. Sits inside the hero, beside the figure it controls,
+            rather than as a separate row a host has to connect to it. */}
+        {shownBalances.length > 1 && (
+          <div className="relative mt-4 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-4">
+            <Coins size={13} className="mr-0.5 text-ink-400" />
+            {shownBalances.map((b) => (
+              <button
+                key={b.currency}
+                type="button"
+                onClick={() => setActiveCurrency(b.currency)}
+                className={cn(
+                  'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                  currency === b.currency
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'bg-white text-ink-600 ring-1 ring-inset ring-ink-200 hover:bg-ink-50',
+                )}
+              >
+                {b.currency}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {(wallet.isLoading || earnings.isLoading) && !notConfigured && (
@@ -364,30 +409,6 @@ export function EarningsPage() {
 
       {tab === 'overview' && w?.sellerId && !notConfigured && (
         <>
-          {/* Which currency is on screen — only shown at all once there is
-              more than one to choose between. Most hosts earn in a single
-              currency and never see this row. */}
-          {shownBalances.length > 1 && (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Coins size={14} className="text-ink-400" />
-              {shownBalances.map((b) => (
-                <button
-                  key={b.currency}
-                  type="button"
-                  onClick={() => setActiveCurrency(b.currency)}
-                  className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
-                    currency === b.currency
-                      ? 'border-brand-400 bg-brand-50 text-brand-700'
-                      : 'border-ink-200 text-ink-600 hover:border-ink-300',
-                  )}
-                >
-                  {b.currency}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* --- Where you get paid -------------------------------------------
               Always on the page once a seller exists, not folded into the
               withdraw card. That card only renders when PayHold returns a
@@ -422,14 +443,19 @@ export function EarningsPage() {
                 </p>
               )}
               {primary && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-100 px-3 py-2">
-                  <div>
-                    <p className="text-sm font-medium text-ink-900">
-                      {primary.label ?? primary.maskedDestination}
-                    </p>
-                    <p className="text-xs text-ink-500">
-                      {primary.maskedDestination} · {primary.payoutCurrency}
-                    </p>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-100 px-3 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                      <Banknote size={16} />
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-ink-900">
+                        {primary.label ?? primary.maskedDestination}
+                      </p>
+                      <p className="text-xs text-ink-500">
+                        {primary.maskedDestination} · {primary.payoutCurrency}
+                      </p>
+                    </div>
                   </div>
                   <Badge tone={primaryReady ? 'success' : 'neutral'}>
                     {primaryReady
@@ -443,103 +469,113 @@ export function EarningsPage() {
             </CardBody>
           </Card>
 
-          {/* --- Balance, for the selected currency only ----------------------- */}
+          {/* --- Balance, for the selected currency only -----------------------
+              A bar rather than three numbers side by side: proportion is the
+              thing a host actually wants at a glance — how much of what they
+              earned is still tied up versus ready — and three same-sized
+              figures say that only if you do the arithmetic yourself. */}
           {balanceForCurrency && (
             <Card className="mt-4">
               <CardHeader className="flex items-center justify-between">
                 <h2 className="font-semibold text-ink-900">Your money</h2>
                 <Badge tone="neutral">{balanceForCurrency.currency}</Badge>
               </CardHeader>
-              <CardBody className="grid gap-4 sm:grid-cols-3">
-                <Figure
-                  icon={Lock}
-                  label="On trips"
-                  value={money(balanceForCurrency.held, balanceForCurrency.currency)}
-                  hint="Held while cars are out"
-                  tone="ink"
-                />
-                <Figure
-                  icon={Clock}
-                  label="Clearing"
-                  value={money(balanceForCurrency.pendingClearance, balanceForCurrency.currency)}
-                  hint="Yours, in the safety window"
-                  tone="amber"
-                />
-                <Figure
-                  icon={CheckCircle2}
-                  label="Available"
-                  value={money(balanceForCurrency.available, balanceForCurrency.currency)}
-                  hint="Ready to send"
-                  tone="emerald"
-                />
+              <CardBody>
+                <BalanceBar balance={balanceForCurrency} />
+                <div className="mt-5 grid grid-cols-3 gap-3">
+                  <MoneyStat
+                    icon={Lock}
+                    tone="muted"
+                    label="On trips"
+                    value={money(balanceForCurrency.held, balanceForCurrency.currency)}
+                  />
+                  <MoneyStat
+                    icon={Clock}
+                    tone="amber"
+                    label="Clearing"
+                    value={money(balanceForCurrency.pendingClearance, balanceForCurrency.currency)}
+                  />
+                  <MoneyStat
+                    icon={CheckCircle2}
+                    tone="green"
+                    label="Available"
+                    value={money(balanceForCurrency.available, balanceForCurrency.currency)}
+                  />
+                </div>
               </CardBody>
             </Card>
           )}
 
-          {/* --- Where it goes, and sending it now ----------------------------- */}
+          {/* --- Where it goes, and sending it now -----------------------------
+              A brand-tinted CTA rather than the muted card the rest of the
+              page uses — this is the one action on Overview, and it should
+              look like one rather than blend in with the read-only cards
+              above it. */}
           {withdrawableForCurrency && (
-            <Card className="mt-4 border-emerald-200 bg-emerald-50/40">
-              <CardBody className="space-y-4">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm text-ink-600">Ready to send to your account</p>
-                    <p className="text-2xl font-bold text-ink-900">
-                      {money(withdrawableForCurrency.availableAmount, withdrawableForCurrency.currency)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-ink-500">
-                      {withdrawableForCurrency.availableCount} trip
-                      {withdrawableForCurrency.availableCount === 1 ? '' : 's'}
-                      {withdrawableForCurrency.clearingAmount > 0 &&
-                        ` · ${money(withdrawableForCurrency.clearingAmount, withdrawableForCurrency.currency)} still clearing`}
-                      {withdrawableForCurrency.requestedCount > 0 &&
-                        ` · ${withdrawableForCurrency.requestedCount} already on the way`}
-                    </p>
-                    {(withdrawableForCurrency.heldCount > 0 ||
-                      withdrawableForCurrency.needsVerificationCount > 0 ||
-                      withdrawableForCurrency.blockedCount > 0) && (
-                      <p className="mt-1 text-xs text-amber-700">
-                        {[
-                          withdrawableForCurrency.heldCount > 0 &&
-                            `${withdrawableForCurrency.heldCount} on hold`,
-                          withdrawableForCurrency.needsVerificationCount > 0 &&
-                            `${withdrawableForCurrency.needsVerificationCount} needs verification`,
-                          withdrawableForCurrency.blockedCount > 0 &&
-                            `${withdrawableForCurrency.blockedCount} blocked`,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    disabled={
-                      withdrawableForCurrency.availableAmount <= 0 ||
-                      withdraw.isPending ||
-                      !w?.canReceivePayouts
-                    }
-                    onClick={() => withdraw.mutate()}
-                  >
-                    <Send size={16} />
-                    {withdraw.isPending ? 'Sending…' : 'Send it now'}
-                  </Button>
-                </div>
-
-                {/* One destination, so nothing to pick — just say where it's
-                    going, because "send it now" should never be the first
-                    time a host finds out. */}
-                {primary && (
-                  <p className="text-xs text-ink-500">
-                    {primaryReady
-                      ? `Going to ${primary.label ?? primary.maskedDestination}`
-                      : `${primary.label ?? primary.maskedDestination} isn't usable yet — ${
-                          !primary.verifiedAt
-                            ? 'still being verified'
-                            : `on hold until ${formatDate(primary.securityHoldUntil!)}`
-                        }.`}
+            <div className="relative mt-4 overflow-hidden rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-600 to-brand-700 p-5 text-white shadow-card sm:p-6">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl"
+              />
+              <div className="relative flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm text-brand-100">Ready to send to your account</p>
+                  <p className="mt-0.5 text-3xl font-bold tabular-nums leading-tight">
+                    {money(withdrawableForCurrency.availableAmount, withdrawableForCurrency.currency)}
                   </p>
-                )}
-              </CardBody>
-            </Card>
+                  <p className="mt-1.5 text-xs text-brand-100">
+                    {withdrawableForCurrency.availableCount} trip
+                    {withdrawableForCurrency.availableCount === 1 ? '' : 's'}
+                    {withdrawableForCurrency.clearingAmount > 0 &&
+                      ` · ${money(withdrawableForCurrency.clearingAmount, withdrawableForCurrency.currency)} still clearing`}
+                    {withdrawableForCurrency.requestedCount > 0 &&
+                      ` · ${withdrawableForCurrency.requestedCount} already on the way`}
+                  </p>
+                  {(withdrawableForCurrency.heldCount > 0 ||
+                    withdrawableForCurrency.needsVerificationCount > 0 ||
+                    withdrawableForCurrency.blockedCount > 0) && (
+                    <p className="mt-1 text-xs text-accent-400">
+                      {[
+                        withdrawableForCurrency.heldCount > 0 &&
+                          `${withdrawableForCurrency.heldCount} on hold`,
+                        withdrawableForCurrency.needsVerificationCount > 0 &&
+                          `${withdrawableForCurrency.needsVerificationCount} needs verification`,
+                        withdrawableForCurrency.blockedCount > 0 &&
+                          `${withdrawableForCurrency.blockedCount} blocked`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  )}
+                  {/* One destination, so nothing to pick — just say where it's
+                      going, because "send it now" should never be the first
+                      time a host finds out. */}
+                  {primary && (
+                    <p className="mt-2 text-xs text-brand-100">
+                      {primaryReady
+                        ? `Going to ${primary.label ?? primary.maskedDestination}`
+                        : `${primary.label ?? primary.maskedDestination} isn't usable yet — ${
+                            !primary.verifiedAt
+                              ? 'still being verified'
+                              : `on hold until ${formatDate(primary.securityHoldUntil!)}`
+                          }.`}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  className="bg-white text-brand-700 shadow-sm hover:bg-brand-50"
+                  disabled={
+                    withdrawableForCurrency.availableAmount <= 0 ||
+                    withdraw.isPending ||
+                    !w?.canReceivePayouts
+                  }
+                  onClick={() => withdraw.mutate()}
+                >
+                  <Send size={16} />
+                  {withdraw.isPending ? 'Sending…' : 'Send it now'}
+                </Button>
+              </div>
+            </div>
           )}
         </>
       )}
@@ -705,33 +741,64 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Figure({
+/**
+ * Proportion at a glance — held, clearing and available as one segmented bar
+ * rather than three same-sized numbers a host has to compare themselves.
+ * Negative segments (the ledger can carry a transient negative `pendingClearance`
+ * mid-transition) are clamped to zero for the bar; the exact signed figure
+ * still renders in the `MoneyStat` chip underneath it.
+ */
+function BalanceBar({ balance }: { balance: PayholdBalance }) {
+  const held = Math.max(0, balance.held);
+  const clearing = Math.max(0, balance.pendingClearance);
+  const available = Math.max(0, balance.available);
+  const total = held + clearing + available;
+
+  if (total <= 0) {
+    return <div className="h-2 w-full rounded-full bg-ink-100" />;
+  }
+
+  return (
+    <div className="flex h-2 w-full overflow-hidden rounded-full bg-ink-100">
+      {held > 0 && <div className="h-full bg-ink-300" style={{ width: `${(held / total) * 100}%` }} />}
+      {clearing > 0 && (
+        <div className="h-full bg-amber-400" style={{ width: `${(clearing / total) * 100}%` }} />
+      )}
+      {available > 0 && (
+        <div className="h-full bg-emerald-500" style={{ width: `${(available / total) * 100}%` }} />
+      )}
+    </div>
+  );
+}
+
+const MONEY_STAT_CHIP: Record<'muted' | 'amber' | 'green', string> = {
+  muted: 'bg-ink-100 text-ink-500',
+  amber: 'bg-amber-50 text-amber-600',
+  green: 'bg-emerald-50 text-emerald-600',
+};
+
+/** One balance figure as a tinted icon chip — the same shape the host
+ * dashboard's stat cards use, so this page reads as the same product. */
+function MoneyStat({
   icon: Icon,
+  tone,
   label,
   value,
-  hint,
-  tone,
 }: {
   icon: typeof Lock;
+  tone: 'muted' | 'amber' | 'green';
   label: string;
   value: string;
-  hint: string;
-  tone: 'ink' | 'amber' | 'emerald';
 }) {
   return (
     <div>
-      <p
-        className={cn(
-          'flex items-center gap-1.5 text-xs font-medium',
-          tone === 'emerald' && 'text-emerald-700',
-          tone === 'amber' && 'text-amber-700',
-          tone === 'ink' && 'text-ink-500',
-        )}
-      >
-        <Icon size={14} /> {label}
+      <span className={cn('flex h-8 w-8 items-center justify-center rounded-lg', MONEY_STAT_CHIP[tone])}>
+        <Icon size={15} />
+      </span>
+      <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-ink-400">{label}</p>
+      <p className="mt-0.5 truncate text-base font-bold tabular-nums leading-tight text-ink-900">
+        {value}
       </p>
-      <p className="mt-1 text-xl font-bold text-ink-900">{value}</p>
-      <p className="mt-0.5 text-xs text-ink-500">{hint}</p>
     </div>
   );
 }
