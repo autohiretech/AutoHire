@@ -7,7 +7,9 @@ import {
   Banknote,
   CheckCircle2,
   Clock,
+  Coins,
   Hourglass,
+  ListOrdered,
   Lock,
   Send,
   ShieldAlert,
@@ -100,6 +102,18 @@ export function EarningsPage() {
   const queryClient = useQueryClient();
   const { data: me } = useCurrentUser();
 
+  // Balance and history are two different questions a host asks at two
+  // different moments — "how much, and can I send it" versus "which trip made
+  // this" — and stacking both under one scroll made the figure they actually
+  // came for compete for space with a list they were not reading yet.
+  const [tab, setTab] = useState<'overview' | 'history'>('overview');
+  // Which of the host's currencies is on screen. Null means "whatever's
+  // first" — most hosts only ever earn in one, so this never has to be
+  // touched; it only becomes a real choice once `shownBalances` has more than
+  // one entry, same "don't offer a pick nobody needs" rule as the payout
+  // destination above.
+  const [activeCurrency, setActiveCurrency] = useState<string | null>(null);
+
   const wallet = useQuery({
     queryKey: ['payholdWallet'],
     queryFn: () => client.payholdBalance(),
@@ -152,7 +166,6 @@ export function EarningsPage() {
   const withdrawable = w?.withdrawable ?? [];
   const trips = earnings.data?.trips ?? [];
   const destinations = earnings.data?.destinations ?? [];
-  const canWithdraw = withdrawable.some((d) => d.availableAmount > 0);
 
   // A host is shown one destination — the one PayHold actually pays.
   // `destinations` can carry more (PayHold keeps a demoted one on file rather
@@ -195,6 +208,16 @@ export function EarningsPage() {
             },
           ]
         : [];
+
+  // The currency actually on screen. Falls back to the first balance rather
+  // than staying null so a stale `activeCurrency` (a currency that stopped
+  // having a row, e.g. once it clears to zero and drops out) doesn't leave
+  // every currency-scoped card blank.
+  const currency = shownBalances.some((b) => b.currency === activeCurrency)
+    ? activeCurrency!
+    : (shownBalances[0]?.currency ?? null);
+  const balanceForCurrency = shownBalances.find((b) => b.currency === currency) ?? null;
+  const withdrawableForCurrency = withdrawable.find((d) => d.currency === currency) ?? null;
 
   return (
     <section className="mx-auto max-w-3xl px-4 py-8">
@@ -299,180 +322,264 @@ export function EarningsPage() {
         </Card>
       )}
 
-      {/* --- Where you get paid ---------------------------------------------
-          Always on the page once a seller exists, not folded into the withdraw
-          card. That card only renders when PayHold returns a withdrawable row,
-          so a host with nothing cleared yet — every new host — previously had no
-          way to see or reach their payout method from here at all. */}
+      {/* --- Overview / Trip by trip -----------------------------------------
+          Two different questions asked at two different moments: "how much,
+          and can I send it" versus "which trip made this". Stacking both under
+          one scroll made the figure a host actually opened this page for
+          compete with a list they weren't reading yet. */}
       {w?.sellerId && !notConfigured && (
-        <Card className="mt-6">
-          <CardHeader className="flex items-center justify-between">
-            <h2 className="font-semibold text-ink-900">Where you get paid</h2>
-            {/* Offered whether or not a destination exists.
-
-                This used to be hidden for anyone who already had one, on the
-                reasoning that changing it was "not built on either side" and a
-                button here would open a screen that refuses with
-                `seller_exists`. That stopped being true when
-                `payhold-register-seller` grew its change path: it branches on
-                `payhold_seller_id` and calls `POST /sellers/:id/destinations`,
-                which adds the row, makes it primary and demotes the old one
-                atomically. So the only thing standing between a host and their
-                own bank details was this condition. */}
-            <Button variant="outline" size="sm" onClick={() => navigate('/payouts/setup')}>
-              <Banknote size={14} />
-              {primary ? 'Change' : 'Add a method'}
-            </Button>
-          </CardHeader>
-          <CardBody className="space-y-2">
-            {!primary && (
-              <p className="text-sm text-ink-600">
-                {me?.payoutLabel
-                  ? `${me.payoutLabel} — PayHold is still setting this up, so it can't receive money yet.`
-                  : "You don't have a payout method yet. Money from your trips will wait here until you add one."}
-              </p>
+        <div className="mt-6 inline-flex items-center gap-1 rounded-full border border-ink-200 bg-white p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setTab('overview')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors',
+              tab === 'overview' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-600 hover:bg-ink-50',
             )}
-            {primary && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-100 px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium text-ink-900">
-                    {primary.label ?? primary.maskedDestination}
-                  </p>
-                  <p className="text-xs text-ink-500">
-                    {primary.maskedDestination} · {primary.payoutCurrency}
-                  </p>
-                </div>
-                <Badge tone={primaryReady ? 'success' : 'neutral'}>
-                  {primaryReady
-                    ? 'Ready'
-                    : !primary.verifiedAt
-                      ? 'Being verified'
-                      : `On hold until ${formatDate(primary.securityHoldUntil!)}`}
-                </Badge>
-              </div>
+          >
+            <Wallet size={14} /> Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('history')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors',
+              tab === 'history' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-600 hover:bg-ink-50',
             )}
-          </CardBody>
-        </Card>
+          >
+            <ListOrdered size={14} /> Trip by trip
+            {trips.length > 0 && (
+              <span
+                className={cn(
+                  'rounded-full px-1.5 text-xs',
+                  tab === 'history' ? 'bg-white/20' : 'bg-ink-100 text-ink-500',
+                )}
+              >
+                {trips.length}
+              </span>
+            )}
+          </button>
+        </div>
       )}
 
-      {/* --- Totals --------------------------------------------------------- */}
-      {shownBalances.map((b) => (
-        <Card key={b.currency} className="mt-6">
-          <CardHeader className="flex items-center justify-between">
-            <h2 className="font-semibold text-ink-900">Your money</h2>
-            <Badge tone="neutral">{b.currency}</Badge>
-          </CardHeader>
-          <CardBody className="grid gap-4 sm:grid-cols-3">
-            <Figure
-              icon={Lock}
-              label="On trips"
-              value={money(b.held, b.currency)}
-              hint="Held while cars are out"
-              tone="ink"
-            />
-            <Figure
-              icon={Clock}
-              label="Clearing"
-              value={money(b.pendingClearance, b.currency)}
-              hint="Yours, in the safety window"
-              tone="amber"
-            />
-            <Figure
-              icon={CheckCircle2}
-              label="Available"
-              value={money(b.available, b.currency)}
-              hint="Ready to send"
-              tone="emerald"
-            />
-          </CardBody>
-        </Card>
-      ))}
+      {tab === 'overview' && w?.sellerId && !notConfigured && (
+        <>
+          {/* Which currency is on screen — only shown at all once there is
+              more than one to choose between. Most hosts earn in a single
+              currency and never see this row. */}
+          {shownBalances.length > 1 && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Coins size={14} className="text-ink-400" />
+              {shownBalances.map((b) => (
+                <button
+                  key={b.currency}
+                  type="button"
+                  onClick={() => setActiveCurrency(b.currency)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
+                    currency === b.currency
+                      ? 'border-brand-400 bg-brand-50 text-brand-700'
+                      : 'border-ink-200 text-ink-600 hover:border-ink-300',
+                  )}
+                >
+                  {b.currency}
+                </button>
+              ))}
+            </div>
+          )}
 
-      {/* --- Where it goes, and sending it now ------------------------------ */}
-      {withdrawable.map((d) => (
-        <Card key={`w-${d.currency}`} className="mt-4 border-emerald-200 bg-emerald-50/40">
-          <CardBody className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-ink-600">Ready to send to your account</p>
-                <p className="text-2xl font-bold text-ink-900">
-                  {money(d.availableAmount, d.currency)}
+          {/* --- Where you get paid -------------------------------------------
+              Always on the page once a seller exists, not folded into the
+              withdraw card. That card only renders when PayHold returns a
+              withdrawable row, so a host with nothing cleared yet — every new
+              host — previously had no way to see or reach their payout method
+              from here at all. */}
+          <Card className="mt-4">
+            <CardHeader className="flex items-center justify-between">
+              <h2 className="font-semibold text-ink-900">Where you get paid</h2>
+              {/* Offered whether or not a destination exists.
+
+                  This used to be hidden for anyone who already had one, on the
+                  reasoning that changing it was "not built on either side" and
+                  a button here would open a screen that refuses with
+                  `seller_exists`. That stopped being true when
+                  `payhold-register-seller` grew its change path: it branches
+                  on `payhold_seller_id` and calls `POST /sellers/:id/destinations`,
+                  which adds the row, makes it primary and demotes the old one
+                  atomically. So the only thing standing between a host and
+                  their own bank details was this condition. */}
+              <Button variant="outline" size="sm" onClick={() => navigate('/payouts/setup')}>
+                <Banknote size={14} />
+                {primary ? 'Change' : 'Add a method'}
+              </Button>
+            </CardHeader>
+            <CardBody className="space-y-2">
+              {!primary && (
+                <p className="text-sm text-ink-600">
+                  {me?.payoutLabel
+                    ? `${me.payoutLabel} — PayHold is still setting this up, so it can't receive money yet.`
+                    : "You don't have a payout method yet. Money from your trips will wait here until you add one."}
                 </p>
-                <p className="mt-0.5 text-xs text-ink-500">
-                  {d.availableCount} trip{d.availableCount === 1 ? '' : 's'}
-                  {d.clearingAmount > 0 &&
-                    ` · ${money(d.clearingAmount, d.currency)} still clearing`}
-                  {d.requestedCount > 0 && ` · ${d.requestedCount} already on the way`}
-                </p>
-                {(d.heldCount > 0 || d.needsVerificationCount > 0 || d.blockedCount > 0) && (
-                  <p className="mt-1 text-xs text-amber-700">
-                    {[
-                      d.heldCount > 0 && `${d.heldCount} on hold`,
-                      d.needsVerificationCount > 0 &&
-                        `${d.needsVerificationCount} needs verification`,
-                      d.blockedCount > 0 && `${d.blockedCount} blocked`,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+              )}
+              {primary && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-100 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-ink-900">
+                      {primary.label ?? primary.maskedDestination}
+                    </p>
+                    <p className="text-xs text-ink-500">
+                      {primary.maskedDestination} · {primary.payoutCurrency}
+                    </p>
+                  </div>
+                  <Badge tone={primaryReady ? 'success' : 'neutral'}>
+                    {primaryReady
+                      ? 'Ready'
+                      : !primary.verifiedAt
+                        ? 'Being verified'
+                        : `On hold until ${formatDate(primary.securityHoldUntil!)}`}
+                  </Badge>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* --- Balance, for the selected currency only ----------------------- */}
+          {balanceForCurrency && (
+            <Card className="mt-4">
+              <CardHeader className="flex items-center justify-between">
+                <h2 className="font-semibold text-ink-900">Your money</h2>
+                <Badge tone="neutral">{balanceForCurrency.currency}</Badge>
+              </CardHeader>
+              <CardBody className="grid gap-4 sm:grid-cols-3">
+                <Figure
+                  icon={Lock}
+                  label="On trips"
+                  value={money(balanceForCurrency.held, balanceForCurrency.currency)}
+                  hint="Held while cars are out"
+                  tone="ink"
+                />
+                <Figure
+                  icon={Clock}
+                  label="Clearing"
+                  value={money(balanceForCurrency.pendingClearance, balanceForCurrency.currency)}
+                  hint="Yours, in the safety window"
+                  tone="amber"
+                />
+                <Figure
+                  icon={CheckCircle2}
+                  label="Available"
+                  value={money(balanceForCurrency.available, balanceForCurrency.currency)}
+                  hint="Ready to send"
+                  tone="emerald"
+                />
+              </CardBody>
+            </Card>
+          )}
+
+          {/* --- Where it goes, and sending it now ----------------------------- */}
+          {withdrawableForCurrency && (
+            <Card className="mt-4 border-emerald-200 bg-emerald-50/40">
+              <CardBody className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-ink-600">Ready to send to your account</p>
+                    <p className="text-2xl font-bold text-ink-900">
+                      {money(withdrawableForCurrency.availableAmount, withdrawableForCurrency.currency)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-500">
+                      {withdrawableForCurrency.availableCount} trip
+                      {withdrawableForCurrency.availableCount === 1 ? '' : 's'}
+                      {withdrawableForCurrency.clearingAmount > 0 &&
+                        ` · ${money(withdrawableForCurrency.clearingAmount, withdrawableForCurrency.currency)} still clearing`}
+                      {withdrawableForCurrency.requestedCount > 0 &&
+                        ` · ${withdrawableForCurrency.requestedCount} already on the way`}
+                    </p>
+                    {(withdrawableForCurrency.heldCount > 0 ||
+                      withdrawableForCurrency.needsVerificationCount > 0 ||
+                      withdrawableForCurrency.blockedCount > 0) && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        {[
+                          withdrawableForCurrency.heldCount > 0 &&
+                            `${withdrawableForCurrency.heldCount} on hold`,
+                          withdrawableForCurrency.needsVerificationCount > 0 &&
+                            `${withdrawableForCurrency.needsVerificationCount} needs verification`,
+                          withdrawableForCurrency.blockedCount > 0 &&
+                            `${withdrawableForCurrency.blockedCount} blocked`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    disabled={
+                      withdrawableForCurrency.availableAmount <= 0 ||
+                      withdraw.isPending ||
+                      !w?.canReceivePayouts
+                    }
+                    onClick={() => withdraw.mutate()}
+                  >
+                    <Send size={16} />
+                    {withdraw.isPending ? 'Sending…' : 'Send it now'}
+                  </Button>
+                </div>
+
+                {/* One destination, so nothing to pick — just say where it's
+                    going, because "send it now" should never be the first
+                    time a host finds out. */}
+                {primary && (
+                  <p className="text-xs text-ink-500">
+                    {primaryReady
+                      ? `Going to ${primary.label ?? primary.maskedDestination}`
+                      : `${primary.label ?? primary.maskedDestination} isn't usable yet — ${
+                          !primary.verifiedAt
+                            ? 'still being verified'
+                            : `on hold until ${formatDate(primary.securityHoldUntil!)}`
+                        }.`}
                   </p>
                 )}
-              </div>
-              <Button
-                disabled={!canWithdraw || withdraw.isPending || !w?.canReceivePayouts}
-                onClick={() => withdraw.mutate()}
-              >
-                <Send size={16} />
-                {withdraw.isPending ? 'Sending…' : 'Send it now'}
-              </Button>
-            </div>
-
-            {/* One destination, so nothing to pick — just say where it's
-                going, because "send it now" should never be the first time a
-                host finds out. */}
-            {primary && (
-              <p className="text-xs text-ink-500">
-                {primaryReady
-                  ? `Going to ${primary.label ?? primary.maskedDestination}`
-                  : `${primary.label ?? primary.maskedDestination} isn't usable yet — ${
-                      !primary.verifiedAt
-                        ? 'still being verified'
-                        : `on hold until ${formatDate(primary.securityHoldUntil!)}`
-                    }.`}
-              </p>
-            )}
-          </CardBody>
-        </Card>
-      ))}
-
-      {/* --- Trip by trip ---------------------------------------------------
-          No empty state here on purpose. A host with no completed trips already
-          has the totals above reading zero, and a card announcing "no earnings
-          yet" underneath them repeats that in a way that reads like a fault.
-          The heading simply does not appear until there is something under it. */}
-      {trips.length > 0 && (
-        <>
-          <h2 className="mb-3 mt-8 font-semibold text-ink-900">Trip by trip</h2>
-          <div className="space-y-3">
-            {trips.map((t) => (
-              <TripRow key={t.bookingId} trip={t} />
-            ))}
-          </div>
-          {earnings.data?.hasMore && (
-            <p className="mt-4 text-center text-xs text-ink-500">
-              Showing your {trips.length} most recent trips.
-            </p>
+              </CardBody>
+            </Card>
           )}
         </>
       )}
 
+      {/* --- Trip by trip -------------------------------------------------------
+          No empty state beyond this one line — a host with no completed trips
+          already sees the totals on Overview reading zero, and a second card
+          repeating that here would read like a fault rather than an empty
+          state. */}
+      {tab === 'history' && (
+        <div className="mt-4">
+          {trips.length > 0 ? (
+            <>
+              <div className="space-y-3">
+                {trips.map((t) => (
+                  <TripRow key={t.bookingId} trip={t} />
+                ))}
+              </div>
+              {earnings.data?.hasMore && (
+                <p className="mt-4 text-center text-xs text-ink-500">
+                  Showing your {trips.length} most recent trips.
+                </p>
+              )}
+            </>
+          ) : (
+            <Card>
+              <CardBody className="py-10 text-center text-sm text-ink-500">
+                No trips yet — this fills in as your cars get booked.
+              </CardBody>
+            </Card>
+          )}
+        </div>
+      )}
+
       <p className={cn('mt-6 text-xs text-ink-500', notConfigured && 'hidden')}>
         Money is held while a trip runs and released when you and the renter both confirm the car
-        came back. It then clears before it can be sent.{' '}
-        <span className="font-medium text-ink-600">
-          Cleared money is paid out to you automatically
-        </span>{' '}
-        — use “Send it now” only if you want it sooner, or to retry a payout that didn't go
-        through.
+        came back. It then clears before it can be sent, and moves to your account on its own
+        schedule from there —{' '}
+        <span className="font-medium text-ink-600">use "Send it now" to speed that up</span>, or
+        to retry a payout that didn't go through.
       </p>
     </section>
   );
