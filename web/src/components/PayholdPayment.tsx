@@ -37,6 +37,7 @@ export function PayholdPayment({
   estimatedHours,
   label,
   disabled,
+  onCheckoutOpenChange,
 }: {
   listingId: string;
   startDate: string;
@@ -48,6 +49,14 @@ export function PayholdPayment({
   estimatedHours?: number;
   label: string;
   disabled: boolean;
+  /**
+   * A deal is a snapshot — PayHold prices it once, at creation, off whatever
+   * `estimatedHours` was at that moment. Nothing re-prices it if the caller's
+   * own hours input keeps changing underneath an open checkout, so the
+   * caller uses this to lock that input for as long as a deal exists: open,
+   * or paid and simply not yet closed.
+   */
+  onCheckoutOpenChange?: (open: boolean) => void;
 }) {
   const { data: me } = useCurrentUser();
   const { countries } = useCountry();
@@ -59,6 +68,14 @@ export function PayholdPayment({
   const [dealId, setDealId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    onCheckoutOpenChange?.(open);
+    // Only the transition matters to the caller, not its own identity —
+    // re-running this because a re-render gave it a new function reference
+    // would report "open" repeatedly for no real change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Where the renter pays FROM decides what they can pay with, and which
   // currency their card is actually charged in — not the car's market. Someone

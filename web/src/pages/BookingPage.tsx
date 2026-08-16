@@ -95,6 +95,13 @@ export function BookingPage() {
   // here in case this page is reached directly.
   const [pickupTime, setPickupTime] = useState(picked?.pickupTime ?? '10:00');
   const [estimatedHours, setEstimatedHours] = useState(picked?.estimatedHours ?? 4);
+  // A deal prices the hourly estimate once, at creation — nothing re-prices
+  // it if this input keeps changing under an open (or just-paid) checkout,
+  // so it's locked for as long as PayholdPayment reports one exists. Pickup
+  // time is deliberately NOT locked here: it plays no part in what a deal
+  // charges (only estimatedHours does), so changing it after checkout starts
+  // is harmless and a renter correcting a typo shouldn't be blocked from it.
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const { data: listing, isLoading } = useQuery({
     queryKey: ['listing', id],
@@ -345,10 +352,12 @@ export function BookingPage() {
                     min={1}
                     value={estimatedHours}
                     onChange={(e) => setEstimatedHours(Math.max(1, Number(e.target.value) || 1))}
+                    disabled={checkoutOpen}
                   />
                   <p className="mt-1 text-xs text-ink-400">
-                    You pay the estimated {money(estimatedTotal)} now. Extra time beyond it
-                    is settled automatically after your trip, based on actual pickup-to-return time.
+                    {checkoutOpen
+                      ? 'Locked for this checkout — the amount you were quoted was priced against it.'
+                      : `You pay the estimated ${money(estimatedTotal)} now. Extra time beyond it is settled automatically after your trip, based on actual pickup-to-return time.`}
                   </p>
                 </div>
               )}
@@ -386,6 +395,7 @@ export function BookingPage() {
                   estimatedHours={isHourly ? estimatedHours : undefined}
                   label={money(total)}
                   disabled={!datesValid}
+                  onCheckoutOpenChange={setCheckoutOpen}
                 />
               ) : PAYMENTS_EXTERNAL ? (
                 <Elements stripe={stripePromise}>
