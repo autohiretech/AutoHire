@@ -253,6 +253,21 @@ interface PayPalSdk {
     onApprove: (data: { orderID?: string }) => Promise<void>;
     onCancel: () => void;
     onError: (err: unknown) => void;
+    /**
+     * The button's own look, not the popup it opens — PayPal never lets a
+     * merchant restyle that part (see `PayPalButtons`'s own header comment).
+     * `color` is one of PayPal's fixed presets, not an arbitrary hex; AutoHire's
+     * brand teal (`#0e7c66`) has no match in that palette, so `black` is the
+     * closest neutral fit rather than PayPal's gold default clashing with
+     * everything else on the page. `rect` matches `rounded-lg`'s moderate
+     * corner — `pill` reads as a different button language entirely.
+     */
+    style?: {
+      color?: 'gold' | 'blue' | 'silver' | 'white' | 'black';
+      shape?: 'rect' | 'pill';
+      label?: 'paypal' | 'checkout' | 'pay' | 'buynow';
+      height?: number;
+    };
   }) => { render: (el: HTMLElement) => void };
 }
 
@@ -399,6 +414,7 @@ function PayPalButtons({
       setState('ready');
       sdk
         .Buttons({
+          style: { color: 'black', shape: 'rect', label: 'paypal', height: 48 },
           createOrder: () => Promise.resolve(action.order),
           onApprove: (data) => {
             onApprovedRef.current(data.orderID ?? action.order);
@@ -492,7 +508,15 @@ function PayPalButtons({
  */
 function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
   const frame = useRef<HTMLIFrameElement | null>(null);
+  // Confirmed empty — the frame itself never rendered the provider's page at
+  // all. Safe to replace outright: there is nothing in it to lose.
   const [blocked, setBlocked] = useState(false);
+  // Ambiguous — cross-origin means the frame reads as "loaded", which is also
+  // what a slow provider, a broken redirect, or an error page with nothing
+  // visible on it look like from here. Offered *alongside* the frame, never
+  // in place of it: replacing the frame on a guess would wipe out a renter's
+  // half-typed card details on a page that was actually working, just slowly.
+  const [stuck, setStuck] = useState(false);
 
   const check = useCallback(() => {
     const win = frame.current?.contentWindow;
@@ -510,6 +534,15 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
     const t = setTimeout(check, 4000);
     return () => clearTimeout(t);
   }, [check]);
+
+  // The long-wait safety net. Twenty seconds is well past how long a frame
+  // takes to render even a slow provider's page, but not so short that it
+  // interrupts someone still typing a card number — it only ever adds an
+  // option next to the frame, never removes one.
+  useEffect(() => {
+    const t = setTimeout(() => setStuck(true), 20_000);
+    return () => clearTimeout(t);
+  }, []);
 
   if (blocked) {
     return (
@@ -548,6 +581,18 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
         <Loader2 size={12} className="animate-spin" />
         Waiting for your payment to clear…
       </p>
+      {stuck && (
+        <p className="mt-2 text-center text-xs text-ink-500">
+          Taking a while?{' '}
+          <button
+            type="button"
+            className="font-medium text-brand-600 underline"
+            onClick={() => window.location.assign(url)}
+          >
+            Continue on their own page instead
+          </button>
+        </p>
+      )}
     </div>
   );
 }
