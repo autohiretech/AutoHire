@@ -165,6 +165,20 @@ export function EarningsPage() {
   const balances = w?.balances ?? [];
   const withdrawable = w?.withdrawable ?? [];
   const trips = earnings.data?.trips ?? [];
+  // The real reason a payout is stuck, not just a count of them. It was
+  // already on each trip row (`holdReason`, shown in Trip by trip) — this is
+  // the same data, surfaced where "5 blocked" otherwise reads as a dead end.
+  // A provider's own rejection ("Flutterwave: enable IP Whitelisting…") is
+  // an infrastructure fix, not something re-verifying a seller or retrying
+  // again will ever change, and a host has no way to know that without
+  // seeing the sentence itself.
+  const stuckReasons = [
+    ...new Set(
+      trips
+        .filter((t) => t.stage === 'on_hold' && t.holdReason)
+        .map((t) => t.holdReason as string),
+    ),
+  ];
   const destinations = earnings.data?.destinations ?? [];
 
   // A host is shown one destination — the one PayHold actually pays.
@@ -582,6 +596,18 @@ export function EarningsPage() {
                         .join(' · ')}
                     </p>
                   )}
+                  {/* The provider's own sentence, not a paraphrase of it — a
+                      host reading "IP Whitelisting" knows this is nothing
+                      they did, where a generic "payment failed" would send
+                      them straight back to re-checking their own number. */}
+                  {stuckReasons.map((reason) => (
+                    <p
+                      key={reason}
+                      className="mt-1.5 max-w-sm rounded-lg bg-white/10 px-2.5 py-1.5 text-xs text-white"
+                    >
+                      {reason}
+                    </p>
+                  ))}
                   {/* One destination, so nothing to pick — just say where it's
                       going, because "send it now" should never be the first
                       time a host finds out. */}
