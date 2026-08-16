@@ -118,6 +118,12 @@ export function PayoutSetupPage() {
 
   const [selected, setSelected] = useState<PayoutMethodType | null>(null);
   const [dest, setDest] = useState('');
+  // Payout country used to be inherited from the profile with no way back to
+  // it here — a host paid in whatever currency their account happened to
+  // carry, with no path to a different one even though PayHold reaches over
+  // a hundred countries. This is the toggle that reveals the picker again
+  // once a country is already on file.
+  const [changingCountry, setChangingCountry] = useState(false);
 
   const active = me?.payoutStatus === 'active';
 
@@ -341,24 +347,51 @@ export function PayoutSetupPage() {
         </Card>
       )}
 
-      {/* Country first — it decides both the methods on offer and the rail they
-          route to, and it's frozen into the profile once a method is saved. Ask
-          rather than guess. */}
-      {!payoutCountry && (
+      {/* Country decides both the methods on offer and the currency they pay
+          in — a US bank account settles in USD, a Rwandan Mobile Money number
+          in RWF. It used to be set once from the profile and then frozen,
+          with nothing on this screen to change it back — so a host who
+          wanted a different currency than whatever their profile happened to
+          carry had no way to ask for one. Always changeable now, not just on
+          the first visit. */}
+      {payoutCountry && !changingCountry && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-100 bg-white px-4 py-2.5">
+          <p className="text-sm text-ink-600">
+            Paying out from{' '}
+            <span className="font-medium text-ink-900">
+              {countries.find((c) => c.code === payoutCountry)?.flag} {countryName}
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setChangingCountry(true)}
+            className="text-xs font-medium text-brand-700 hover:underline"
+          >
+            Get paid in a different country or currency
+          </button>
+        </div>
+      )}
+
+      {(!payoutCountry || changingCountry) && (
         <Card className="mt-6 border-amber-200 bg-amber-50/60">
           <CardBody className="space-y-3">
             <div>
               <p className="font-medium text-ink-900">Where do you get paid?</p>
               <p className="mt-0.5 text-sm text-ink-600">
-                Your country decides which payout methods are available — Mobile Money isn't
-                offered everywhere.
+                This decides which payout methods and which currency are available — pick the
+                country of the account you actually want the money to land in, not necessarily
+                where you live.
               </p>
             </div>
             <Select
               aria-label="Payout country"
               value=""
               disabled={saveCountry.isPending}
-              onChange={(e) => e.target.value && saveCountry.mutate(e.target.value)}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                saveCountry.mutate(e.target.value);
+                setChangingCountry(false);
+              }}
             >
               <option value="" disabled>
                 Select your country
@@ -369,6 +402,15 @@ export function PayoutSetupPage() {
                 </option>
               ))}
             </Select>
+            {payoutCountry && (
+              <button
+                type="button"
+                onClick={() => setChangingCountry(false)}
+                className="text-xs text-ink-500 hover:underline"
+              >
+                Cancel
+              </button>
+            )}
           </CardBody>
         </Card>
       )}
