@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Camera, CalendarDays, Check, Clock, MapPin, MessageSquare, Upload, X } from 'lucide-react';
@@ -475,18 +475,36 @@ function latestIso(a?: string | null, b?: string | null): string | null {
  * just the estimate — going past it isn't a penalty, it's simply billed at
  * actual time used once the trip ends.
  */
+/** "1d 02h 05m 30s" — days only once there are any, everything else always two digits. */
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${days > 0 ? `${days}d ` : ''}${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
+}
+
 function TripTimer({ booking }: { booking: Booking }) {
   const pickupIso = latestIso(booking.pickupRenterAt, booking.pickupHostAt);
-  if (!pickupIso) return null;
+
+  // Ticks once a second so the countdown/count-up actually counts, rather
+  // than freezing at whatever moment this component happened to render.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   let limitAt: Date | null = null;
   let limitLabel = '';
-  if (booking.rentalType === 'hourly') {
+  if (pickupIso && booking.rentalType === 'hourly') {
     if (booking.estimatedHours != null) {
       limitAt = new Date(new Date(pickupIso).getTime() + booking.estimatedHours * 3_600_000);
       limitLabel = 'Estimated return';
     }
-  } else if (booking.expectedReturnTime) {
+  } else if (pickupIso && booking.expectedReturnTime) {
     const hhmm = booking.expectedReturnTime.slice(0, 5);
     const agreedAt = new Date(`${booking.endDate}T${hhmm}:00Z`);
     limitAt = new Date(agreedAt.getTime() + 2 * 3_600_000); // the same 2hr grace payhold-settle-usage applies
@@ -494,7 +512,27 @@ function TripTimer({ booking }: { booking: Booking }) {
   }
 
   const stillRunning = booking.state !== 'completed' && !['cancelled', 'declined'].includes(booking.state);
-  const pastLimit = !!limitAt && Date.now() > limitAt.getTime();
+  const pastLimit = !!limitAt && now > limitAt.getTime();
+
+  // Fires once per crossing, not once per second — the ref is what tells
+  // "still exceeded" apart from "just became exceeded". Also fires on a
+  // fresh page load that lands on an already-exceeded trip, which is the
+  // common case for whoever opens this after the fact rather than watching
+  // it tick over live.
+  const notified = useRef(false);
+  useEffect(() => {
+    if (pastLimit && stillRunning && !notified.current) {
+      notified.current = true;
+      toast.error(
+        booking.rentalType === 'hourly'
+          ? 'This trip has gone past its estimated time.'
+          : 'This trip has gone past its return grace period — a late-return amount will apply.',
+      );
+    }
+    if (!pastLimit) notified.current = false;
+  }, [pastLimit, stillRunning, booking.rentalType]);
+
+  if (!pickupIso) return null;
 
   return (
     <Card>
@@ -507,15 +545,26 @@ function TripTimer({ booking }: { booking: Booking }) {
           <Row label={limitLabel} value={`${formatDate(limitAt.toISOString())} at ${formatTime(limitAt.toISOString())}`} />
         )}
         {limitAt && stillRunning && (
-          <p className={cn('text-xs', pastLimit ? 'text-red-600' : 'text-ink-500')}>
-            {booking.rentalType === 'hourly'
-              ? pastLimit
-                ? 'Past the estimate — that’s fine, the final bill is based on actual time used.'
-                : 'Still within the estimate.'
-              : pastLimit
-                ? 'Past the grace period — a late-return amount will apply once returned.'
-                : 'Still within the free return window.'}
-          </p>
+          <div className={cn('rounded-lg p-2.5', pastLimit ? 'bg-red-50' : 'bg-ink-50')}>
+            <p
+              className={cn(
+                'font-mono text-lg font-semibold tabular-nums',
+                pastLimit ? 'text-red-600' : 'text-ink-900',
+              )}
+            >
+              {pastLimit ? '+' : '-'}
+              {formatDuration(Math.abs(now - limitAt.getTime()))}
+            </p>
+            <p className={cn('text-xs', pastLimit ? 'text-red-600' : 'text-ink-500')}>
+              {booking.rentalType === 'hourly'
+                ? pastLimit
+                  ? 'Exceeded — that’s fine, the final bill is based on actual time used.'
+                  : 'remaining in the estimate'
+                : pastLimit
+                  ? 'Exceeded the grace period — a late-return amount will apply once returned.'
+                  : 'remaining in the free return window'}
+            </p>
+          </div>
         )}
       </CardBody>
     </Card>
