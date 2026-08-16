@@ -365,6 +365,24 @@ function PayPalButtons({
   const host = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
 
+  // `onApproved` is the modal's `capture` — a plain function redeclared every
+  // render — and `onFailed` is an inline arrow at the call site, so both are a
+  // new reference on every render of the modal around this one, including the
+  // 3-second status poll a few effects up. Read through a ref instead of
+  // depending on them directly: the render effect below must only re-run when
+  // `action` itself changes, never because the *parent* re-rendered while a
+  // popup PayPal's SDK opened is still open. It used to depend on both, which
+  // meant an unrelated parent re-render re-ran `sdk.Buttons(...).render(...)`
+  // into the same host div mid-approval — tearing down the button instance
+  // that had just opened the popup, and with it the popup's connection to its
+  // opener, before the renter could do anything in it.
+  const onApprovedRef = useRef(onApproved);
+  const onFailedRef = useRef(onFailed);
+  useEffect(() => {
+    onApprovedRef.current = onApproved;
+    onFailedRef.current = onFailed;
+  });
+
   useEffect(() => {
     let cancelled = false;
     const src =
@@ -383,13 +401,13 @@ function PayPalButtons({
         .Buttons({
           createOrder: () => Promise.resolve(action.order),
           onApprove: (data) => {
-            onApproved(data.orderID ?? action.order);
+            onApprovedRef.current(data.orderID ?? action.order);
             return Promise.resolve();
           },
           // A renter who closes the popup has not failed at anything, so this
           // says nothing and leaves the buttons where they are.
           onCancel: () => undefined,
-          onError: () => onFailed('PayPal could not complete that payment.'),
+          onError: () => onFailedRef.current('PayPal could not complete that payment.'),
         })
         .render(host.current);
     };
@@ -410,7 +428,8 @@ function PayPalButtons({
       cancelled = true;
       script.removeEventListener('load', render);
     };
-  }, [action, onApproved, onFailed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action]);
 
   if (state === 'failed') {
     return (
