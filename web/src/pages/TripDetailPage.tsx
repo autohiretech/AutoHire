@@ -306,6 +306,20 @@ export function TripDetailPage() {
                   {amHost && booking.amountOwedRwf > 0 && <AmountOwedResolver booking={booking} />}
                 </div>
               )}
+              {booking.overageCollectionFailed && (
+                <div className="mt-1 space-y-1.5 rounded-lg bg-amber-50 p-2.5 text-[13px] leading-relaxed text-amber-800">
+                  <p>
+                    PayHold couldn't charge the overage automatically —
+                    {booking.overageCollectionFailedReason
+                      ? ` ${booking.overageCollectionFailedReason}`
+                      : ' the renter paid by a method with no saved card.'}{' '}
+                    {amHost
+                      ? 'Collect it from the renter directly, then confirm below.'
+                      : 'Your host will follow up with you directly to collect it.'}
+                  </p>
+                  {amHost && <OverageCollectionResolver booking={booking} />}
+                </div>
+              )}
             </CardBody>
           </Card>
 
@@ -387,6 +401,33 @@ function AmountOwedResolver({ booking }: { booking: Booking }) {
           Mark fully collected
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Host-only: acknowledge an overage charge PayHold couldn't collect
+ * automatically was collected in person. Never a charge — PayHold has no way
+ * to bill this renter again, this only clears the flag `payhold-webhook` set
+ * on `order.balance_charge_failed`.
+ */
+function OverageCollectionResolver({ booking }: { booking: Booking }) {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => client.acknowledgeOverageCollected(booking.id),
+    onSuccess: () => {
+      toast.success('Saved.');
+      queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't save that."),
+  });
+
+  return (
+    <div className="mt-2 border-t border-amber-200 pt-2">
+      <Button size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+        Mark collected
+      </Button>
     </div>
   );
 }
@@ -503,6 +544,7 @@ function HandoffPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [overageOverride, setOverageOverride] = useState('');
 
   // Local previews for the not-yet-uploaded files — revoked as soon as the
   // selection changes so we don't leak blob URLs.
@@ -534,16 +576,35 @@ function HandoffPanel({
     setFiles((fs) => fs.filter((_, i) => i !== index));
   }
 
+  // The host's own lever on a late charge — reduce or waive it before
+  // PayHold collects it. Only meaningful on the host's own return
+  // confirmation; PayHold refuses it from the renter's side outright (see
+  // `confirmDeal` in payhold's own _shared/payhold.ts). A plain RWF integer,
+  // same units the listing itself is priced in — no currency conversion,
+  // since `overage_override` is checked against the deal's own overage rate
+  // before it is ever converted to what the renter was actually charged in.
+  const overrideValue = overageOverride.trim();
+  const overrideParsed = overrideValue === '' ? undefined : Number(overrideValue);
+  const overrideValid =
+    overrideParsed === undefined ||
+    (Number.isInteger(overrideParsed) && overrideParsed >= 0);
+
   async function confirm() {
     setBusy(true);
     setError(null);
     try {
       const urls = files.length > 0 ? await client.uploadPhotos(files) : [];
-      await client.confirmHandoff(booking.id, phase, urls);
+      await client.confirmHandoff(
+        booking.id,
+        phase,
+        urls,
+        isHost && phase === 'return' ? overrideParsed : undefined,
+      );
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       setFiles([]);
+      setOverageOverride('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not confirm the handoff.');
     } finally {
@@ -643,8 +704,37 @@ function HandoffPanel({
               </label>
             </div>
 
+            {isHost && phase === 'return' && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-ink-700" htmlFor="overage-override">
+                  Reduce or waive the overage charge (optional)
+                </label>
+                <Input
+                  id="overage-override"
+                  type="number"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="Leave blank to charge the full calculated amount"
+                  value={overageOverride}
+                  onChange={(e) => setOverageOverride(e.target.value)}
+                  disabled={busy}
+                  className="h-8 text-sm"
+                />
+                <p className="text-[11px] text-ink-500">
+                  In RWF. PayHold caps this at whatever the overage actually comes to — this can
+                  only lower it, never raise it.
+                </p>
+              </div>
+            )}
+
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <Button size="sm" className="w-full" disabled={busy} onClick={confirm}>
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={busy || !overrideValid}
+              onClick={confirm}
+            >
               {busy
                 ? 'Confirming…'
                 : files.length > 0

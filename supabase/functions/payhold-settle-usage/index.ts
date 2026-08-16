@@ -9,29 +9,36 @@
 //
 // What it does with the answer differs by how the booking was priced:
 //
-//   hourly, split deal (payhold-create-deal set split_percent — every hourly
-//            deal created after this comment was written) — the renter's
-//            OTHER 50% and any time beyond the estimate are collected
-//            automatically by PayHold itself, on the card the renter paid
-//            with, the instant both sides confirm the trip is over. That
-//            covers on-time and late returns correctly on its own. It cannot
-//            cover an EARLY one: PayHold's split always collects the full
-//            second half, with no way to know the trip ran short. So this
-//            function's only remaining job for a split deal is: if actual use
+//   hourly, full-upfront deal (payhold-create-deal set overage_rate and no
+//            split_percent — every hourly deal created since the 50/50 split
+//            was retired) — the full estimate was already charged at
+//            booking. Any time beyond it is collected automatically by
+//            PayHold itself, on the card the renter paid with, the instant
+//            both sides confirm the trip is over — or the trip pauses
+//            pending the host, for a renter with no saved card (mobile money
+//            has no reusable credential). That covers on-time and late
+//            returns on its own. It cannot cover an EARLY one: PayHold's
+//            overage can only ever add to what was charged, never subtract.
+//            So this function's only remaining job here is: if actual use
 //            cost LESS than the full estimate, refund the difference — the
-//            one direction PayHold's own mechanism cannot express. If actual
-//            use cost the same or more, this does nothing; PayHold already
-//            handled it (or, for a renter with no saved card — mobile money
-//            has no reusable credential — the trip is paused pending the
-//            host resolving it, which this function has no part in).
+//            one direction PayHold's own mechanism cannot express.
 //
-//   hourly, pre-split deal (booked before this shipped, no split_percent on
-//            the deal) — the old behaviour, kept for bookings already in
-//            flight: refund if actual use cost less than the deposit, else
-//            record the shortfall in amount_owed_rwf uncollected. Detected by
-//            re-reading the deal rather than a booking-table flag, since the
-//            deal itself is the one thing that cannot be migrated after the
-//            fact.
+//   hourly, split deal (payhold-create-deal set split_percent — every hourly
+//            deal created before the full-upfront model, while the 50/50
+//            split shipped) — the renter's OTHER 50% and any time beyond the
+//            estimate were collected the same automatic way. Same shortfall
+//            refund as the full-upfront case above; the only difference is
+//            what was charged at booking, half instead of the whole
+//            estimate. Kept for bookings already in flight when the split
+//            was retired.
+//
+//   hourly, pre-overage deal (booked before either shipped, no split_percent
+//            and no overage_rate on the deal) — the old behaviour, kept for
+//            bookings already in flight: refund if actual use cost less than
+//            the deposit, else record the shortfall in amount_owed_rwf
+//            uncollected. Detected by re-reading the deal rather than a
+//            booking-table flag, since the deal itself is the one thing that
+//            cannot be migrated after the fact.
 //
 //   daily, overage-wired deal (payhold-create-deal set overage_rate — every
 //            daily deal created after this comment was written) — no split,
@@ -46,7 +53,8 @@
 //            claims the penalty from the renter themselves, physically,
 //            outside PayHold, the way this always worked before automatic
 //            collection existed at all. This function has nothing to add
-//            either way.
+//            either way. Daily bookings are never refunded for an early
+//            return — a day rate, unlike an hourly one, was never metered.
 //
 //   daily, pre-overage-wiring deal (booked before this shipped, no
 //            overage_rate on the deal) — the old behaviour, kept for
@@ -164,14 +172,17 @@ Deno.serve(async (req: Request) => {
       const deposit = Number(booking.deposit_amount_rwf ?? 0);
       finalAmount = actualHours * rate;
 
-      if (deal?.split_percent != null) {
-        // The split deal. PayHold has already collected the other half, plus
-        // any time beyond the estimate, automatically — or the trip is
-        // paused pending the host, if it could not (no saved card). Either
-        // way this function has nothing to add UNLESS the trip ran short of
-        // the estimate, which PayHold's fixed split cannot express: it always
-        // collects the full estimated amount, so an early return means it
-        // collected more than was actually owed.
+      if (deal?.split_percent != null || deal?.overage_rate != null) {
+        // Either shape PayHold auto-collects under — split (the deposit plus
+        // overage) or full-upfront (just the overage) — leaves this function
+        // the identical remaining job. PayHold has already collected
+        // whatever was owed past what was charged at booking, automatically,
+        // on the card the renter paid with — or the trip is paused pending
+        // the host, if it could not (no saved card). Either way this
+        // function has nothing to add UNLESS the trip ran short of the
+        // estimate, which PayHold's mechanism cannot express in either
+        // shape: it only ever collects more, never less, so an early return
+        // means it collected more than was actually owed.
         const estimatedHours = Number(booking.estimated_hours ?? 0);
         const estimatedTotal = estimatedHours * rate;
         const overpaid = estimatedTotal - finalAmount; // positive: trip ran short
@@ -195,12 +206,12 @@ Deno.serve(async (req: Request) => {
           }
         }
         // actualHours >= estimatedHours: nothing to do here. PayHold's own
-        // split_percent + overage_rate collected exactly this, or is paused
-        // waiting on the host — either way amount_owed_rwf is not this
-        // function's concern for a split deal, and is left at 0.
+        // automatic collection got exactly this, or is paused waiting on the
+        // host — either way amount_owed_rwf is not this function's concern,
+        // and is left at 0.
       } else {
-        // Pre-split deal: today's behaviour, unchanged, for a booking created
-        // before this shipped.
+        // Pre-overage-wiring deal: today's behaviour, unchanged, for a
+        // booking created before hourly listings sent overage_rate at all.
         const diff = deposit - finalAmount; // positive: renter overpaid the deposit
 
         if (diff > 0 && booking.payhold_deal_id) {

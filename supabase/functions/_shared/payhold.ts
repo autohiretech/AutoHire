@@ -402,11 +402,23 @@ export function getDeal(id: string): Promise<Deal & { amounts: DealAmounts | nul
  * releases the hold atomically inside its own transaction — there is no
  * separate "release" call for AutoHire to make, and no window where it could
  * be missed.
+ *
+ * `overageOverride` is the host's own lever on a late charge — reduce or
+ * waive it before it is collected. PayHold refuses it outright unless
+ * `side === 'seller'`, so passing it on the renter's own confirmation is
+ * simply wasted, not a way around the restriction.
  */
-export function confirmDeal(id: string, side: 'buyer' | 'seller'): Promise<Deal> {
+export function confirmDeal(
+  id: string,
+  side: 'buyer' | 'seller',
+  overageOverride?: number,
+): Promise<Deal> {
   return call<Deal>(`/deals/${encodeURIComponent(id)}/confirm`, {
     method: 'POST',
-    body: { side },
+    body: {
+      side,
+      ...(overageOverride === undefined ? {} : { overage_override: overageOverride }),
+    },
   });
 }
 

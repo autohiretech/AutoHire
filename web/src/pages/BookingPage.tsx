@@ -252,16 +252,17 @@ export function BookingPage() {
   // A car is priced by the day or by the hour, never both — fixed by the
   // listing, not a choice made on this page.
   const isHourly = listing.pricingMode === 'hourly';
-  // For an hourly booking this is an ESTIMATE — what's actually charged now is
-  // 50% of it, and the rest is settled against actual pickup-to-return time
-  // once the trip completes (see docs/payhold.md — PayHold has no way to add
-  // money to a deal already funded, so the balance is display-only, not
-  // auto-charged).
+  // For an hourly booking this is an ESTIMATE, charged in full now, same as
+  // a daily booking's fixed total. Any time beyond it is settled against
+  // actual pickup-to-return time once the trip completes — collected
+  // automatically by PayHold on a card, or claimed by the host directly on a
+  // method with no reusable credential (mobile money). Running short of the
+  // estimate is refunded; PayHold's own overage collection can only add to
+  // what was charged, never subtract.
   const estimatedTotal = isHourly
     ? estimatedHours * (listing.pricePerHourRwf ?? 0)
     : (listing.pricePerDayRwf ?? 0) * days;
-  const depositAmount = isHourly ? Math.round(estimatedTotal / 2) : estimatedTotal;
-  const subtotal = depositAmount;
+  const subtotal = estimatedTotal;
   const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
   const total = subtotal + serviceFee;
   // Amounts stay in the currency the host set the car in — never re-denominated
@@ -346,8 +347,8 @@ export function BookingPage() {
                     onChange={(e) => setEstimatedHours(Math.max(1, Number(e.target.value) || 1))}
                   />
                   <p className="mt-1 text-xs text-ink-400">
-                    You pay 50% now ({money(depositAmount)} of an estimated {money(estimatedTotal)}).
-                    The rest is settled from the actual time between pickup and return.
+                    You pay the estimated {money(estimatedTotal)} now. Extra time beyond it
+                    is settled automatically after your trip, based on actual pickup-to-return time.
                   </p>
                 </div>
               )}
@@ -592,19 +593,13 @@ export function BookingPage() {
                 <p className="text-sm font-semibold text-ink-900">Price details</p>
                 <div className="mt-2 space-y-1.5 text-sm">
                   {isHourly ? (
-                    <>
-                      <div className="flex justify-between text-ink-600">
-                        <span>
-                          {money(listing.pricePerHourRwf ?? 0)} × {estimatedHours} hr
-                          {estimatedHours === 1 ? '' : 's'} (estimated)
-                        </span>
-                        <span>{money(estimatedTotal)}</span>
-                      </div>
-                      <div className="flex justify-between text-ink-600">
-                        <span>Deposit due now (50%)</span>
-                        <span>{money(depositAmount)}</span>
-                      </div>
-                    </>
+                    <div className="flex justify-between text-ink-600">
+                      <span>
+                        {money(listing.pricePerHourRwf ?? 0)} × {estimatedHours} hr
+                        {estimatedHours === 1 ? '' : 's'} (estimated)
+                      </span>
+                      <span>{money(subtotal)}</span>
+                    </div>
                   ) : (
                     <div className="flex justify-between text-ink-600">
                       <span>

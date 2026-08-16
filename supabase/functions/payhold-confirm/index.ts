@@ -54,8 +54,15 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ error: 'Invalid or expired session.' }, 401);
     const uid = userData.user.id;
 
-    const { bookingId } = await req.json();
+    const { bookingId, overageOverrideMinor } = await req.json();
     if (!bookingId) return json({ error: 'bookingId is required.' }, 400);
+    if (
+      overageOverrideMinor !== undefined &&
+      overageOverrideMinor !== null &&
+      (typeof overageOverrideMinor !== 'number' || overageOverrideMinor < 0)
+    ) {
+      return json({ error: 'overageOverrideMinor must be a non-negative number.' }, 400);
+    }
 
     const { data: booking } = await admin
       .from('bookings')
@@ -84,7 +91,21 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const deal = await confirmDeal(booking.payhold_deal_id, side);
+    // The host's own lever, and only theirs — PayHold refuses this on the
+    // renter's confirmation too, but the sentence here is one a renter
+    // sending it (by mistake, or by tampering with the request) can actually
+    // act on.
+    if (overageOverrideMinor !== undefined && overageOverrideMinor !== null && side !== 'seller') {
+      return json({ error: 'Only the host can adjust the overage charge.' }, 403);
+    }
+
+    const deal = await confirmDeal(
+      booking.payhold_deal_id,
+      side,
+      overageOverrideMinor === undefined || overageOverrideMinor === null
+        ? undefined
+        : overageOverrideMinor,
+    );
 
     return json({ dealStatus: deal.status, side, confirmations: deal.confirmations ?? null }, 200);
   } catch (e) {

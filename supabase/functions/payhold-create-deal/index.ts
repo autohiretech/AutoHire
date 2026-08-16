@@ -294,24 +294,20 @@ Deno.serve(async (req: Request) => {
     const pricePerHour = Number(listing.price_per_hour_rwf ?? 0);
     const overageRate = Math.round(pricePerHour * Number(listing.overage_multiplier ?? 2));
 
-    // `subtotal` is the 50% deposit charged now; `total` is what's actually
-    // due at booking (deposit + service fee). For an hourly car the OTHER
-    // half plus any time beyond the estimate is collected automatically by
-    // PayHold itself — split_percent/overage_rate below — the moment both
-    // sides confirm the trip is over, on the card the renter paid with. An
-    // early return still needs payhold-settle-usage's own refund, since
-    // PayHold's split always collects the full second half; it cannot know
-    // the trip ran short.
+    // `subtotal` is the full estimate, charged now, for both rental types.
+    // For an hourly car any time beyond the estimate is collected
+    // automatically by PayHold itself — overage_rate below — the moment both
+    // sides confirm the trip is over, on the card the renter paid with, or
+    // the trip pauses for the host to collect by hand if the renter paid by
+    // a method with no reusable credential (mobile money). An early return
+    // still needs payhold-settle-usage's own refund, since PayHold's overage
+    // can only ever add to what was charged, never take away — it cannot
+    // know the trip ran short of the estimate.
     const estimatedTotal = isHourly ? hours * pricePerHour : (listing.price_per_day_rwf as number) * days;
-    const subtotal = isHourly ? Math.round(estimatedTotal / 2) : estimatedTotal;
+    const subtotal = estimatedTotal;
     const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
     const total = subtotal + serviceFee;
-    // The full deal amount for a split hourly booking — estimatedTotal plus
-    // the SAME service fee `total` already carries, so the fee's rwf amount
-    // is unchanged from today; only half of it is now collected at booking
-    // and half at return, since PayHold's split has no way to charge a fee
-    // up front and a rental cost on a schedule.
-    const dealAmount = isHourly ? estimatedTotal + serviceFee : total;
+    const dealAmount = total;
 
     // Always the car's own currency — the renter's market never re-denominates
     // it. PayHold converts to something the renter's country can actually be
@@ -341,7 +337,7 @@ Deno.serve(async (req: Request) => {
       buyerRef: uid,
       sellerId,
       description: isHourly
-        ? `AutoHire — ${listing.title} (${hours}hr estimate, 50% now + auto-settled on return)`
+        ? `AutoHire — ${listing.title} (${hours}hr estimate, overage auto-settled on return)`
         : `AutoHire — ${listing.title} (${days} day${days === 1 ? '' : 's'})`,
       amount: toMinorUnits(dealAmount, currency),
       currency,
@@ -350,31 +346,25 @@ Deno.serve(async (req: Request) => {
       // they can pay with and which currency their card is actually charged in.
       buyerCountry: buyerCountryOverride || (renter?.country as string | null) || undefined,
       expectedCompleteAt: isHourly ? hourlyExpectedCompleteAt : dailyExpectedCompleteAt,
+      // No split, for either rental type — the full estimate is charged up
+      // front. Overage is conditional on going past it, so mobile money
+      // stays offered here regardless: if it never happens, nothing needed a
+      // reusable credential in the first place, and if it does, the charge
+      // attempt fails the same way it does for any provider with no saved
+      // method — the trip pauses and the host collects the penalty
+      // themselves, the way this always worked before PayHold could ever
+      // attempt it automatically. Card renters get it collected
+      // automatically the moment both sides confirm the trip is over.
+      //
+      // Hourly and daily still branch because their overage *rate* differs —
+      // hourly has never charged a penalty multiplier, only daily does — not
+      // because one of them auto-collects and the other doesn't.
       ...(isHourly
         ? {
-            // The whole booking is split. PayHold still offers every method
-            // it would otherwise — it does not exclude mobile money — but a
-            // method with no reusable credential (mobile money; see
-            // METHOD_SUPPORTS_REUSE in PayHold's own _shared/rails.ts) can
-            // never fund the automatic second charge, so PayHold prices that
-            // choice at the full amount instead of the 50% deposit and
-            // collapses the split the moment the renter picks it. The
-            // renter-facing amount for whichever method they choose comes
-            // from PayHold's own per-method `amount`, not from `subtotal`
-            // below — see CheckoutModal.
-            splitPercent: 50,
             overageRate: toMinorUnits(pricePerHour, currency),
             overageUnitSeconds: 3600,
           }
         : {
-            // No split — the full amount is charged up front exactly as
-            // today. Overage is conditional on a late return, so mobile
-            // money stays offered here: if it never happens, nothing needed
-            // a reusable credential in the first place, and if it does, the
-            // charge attempt fails the same way it does for any provider
-            // with no saved method — the trip pauses and the host collects
-            // the penalty themselves, the way this always worked before
-            // PayHold could ever attempt it automatically.
             overageRate: toMinorUnits(overageRate, currency),
             overageUnitSeconds: 3600,
           }),

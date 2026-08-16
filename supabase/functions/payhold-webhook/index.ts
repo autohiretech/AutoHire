@@ -257,6 +257,27 @@ Deno.serve(async (req: Request) => {
         return json({ received: true, booking: booking?.id ?? null, dealStatus: deal.status }, 200);
       }
 
+      // PayHold's own automatic overage collection was refused — the renter
+      // paid by a method with no reusable credential (mobile money, above
+      // all), so `chargeSaved` never had a token to charge. The trip is
+      // paused on PayHold's side; nothing here does that automatically, so
+      // the host needs telling to go collect it in person. Cleared by the
+      // host themselves once they have — `acknowledgeOverageCollected`,
+      // guarded by `booking_enforce_update` (migration 057).
+      case 'order.balance_charge_failed': {
+        const booking = await bookingFor(admin, deal.id);
+        if (booking) {
+          await admin
+            .from('bookings')
+            .update({
+              overage_collection_failed: true,
+              overage_collection_failed_reason: String(event.data?.reason ?? 'Could not be charged automatically.'),
+            })
+            .eq('id', booking.id);
+        }
+        return json({ received: true, booking: booking?.id ?? null }, 200);
+      }
+
       // A case was opened in PayHold's Resolution Center — by either side, or
       // by an operator there. Payouts on this deal are frozen on their side;
       // mirroring it here is what makes it visible in AutoHire.

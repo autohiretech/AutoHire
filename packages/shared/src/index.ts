@@ -375,7 +375,7 @@ export interface Booking {
   /** Snapshot of the listing's rate(s) at booking time — immutable after. */
   pricePerHourRwf?: number | null;
   overageRateRwf?: number | null;
-  /** What was actually funded up front — 50% of the estimate for hourly, totalRwf for daily. */
+  /** What was actually funded up front — the full estimate for hourly, totalRwf for daily. */
   depositAmountRwf?: number | null;
   /** Written once, by settlement, when the trip reaches 'completed'. */
   actualHours?: number | null;
@@ -395,6 +395,15 @@ export interface Booking {
    * it. Null until the trip is settled.
    */
   amountExceededRwf?: number | null;
+  /**
+   * PayHold's own automatic overage collection was refused — the renter paid
+   * by a method with no reusable credential (mobile money, above all) — and
+   * `payhold-webhook` flagged it here on `order.balance_charge_failed`. The
+   * host collects it in person and clears the flag themselves; see
+   * `acknowledgeOverageCollected`.
+   */
+  overageCollectionFailed?: boolean;
+  overageCollectionFailedReason?: string | null;
   /** Payment state, owned server-side. A booking only exists once it is 'paid'. */
   paymentStatus: PaymentStatus;
   /** Rail that collected this booking — routed from the car's market. */

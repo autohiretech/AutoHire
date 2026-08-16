@@ -882,9 +882,15 @@ export const supabaseClient = {
    * sides have confirmed, atomically on its side; this is one of the two
    * confirmations, not the release itself.
    */
-  async confirmPayholdDeal(bookingId: string): Promise<{ dealStatus: string }> {
+  async confirmPayholdDeal(
+    bookingId: string,
+    overageOverrideMinor?: number,
+  ): Promise<{ dealStatus: string }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-confirm', {
-      body: { bookingId },
+      body: {
+        bookingId,
+        ...(overageOverrideMinor === undefined ? {} : { overageOverrideMinor }),
+      },
     });
     if (error) throw await fnError(error);
     return data as { dealStatus: string };
@@ -927,6 +933,27 @@ export const supabaseClient = {
     return mapRow<Booking>(row) as Booking;
   },
 
+  /**
+   * The host confirms they collected an overage charge in person — PayHold
+   * couldn't auto-charge it (the renter paid by a method with no saved
+   * credential), so `payhold-webhook` flagged the booking on
+   * `order.balance_charge_failed`. This clears the flag; it never charges
+   * anyone, the same reasoning `adjustAmountOwed` carries. Migration 057's
+   * `booking_enforce_update` is what actually enforces host-only and
+   * clear-only — this is a plain update.
+   */
+  async acknowledgeOverageCollected(bookingId: string): Promise<Booking> {
+    const row = await run(
+      sb()
+        .from('bookings')
+        .update({ overage_collection_failed: false, overage_collection_failed_reason: null })
+        .eq('id', bookingId)
+        .select('*')
+        .maybeSingle(),
+    );
+    return mapRow<Booking>(row) as Booking;
+  },
+
   /** Admin: disburse a scheduled host payout via its provider. */
   async disbursePayout(payoutId: string): Promise<unknown> {
     const { data, error } = await getSupabase().functions.invoke('flutterwave-transfer', {
@@ -945,6 +972,8 @@ export const supabaseClient = {
     bookingId: string,
     phase: 'pickup' | 'return',
     photoUrls: string[],
+    /** The host's own reduce-or-waive lever on a late charge. Ignored for the renter's own confirmation — see `confirmPayholdDeal`. */
+    overageOverrideMinor?: number,
   ): Promise<Booking> {
     const takenAt = new Date().toISOString();
     const photos = photoUrls.map((url) => ({
@@ -970,7 +999,7 @@ export const supabaseClient = {
       // (`too_early`/409 before the trip is even active is the other case
       // this can hit) must never block the handoff itself.
       if (phase === 'return') {
-        supabaseClient.confirmPayholdDeal(booking.id).catch((e) => {
+        supabaseClient.confirmPayholdDeal(booking.id, overageOverrideMinor).catch((e) => {
           console.error('confirmPayholdDeal failed', e);
         });
         // Only meaningful once BOTH sides have signed the return — this is
