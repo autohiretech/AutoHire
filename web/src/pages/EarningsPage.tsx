@@ -391,7 +391,7 @@ export function EarningsPage() {
           and can I send it" versus "which trip made this". Stacking both under
           one scroll made the figure a host actually opened this page for
           compete with a list they weren't reading yet. */}
-      {w?.sellerId && !notConfigured && (
+      {w?.sellerId && !notConfigured && !earnings.isLoading && (
         <div className="mt-6 inline-flex items-center gap-1 rounded-full border border-ink-200 bg-white p-1 shadow-sm">
           <button
             type="button"
@@ -426,7 +426,7 @@ export function EarningsPage() {
         </div>
       )}
 
-      {tab === 'overview' && w?.sellerId && !notConfigured && (
+      {tab === 'overview' && w?.sellerId && !notConfigured && !earnings.isLoading && (
         <>
           {/* --- Where you get paid -------------------------------------------
               Always on the page once a seller exists, not folded into the
@@ -597,18 +597,42 @@ export function EarningsPage() {
                     </p>
                   )}
                 </div>
-                <Button
-                  className="bg-white text-brand-700 shadow-sm hover:bg-brand-50"
-                  disabled={
-                    withdrawableForCurrency.availableAmount <= 0 ||
-                    withdraw.isPending ||
-                    !w?.canReceivePayouts
-                  }
-                  onClick={() => withdraw.mutate()}
-                >
-                  <Send size={16} />
-                  {withdraw.isPending ? 'Sending…' : 'Send it now'}
-                </Button>
+                {/* "Send it now" doubles as a retry: `request_withdrawal` claims
+                    payouts in `scheduled`, `blocked`, `needs_verification`,
+                    `failed` or `frozen`, not only ones already sitting at a
+                    sendable amount. Gating the button on `availableAmount > 0`
+                    alone made a host with everything stuck at `blocked` unable
+                    to even attempt the one action that might unstick it — a
+                    live retry against production confirmed the call goes
+                    through and reaches the real payout rail even when
+                    `availableAmount` reads zero. `heldCount` stays out of the
+                    condition on purpose: a `held_for_review` payout waits on a
+                    named person clearing it (invariant 11), and a retry from
+                    here cannot do that regardless of button state. */}
+                {(() => {
+                  const hasAvailable = withdrawableForCurrency.availableAmount > 0;
+                  const hasRetriable =
+                    withdrawableForCurrency.blockedCount > 0 ||
+                    withdrawableForCurrency.needsVerificationCount > 0;
+                  return (
+                    <Button
+                      className="bg-white text-brand-700 shadow-sm hover:bg-brand-50"
+                      disabled={
+                        (!hasAvailable && !hasRetriable) || withdraw.isPending || !w?.canReceivePayouts
+                      }
+                      onClick={() => withdraw.mutate()}
+                    >
+                      <Send size={16} />
+                      {withdraw.isPending
+                        ? 'Sending…'
+                        : hasAvailable
+                          ? 'Send it now'
+                          : hasRetriable
+                            ? 'Retry stuck payouts'
+                            : 'Send it now'}
+                    </Button>
+                  );
+                })()}
               </div>
             </div>
           )}
