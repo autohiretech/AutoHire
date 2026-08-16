@@ -12,6 +12,7 @@ import { CitiesPage } from '@/pages/CitiesPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { EarningsPage } from '@/pages/EarningsPage';
 import { PayoutSetupPage } from '@/pages/PayoutSetupPage';
+import { StripeConnectReturnPage } from '@/pages/StripeConnectReturnPage';
 import { MessagesPage } from '@/pages/MessagesPage';
 import { TripsPage } from '@/pages/TripsPage';
 import { VerificationPage } from '@/pages/VerificationPage';
@@ -60,6 +61,15 @@ export default function App() {
           element={
             <RequireRole roles={['owner', 'admin']}>
               <PayoutSetupPage />
+            </RequireRole>
+          }
+        />
+        {/* Where Stripe sends a host back after Connect onboarding. */}
+        <Route
+          path="payouts/stripe-connect/return"
+          element={
+            <RequireRole roles={['owner', 'admin']}>
+              <StripeConnectReturnPage />
             </RequireRole>
           }
         />

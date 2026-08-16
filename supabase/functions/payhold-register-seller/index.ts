@@ -356,6 +356,11 @@ Deno.serve(async (req: Request) => {
         country,
         payoutProvider,
         destination: raw,
+        // Same label `changeDestination` already sends on every later save —
+        // this was the gap: a host's very first destination had no label at
+        // all, so PayHold's own mask (guessed from a Flutterwave field that is
+        // unset for every RWF corridor) was the only word describing it.
+        label: METHOD_LABEL[method] ?? 'Payout',
         // Our own id for this host. PayHold refuses a second registration under
         // it rather than quietly accepting one, which is what makes a
         // double-submit an error instead of a duplicate seller.

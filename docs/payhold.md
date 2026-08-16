@@ -86,6 +86,7 @@ What "Send it now" actually does, from `request_withdrawal`:
 | [`payhold-confirm`](../supabase/functions/payhold-confirm/index.ts) | One side confirms a finished trip. |
 | [`payhold-seller`](../supabase/functions/payhold-seller/index.ts) | The host's seller record: id, KYC, capabilities, destinations. |
 | [`payhold-payment-options`](../supabase/functions/payhold-payment-options/index.ts) | Which countries PayHold can collect in and pay out to. Drives the payout screen. |
+| [`payhold-stripe-connect`](../supabase/functions/payhold-stripe-connect/index.ts) | Starts (POST) and polls (GET) Stripe Connect onboarding — the destination `stripe_connect` needs and a host cannot type in. See "Stripe Connect onboarding" below. |
 | [`payhold-dispute`](../supabase/functions/payhold-dispute/index.ts) | Raise a case in PayHold — this is what freezes the payout. |
 | [`payhold-refund`](../supabase/functions/payhold-refund/index.ts) | Send the renter's money back, in full or in part. |
 | [`EarningsPage`](../web/src/pages/EarningsPage.tsx) | `/earnings` — totals, trip-by-trip stages, fee breakdown, withdraw. |
@@ -714,6 +715,38 @@ rail at checkout, so both paths exist while the switch is being tested. Delete
 them once PayHold has carried real bookings — not before, because a booking made
 on the old rail still needs the old capture path to finish.
 
+## Stripe Connect onboarding — closes finding #1 below
+
+**As of 2026-08-16, a host outside Flutterwave's African corridors can
+actually register a payout method.** Finding #1 below stood unresolved for a
+while: `payoutProviderFor` has always routed Bank/Card there to
+`stripe_connect`, but that rail's destination is a connected account id
+(`acct_…`) Stripe mints during its own hosted onboarding — never a number a
+host can type into a form, and PayHold's `StripeProvider.tokenize` correctly
+refused anything else.
+
+What closes the gap is on both sides:
+
+- **PayHold** grew `POST /sellers/:id/connect/onboard` and
+  `GET /sellers/:id/connect/status` (migration `20260816000011`,
+  `payhold-backend/CLAUDE.md`'s "StripeProvider" section). The first creates a
+  Stripe Express account and a one-time hosted onboarding link; the second
+  polls Stripe and, once `payouts_enabled`, promotes the account into a real
+  `seller_destinations` row through the exact `tokenize` → `add_seller_destination`
+  path a typed-in destination uses — unverified, inside the usual security
+  hold, same as any other.
+- **AutoHire** added [`payhold-stripe-connect`](../supabase/functions/payhold-stripe-connect/index.ts)
+  (POST starts it, GET polls it) and a `/payouts/stripe-connect/return` page.
+  `PayoutSetupPage` now detects a Stripe Connect route (`payoutRoute.payout.provider
+  === 'stripe' && kind === 'connect'`) and shows a "Connect with Stripe" button
+  instead of a destination text field for Bank/Card in those markets.
+
+**Not done**: an `account.updated` webhook handler on PayHold's side, so
+completion currently depends on the return page's poll rather than also being
+picked up server-side if a host closes the tab before it fires. The polling
+path is the primary one by design (same shape as checkout's own poll) and
+works standalone; the webhook is the natural hardening, not a blocker.
+
 ## What the first live run found
 
 Seeding the demo hosts (step 9) made AutoHire's first real calls to PayHold.
@@ -721,7 +754,7 @@ Two of eight hosts registered; six were refused, and the refusals are AutoHire
 bugs rather than seeding accidents. **Each of these breaks a real host at
 `/payouts/setup` exactly as it broke the demo one.**
 
-**1. `stripe_connect` does not take a number — it takes an `acct_…`.**
+**1. `stripe_connect` does not take a number — it takes an `acct_…`. Fixed — see "Stripe Connect onboarding" above.**
 
 > A Stripe payout destination is a connected account id (acct_…). Raw bank
 > details are given to Stripe during Connect onboarding, never to PayHold.
@@ -768,19 +801,19 @@ CN listing is therefore unbookable under PayHold no matter what AutoHire builds,
 because the limit is licensing on PayHold's side. The 150 demo cars in Shanghai
 are catalogue only until that changes.
 
-**3. `GET /sellers?external_user_id=` is not filtered server-side.**
+**3. `GET /sellers?external_user_id=` is not filtered server-side. Fixed on
+PayHold's side (`sellers/index.ts`) — this note is stale as of 2026-08-16.**
 
-The deployed PayHold ignores the parameter and returns the tenant's whole list —
-a handle matching nothing still comes back with every seller. `docs` above says
-PayHold "filters this server-side"; it does not, yet.
-
-`findSellerByExternalUserId` already checks the handle on our side rather than
-trusting row zero, so nothing links to the wrong seller — that guard was written
-for exactly this and it earned itself. But the **repair it provides is dead**: a
-host whose `payhold_seller_id` was lost cannot be re-linked, because the lookup
-cannot find their seller. Re-registering them would create a duplicate and
-orphan the first, which is unrecoverable — there is no delete endpoint. Treat a
-lost link as a support case until PayHold deploys the filter.
+At the time this was written, the deployed PayHold ignored the parameter and
+returned the tenant's whole list. It now filters on `tenant_id` and the trimmed
+handle (`.eq('external_user_id', handle.trim())`), refusing a blank handle
+rather than answering with everything. `findSellerByExternalUserId`'s own
+client-side check — matching the handle rather than trusting row zero — still
+stands as the defence against an older, unfiltered PayHold; it costs nothing
+now that the server filters too, and it is what to remove first if this file
+is ever pruned. The repair path this enables (re-linking a seller whose
+`payhold_seller_id` was lost, rather than treating it as a permanent support
+case) is live.
 
 ## Which payout methods a host is offered
 

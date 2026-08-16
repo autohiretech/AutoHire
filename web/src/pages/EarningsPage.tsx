@@ -15,7 +15,7 @@ import {
   Wallet,
   XCircle,
 } from 'lucide-react';
-import type { EarningStage, EarningTrip, PayoutDestination } from '@autohire/shared';
+import type { EarningStage, EarningTrip } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatMoney, formatMoneyMinor } from '@/lib/currency';
@@ -99,7 +99,6 @@ export function EarningsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: me } = useCurrentUser();
-  const [destinationId, setDestinationId] = useState<string | null>(null);
 
   const wallet = useQuery({
     queryKey: ['payholdWallet'],
@@ -115,7 +114,10 @@ export function EarningsPage() {
   });
 
   const withdraw = useMutation({
-    mutationFn: () => client.payholdWithdraw(destinationId ?? undefined),
+    // No destination to choose — a host only ever sees the one PayHold pays
+    // to, so a withdrawal always goes there. PayHold's own default (the
+    // primary) is exactly that account.
+    mutationFn: () => client.payholdWithdraw(),
     onSuccess: (r) => {
       queryClient.invalidateQueries({ queryKey: ['payholdWallet'] });
       queryClient.invalidateQueries({ queryKey: ['payholdEarnings'] });
@@ -152,13 +154,16 @@ export function EarningsPage() {
   const destinations = earnings.data?.destinations ?? [];
   const canWithdraw = withdrawable.some((d) => d.availableAmount > 0);
 
-  // Only destinations PayHold would actually accept. Offering one it will
-  // refuse turns a clear "not verified yet" into a failed withdrawal.
-  const usable = destinations.filter(
-    (d) =>
-      d.verifiedAt &&
-      (!d.securityHoldUntil || new Date(d.securityHoldUntil) <= new Date()),
-  );
+  // A host is shown one destination — the one PayHold actually pays.
+  // `destinations` can carry more (PayHold keeps a demoted one on file rather
+  // than deleting it, so money already sent there stays explained), but a
+  // second row nobody chose to see is confusing, not informative. `isPrimary`
+  // is PayHold's own answer to "which one is live"; falling back to the
+  // first row only covers a seller synced from before that flag existed.
+  const primary = destinations.find((d) => d.isPrimary) ?? destinations[0] ?? null;
+  const primaryReady =
+    !!primary?.verifiedAt &&
+    (!primary.securityHoldUntil || new Date(primary.securityHoldUntil) <= new Date());
 
   /**
    * The totals always render, at zero if that is the truth.
@@ -316,51 +321,35 @@ export function EarningsPage() {
                 own bank details was this condition. */}
             <Button variant="outline" size="sm" onClick={() => navigate('/payouts/setup')}>
               <Banknote size={14} />
-              {destinations.length === 0 ? 'Add a method' : 'Change'}
+              {primary ? 'Change' : 'Add a method'}
             </Button>
           </CardHeader>
           <CardBody className="space-y-2">
-            {destinations.length === 0 && (
+            {!primary && (
               <p className="text-sm text-ink-600">
                 {me?.payoutLabel
                   ? `${me.payoutLabel} — PayHold is still setting this up, so it can't receive money yet.`
                   : "You don't have a payout method yet. Money from your trips will wait here until you add one."}
               </p>
             )}
-            {destinations.map((d) => {
-              const ready = usable.includes(d);
-              return (
-                <div
-                  key={d.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-100 px-3 py-2"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-ink-900">
-                      {d.label ?? d.maskedDestination}
-                      {d.isPrimary && (
-                        <span className="ml-2 text-xs font-normal text-ink-500">default</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-ink-500">
-                      {d.maskedDestination} · {d.payoutCurrency}
-                    </p>
-                  </div>
-                  <Badge tone={ready ? 'success' : 'neutral'}>
-                    {ready
-                      ? 'Ready'
-                      : !d.verifiedAt
-                        ? 'Being verified'
-                        : `On hold until ${formatDate(d.securityHoldUntil!)}`}
-                  </Badge>
+            {primary && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-100 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-ink-900">
+                    {primary.label ?? primary.maskedDestination}
+                  </p>
+                  <p className="text-xs text-ink-500">
+                    {primary.maskedDestination} · {primary.payoutCurrency}
+                  </p>
                 </div>
-              );
-            })}
-            {destinations.length > 0 && (
-              <p className="pt-1 text-xs text-ink-500">
-                {usable.length > 1
-                  ? 'Pick which of these a payout goes to when you send it below.'
-                  : 'To change where you’re paid, contact support — money may already be owed to this account.'}
-              </p>
+                <Badge tone={primaryReady ? 'success' : 'neutral'}>
+                  {primaryReady
+                    ? 'Ready'
+                    : !primary.verifiedAt
+                      ? 'Being verified'
+                      : `On hold until ${formatDate(primary.securityHoldUntil!)}`}
+                </Badge>
+              </div>
             )}
           </CardBody>
         </Card>
@@ -437,55 +426,23 @@ export function EarningsPage() {
               </Button>
             </div>
 
-            {/* Which account. The chips appear whenever there is a choice to
-                make; with one destination the line below states where the money
-                goes, because "send it now" should never be the first time a host
-                finds out. */}
-            {usable.length > 1 && (
-              <div>
-                <p className="mb-1.5 text-xs font-medium text-ink-700">Send to</p>
-                <div className="flex flex-wrap gap-2">
-                  {usable.map((dest) => (
-                    <DestinationChip
-                      key={dest.id}
-                      destination={dest}
-                      selected={
-                        destinationId === dest.id || (!destinationId && dest.isPrimary)
-                      }
-                      onSelect={() => setDestinationId(dest.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-            {usable.length === 1 && (
+            {/* One destination, so nothing to pick — just say where it's
+                going, because "send it now" should never be the first time a
+                host finds out. */}
+            {primary && (
               <p className="text-xs text-ink-500">
-                Going to {usable[0].label ?? usable[0].maskedDestination}
+                {primaryReady
+                  ? `Going to ${primary.label ?? primary.maskedDestination}`
+                  : `${primary.label ?? primary.maskedDestination} isn't usable yet — ${
+                      !primary.verifiedAt
+                        ? 'still being verified'
+                        : `on hold until ${formatDate(primary.securityHoldUntil!)}`
+                    }.`}
               </p>
             )}
           </CardBody>
         </Card>
       ))}
-
-      {/* Destinations PayHold would refuse. Listed so a host knows why the one
-          they added yesterday isn't an option yet. */}
-      {destinations.length > usable.length && (
-        <Card className="mt-4 border-amber-200">
-          <CardBody className="space-y-1.5">
-            <p className="text-sm font-medium text-ink-900">Not usable yet</p>
-            {destinations
-              .filter((d) => !usable.includes(d))
-              .map((d) => (
-                <p key={d.id} className="text-xs text-ink-600">
-                  {d.label ?? d.maskedDestination} —{' '}
-                  {!d.verifiedAt
-                    ? 'waiting to be verified'
-                    : `on a security hold until ${formatDate(d.securityHoldUntil!)}`}
-                </p>
-              ))}
-          </CardBody>
-        </Card>
-      )}
 
       {/* --- Trip by trip ---------------------------------------------------
           No empty state here on purpose. A host with no completed trips already
@@ -638,38 +595,6 @@ function Line({ label, value }: { label: string; value: string }) {
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
-  );
-}
-
-function DestinationChip({
-  destination,
-  selected,
-  onSelect,
-}: {
-  destination: PayoutDestination;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={cn(
-        'rounded-xl border px-3 py-2 text-left text-xs transition-all',
-        selected
-          ? 'border-brand-400 bg-brand-50 ring-1 ring-brand-200'
-          : 'border-ink-200 bg-white hover:border-ink-300',
-      )}
-    >
-      <span className="block font-medium text-ink-900">
-        {destination.label ?? destination.maskedDestination}
-      </span>
-      <span className="block text-ink-500">
-        {destination.maskedDestination}
-        {destination.isPrimary && ' · default'}
-      </span>
-    </button>
   );
 }
 

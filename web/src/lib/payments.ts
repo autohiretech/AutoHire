@@ -159,7 +159,12 @@ export type PayoutAvailability =
   | { state: 'unavailable'; reason: string | null }
   /** Sanctioned. Neither direction, and not a corridor that will open. */
   | { state: 'restricted' }
-  /** PayHold reaches it, but only via Stripe Connect, which AutoHire lacks. */
+  /**
+   * PayHold names a route for this country but `payoutMethodsFromRoute`
+   * cannot map it to a method — every route it knows about does map today
+   * (Flutterwave momo/bank, Stripe Connect), so this is a defensive fallback
+   * for a route PayHold might return in the future, not a live case.
+   */
   | { state: 'unsupported' };
 
 export function payoutAvailability(

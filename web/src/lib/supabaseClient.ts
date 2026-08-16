@@ -738,6 +738,51 @@ export const supabaseClient = {
     return payload;
   },
 
+  /**
+   * Start (or resume) Stripe Connect onboarding — the one payout method that
+   * isn't a form field. `payoutProviderFor` routes bank/card outside Africa
+   * to `stripe_connect`, whose destination is an account id Stripe mints
+   * during its own hosted onboarding, not a number a host can type. Returns
+   * a one-time link to redirect the host to.
+   */
+  async startStripeConnectOnboarding(): Promise<{ url: string }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-stripe-connect', {
+      method: 'POST',
+    });
+    if (error) throw await fnError(error);
+    const payload = data as { url?: string; error?: string };
+    if (payload?.error || !payload?.url) {
+      throw new Error(payload?.error ?? "Couldn't start Stripe onboarding.");
+    }
+    return { url: payload.url };
+  },
+
+  /**
+   * Has Stripe finished it? Called from the return page rather than trusted
+   * from the redirect itself — a `connected` result means the payout method
+   * is already saved server-side, same as any other destination change.
+   */
+  async stripeConnectStatus(): Promise<
+    | { status: 'not_started' }
+    | { status: 'pending' }
+    | { status: 'connected'; maskedDestination: string }
+  > {
+    const { data, error } = await getSupabase().functions.invoke('payhold-stripe-connect', {
+      method: 'GET',
+    });
+    if (error) throw await fnError(error);
+    const payload = data as {
+      status?: 'not_started' | 'pending' | 'connected';
+      destination?: { masked_destination?: string };
+      error?: string;
+    };
+    if (payload?.error) throw new Error(payload.error);
+    if (payload.status === 'connected') {
+      return { status: 'connected', maskedDestination: payload.destination?.masked_destination ?? '' };
+    }
+    return { status: payload.status === 'pending' ? 'pending' : 'not_started' };
+  },
+
   /** Where this host's money can be sent, on its own — the narrow read. */
   async payholdDestinations(): Promise<PayoutDestination[]> {
     const { data, error } = await getSupabase().functions.invoke('payhold-seller/destinations', {

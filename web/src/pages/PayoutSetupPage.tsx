@@ -105,6 +105,17 @@ export function PayoutSetupPage() {
   const methods = availability.state === 'ok' ? availability.methods : [];
   const countryName = known?.name ?? 'your country';
 
+  // Under PayHold, `payoutProviderFor` always answers 'payhold' — the actual
+  // rail is PayHold's own decision, not ours. The one place that decision
+  // matters to this screen is here: Bank/Card outside Flutterwave's African
+  // corridors settle through Stripe Connect, whose destination is an
+  // `acct_…` Stripe mints during its own hosted onboarding, not a number a
+  // host can type into a field. `payoutRoute` (already fetched above for the
+  // method list) is what says so.
+  const needsStripeConnect =
+    PAYMENTS_PAYHOLD && payoutRoute?.payout?.provider === 'stripe' &&
+    payoutRoute?.payout?.kind === 'connect';
+
   const [selected, setSelected] = useState<PayoutMethodType | null>(null);
   const [dest, setDest] = useState('');
 
@@ -211,6 +222,21 @@ export function PayoutSetupPage() {
         e instanceof Error && e.message
           ? e.message
           : "Couldn't save your payout method. Please try again.",
+      ),
+  });
+
+  const connectStripe = useMutation({
+    mutationFn: () => client.startStripeConnectOnboarding(),
+    onSuccess: ({ url }) => {
+      // A real navigation, not a fetch — the rest of onboarding happens on
+      // Stripe's own hosted page, and completion is picked up back here by
+      // `/payouts/stripe-connect/return` polling PayHold, not by anything
+      // this response carries.
+      window.location.href = url;
+    },
+    onError: (e) =>
+      toast.error(
+        e instanceof Error && e.message ? e.message : "Couldn't start Stripe onboarding. Please try again.",
       ),
   });
 
@@ -358,7 +384,7 @@ export function PayoutSetupPage() {
                 ? `Payouts aren't available in ${countryName}.`
                 : availability.state === 'unavailable'
                   ? `We can't send payouts to ${countryName} yet.`
-                  : `Payouts in ${countryName} need a step we haven't finished building.`}
+                  : `We couldn't work out how payouts route in ${countryName}.`}
             </p>
             <p className="text-sm text-ink-600">
               {availability.state === 'restricted'
@@ -366,7 +392,7 @@ export function PayoutSetupPage() {
                 : availability.state === 'unavailable'
                   ? (availability.reason ??
                     `Renters in ${countryName} can still book and pay — it's only payouts that aren't open yet. We'll email you the moment they are.`)
-                  : `Getting paid here goes through Stripe, which needs an account you set up with them directly. That connection isn't ready yet — we'll email you as soon as it is.`}
+                  : 'This is unexpected — try refreshing, and contact support if it keeps happening.'}
             </p>
             <p className="text-sm text-ink-600">
               Until then your listings can't take bookings, because we won't hold a renter's money
@@ -417,53 +443,85 @@ export function PayoutSetupPage() {
         </div>
       </div>
 
-      {/* Destination form for the chosen method */}
-      {meta && selected && (
+      {/* Destination form for the chosen method — or, on Stripe Connect
+          markets, the onboarding handoff instead of a field nothing here can
+          validate. */}
+      {meta && selected && needsStripeConnect && (selected === 'bank' || selected === 'card') ? (
         <Card className="mt-4">
           <CardBody className="space-y-3">
-            <div>
-              <Label htmlFor="payout-dest">{meta.field}</Label>
-              <Input
-                id="payout-dest"
-                value={dest}
-                onChange={(e) => setDest(e.target.value)}
-                placeholder={meta.placeholder}
-                inputMode={selected === 'bank' || selected === 'card' ? 'numeric' : 'tel'}
-              />
-            </div>
-            {routedProvider && (
-              <p className="flex items-center gap-1.5 text-xs text-ink-500">
-                <Lock size={12} className="text-brand-600" /> Processed securely via{' '}
-                {PROVIDER_NAME[routedProvider]}. Only the last 4 digits are stored.
-              </p>
-            )}
-            {/* What saving actually does, said before they do it. A change is
-                not a free action — the new account is frozen while it is
-                checked — and a host who finds that out from a paused payout is
-                a host who thinks something broke. */}
-            {PAYMENTS_PAYHOLD ? (
-              connected && (
-                <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                  This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
-                  before they're paid, so payouts pause for up to 24 hours — your cars stay bookable
-                  and your earnings keep building up in the meantime.
-                </p>
-              )
-            ) : (
+            <p className="text-sm text-ink-600">
+              Getting paid in {countryName} goes through Stripe. You'll set up your account on
+              Stripe's own secure page — bank details go straight to them, never through us.
+            </p>
+            <p className="flex items-center gap-1.5 text-xs text-ink-500">
+              <Lock size={12} className="text-brand-600" /> Processed securely via Stripe. We only ever
+              see that your account is connected, never the details behind it.
+            </p>
+            {connected && (
               <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                Demo: connecting is simulated. In production this opens secure onboarding and activates
-                once verified.
+                This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
+                before they're paid, so payouts pause for up to 24 hours — your cars stay bookable and
+                your earnings keep building up in the meantime.
               </p>
             )}
             <Button
               className="w-full"
-              disabled={!canSave || connect.isPending}
-              onClick={() => connect.mutate(selected)}
+              disabled={connectStripe.isPending}
+              onClick={() => connectStripe.mutate()}
             >
-              {connect.isPending ? 'Saving…' : connected ? 'Save new payout method' : 'Save payout method'}
+              {connectStripe.isPending ? 'Starting…' : 'Connect with Stripe'}
             </Button>
           </CardBody>
         </Card>
+      ) : (
+        meta &&
+        selected && (
+          <Card className="mt-4">
+            <CardBody className="space-y-3">
+              <div>
+                <Label htmlFor="payout-dest">{meta.field}</Label>
+                <Input
+                  id="payout-dest"
+                  value={dest}
+                  onChange={(e) => setDest(e.target.value)}
+                  placeholder={meta.placeholder}
+                  inputMode={selected === 'bank' || selected === 'card' ? 'numeric' : 'tel'}
+                />
+              </div>
+              {routedProvider && (
+                <p className="flex items-center gap-1.5 text-xs text-ink-500">
+                  <Lock size={12} className="text-brand-600" /> Processed securely via{' '}
+                  {PROVIDER_NAME[routedProvider]}. Only the last 4 digits are stored.
+                </p>
+              )}
+              {/* What saving actually does, said before they do it. A change is
+                  not a free action — the new account is frozen while it is
+                  checked — and a host who finds that out from a paused payout is
+                  a host who thinks something broke. */}
+              {PAYMENTS_PAYHOLD ? (
+                connected && (
+                  <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                    This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
+                    before they're paid, so payouts pause for up to 24 hours — your cars stay bookable
+                    and your earnings keep building up in the meantime.
+                  </p>
+                )
+              ) : (
+                <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                  Demo: connecting is simulated. In production this opens secure onboarding and
+                  activates once verified.
+                </p>
+              )}
+              <Button
+                className="w-full"
+                disabled={!canSave || connect.isPending}
+                onClick={() => connect.mutate(selected)}
+              >
+                {connect.isPending ? 'Saving…' : connected ? 'Save new payout method' : 'Save payout method'}
+              </Button>
+            </CardBody>
+          </Card>
+        )
       )}
 
       <p className="mt-6 flex items-center gap-1.5 text-xs text-ink-400">

@@ -461,6 +461,14 @@ export interface CreateSellerInput {
    * an error we can act on.
    */
   externalUserId?: string;
+  /**
+   * What we call this destination — "Bank transfer", "Mobile Money". Same
+   * field `AddDestinationInput` already sends on every later save; a host's
+   * first destination deserves it as much as their second, since PayHold's own
+   * mask guesses this word from a provider field (Flutterwave's `bank_name`)
+   * that is unset for every RWF corridor.
+   */
+  label?: string;
 }
 
 export function createSeller(
@@ -475,6 +483,7 @@ export function createSeller(
       destination: input.destination,
       payout_currency: input.payoutCurrency,
       external_user_id: input.externalUserId,
+      label: input.label,
     },
   });
 }
@@ -636,6 +645,58 @@ export function withdraw(
     method: 'POST',
     body: destinationId ? { destination_id: destinationId } : {},
   });
+}
+
+// ---------------------------------------------------------------------------
+// Stripe Connect onboarding — minting the acct_… `stripe_connect` needs
+// ---------------------------------------------------------------------------
+
+export interface ConnectOnboardingStart {
+  account_id: string;
+  /** One-time hosted onboarding link. Redirect the host here; do not cache it. */
+  url: string;
+}
+
+/**
+ * Start (or resume) Stripe Connect onboarding for a host whose market pays
+ * out via `stripe_connect` rather than Flutterwave. That rail's destination
+ * cannot be typed in — `addSellerDestination` tokenizes an existing `acct_…`,
+ * and outside Africa nobody has minted one until the host has gone through
+ * Stripe's own hosted onboarding. This is what starts it.
+ *
+ * Idempotent across repeat calls before completion: PayHold reuses the same
+ * in-progress account rather than minting a second Express account every time
+ * a host reopens the link.
+ */
+export function startConnectOnboarding(
+  sellerId: string,
+  input: { returnUrl: string; refreshUrl: string; country?: string; email?: string | null },
+): Promise<ConnectOnboardingStart> {
+  return call(`/sellers/${encodeURIComponent(sellerId)}/connect/onboard`, {
+    method: 'POST',
+    body: {
+      return_url: input.returnUrl,
+      refresh_url: input.refreshUrl,
+      country: input.country,
+      email: input.email,
+    },
+  });
+}
+
+export type ConnectOnboardingStatus =
+  | { status: 'not_started' }
+  | { status: 'pending'; account_id: string }
+  | { status: 'connected'; destination: SellerDestination };
+
+/**
+ * Has Stripe finished onboarding this host? Called from the return page
+ * rather than trusted from the redirect itself — same "the return is not the
+ * evidence" shape PayHold's own checkout polling uses. A `connected` result
+ * means PayHold has already written the destination (unverified, inside its
+ * usual security hold); there is nothing left here to save.
+ */
+export function connectOnboardingStatus(sellerId: string): Promise<ConnectOnboardingStatus> {
+  return call(`/sellers/${encodeURIComponent(sellerId)}/connect/status`, { method: 'GET' });
 }
 
 // ---------------------------------------------------------------------------
