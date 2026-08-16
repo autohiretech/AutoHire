@@ -263,25 +263,44 @@ export function EarningsPage() {
 
         {/* Currency pills — only once there's more than one to choose
             between. Sits inside the hero, beside the figure it controls,
-            rather than as a separate row a host has to connect to it. */}
+            rather than as a separate row a host has to connect to it. The
+            payout currency gets a dot: everything else on this row is money
+            still priced in whatever it was charged in, and converts into
+            that one the moment it releases (see the note on "Your money"). */}
         {shownBalances.length > 1 && (
           <div className="relative mt-4 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-4">
             <Coins size={13} className="mr-0.5 text-ink-400" />
-            {shownBalances.map((b) => (
-              <button
-                key={b.currency}
-                type="button"
-                onClick={() => setActiveCurrency(b.currency)}
-                className={cn(
-                  'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
-                  currency === b.currency
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'bg-white text-ink-600 ring-1 ring-inset ring-ink-200 hover:bg-ink-50',
-                )}
-              >
-                {b.currency}
-              </button>
-            ))}
+            {shownBalances.map((b) => {
+              const isPayoutCurrency = b.currency === primary?.payoutCurrency;
+              return (
+                <button
+                  key={b.currency}
+                  type="button"
+                  onClick={() => setActiveCurrency(b.currency)}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                    currency === b.currency
+                      ? 'bg-brand-600 text-white shadow-sm'
+                      : 'bg-white text-ink-600 ring-1 ring-inset ring-ink-200 hover:bg-ink-50',
+                  )}
+                >
+                  {isPayoutCurrency && (
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        currency === b.currency ? 'bg-white' : 'bg-emerald-500',
+                      )}
+                    />
+                  )}
+                  {b.currency}
+                </button>
+              );
+            })}
+            {primary && (
+              <span className="ml-1 text-[11px] text-ink-400">
+                · paid in {primary.payoutCurrency}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -502,6 +521,22 @@ export function EarningsPage() {
                     value={money(balanceForCurrency.available, balanceForCurrency.currency)}
                   />
                 </div>
+                {/* PayHold converts every trip into the payout destination's
+                    own currency the moment it releases (`releaseFigures` —
+                    convertOrThrow against `sellers.payout_currency`), so a
+                    balance shown in a different currency isn't a second
+                    wallet to manage — it's just what this trip happened to be
+                    charged in before that conversion runs. Only shown when
+                    it's actually true of this card, so a host who only ever
+                    sees their own payout currency never sees a sentence about
+                    conversion that doesn't apply to them. */}
+                {primary && balanceForCurrency.currency !== primary.payoutCurrency && (
+                  <p className="mt-4 flex items-start gap-1.5 rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-500">
+                    <Coins size={13} className="mt-0.5 shrink-0 text-ink-400" />
+                    Converts to {primary.payoutCurrency} — what {primary.label ?? 'your payout method'}{' '}
+                    actually pays in — the moment each trip releases.
+                  </p>
+                )}
               </CardBody>
             </Card>
           )}
