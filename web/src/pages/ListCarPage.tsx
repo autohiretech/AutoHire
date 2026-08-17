@@ -6,11 +6,11 @@ import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import type { CreateListingInput } from '@/lib/types';
-import { Button, Card, CardBody, CardHeader, Input, Label, Select, Spinner } from '@/components/ui';
+import { Button, Card, CardBody, CardHeader, Input, Label, Select, Spinner, toast } from '@/components/ui';
 import { Img } from '@/components/Img';
 import { ModelCombobox } from '@/components/ModelCombobox';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
-import { isLikelyUrl, normalizeUrl } from '@/lib/location';
+import { extractLatLngFromMapsUrl, isGoogleMapsLink, isLikelyUrl, isShortMapsLink, normalizeUrl } from '@/lib/location';
 import { useCountry } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { citiesFor } from '@/lib/cities';
@@ -83,6 +83,7 @@ export function ListCarPage() {
   const [location, setLocation] = useState('');
   const [coords, setCoords] = useState<LatLng | null>(null);
   const [locationUrl, setLocationUrl] = useState('');
+  const [resolvingLink, setResolvingLink] = useState(false);
   const [status, setStatus] = useState<'available' | 'maintenance'>('available');
   const [maintenanceUntil, setMaintenanceUntil] = useState('');
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
@@ -107,6 +108,32 @@ export function ListCarPage() {
       setUploadError(err instanceof Error ? err.message : 'Could not upload the photos.');
     } finally {
       setUploading(false);
+    }
+  }
+
+  /** Reads the pin straight out of a pasted Google Maps link — long-form
+   * links carry the coordinate in the URL itself; a short link (goo.gl/maps,
+   * maps.app.goo.gl) has to be resolved server-side first, since a browser
+   * can't read a cross-origin redirect's final URL. Leaves the map picker as
+   * the fallback for anything this can't read (a place name with no
+   * coordinate in the link, a non-Maps link, a resolve failure). */
+  async function setPinFromLocationUrl() {
+    const url = normalizeUrl(locationUrl);
+    if (!url || !isGoogleMapsLink(url)) return;
+    setResolvingLink(true);
+    try {
+      const resolved = isShortMapsLink(url) ? await client.resolveMapsLink(url) : url;
+      const point = extractLatLngFromMapsUrl(resolved);
+      if (point) {
+        setCoords(point);
+        toast.success('Pin set from the link.');
+      } else {
+        toast.error("That link doesn't have a location AutoHire can read — search or click the map instead.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't read that link.");
+    } finally {
+      setResolvingLink(false);
     }
   }
 
@@ -208,6 +235,13 @@ export function ListCarPage() {
   if (!(Number(year) > 1980)) missing.push('a valid year');
   if (!(Number(seats) > 0)) missing.push(machine ? 'cab seats' : 'seats');
   if (!location.trim()) missing.push('the pickup area');
+  // The text field alone isn't enough to plot on the map — without real
+  // coordinates a listing simply never gets a pin (ResultsMap only plots
+  // listings that have lat/lng), so a renter searching the map never finds
+  // it even though it exists. The map picker (search, click, or drag) is
+  // how a host actually sets this; the Google Maps link field stays
+  // optional, since it duplicates the same coordinate once entered.
+  if (!coords) missing.push('an exact pickup point on the map');
   if (pricingMode === 'daily' && !(Number(pricePerDay) > 0)) missing.push('a price per day');
   if (pricingMode === 'hourly' && !(Number(pricePerHour) > 0)) missing.push('a price per hour');
   if (pricingMode === 'daily' && !(Number(overageMultiplier) > 0)) missing.push('a late-return rate');
@@ -446,7 +480,7 @@ export function ListCarPage() {
               </div>
             </div>
             <div>
-              <Label>Pickup point on the map</Label>
+              <Label>Pickup point on the map (required)</Label>
               <LocationPicker
                 value={coords}
                 onChange={setCoords}
@@ -455,18 +489,37 @@ export function ListCarPage() {
                   if (!location.trim()) setLocation(address.split(',').slice(0, 2).join(',').trim());
                 }}
               />
+              <p className="mt-1 text-xs text-ink-400">
+                Search, click, or drag to drop the exact pin — this is what puts the car on
+                renters' maps. The link below is just a convenience for arrival instructions, not
+                a substitute for this.
+              </p>
             </div>
             <div>
               <Label htmlFor="location-url">Location link (optional)</Label>
-              <Input
-                id="location-url"
-                value={locationUrl}
-                onChange={(e) => setLocationUrl(e.target.value)}
-                placeholder="https://maps.google.com/…  or a directions/instructions link"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="location-url"
+                  value={locationUrl}
+                  onChange={(e) => setLocationUrl(e.target.value)}
+                  placeholder="https://maps.google.com/…  or a directions/instructions link"
+                  className="flex-1"
+                />
+                {isGoogleMapsLink(normalizeUrl(locationUrl)) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void setPinFromLocationUrl()}
+                    disabled={resolvingLink}
+                  >
+                    {resolvingLink ? '…' : 'Set pin from link'}
+                  </Button>
+                )}
+              </div>
               <p className="mt-1 text-xs text-ink-400">
                 A Google Maps share link, What3Words, or any page with arrival instructions.
-                Renters can open it when heading to pickup.
+                Renters can open it when heading to pickup — and a Google Maps link can set the
+                pickup pin above directly, long or shortened.
               </p>
               {locationUrl.trim() && !isLikelyUrl(locationUrl) && (
                 <p className="mt-1 text-sm text-red-600">That doesn't look like a valid link.</p>

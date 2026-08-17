@@ -40,6 +40,7 @@ import { hostTripHint } from '@/lib/trips';
 import { TripCard } from '@/components/TripCard';
 import { Img } from '@/components/Img';
 import { RequesterModal } from '@/components/RequesterModal';
+import { HostBroadcastComposer } from '@/components/HostBroadcastComposer';
 import {
   Badge,
   Button,
@@ -320,6 +321,7 @@ export function DashboardPage() {
 
       {host && <ReconnectPayouts host={host} />}
       {host && <SetupChecklist host={host} listingCount={listings.length} />}
+      {host && <HostBroadcastComposer />}
 
       {/* Stat cards — each metric its own card with a tinted icon chip and a live
           secondary indicator. Fleet counts filter the list; money cards are totals. */}

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Building2, User } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
+import { cn } from '@/lib/cn';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
 import { listingHeadlinePrice } from '@/lib/pricing';
@@ -10,14 +11,37 @@ import { Badge, Card, CardBody, Rating } from '@/components/ui';
  * Listing summary card used on every browse grid (home, search, watchlist) so
  * a car looks the same size wherever it's shown. Links to the car detail page
  * (A2), whose CTA continues into the booking flow (A3).
+ *
+ * `isActive`/`onHover` are optional and unused by every existing caller —
+ * added for the map+list results view, where hovering a card highlights its
+ * pin and vice versa. A caller that doesn't pass them gets the exact same
+ * card as before.
  */
-export function ListingCard({ listing }: { listing: Listing }) {
+export function ListingCard({
+  listing,
+  isActive,
+  onHover,
+}: {
+  listing: Listing;
+  isActive?: boolean;
+  onHover?: (hovering: boolean) => void;
+}) {
   const isBusiness = listing.ownerType === 'business';
   const price = listingHeadlinePrice(listing);
 
   return (
-    <Link to={`/cars/${listing.id}`} className="group block h-full min-w-0 focus:outline-none">
-      <Card className="h-full overflow-hidden transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-card-hover group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40">
+    <Link
+      to={`/cars/${listing.id}`}
+      className="group block h-full min-w-0 focus:outline-none"
+      onMouseEnter={() => onHover?.(true)}
+      onMouseLeave={() => onHover?.(false)}
+    >
+      <Card
+        className={cn(
+          'h-full overflow-hidden transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-card-hover group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40',
+          isActive && 'ring-2 ring-brand-500',
+        )}
+      >
         <Img
           src={listing.photos[0]}
           alt={listing.title}

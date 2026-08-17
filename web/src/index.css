@@ -88,10 +88,40 @@
 .animate-popover-in {
   animation: popover-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* "Book with AI" (HomePage): a slowly travelling gradient sheen — reads as
+   "alive"/AI-driven at a glance, distinct from every other plain solid or
+   static-gradient button in the app, without resorting to a spinner or a
+   literal loading state (nothing is actually loading). */
+@keyframes ai-sheen {
+  to {
+    background-position: 200% 50%;
+  }
+}
+.animate-ai-sheen {
+  background-size: 200% 100%;
+  animation: ai-sheen 3.2s linear infinite;
+}
+@keyframes ai-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+.animate-ai-glow {
+  animation: ai-glow 2.6s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .animate-drawer-in,
   .animate-overlay-in,
-  .animate-popover-in {
+  .animate-popover-in,
+  .animate-ai-sheen,
+  .animate-ai-glow {
     animation: none;
   }
 }

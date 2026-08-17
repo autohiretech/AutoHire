@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -35,11 +35,14 @@ import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
 import { isMachine } from '@/lib/categories';
 import { readLocalWatchlist, writeLocalWatchlist } from '@/lib/watchlist';
 import { listingHeadlinePrice } from '@/lib/pricing';
+import { SocialProofBadge } from '@/components/SocialProofBadge';
+import { AddToBoardButton } from '@/components/AddToBoardButton';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
 import { Avatar, Badge, Button, Card, CardBody, Input, Label, Rating, Spinner, toast } from '@/components/ui';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
+import { useAiAssistantSource } from '@/lib/aiAssistantContext';
 import { RequesterModal, VERIF_TONE } from '@/components/RequesterModal';
 import { DateRangeCalendar, type DateRange } from '@/components/marketplace/DateRangeCalendar';
 
@@ -83,11 +86,22 @@ export function CarDetailPage() {
   const backToBrowse = useBackToBrowse();
   const [messaging, setMessaging] = useState(false);
   const [lightbox, setLightbox] = useState<number | null>(null);
-  const [range, setRange] = useState<DateRange>({ start: null, end: null });
+  // Pre-filled from ?start=&end=&pickup=&hours= when the assistant's own
+  // "Open car page to continue" link sent the renter here — set for both
+  // the range and single-day fields since which one actually applies
+  // depends on the listing's pricingMode, not known yet at this point.
+  const [searchParams] = useSearchParams();
+  const [range, setRange] = useState<DateRange>({
+    start: searchParams.get('start'),
+    end: searchParams.get('end'),
+  });
   // Only used for an hourly-only car — a single pickup day, not a range.
-  const [pickupDate, setPickupDate] = useState<string | null>(null);
-  const [pickupTime, setPickupTime] = useState('10:00');
-  const [estimatedHours, setEstimatedHours] = useState(4);
+  const [pickupDate, setPickupDate] = useState<string | null>(searchParams.get('start'));
+  const [pickupTime, setPickupTime] = useState(searchParams.get('pickup') ?? '10:00');
+  const [estimatedHours, setEstimatedHours] = useState(() => {
+    const hours = Number(searchParams.get('hours'));
+    return Number.isFinite(hours) && hours > 0 ? hours : 4;
+  });
   const calendarRef = useRef<HTMLDivElement>(null);
   const isHost = useIsHost();
   // Hosts and company accounts are view-only on a listing — no booking.
@@ -115,6 +129,15 @@ export function CarDetailPage() {
     queryFn: () => client.getBookedRanges(id),
     enabled: !!listing,
   });
+
+  // Tells the global AI assistant which car this page is showing, so "book
+  // this one" or "message the host" resolve against it directly — no need
+  // to search first just to give the assistant something to point at.
+  // Memoized on listing?.id, not just left as an inline `[listing]` literal
+  // — a fresh array every render used to feed straight back into the
+  // registration effect below it and loop (see aiAssistantContext.tsx).
+  const aiListings = useMemo(() => (listing ? [listing] : []), [listing]);
+  useAiAssistantSource(aiListings, { loading: isLoading });
 
   if (isLoading) {
     return (
@@ -274,8 +297,13 @@ export function CarDetailPage() {
           {/* Watching is a renter's tool — it says "tell me when I can book
               this", which a host or company account can never act on. */}
           {canRent && <WatchButton id={listing.id} />}
+          <AddToBoardButton listingId={listing.id} />
           <ShareButton title={listing.title} />
         </div>
+      </div>
+
+      <div className="mt-3">
+        <SocialProofBadge listingId={listing.id} />
       </div>
 
       {/* Photo gallery — big hero + thumbnail mosaic (BaT style) */}

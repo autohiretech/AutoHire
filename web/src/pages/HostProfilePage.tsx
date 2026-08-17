@@ -1,9 +1,12 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Building2, CarFront, ShieldCheck, Star, User } from 'lucide-react';
+import { ArrowLeft, Building2, CarFront, Megaphone, ShieldCheck, Star, User } from 'lucide-react';
 import { client } from '@/lib/client';
 import { useBackToBrowse } from '@/lib/useBackToBrowse';
+import { formatDate } from '@/lib/format';
 import { CarAvailabilityCard } from '@/components/CarAvailabilityCard';
+import { FollowButton } from '@/components/FollowButton';
+import { Img } from '@/components/Img';
 import { Avatar, Badge, Card, CardBody, Spinner } from '@/components/ui';
 
 /** "Member since May 2025" from the ISO join date. */
@@ -26,6 +29,16 @@ export function HostProfilePage() {
   const listingsQuery = useQuery({
     queryKey: ['hostListings', id],
     queryFn: () => client.listUserListings(id),
+  });
+  const broadcastsQuery = useQuery({
+    queryKey: ['hostBroadcasts', id],
+    queryFn: () => client.listHostBroadcasts(id),
+    enabled: !!id,
+  });
+  const followersQuery = useQuery({
+    queryKey: ['followers', id],
+    queryFn: () => client.listFollowers(id),
+    enabled: !!id,
   });
 
   const host = hostQuery.data;
@@ -104,10 +117,46 @@ export function HostProfilePage() {
                 <CarFront size={14} className="text-ink-400" />
                 {host.vehicleCount} {host.vehicleCount === 1 ? 'vehicle' : 'vehicles'}
               </span>
+              {!followersQuery.isLoading && (
+                <span className="text-ink-500">
+                  <span className="font-semibold text-ink-900">{followersQuery.data?.length ?? 0}</span>{' '}
+                  {followersQuery.data?.length === 1 ? 'follower' : 'followers'}
+                </span>
+              )}
             </div>
           </div>
+          <FollowButton profileId={host.id} />
         </CardBody>
       </Card>
+
+      {/* Updates — un-anchored broadcasts (migration 067), never styled like a
+          verified trip post: nothing here is checked against a real booking. */}
+      {!broadcastsQuery.isLoading && (broadcastsQuery.data ?? []).length > 0 && (
+        <div className="mt-6">
+          <h2 className="mb-3 flex items-center gap-1.5 text-lg font-semibold text-ink-900">
+            <Megaphone size={17} className="text-accent-600" /> Updates
+          </h2>
+          <div className="flex flex-col gap-3">
+            {(broadcastsQuery.data ?? []).map((b) => (
+              <Card key={b.id} className="border-accent-200 bg-accent-50/30">
+                <CardBody className="flex items-center gap-3">
+                  {b.listing && (
+                    <Img
+                      src={b.listing.photos[0]}
+                      alt={b.listing.title}
+                      className="h-12 w-16 shrink-0 rounded-md object-cover"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-ink-700">{b.body}</p>
+                    <p className="mt-0.5 text-xs text-ink-400">{formatDate(b.createdAt)}</p>
+                  </div>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Cars + availability */}
       <div className="mt-6">

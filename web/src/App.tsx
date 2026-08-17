@@ -19,6 +19,11 @@ import { VerificationPage } from '@/pages/VerificationPage';
 import { TripDetailPage } from '@/pages/TripDetailPage';
 import { BookingPage } from '@/pages/BookingPage';
 import { WatchlistPage } from '@/pages/WatchlistPage';
+import { FeedPage } from '@/pages/FeedPage';
+import { CirclesPage } from '@/pages/CirclesPage';
+import { CircleDetailPage } from '@/pages/CircleDetailPage';
+import { CircleInvitePage } from '@/pages/CircleInvitePage';
+import { BoardDetailPage } from '@/pages/BoardDetailPage';
 import { ListCarPage } from '@/pages/ListCarPage';
 import { AccountPage } from '@/pages/AccountPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
@@ -154,6 +159,50 @@ export default function App() {
           element={
             <RequireAuth>
               <AccountPage />
+            </RequireAuth>
+          }
+        />
+        {/* The verified feed — its own route, not a home page replacement. */}
+        <Route
+          path="feed"
+          element={
+            <RequireAuth>
+              <FeedPage />
+            </RequireAuth>
+          }
+        />
+        {/* Circles are role-agnostic — a renter and a host use the same page. */}
+        <Route
+          path="circles"
+          element={
+            <RequireAuth>
+              <CirclesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="circles/:id"
+          element={
+            <RequireAuth>
+              <CircleDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="boards/:id"
+          element={
+            <RequireAuth>
+              <BoardDetailPage />
+            </RequireAuth>
+          }
+        />
+        {/* Where a circle share link (migration 063) lands. Guests are bounced
+            to /login and back here, same as any other account-only route. */}
+        <Route
+          path="invite/:token"
+          element={
+            <RequireAuth>
+              <CircleInvitePage />
             </RequireAuth>
           }
         />

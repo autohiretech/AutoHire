@@ -7,6 +7,7 @@ import type {
   DisputeStatus,
   Flag,
   Host,
+  CarCategory,
   HostEarnings,
   Listing,
   Message,
@@ -34,6 +35,19 @@ import type {
   ElectricQuota,
   AdminUser,
   AdminAction,
+  PublicProfile,
+  SocialProof,
+  Circle,
+  CircleKind,
+  CircleMember,
+  CircleInvite,
+  Board,
+  BoardItem,
+  ListingDemand,
+  TripPost,
+  PostVisibility,
+  HostBroadcast,
+  FeedItem,
 } from '@autohire/shared';
 import {
   type CreateListingInput,
@@ -178,6 +192,127 @@ async function signChatAttachments(msgs: Message[]): Promise<Message[]> {
   });
 }
 
+/**
+ * `trip_posts.photos` stores raw `trip-photos` storage paths, never public
+ * URLs — the bucket is private (migration 066) so a post's photos are exactly
+ * as visible as the post itself. This resolves every path across a batch of
+ * posts to a short-lived signed URL in one round trip, same shape as
+ * signChatAttachments above.
+ */
+async function signTripPostPhotos(posts: TripPost[]): Promise<TripPost[]> {
+  const allPaths = new Set<string>();
+  for (const p of posts) for (const path of p.photos) allPaths.add(path);
+  if (allPaths.size === 0) return posts;
+  const { data } = await sb().storage.from('trip-photos').createSignedUrls([...allPaths], 3600);
+  const urlByPath = new Map<string, string>();
+  for (const item of data ?? []) {
+    if (item.path && item.signedUrl) urlByPath.set(item.path, item.signedUrl);
+  }
+  return posts.map((p) => ({ ...p, photos: p.photos.map((path) => urlByPath.get(path) ?? path) }));
+}
+
+/**
+ * Batch-joins `trip_posts` rows against `public_profiles` (author) and
+ * `listings` (the denormalized preview) in two round trips regardless of row
+ * count. A row whose author isn't resolvable is dropped rather than shown
+ * with a blank name — that shouldn't happen (authors are never deleted out
+ * from under their own posts, `profiles` cascades), but a feed row silently
+ * missing its person is worse than a feed row silently missing.
+ */
+async function hydratePosts(rows: Record<string, unknown>[] | null): Promise<TripPost[]> {
+  const authorIds = [...new Set((rows ?? []).map((r) => r.author_id as string))];
+  const listingIds = [...new Set((rows ?? []).map((r) => r.listing_id as string).filter(Boolean))];
+  const [profiles, listings] = await Promise.all([
+    authorIds.length
+      ? mapRows<PublicProfile>(await run(sb().from('public_profiles').select('*').in('id', authorIds)))
+      : Promise.resolve([] as PublicProfile[]),
+    listingIds.length
+      ? mapRows<Listing>(
+          await run(sb().from('listings').select('id, title, photos, city, country').in('id', listingIds)),
+        )
+      : Promise.resolve([] as Listing[]),
+  ]);
+  const profileById = new Map(profiles.map((p) => [p.id, p]));
+  const listingById = new Map(listings.map((l) => [l.id, l]));
+
+  // "Usually books: SUV" — computed, batched across every author on screen.
+  // Empty for every seeded demo post by construction: a demo account has no
+  // real bookings behind it, so there's nothing for the function to find.
+  const prefRows = authorIds.length
+    ? ((await run(sb().rpc('renter_preferred_categories', { p_renter_ids: authorIds }))) ?? [])
+    : [];
+  const prefsByAuthor = new Map<string, CarCategory[]>();
+  for (const r of prefRows as { renter_id: string; category: CarCategory }[]) {
+    const list = prefsByAuthor.get(r.renter_id) ?? [];
+    list.push(r.category);
+    prefsByAuthor.set(r.renter_id, list);
+  }
+
+  const hydrated = (rows ?? [])
+    .map((row): TripPost | null => {
+      const author = profileById.get(row.author_id as string);
+      if (!author) return null;
+      const listingId = row.listing_id as string | null;
+      return {
+        id: row.id as string,
+        author,
+        bookingId: (row.booking_id as string | null) ?? null,
+        listing: listingId ? listingById.get(listingId) ?? null : null,
+        body: row.body as string,
+        photos: (row.photos as string[] | null) ?? [],
+        visibility: row.visibility as PostVisibility,
+        city: (row.city as string | null) ?? undefined,
+        country: (row.country as string | null) ?? undefined,
+        createdAt: row.created_at as string,
+        isDemo: (row.id as string).startsWith('demo-post-'),
+        authorPreferredCategories: prefsByAuthor.get(row.author_id as string),
+      };
+    })
+    .filter((p): p is TripPost => !!p);
+
+  // Seeded demo posts store public loremflickr URLs directly (they were never
+  // uploaded to trip-photos), so only sign paths that actually look like
+  // storage paths — a demo URL starting with "http" passes through untouched.
+  const [toSign, passThrough] = [
+    hydrated.filter((p) => p.photos.some((ph) => !ph.startsWith('http'))),
+    hydrated.filter((p) => p.photos.every((ph) => ph.startsWith('http'))),
+  ];
+  const signed = await signTripPostPhotos(toSign);
+  const byId = new Map([...signed, ...passThrough].map((p) => [p.id, p]));
+  return hydrated.map((p) => byId.get(p.id) ?? p);
+}
+
+/** Same batch-join shape as hydratePosts, for the un-anchored broadcast table. */
+async function hydrateBroadcasts(rows: Record<string, unknown>[] | null): Promise<HostBroadcast[]> {
+  const hostIds = [...new Set((rows ?? []).map((r) => r.host_id as string))];
+  const listingIds = [...new Set((rows ?? []).map((r) => r.listing_id as string).filter(Boolean))];
+  const [hosts, listings] = await Promise.all([
+    hostIds.length
+      ? mapRows<PublicProfile>(await run(sb().from('public_profiles').select('*').in('id', hostIds)))
+      : Promise.resolve([] as PublicProfile[]),
+    listingIds.length
+      ? mapRows<Listing>(await run(sb().from('listings').select('id, title, photos').in('id', listingIds)))
+      : Promise.resolve([] as Listing[]),
+  ]);
+  const hostById = new Map(hosts.map((h) => [h.id, h]));
+  const listingById = new Map(listings.map((l) => [l.id, l]));
+
+  return (rows ?? [])
+    .map((row): HostBroadcast | null => {
+      const host = hostById.get(row.host_id as string);
+      if (!host) return null;
+      const listingId = row.listing_id as string | null;
+      return {
+        id: row.id as string,
+        host,
+        body: row.body as string,
+        listing: listingId ? listingById.get(listingId) ?? null : null,
+        createdAt: row.created_at as string,
+      };
+    })
+    .filter((b): b is HostBroadcast => !!b);
+}
+
 export const supabaseClient = {
   // --- Listings ----------------------------------------------------------
   /**
@@ -266,14 +401,71 @@ export const supabaseClient = {
   },
   /**
    * AI Mode search: send a natural-language query to the `ai-search` Edge
-   * Function, which uses Claude (server-side) to turn it into ListingFilters.
-   * Returns the filters so the caller runs the normal `listListings` query.
-   * Throws a friendly message when the function isn't deployed or AI isn't
-   * configured, so the UI can fall back to plain keyword search.
+   * Function, which uses Gemini (server-side) to do anything the renter
+   * could do by hand — search filters, a booking request, a message to a
+   * host, a watchlist toggle, a trip cancellation, or a plain reply
+   * (typically a clarifying question) — any of which may accompany the
+   * others. `history` is the prior turns so follow-ups stay contextual;
+   * `recentListings`/`recentTrips` are what the model actually has to work
+   * with, so it can resolve "book the second one" or "cancel my Friday one".
+   * `location` is the renter's browser geolocation, if they granted it, for
+   * "near me" requests. Throws a friendly message when the function isn't
+   * deployed or AI isn't configured, so the UI can fall back to plain
+   * keyword search.
    */
-  async aiSearch(query: string): Promise<ListingFilters> {
+  async aiSearch(input: {
+    query: string;
+    history?: { role: 'user' | 'assistant'; text: string }[];
+    recentListings?: { id: string; title: string; rentalType?: string }[];
+    recentTrips?: { id: string; listingId: string; startDate: string; endDate: string; state: string }[];
+    location?: { lat: number; lng: number } | null;
+    /** ISO 3166-1 alpha-2 — the market the header is currently searching, so
+     * the assistant knows what "here" means and only switches it on request. */
+    country?: string;
+    /** The renter's own account, so the assistant can answer questions about
+     * it directly and knows what update_profile is actually changing. */
+    profile?: { name: string | null; verification: string | null; accountCountry: string | null } | null;
+    /** ISO 4217 codes the renter can display prices in, for set_currency. */
+    availableCurrencies?: string[];
+    /** The exact listing a renter just clicked (a map marker, a "book this
+     * one" affordance) — when set, this is the car, full stop. Several
+     * listings can share an identical title, so resolving purely from the
+     * query text can't always tell them apart the way this can. */
+    selectedListingId?: string;
+    /** Filters already active on the results right now — from the
+     * assistant's own earlier turns, or the renter clicking a filter chip
+     * directly. The model has no other way to see chip-set filters, so
+     * without this it can't know to `clear` one that now conflicts with a
+     * genuinely new request — it just silently keeps narrowing results
+     * toward zero while the reply still sounds confident. */
+    currentFilters?: ListingFilters;
+  }): Promise<{
+    reply: string | null;
+    filters: ListingFilters | null;
+    /** Filter keys the assistant wants actively unset (e.g. the renter
+     * dropped a constraint) — distinct from a key just being absent from
+     * `filters`, which means "unchanged," not "cleared." */
+    clearFilters: (keyof ListingFilters)[];
+    // Only listingId is guaranteed — the model calls this as soon as it
+    // knows which car, before dates/time/hours are necessarily known, so the
+    // client can prompt for whatever's still missing instead of the model
+    // stalling on a text question.
+    booking: {
+      listingId: string;
+      startDate?: string;
+      endDate?: string;
+      pickupTime?: string;
+      rentalType?: 'daily' | 'hourly';
+      estimatedHours?: number;
+    } | null;
+    messageHost: { listingId: string; message: string } | null;
+    watchlist: { listingId: string; action: 'add' | 'remove' } | null;
+    cancelTrip: { bookingId: string } | null;
+    updateProfile: { fullName?: string; country?: string } | null;
+    setCurrency: { currencyCode: string } | null;
+  }> {
     const { data, error } = await getSupabase().functions.invoke('ai-search', {
-      body: { query },
+      body: input,
     });
     if (error) {
       throw await fnError(
@@ -281,9 +473,116 @@ export const supabaseClient = {
         "AI search isn't deployed yet — deploy the ai-search Edge Function.",
       );
     }
-    const payload = data as { filters?: ListingFilters; error?: string };
+    const payload = data as {
+      reply?: string | null;
+      filters?: ListingFilters | null;
+      clearFilters?: (keyof ListingFilters)[];
+      booking?: {
+        listingId: string;
+        startDate?: string;
+        endDate?: string;
+        pickupTime?: string;
+        rentalType?: 'daily' | 'hourly';
+        estimatedHours?: number;
+      } | null;
+      messageHost?: { listingId: string; message: string } | null;
+      watchlist?: { listingId: string; action: 'add' | 'remove' } | null;
+      cancelTrip?: { bookingId: string } | null;
+      updateProfile?: { fullName?: string; country?: string } | null;
+      setCurrency?: { currencyCode: string } | null;
+      error?: string;
+    };
     if (payload?.error) throw new Error(payload.error);
-    return payload?.filters ?? {};
+    return {
+      reply: payload?.reply ?? null,
+      filters: payload?.filters ?? null,
+      clearFilters: payload?.clearFilters ?? [],
+      booking: payload?.booking ?? null,
+      messageHost: payload?.messageHost ?? null,
+      watchlist: payload?.watchlist ?? null,
+      cancelTrip: payload?.cancelTrip ?? null,
+      updateProfile: payload?.updateProfile ?? null,
+      setCurrency: payload?.setCurrency ?? null,
+    };
+  },
+  /** Follows a shortened Google Maps link (goo.gl/maps/…, maps.app.goo.gl/…)
+   * server-side and hands back wherever it actually landed — a browser's own
+   * fetch can't read a cross-origin redirect's final URL, only a server can.
+   * web/src/lib/location.ts then pulls the coordinate out of that resolved
+   * URL the same way as any long-form Maps link. */
+  async resolveMapsLink(url: string): Promise<string> {
+    const { data, error } = await getSupabase().functions.invoke('resolve-maps-link', {
+      body: { url },
+    });
+    if (error) throw await fnError(error, "Couldn't resolve that link.");
+    const payload = data as { resolvedUrl?: string; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    if (!payload?.resolvedUrl) throw new Error("Couldn't resolve that link.");
+    return payload.resolvedUrl;
+  },
+  // --- AI chat history (migration 073) ------------------------------------
+  /** The renter's own past conversations, newest first — a preview (its
+   * first turn's query) and when it last changed, not the full turns. What
+   * the assistant's "choose an old chat" list actually needs. */
+  async listChatSessions(limit = 20): Promise<{ id: string; updatedAt: string; preview: string | null }[]> {
+    const rows = await run(
+      sb()
+        .from('ai_chat_sessions')
+        .select('id, turns, updated_at')
+        .eq('profile_id', me())
+        .order('updated_at', { ascending: false })
+        .limit(limit),
+    );
+    return (rows ?? []).map((r) => {
+      const turns = (r.turns as { query?: string }[] | null) ?? [];
+      return {
+        id: r.id as string,
+        updatedAt: r.updated_at as string,
+        preview: turns[0]?.query ?? null,
+      };
+    });
+  },
+  /** The single most recent conversation, if any — what a fresh mount of the
+   * assistant resumes into. */
+  async getLatestChatSession(): Promise<{ id: string; turns: unknown[] } | null> {
+    const row = await run(
+      sb()
+        .from('ai_chat_sessions')
+        .select('id, turns')
+        .eq('profile_id', me())
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    );
+    return row ? { id: row.id as string, turns: (row.turns as unknown[] | null) ?? [] } : null;
+  },
+  async getChatSession(id: string): Promise<{ id: string; turns: unknown[] } | null> {
+    const row = await run(
+      sb().from('ai_chat_sessions').select('id, turns').eq('id', id).eq('profile_id', me()).maybeSingle(),
+    );
+    return row ? { id: row.id as string, turns: (row.turns as unknown[] | null) ?? [] } : null;
+  },
+  /** Starts a new, empty conversation row — "New chat" in the assistant. */
+  async createChatSession(): Promise<string> {
+    const id = `chat-${Date.now()}`;
+    await run(sb().from('ai_chat_sessions').insert({ id, profile_id: me(), turns: [] }).select('id'));
+    return id;
+  },
+  /** Upsert, not update — the assistant may still be lazily creating the
+   * session on its first turn when this fires. */
+  async saveChatSession(id: string, turns: unknown[]): Promise<void> {
+    await run(
+      sb()
+        .from('ai_chat_sessions')
+        .upsert(
+          { id, profile_id: me(), turns: turns as never, updated_at: new Date().toISOString() },
+          { onConflict: 'id' },
+        )
+        .select('id'),
+    );
+  },
+  async deleteChatSession(id: string): Promise<void> {
+    await run(sb().from('ai_chat_sessions').delete().eq('id', id).eq('profile_id', me()).select('id'));
   },
   async getListing(id: string) {
     return mapRow<Listing>(await run(sb().from('listings').select('*').eq('id', id).maybeSingle()));
@@ -2162,5 +2461,430 @@ export const supabaseClient = {
       .upload(path, file, { upsert: true, contentType: file.type });
     if (error) throw new Error(error.message);
     return sb().storage.from('avatars').getPublicUrl(path).data.publicUrl;
+  },
+
+  // --- Social: follows -----------------------------------------------------
+  /**
+   * `follows` holds ids only (migration 059), so this is a cheap direct read —
+   * no RPC needed. Never join `profiles` here; it's locked to counterparties
+   * since migration 029. `public_profiles` is the PII-free view built for
+   * exactly this.
+   */
+  async listFollowing(profileId?: string): Promise<PublicProfile[]> {
+    const rows = await run(
+      sb().from('follows').select('followee_id').eq('follower_id', profileId ?? me()),
+    );
+    const ids = (rows ?? []).map((r) => r.followee_id as string);
+    if (ids.length === 0) return [];
+    return mapRows<PublicProfile>(
+      await run(sb().from('public_profiles').select('*').in('id', ids)),
+    );
+  },
+  async listFollowers(profileId?: string): Promise<PublicProfile[]> {
+    const rows = await run(
+      sb().from('follows').select('follower_id').eq('followee_id', profileId ?? me()),
+    );
+    const ids = (rows ?? []).map((r) => r.follower_id as string);
+    if (ids.length === 0) return [];
+    return mapRows<PublicProfile>(
+      await run(sb().from('public_profiles').select('*').in('id', ids)),
+    );
+  },
+  async isFollowing(profileId: string): Promise<boolean> {
+    const row = await run(
+      sb()
+        .from('follows')
+        .select('follower_id')
+        .eq('follower_id', me())
+        .eq('followee_id', profileId)
+        .maybeSingle(),
+    );
+    return !!row;
+  },
+  async follow(profileId: string): Promise<void> {
+    await run(
+      sb().from('follows').upsert(
+        { follower_id: me(), followee_id: profileId },
+        { onConflict: 'follower_id,followee_id' },
+      ),
+    );
+  },
+  async unfollow(profileId: string): Promise<void> {
+    await run(
+      sb().from('follows').delete().eq('follower_id', me()).eq('followee_id', profileId),
+    );
+  },
+
+  // --- Social: proof ---------------------------------------------------------
+  /**
+   * "Trusted by N you follow" for a listing. Two RPCs because they carry
+   * different disclosure: the per-renter list only exists inside
+   * `social_proof_for_listing` (migration 060) precisely because it can only
+   * ever name people the CALLER already follows — never a stranger's renters.
+   */
+  async socialProof(listingId: string): Promise<SocialProof> {
+    const [renters, total] = await Promise.all([
+      run(sb().rpc('social_proof_for_listing', { p_listing_id: listingId })),
+      run(sb().rpc('total_completed_trips', { p_listing_id: listingId })),
+    ]);
+    const rows = (renters ?? []) as { renter_id: string; full_name: string; avatar_url: string | null }[];
+    return {
+      listingId,
+      circleRenters: rows.map((r) => ({
+        id: r.renter_id,
+        fullName: r.full_name,
+        avatarUrl: r.avatar_url ?? undefined,
+        role: 'renter' as const,
+        joinedAt: '',
+        verification: 'verified' as const,
+      })),
+      totalTrips: Number(total ?? 0),
+    };
+  },
+
+  // --- Social: circles -----------------------------------------------------
+  /** Circles you're a member of — any status, including a pending invite. */
+  async listCircles(): Promise<Circle[]> {
+    const membership = await run(
+      sb().from('circle_members').select('circle_id, status').eq('profile_id', me()),
+    );
+    const ids = (membership ?? []).map((m) => m.circle_id as string);
+    if (ids.length === 0) return [];
+    const statusById = new Map((membership ?? []).map((m) => [m.circle_id as string, m.status as string]));
+
+    const [circleRows, activeMembers] = await Promise.all([
+      run(sb().from('circles').select('*').in('id', ids)),
+      run(sb().from('circle_members').select('circle_id').eq('status', 'active').in('circle_id', ids)),
+    ]);
+    const countByCircle = new Map<string, number>();
+    for (const row of activeMembers ?? []) {
+      const cid = row.circle_id as string;
+      countByCircle.set(cid, (countByCircle.get(cid) ?? 0) + 1);
+    }
+
+    return mapRows<Circle>(circleRows).map((c) => ({
+      ...c,
+      memberCount: countByCircle.get(c.id) ?? 0,
+      myStatus: statusById.get(c.id) as Circle['myStatus'],
+    }));
+  },
+  async getCircle(id: string): Promise<Circle | undefined> {
+    const row = await run(sb().from('circles').select('*').eq('id', id).maybeSingle());
+    if (!row) return undefined;
+    const activeMembers = await run(
+      sb().from('circle_members').select('profile_id, status').eq('circle_id', id),
+    );
+    const mine = (activeMembers ?? []).find((m) => m.profile_id === me());
+    const memberCount = (activeMembers ?? []).filter((m) => m.status === 'active').length;
+    return { ...(mapRow<Circle>(row) as Circle), memberCount, myStatus: mine?.status as Circle['myStatus'] };
+  },
+  /** Creates the circle and seeds the caller as its active owner-member. */
+  async createCircle(input: { name: string; kind: CircleKind; country?: string }): Promise<Circle> {
+    const id = `circle-${Date.now()}`;
+    await run(
+      sb()
+        .from('circles')
+        .insert({ id, name: input.name, kind: input.kind, created_by: me(), country: input.country ?? null }),
+    );
+    await run(
+      sb()
+        .from('circle_members')
+        .insert({ circle_id: id, profile_id: me(), role: 'owner', status: 'active' }),
+    );
+    return (await this.getCircle(id)) as Circle;
+  },
+  async listCircleMembers(circleId: string): Promise<CircleMember[]> {
+    const rows = await run(
+      sb()
+        .from('circle_members')
+        .select('circle_id, profile_id, role, status, joined_at')
+        .eq('circle_id', circleId),
+    );
+    const ids = (rows ?? []).map((r) => r.profile_id as string);
+    if (ids.length === 0) return [];
+    const profiles = mapRows<PublicProfile>(
+      await run(sb().from('public_profiles').select('*').in('id', ids)),
+    );
+    const byId = new Map(profiles.map((p) => [p.id, p]));
+    return (rows ?? [])
+      .map((r) => {
+        const profile = byId.get(r.profile_id as string);
+        if (!profile) return null;
+        return {
+          circleId: r.circle_id as string,
+          profile,
+          role: r.role as CircleMember['role'],
+          status: r.status as CircleMember['status'],
+          joinedAt: r.joined_at as string,
+        };
+      })
+      .filter((m): m is CircleMember => !!m);
+  },
+  /** Leaving deletes your membership row outright — there's no "left" limbo to manage. */
+  async leaveCircle(circleId: string): Promise<void> {
+    await run(
+      sb().from('circle_members').delete().eq('circle_id', circleId).eq('profile_id', me()),
+    );
+  },
+  /**
+   * A share-link invite. The token is the credential (migration 063) — anyone
+   * who opens it while signed in can claim membership, once. Build the actual
+   * URL at the call site (`${origin}/invite/${token}`); the client only hands
+   * back the token.
+   */
+  async createCircleInviteLink(circleId: string): Promise<CircleInvite> {
+    const id = `cinv-${Date.now()}`;
+    const token = crypto.randomUUID();
+    const row = await run(
+      sb()
+        .from('circle_invites')
+        .insert({ id, circle_id: circleId, invited_by: me(), token })
+        .select('*')
+        .single(),
+    );
+    return mapRow<CircleInvite>(row) as CircleInvite;
+  },
+  /** Returns the joined circle's id, or null if the token was invalid or already used. */
+  async claimCircleInvite(token: string): Promise<string | null> {
+    const result = await run(sb().rpc('claim_circle_invite', { p_token: token }));
+    return (result as unknown as string) ?? null;
+  },
+
+  // --- Social: boards --------------------------------------------------------
+  /** Boards visible to you: your own, plus any circle's you belong to (RLS-scoped). */
+  async listBoards(circleId?: string): Promise<Board[]> {
+    let q = sb().from('boards').select('*, board_items(count)');
+    if (circleId) q = q.eq('circle_id', circleId);
+    const rows = await run(q);
+    return (rows ?? []).map((r) => {
+      const row = r as Record<string, unknown>;
+      const items = row.board_items as { count: number }[] | undefined;
+      const board = mapRow<Board>(row) as Board;
+      return { ...board, itemCount: items?.[0]?.count ?? 0 };
+    });
+  },
+  async getBoard(id: string): Promise<Board | undefined> {
+    const row = await run(
+      sb().from('boards').select('*, board_items(count)').eq('id', id).maybeSingle(),
+    );
+    if (!row) return undefined;
+    const items = (row as Record<string, unknown>).board_items as { count: number }[] | undefined;
+    return { ...(mapRow<Board>(row) as Board), itemCount: items?.[0]?.count ?? 0 };
+  },
+  async createBoard(input: { title: string; circleId?: string; isPublic?: boolean }): Promise<Board> {
+    const id = `board-${Date.now()}`;
+    const row = await run(
+      sb()
+        .from('boards')
+        .insert({
+          id,
+          title: input.title,
+          created_by: me(),
+          circle_id: input.circleId ?? null,
+          is_public: input.isPublic ?? false,
+        })
+        .select('*')
+        .single(),
+    );
+    return { ...(mapRow<Board>(row) as Board), itemCount: 0 };
+  },
+  async listBoardItems(boardId: string): Promise<BoardItem[]> {
+    const rows = await run(
+      sb()
+        .from('board_items')
+        .select('board_id, listing_id, added_by, note, target_start, target_end, created_at, listings(*)')
+        .eq('board_id', boardId)
+        .order('created_at', { ascending: false }),
+    );
+    const addedByIds = [...new Set((rows ?? []).map((r) => r.added_by as string))];
+    const profiles = addedByIds.length
+      ? mapRows<PublicProfile>(await run(sb().from('public_profiles').select('*').in('id', addedByIds)))
+      : [];
+    const profileById = new Map(profiles.map((p) => [p.id, p]));
+    return (rows ?? [])
+      .map((r): BoardItem | null => {
+        const row = r as Record<string, unknown>;
+        const embedded = row.listings;
+        const listingRow = Array.isArray(embedded) ? embedded[0] : embedded;
+        const listing = mapRow<Listing>(listingRow as Record<string, unknown> | null);
+        const addedBy = profileById.get(row.added_by as string);
+        if (!listing || !addedBy) return null;
+        return {
+          boardId: row.board_id as string,
+          listing,
+          addedBy,
+          note: (row.note as string | null) ?? undefined,
+          targetStart: (row.target_start as string | null) ?? undefined,
+          targetEnd: (row.target_end as string | null) ?? undefined,
+          createdAt: row.created_at as string,
+        };
+      })
+      .filter((i): i is BoardItem => !!i);
+  },
+  async addToBoard(input: {
+    boardId: string;
+    listingId: string;
+    note?: string;
+    targetStart?: string;
+    targetEnd?: string;
+  }): Promise<void> {
+    await run(
+      sb()
+        .from('board_items')
+        .upsert(
+          {
+            board_id: input.boardId,
+            listing_id: input.listingId,
+            added_by: me(),
+            note: input.note ?? null,
+            target_start: input.targetStart ?? null,
+            target_end: input.targetEnd ?? null,
+          },
+          { onConflict: 'board_id,listing_id' },
+        ),
+    );
+  },
+  async removeFromBoard(boardId: string, listingId: string): Promise<void> {
+    await run(
+      sb().from('board_items').delete().eq('board_id', boardId).eq('listing_id', listingId),
+    );
+  },
+  /** Forward-looking demand for a car — how many boards have pinned it, by target date. */
+  async listingDemand(listingId: string): Promise<ListingDemand[]> {
+    return mapRows<ListingDemand>(
+      await run(sb().from('listing_demand').select('*').eq('listing_id', listingId)),
+    );
+  },
+
+  // --- Social: feed --------------------------------------------------------
+  /**
+   * The verified feed. RLS (trip_posts_read, migration 064) already decides
+   * what comes back — public posts, your own, and circle-shared posts from
+   * people you share a circle with — so this is a plain select, no manual
+   * filtering. `authorId` narrows it to one person's posts (a future host
+   * storefront section); omit it for the main feed.
+   */
+  async listFeed(opts: { authorId?: string; bookingId?: string } = {}): Promise<FeedItem[]> {
+    let postsQ = sb()
+      .from('trip_posts')
+      .select('id, author_id, booking_id, listing_id, body, photos, visibility, city, country, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (opts.authorId) postsQ = postsQ.eq('author_id', opts.authorId);
+    if (opts.bookingId) postsQ = postsQ.eq('booking_id', opts.bookingId);
+
+    // Broadcasts have no booking to filter by, and an authorId filter means
+    // "this trip", not "this host" — bookingId scopes them out entirely.
+    const wantBroadcasts = !opts.bookingId;
+    let broadcastsQ = sb()
+      .from('host_broadcasts')
+      .select('id, host_id, body, listing_id, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (opts.authorId) broadcastsQ = broadcastsQ.eq('host_id', opts.authorId);
+
+    const [postRows, broadcastRows] = await Promise.all([
+      run(postsQ),
+      wantBroadcasts ? run(broadcastsQ) : Promise.resolve([] as Record<string, unknown>[]),
+    ]);
+    const [posts, broadcasts] = await Promise.all([
+      hydratePosts(postRows),
+      hydrateBroadcasts(broadcastRows),
+    ]);
+
+    const items: FeedItem[] = [
+      ...posts.map((p): FeedItem => ({ kind: 'trip', ...p })),
+      ...broadcasts.map((b): FeedItem => ({ kind: 'broadcast', ...b })),
+    ];
+    return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  },
+  /**
+   * A fresh id for a post that will carry photos — generate it BEFORE
+   * uploading, since trip-photos' path convention (migration 066) is
+   * `<author_id>/<post_id>/<file>` and the post row doesn't exist yet at
+   * upload time.
+   */
+  newTripPostId(): string {
+    return `post-${Date.now()}`;
+  },
+  /** Uploads one photo for a not-yet-created post; returns the storage path to pass as `photos`. */
+  async uploadTripPostPhoto(postId: string, file: File): Promise<string> {
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${me()}/${postId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await sb()
+      .storage.from('trip-photos')
+      .upload(path, file, { contentType: file.type });
+    if (error) throw new Error(error.message);
+    return path;
+  },
+  /**
+   * Post about a completed trip. `trip_post_guard` (migration 064) is the
+   * real gate — it refuses anything not anchored to a paid, completed booking
+   * the caller was actually on — so this is a plain insert, not a place to
+   * duplicate that check client-side. Pass `id` from `newTripPostId()` when
+   * the post carries photos uploaded under that id; omit it for a text-only
+   * post.
+   */
+  async createTripPost(input: {
+    id?: string;
+    bookingId: string;
+    body: string;
+    photos?: string[];
+    visibility?: PostVisibility;
+  }): Promise<TripPost> {
+    const id = input.id ?? `post-${Date.now()}`;
+    const row = await run(
+      sb()
+        .from('trip_posts')
+        .insert({
+          id,
+          author_id: me(),
+          booking_id: input.bookingId,
+          body: input.body,
+          photos: input.photos ?? [],
+          visibility: input.visibility ?? 'circles',
+        })
+        .select('id, author_id, booking_id, listing_id, body, photos, visibility, city, country, created_at')
+        .single(),
+    );
+    const [post] = await hydratePosts(row ? [row] : []);
+    return post;
+  },
+  async deleteTripPost(id: string): Promise<void> {
+    await run(sb().from('trip_posts').delete().eq('id', id).eq('author_id', me()));
+  },
+
+  // --- Social: host broadcasts ----------------------------------------------
+  /**
+   * Un-anchored fleet announcements (migration 067) — no booking required,
+   * publicly readable. `host_broadcast_guard` refuses a non-host account or a
+   * listing that isn't actually the caller's, so this is a plain insert.
+   */
+  async createHostBroadcast(input: { body: string; listingId?: string }): Promise<HostBroadcast> {
+    const id = `bcast-${Date.now()}`;
+    const row = await run(
+      sb()
+        .from('host_broadcasts')
+        .insert({ id, host_id: me(), body: input.body, listing_id: input.listingId ?? null })
+        .select('id, host_id, body, listing_id, created_at')
+        .single(),
+    );
+    const [b] = await hydrateBroadcasts(row ? [row] : []);
+    return b;
+  },
+  /** A host's own broadcast history, newest first — used on their public profile. */
+  async listHostBroadcasts(hostId: string): Promise<HostBroadcast[]> {
+    const rows = await run(
+      sb()
+        .from('host_broadcasts')
+        .select('id, host_id, body, listing_id, created_at')
+        .eq('host_id', hostId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+    );
+    return hydrateBroadcasts(rows);
+  },
+  async deleteHostBroadcast(id: string): Promise<void> {
+    await run(sb().from('host_broadcasts').delete().eq('id', id).eq('host_id', me()));
   },
 };

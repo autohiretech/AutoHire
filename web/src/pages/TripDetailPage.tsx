@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Camera, CalendarDays, Check, Clock, MapPin, MessageSquare, Upload, X } from 'lucide-react';
-import type { Booking, CheckPhoto, Host, Review, ReviewDirection } from '@autohire/shared';
+import {
+  ArrowLeft,
+  Camera,
+  CalendarDays,
+  Check,
+  Clock,
+  Globe,
+  Lock,
+  MapPin,
+  MessageSquare,
+  Upload,
+  Users,
+  X,
+} from 'lucide-react';
+import type { Booking, CheckPhoto, Host, PostVisibility, Review, ReviewDirection } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
@@ -260,6 +273,7 @@ export function TripDetailPage() {
           )}
 
           <TripReviews booking={booking} host={host} />
+          <TripPostComposer booking={booking} />
         </div>
 
         {/* Summary sidebar */}
@@ -902,6 +916,156 @@ function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
             />
             <Button type="submit" size="sm" disabled={rating === 0 || !body.trim() || mutation.isPending}>
               {mutation.isPending ? 'Submitting…' : 'Submit review'}
+            </Button>
+          </form>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+const VISIBILITY_META: Record<PostVisibility, { label: string; icon: typeof Globe; hint: string }> = {
+  public: { label: 'Public', icon: Globe, hint: 'Anyone browsing AutoHire can see it' },
+  circles: { label: 'Circles', icon: Users, hint: 'Only people who share a circle with you' },
+  private: { label: 'Private', icon: Lock, hint: "Just you — it won't appear in any feed" },
+};
+
+/**
+ * "Share this trip" — the only way a post can ever be created (migration
+ * 064's trigger is the actual gate; this form just can't render before it
+ * would pass). Same eligibility shape as TripReviews: the renter or host on
+ * THIS booking, and only once it's completed and paid — which for a renter
+ * and a host are the same two roles, just posting about different halves of
+ * the same trip.
+ */
+function TripPostComposer({ booking }: { booking: Booking }) {
+  const { data: me } = useCurrentUser();
+  const queryClient = useQueryClient();
+  const [body, setBody] = useState('');
+  const [visibility, setVisibility] = useState<PostVisibility>('circles');
+  const [files, setFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+
+  const myId = me?.id;
+  const canPost = !!myId && (myId === booking.renterId || myId === booking.hostId);
+  const eligible = booking.state === 'completed' && booking.paymentStatus === 'paid';
+
+  const { data: existing, isLoading } = useQuery({
+    queryKey: ['tripPost', booking.id, myId],
+    // bookingId filters out broadcasts entirely, so every item is a trip post.
+    queryFn: async () =>
+      (await client.listFeed({ bookingId: booking.id })).filter(
+        (i): i is Extract<typeof i, { kind: 'trip' }> => i.kind === 'trip',
+      ),
+    enabled: canPost && eligible,
+  });
+  const mine = existing?.find((p) => p.author.id === myId);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const id = client.newTripPostId();
+      const photos = await Promise.all(files.map((f) => client.uploadTripPostPhoto(id, f)));
+      return client.createTripPost({ id, bookingId: booking.id, body, photos, visibility });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tripPost', booking.id, myId] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      setBody('');
+      setFiles([]);
+      toast.success('Posted');
+    },
+    onError: () => toast.error('Could not post — try again'),
+  });
+
+  if (!canPost || !eligible) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="font-semibold text-ink-900">Share this trip</h2>
+      </CardHeader>
+      <CardBody>
+        {isLoading ? (
+          <Spinner size={18} />
+        ) : mine ? (
+          <p className="text-sm text-ink-500">
+            Posted to your {VISIBILITY_META[mine.visibility].label.toLowerCase()} feed.
+          </p>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (body.trim()) mutation.mutate();
+            }}
+            className="space-y-3"
+          >
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={3}
+              placeholder="Where did you go, and what did you do?"
+              className="w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+            />
+
+            {previews.length > 0 && (
+              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+                {previews.map((url, i) => (
+                  <div key={url} className="relative">
+                    <img src={url} alt="" className="h-14 w-full rounded-lg border border-ink-100 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setFiles((f) => f.filter((_, j) => j !== i))}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink-900 text-white"
+                      aria-label="Remove photo"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-500 hover:text-ink-800"
+            >
+              <Camera size={13} /> Add photos
+            </button>
+
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(VISIBILITY_META) as PostVisibility[]).map((v) => {
+                const meta = VISIBILITY_META[v];
+                const active = visibility === v;
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setVisibility(v)}
+                    title={meta.hint}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                      active
+                        ? 'border-brand-300 bg-brand-50 text-brand-700'
+                        : 'border-ink-200 text-ink-600 hover:bg-ink-50',
+                    )}
+                  >
+                    <meta.icon size={13} /> {meta.label}
+                  </button>
+                );
+              })}
+            </div>
+            <Button type="submit" size="sm" disabled={!body.trim() || mutation.isPending}>
+              {mutation.isPending ? 'Posting…' : 'Post'}
             </Button>
           </form>
         )}

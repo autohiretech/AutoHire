@@ -280,6 +280,24 @@ const POOLS = {
     // Heck Stapler Manitou.JPG
     'upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Heck_Stapler_Manitou.JPG/960px-Heck_Stapler_Manitou.JPG',
   ],
+  // The trip-post feed (migration 064+) is about the PERSON's experience, not
+  // another photo of the car — that already has its own gallery on the
+  // listing page. These are real people, on real trips, individually
+  // verified against Wikimedia Commons before being added here.
+  people: [
+    // Family Road Trip to Newfoundland July 12th-28th 2017 (38077883034).jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Family_Road_Trip_to_Newfoundland_July_12th-28th_2017_%2838077883034%29.jpg/960px-Family_Road_Trip_to_Newfoundland_July_12th-28th_2017_%2838077883034%29.jpg',
+    // More road trips. Happy Times.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/a/ab/More_road_trips._Happy_Times.jpg/960px-More_road_trips._Happy_Times.jpg',
+    // Road trips with family.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/d/dc/Road_trips_with_family.jpg/960px-Road_trips_with_family.jpg',
+    // Marce y Kary. ¿Y los mates? (4283099592).jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Marce_y_Kary._%C2%BFY_los_mates%3F_%284283099592%29.jpg/960px-Marce_y_Kary._%C2%BFY_los_mates%3F_%284283099592%29.jpg',
+    // Family's journey to their holiday destination.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Family%27s_journey_to_their_holiday_destination.jpg/960px-Family%27s_journey_to_their_holiday_destination.jpg',
+    // A hitchhiking family waiting along the highway in Macon, Georgia, 8b32223.jpg
+    'upload.wikimedia.org/wikipedia/commons/thumb/0/0d/A_hitchhiking_family_waiting_along_the_highway_in_Macon%2C_Georgia%2C_8b32223.jpg/960px-A_hitchhiking_family_waiting_along_the_highway_in_Macon%2C_Georgia%2C_8b32223.jpg',
+  ],
 } satisfies Record<string, readonly string[]>;
 
 /** Any make we have no pool for falls back to a mixed set of real cars. */
@@ -297,6 +315,21 @@ function poolFor(keyword: string): readonly string[] {
 
   const tokens = k.split(',');
   const has = (t: string) => tokens.includes(t);
+  // Trip-post photos (a person's experience, not the car) — checked before
+  // the machinery/car routing below since none of these tokens overlap it.
+  if (
+    has('friends') ||
+    has('family') ||
+    has('traveler') ||
+    has('travelers') ||
+    has('tourist') ||
+    has('tourists') ||
+    has('hitchhiking') ||
+    has('roadtrip') ||
+    has('portrait') ||
+    has('people')
+  )
+    return POOLS.people;
   if (has('harvester') || has('harvest')) return POOLS.harvester;
   if (has('tractor')) return POOLS.tractor;
   if (has('cultivator')) return POOLS.tiller;

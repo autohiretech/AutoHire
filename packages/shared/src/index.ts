@@ -762,3 +762,171 @@ export interface AdminStats {
   openFlags: number;
   openDisputes: number;
 }
+
+// ----------------------------------------------------------------------------
+// Social layer (migrations 058+). Every trip post is anchored to a paid,
+// completed booking — enforced by trigger, not by this layer — so the whole
+// point of these types is that they describe things the ledger already
+// verified, not user-asserted claims.
+// ----------------------------------------------------------------------------
+
+/**
+ * The PII-free profile projection (the `public_profiles` view, migration 029).
+ * Every social surface — follower lists, feed authors, circle members — reads
+ * this, never `UserProfile`, which since 029 is restricted to yourself, an
+ * admin, or a booking/conversation counterparty.
+ */
+export interface PublicProfile {
+  id: ID;
+  fullName: string;
+  avatarUrl?: string;
+  role: UserRole;
+  joinedAt: string; // ISO date
+  verification: VerificationStatus;
+  ratingAvg?: number;
+  ratingCount?: number;
+  ownerType?: OwnerType;
+  businessName?: string;
+}
+
+/** Social proof shown on a car listing page — "Trusted by 3 friends". */
+export interface SocialProof {
+  listingId: ID;
+  /** Accounts you follow who completed a paid trip on this exact car. */
+  circleRenters: PublicProfile[];
+  /** Total completed trips on this car, across everyone. */
+  totalTrips: number;
+}
+
+export type CircleKind = 'crew' | 'cooperative' | 'team' | 'family';
+export type CircleMemberStatus = 'invited' | 'active' | 'left';
+
+export interface Circle {
+  id: ID;
+  name: string;
+  kind: CircleKind;
+  createdBy: ID;
+  country?: string;
+  createdAt: string; // ISO
+  memberCount: number;
+  /** The signed-in account's own membership, if any. */
+  myStatus?: CircleMemberStatus;
+}
+
+export interface CircleMember {
+  circleId: ID;
+  profile: PublicProfile;
+  role: 'owner' | 'member';
+  status: CircleMemberStatus;
+  joinedAt: string; // ISO
+}
+
+export interface Board {
+  id: ID;
+  title: string;
+  createdBy: ID;
+  circleId?: ID;
+  isPublic: boolean;
+  createdAt: string; // ISO
+  itemCount: number;
+}
+
+export interface BoardItem {
+  boardId: ID;
+  listing: Listing;
+  addedBy: PublicProfile;
+  note?: string;
+  /** Optional "we're thinking about these dates" — never required to pin a car. */
+  targetStart?: string; // ISO date
+  targetEnd?: string; // ISO date
+  createdAt: string; // ISO
+}
+
+/** Forward-looking demand for a car on a given start date, from board pins. */
+export interface ListingDemand {
+  listingId: ID;
+  targetStart: string; // ISO date
+  interested: number;
+}
+
+/**
+ * A share-link invite into a circle (migration 063). The token is the
+ * credential — whoever holds the link and is signed in can claim it, once.
+ * Phone/email matching against a brand-new signup is deferred (needs a
+ * `profiles.phone` uniqueness backfill first), so this is link-only for now.
+ */
+export interface CircleInvite {
+  id: ID;
+  circleId: ID;
+  invitedBy: ID;
+  token: string;
+  claimedBy?: ID;
+  claimedAt?: string; // ISO
+  createdAt: string; // ISO
+}
+
+export type PostVisibility = 'public' | 'circles' | 'private';
+
+export interface TripPost {
+  id: ID;
+  author: PublicProfile;
+  bookingId: string | null;
+  listing: Pick<Listing, 'id' | 'title' | 'photos' | 'city' | 'country'> | null;
+  body: string;
+  photos: string[];
+  visibility: PostVisibility;
+  city?: string;
+  country?: string;
+  createdAt: string; // ISO
+  /**
+   * True for seeded launch content (`demo-post-%`, migration 065) — never a
+   * real trip. Lets the feed label it honestly rather than presenting it as
+   * an actual renter's experience.
+   */
+  isDemo?: boolean;
+  /**
+   * "Usually books: SUV" — computed from the author's own completed, paid
+   * bookings (migration 069), never a self-declared field. Absent below a
+   * 2-trip minimum, which is why every seeded post has none: nothing about a
+   * demo account is a real trip, so there is nothing to compute from.
+   */
+  authorPreferredCategories?: CarCategory[];
+}
+
+export type CompanionStatus = 'invited' | 'joined' | 'declined';
+
+/**
+ * A named co-traveller on a trip. Carries no financial standing — the
+ * organizer is the sole PayHold buyer and the sole liable driver, exactly as
+ * migration 042 and the KYC pipeline already require. Never read by anything
+ * that computes an amount.
+ */
+export interface BookingCompanion {
+  id: ID;
+  bookingId: ID;
+  profile: PublicProfile | null;
+  invitedName?: string;
+  invitedEmail?: string;
+  invitedPhone?: string;
+  status: CompanionStatus;
+  createdAt: string; // ISO
+}
+
+/**
+ * An un-anchored fleet announcement (migration 067) — "15% off this weekend",
+ * "new car added". Unlike TripPost, nothing here is verified by a booking;
+ * it's just a host talking to whoever follows them. Never render this with
+ * the trust language ("verified", a checkmark) a TripPost earns.
+ */
+export interface HostBroadcast {
+  id: ID;
+  host: PublicProfile;
+  body: string;
+  listing: Pick<Listing, 'id' | 'title' | 'photos'> | null;
+  createdAt: string; // ISO
+}
+
+/** The feed merges TripPost and HostBroadcast into one chronological list. */
+export type FeedItem =
+  | ({ kind: 'trip' } & TripPost)
+  | ({ kind: 'broadcast' } & HostBroadcast);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -10,8 +10,8 @@ import {
   LayoutGrid,
   Leaf,
   PlusCircle,
-  Search,
   ShieldCheck,
+  Sparkles,
   Star,
   TrendingUp,
   Zap,
@@ -21,13 +21,12 @@ import type { ListingFilters } from '@/lib/types';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES, CATEGORY_GROUPS } from '@/lib/categories';
-import { Spinner, toast } from '@/components/ui';
+import { Spinner } from '@/components/ui';
 import { ListingCard } from '@/components/ListingCard';
 import { CategoryRail } from '@/components/marketplace/CategoryRail';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
 import { listingHeadlinePrice } from '@/lib/pricing';
-import { AiMode } from '@/components/marketplace/AiMode';
 import { BrowseTabs } from '@/components/marketplace/BrowseTabs';
 import { useAppMode } from '@/lib/appMode';
 import { useCountry } from '@/lib/country';
@@ -84,13 +83,6 @@ export function HomePage() {
   // Restore where the user was browsing (read once on mount).
   const [savedBrowse] = useState(loadBrowse);
   const [filters, setFilters] = useState<ListingFilters>(savedBrowse.filters ?? {});
-  // AI Mode lives in the URL (?view=ai), toggled by <BrowseTabs> links, so
-  // navigating "home" (the logo → "/") clears it and returns to the dashboard
-  // instead of getting stuck because the route didn't change.
-  const [searchParams] = useSearchParams();
-  const aiMode = searchParams.get('view') === 'ai';
-  const [aiBusy, setAiBusy] = useState(false);
-  const [text, setText] = useState('');
   const [topRanked, setTopRanked] = useState(savedBrowse.topRanked ?? false);
   const [page, setPage] = useState(savedBrowse.page ?? 0);
   // Category groups are an accordion so the sidebar stays compact — vehicles open
@@ -154,32 +146,6 @@ export function HomePage() {
     });
   }
 
-  async function runSearch() {
-    const q = text.trim();
-    if (aiMode) {
-      if (!q) return;
-      setAiBusy(true);
-      try {
-        const aiFilters = await client.aiSearch(q);
-        setFilters(Object.keys(aiFilters).length ? aiFilters : { query: q });
-      } catch (err) {
-        setFilters({ query: q });
-        toast.error(
-          err instanceof Error ? err.message : 'AI search is unavailable — showing keyword results.',
-        );
-      } finally {
-        setAiBusy(false);
-      }
-    } else {
-      // A plain search opens the dedicated results page (Alibaba "Products"
-      // style) rather than filtering inline on the dashboard.
-      if (!q) return;
-      navigate(`/search?q=${encodeURIComponent(q)}`);
-      return;
-    }
-    scrollToResults();
-  }
-
   function scrollToResults() {
     resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -191,46 +157,38 @@ export function HomePage() {
 
   return (
     <div className="bg-gradient-to-b from-brand-50 to-white">
-      {/* ── Mode switch + section nav ────────────────────────────────────── */}
+      {/* ── Section nav + AI search bar ─────────────────────────────────── */}
       <div className="mx-auto max-w-[1500px] px-4 pt-8">
         <BrowseTabs />
 
-        {/* ── Fused search box (standard mode only) ────────────────────────── */}
-        {!aiMode && (
-          <div className="mx-auto mt-5 max-w-3xl">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void runSearch();
-              }}
-              className="rounded-2xl border border-ink-200 bg-white px-5 pt-4 pb-3 shadow-card transition focus-within:border-brand-400 focus-within:ring-4 focus-within:ring-brand-500/10"
-            >
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Search self-drive cars by make, model, or city"
-                aria-label="Search cars"
-                className="w-full text-base text-ink-900 outline-none placeholder:text-ink-400"
-              />
-              <div className="mt-3 flex items-center justify-end border-t border-ink-100 pt-3">
-                <button
-                  type="submit"
-                  disabled={aiBusy}
-                  className="flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-600 px-6 py-2 font-medium text-white transition hover:brightness-95 disabled:opacity-70"
-                >
-                  <Search size={18} />
-                  {aiBusy ? 'Thinking…' : 'Search'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+        {/* Styled to read as a research/ask bar, not a CTA button — car
+            shopping is a research task, not a booking, and a solid filled
+            pill invited "click to book" rather than "ask me something".
+            Still no typing here: it's one click target, and the assistant
+            asks whatever it needs once the panel is open. A soft pulsing
+            glow behind the (now white, input-shaped) bar keeps it reading
+            as the "alive", AI-driven entry point rather than a plain field. */}
+        <div className="relative mx-auto mt-5 w-full max-w-3xl">
+          <div
+            aria-hidden
+            className="animate-ai-glow absolute -inset-1.5 rounded-full bg-gradient-to-r from-brand-400 via-emerald-400 to-brand-500 opacity-40 blur-lg"
+          />
+          <button
+            type="button"
+            onClick={() => navigate('/search?bot=1')}
+            className="relative flex w-full items-center gap-3 rounded-full border-2 border-brand-200 bg-white px-5 py-3.5 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md"
+          >
+            <Sparkles size={18} className="shrink-0 animate-pulse text-brand-500" />
+            <span className="flex-1 truncate text-base text-ink-400">
+              Research your next car with AI&hellip;
+            </span>
+            <span className="hidden shrink-0 items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-100 sm:flex">
+              Ask AI
+            </span>
+          </button>
+        </div>
       </div>
 
-      {aiMode && <AiMode />}
-
-      {!aiMode && (
-        <>
       {/* ── Welcome strip ─────────────────────────────────────────────────── */}
       <div className="mx-auto mt-8 max-w-[1500px] px-4">
         <div className="flex flex-wrap items-center justify-between gap-4 border-y border-ink-100 py-4">
@@ -431,8 +389,6 @@ export function HomePage() {
           </section>
         </div>
       </div>
-        </>
-      )}
     </div>
   );
 }

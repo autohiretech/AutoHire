@@ -1,301 +1,398 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Building2,
-  ChevronRight,
-  Search,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  User,
-} from 'lucide-react';
-import type { Host, Listing } from '@autohire/shared';
+import { MapPin, Navigation, Search } from 'lucide-react';
 import type { ListingFilters } from '@/lib/types';
 import { client } from '@/lib/client';
-import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { interpretQuery } from '@/lib/demoAi';
-import { formatRwf } from '@/lib/format';
-import { useAuth } from '@/lib/auth';
-import { ListingCard } from '@/components/ListingCard';
-import { Img } from '@/components/Img';
-import { Price } from '@/components/Price';
-import { listingHeadlinePrice } from '@/lib/pricing';
-import { Avatar, Spinner, toast } from '@/components/ui';
+import { ResultsMap } from '@/components/map/ResultsMap';
+import { Spinner } from '@/components/ui';
 import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
+import { useAiAssistantActions, useAiAssistantSource } from '@/lib/aiAssistantContext';
+import { Chip, FilterPill, MORE_FILTERS, PRICE_FILTER, type PanelId } from '@/components/marketplace/SearchFilters';
+import { ListRow } from '@/components/marketplace/ListRow';
+import { useAddressSuggestions, type AddressSuggestion } from '@/lib/geocoding';
 
 /**
- * Listing grid: 2 / 3 fixed columns, matching the home page's grid so a car
- * looks the same size wherever it's browsed. A short final row leaves empty
- * cells rather than stretching its cards — under flex `grow` a row of one
- * card blew up to full width and no longer matched the cards above it.
- */
-const CARD_GRID = 'grid grid-cols-2 gap-5 lg:grid-cols-3';
-
-/** "Select by" refinement chips → the ListingFilters patch each one applies. */
-const SELECT_BY: { label: string; patch: ListingFilters }[] = [
-  { label: '⚡ Electric', patch: { fuel: 'electric' } },
-  { label: 'Automatic', patch: { transmission: 'automatic' } },
-  { label: 'Manual', patch: { transmission: 'manual' } },
-  { label: 'Business host', patch: { ownerType: 'business' } },
-  { label: 'Individual host', patch: { ownerType: 'individual' } },
-  { label: '5+ seats', patch: { minSeats: 5 } },
-  { label: '7+ seats', patch: { minSeats: 7 } },
-  { label: 'Under RWF 50k', patch: { maxPriceRwf: 50000 } },
-];
-
-/** A plain, factual one-liner under the "Deep search results" heading — no chat framing. */
-function describeResults(listings: Listing[]): string {
-  const prices = listings.map((l) => listingHeadlinePrice(l).amount);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const cats = Array.from(new Set(listings.map((l) => l.category)));
-  const cities = Array.from(new Set(listings.map((l) => l.city)));
-  const business = listings.filter((l) => l.ownerType === 'business').length;
-  const individual = listings.length - business;
-
-  const priceLine = min === max ? `${formatRwf(min)}/day` : `${formatRwf(min)}–${formatRwf(max)}/day`;
-  const hostLine =
-    business && individual
-      ? `${business} agency and ${individual} individual host${individual === 1 ? '' : 's'}`
-      : business
-        ? `${business} verified agenc${business === 1 ? 'y' : 'ies'}`
-        : `${individual} individual host${individual === 1 ? '' : 's'}`;
-
-  return `${priceLine} · ${cats.join(', ')} · from ${hostLine} around ${cities.slice(0, 3).join(', ')}.`;
-}
-
-/**
- * Search results page (Alibaba "Products / Deep Search" style). A plain search
- * lands here (not the dashboard, and not the conversational AI Mode). The demo
- * AI ([interpretQuery]) reads the query into filters, we surface a "Deep search"
- * summary + a featured host block, then attribute/refinement chips over a
- * product grid. All results are real listings; only the interpretation is demo.
+ * Search results page — Getaround's own layout: a slim filter-pill row, a
+ * narrow result list, and a map that takes most of the page. The Gemini bot
+ * is an addition on top of this, not a replacement for it: a floating
+ * bubble that writes into the same filter state these pills use, so
+ * whichever one touched it last drives the same list + map underneath.
  */
 export function SearchResultsPage() {
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
-  const { user } = useAuth();
   const { country } = useCountry();
   const q = params.get('q') ?? '';
   const [text, setText] = useState(q);
   const [extra, setExtra] = useState<ListingFilters>({});
-  const [showMore, setShowMore] = useState(false);
-  const [chatBusy, setChatBusy] = useState(false);
+  const [openPanel, setOpenPanel] = useState<PanelId>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  // Cars the assistant's last filter turn actually matched — highlighted on
+  // the map/list so a chat reply isn't the only place they show up.
+  const [highlightIds, setHighlightIds] = useState<string[]>([]);
+  // A place picked from the pickup bar's live suggestions — pans the map
+  // there (see ResultsMap's focusPoint) even when it doesn't resolve to one
+  // of the app's known cities below.
+  const [focusPoint, setFocusPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const suggestBoxRef = useRef<HTMLDivElement>(null);
+  const { suggestions, searching: suggestSearching } = useAddressSuggestions(text);
 
-  // Start (or reopen) a chat with a host about one of their cars, then jump into
-  // the conversation. Guests are sent to sign in first, returning here after.
-  async function startChat(listingId: string, hostId: string) {
-    if (!user) {
-      navigate('/login', { state: { from: `/search?q=${encodeURIComponent(q)}` } });
-      return;
-    }
-    if (user.id === hostId) {
-      navigate('/messages');
-      return;
-    }
-    setChatBusy(true);
-    try {
-      const conv = await client.getOrCreateConversation(listingId, user.id, hostId);
-      navigate(`/messages/${conv.id}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not start the chat. Please try again.');
-    } finally {
-      setChatBusy(false);
-    }
-  }
-
-  // Chips are per-market, so drop them when the query or the market changes.
+  // Filters are per-market, so drop them when the query or the market changes.
   useEffect(() => {
     setText(q);
     setExtra({});
+    setFocusPoint(null);
   }, [q, country.code]);
 
-  // interpretQuery already folds any free text it doesn't recognize as a
-  // structured filter into `.query`, so a search like "automatic toyota" keeps
-  // "toyota" as a keyword instead of losing it once "automatic" is matched.
+  // Click-away closes the suggestions dropdown.
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (suggestBoxRef.current && !suggestBoxRef.current.contains(e.target as Node)) setSuggestOpen(false);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, []);
+
+  // Arriving via Home's "Ask AI" bar (?bot=1&ask=...) means the AI's answer
+  // is what should drive this page's first paint — not the plain, unfiltered
+  // "every car in the market" catalogue this page would otherwise show while
+  // that request is still in flight. That flash read as the traditional
+  // search "jumping in" ahead of the AI. `aiPending` holds the real list/map
+  // back until either the AI actually sets filters (below) or a bounded
+  // timeout passes (so a purely conversational reply, with no filter call,
+  // doesn't leave the page stuck waiting forever).
+  const [aiPending, setAiPending] = useState(
+    () => params.get('bot') === '1' && !!params.get('ask'),
+  );
+  useEffect(() => {
+    if (!aiPending) return;
+    const t = setTimeout(() => setAiPending(false), 12000);
+    return () => clearTimeout(t);
+  }, [aiPending]);
+
   const base = useMemo<ListingFilters>(() => interpretQuery(q), [q]);
-  // Results are scoped to the selected market. If the query itself names a city in a
-  // different market ("SUVs in Dubai" while browsing Rwanda), follow the city instead
-  // of returning an empty grid.
   const filters = useMemo<ListingFilters>(() => {
     const merged = { ...base, ...extra };
-    return { ...merged, country: countryOfCity(merged.city) ?? country.code };
+    // `extra.country` only ever comes from the AI naming a country with no
+    // specific city ("one in China") — city-derived and the header default
+    // still win in the usual cases where nothing set it explicitly.
+    return { ...merged, country: merged.country ?? countryOfCity(merged.city) ?? country.code };
   }, [base, extra, country.code]);
 
   const { data: listings, isLoading } = useQuery({
     queryKey: ['search', filters],
     queryFn: () => client.listListings(filters),
   });
-  const { data: hosts } = useQuery({ queryKey: ['hosts'], queryFn: () => client.listHosts() });
-
   const results = listings ?? [];
-  const ranked = useMemo(() => [...results].sort((a, b) => b.ratingAvg - a.ratingAvg), [results]);
-  const topMatch = ranked[0];
 
-  // Featured host = the host of the top match, with all of their matching cars.
-  const featuredHost = useMemo<Host | undefined>(
-    () => hosts?.find((h) => h.id === topMatch?.hostId),
-    [hosts, topMatch],
-  );
-  const featuredCars = useMemo(
-    () => (topMatch ? ranked.filter((l) => l.hostId === topMatch.hostId) : []),
-    [ranked, topMatch],
-  );
+  // Publishes the current result set to the global AI assistant (mounted in
+  // AppLayout) — this is what lets "book the second one" resolve, and what
+  // makes a filter change from the assistant update this page's own list +
+  // map in place instead of falling back to a /search navigation.
+  useAiAssistantSource(results, {
+    loading: isLoading,
+    filters,
+    onFilters: (f, clear) => {
+      setAiPending(false);
+      setExtra((prev) => {
+        const next = { ...prev, ...f };
+        // A field merely absent from `f` means "unchanged" — only listed in
+        // `clear` does it actually get removed. Without this, a renter
+        // saying "not an suv" could never undo an earlier category filter:
+        // the old value would just keep winning the merge every turn.
+        for (const key of clear ?? []) delete next[key];
+        return next;
+      });
+    },
+    onHighlight: setHighlightIds,
+  });
+  // Actions-only, deliberately — subscribing to the combined context here
+  // would re-render this page on every contextListings/highlight change this
+  // very page causes via useAiAssistantSource above, which is the same
+  // feedback shape that caused CarDetailPage's infinite loop.
+  const { selectForBooking } = useAiAssistantActions();
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const t = text.trim();
     setParams(t ? { q: t } : {});
+    setSuggestOpen(false);
+  }
+
+  // Picking a live suggestion doesn't need a submit round-trip through
+  // interpretQuery() at all — it sets the city filter directly (same effect
+  // as clicking that city as a "More filters" chip) and focuses the map on
+  // the exact point, which covers neighborhoods interpretQuery's keyword
+  // matching would never resolve to a known city on its own.
+  function pickSuggestion(s: AddressSuggestion) {
+    setText(s.label);
+    setSuggestOpen(false);
+    setFocusPoint({ lat: s.lat, lng: s.lng });
+    const matchedCity = citiesFor(country.code).find((c) => s.label.toLowerCase().includes(c.toLowerCase()));
+    setExtra((prev) => {
+      const next = { ...prev };
+      if (matchedCity) next.city = matchedCity;
+      else delete next.city;
+      return next;
+    });
+  }
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setText(`Current location (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`);
+        setFocusPoint(p);
+        setSuggestOpen(false);
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
   }
 
   function togglePatch(patch: ListingFilters) {
-    const active = Object.entries(patch).every(([k, v]) => extra[k as keyof ListingFilters] === v);
+    const active = Object.entries(patch).every(
+      ([k, v]) => extra[k as keyof ListingFilters] === v,
+    );
     setExtra((prev) => {
       const next = { ...prev };
-      if (active) for (const k of Object.keys(patch)) delete next[k as keyof ListingFilters];
+      if (active)
+        for (const k of Object.keys(patch))
+          delete next[k as keyof ListingFilters];
       else Object.assign(next, patch);
       return next;
     });
   }
 
-  const activeExtra = Object.keys(extra).length;
+  const typeActive = !!extra.category;
+  const priceActive = Object.entries(PRICE_FILTER.patch).every(
+    ([k, v]) => extra[k as keyof ListingFilters] === v,
+  );
+  const moreActive =
+    MORE_FILTERS.some(({ patch }) =>
+      Object.entries(patch).every(
+        ([k, v]) => extra[k as keyof ListingFilters] === v,
+      ),
+    ) || !!extra.city;
 
   return (
-    <div className="mx-auto max-w-[1500px] px-4 py-6">
-      {/* Search bar */}
-      <form onSubmit={onSubmit} className="flex items-stretch gap-2">
-        <div className="flex flex-1 items-center overflow-hidden rounded-full border-2 border-brand-500 bg-white focus-within:border-brand-600">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Search self-drive cars — describe what you need"
-            aria-label="Search cars"
-            className="min-w-0 flex-1 px-5 py-2.5 text-sm text-ink-900 outline-none placeholder:text-ink-400"
-          />
-          <button
-            type="submit"
-            className="m-1 flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2 text-sm font-medium text-white hover:brightness-95"
-          >
-            <Search size={16} /> Search
-          </button>
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Top strip — search + filters. Kept to a minimal fixed height so the
+          list + map below start immediately, not partway down a long page. */}
+      <div className="mx-auto w-full max-w-[1600px] shrink-0 px-4 pt-3">
+        <div ref={suggestBoxRef} className="relative sm:max-w-xl">
+          <form onSubmit={onSubmit} className="flex items-stretch gap-2">
+            <div className="flex flex-1 items-center overflow-hidden rounded-full border-2 border-brand-500 bg-white shadow-sm transition-shadow focus-within:border-brand-600 focus-within:shadow-md">
+              <Search size={16} className="ml-4 shrink-0 text-ink-400" />
+              <input
+                value={text}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setSuggestOpen(true);
+                }}
+                onFocus={() => setSuggestOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setSuggestOpen(false);
+                }}
+                placeholder="Where do you want to pick up?"
+                aria-label="Search cars"
+                className="min-w-0 flex-1 px-3 py-2 text-sm text-ink-900 outline-none placeholder:text-ink-400"
+              />
+              <button
+                type="submit"
+                className="m-1 flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-1.5 text-sm font-medium text-white shadow-sm transition hover:brightness-95 hover:shadow"
+              >
+                Search
+              </button>
+            </div>
+          </form>
+          {suggestOpen && (
+            <div className="absolute z-[1100] mt-1 max-h-72 w-full overflow-auto rounded-lg border border-ink-200 bg-white shadow-lg">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={useCurrentLocation}
+                disabled={locating}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50 disabled:opacity-60"
+              >
+                <Navigation className="h-4 w-4 shrink-0 text-brand-600" />
+                {locating ? 'Finding you…' : 'Use my current location'}
+              </button>
+              {suggestSearching && (
+                <div className="border-t border-ink-100 px-3 py-2 text-xs text-ink-400">Searching…</div>
+              )}
+              {suggestions.map((s, i) => (
+                <button
+                  key={`${s.lat},${s.lng},${i}`}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickSuggestion(s)}
+                  className="flex w-full items-start gap-2 border-t border-ink-100 px-3 py-2 text-left text-sm hover:bg-ink-50"
+                >
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
+                  <span className="line-clamp-2">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      </form>
 
-      {/* Deep search heading + AI summary */}
-      <div className="mt-6 flex items-center gap-2">
-        <Sparkles size={18} className="text-accent-500" />
-        <h1 className="text-lg font-bold text-ink-900">Deep search results</h1>
-        <span className="text-sm text-ink-400">for “{q || 'all cars'}”</span>
-      </div>
-      {!isLoading && results.length > 0 && (
-        <p className="mt-1.5 max-w-4xl text-sm text-ink-600">{describeResults(results)}</p>
-      )}
-
-      {/* Featured host / supplier block */}
-      {featuredHost && featuredCars.length > 0 && (
-        <FeaturedSupplier
-          host={featuredHost}
-          cars={featuredCars}
-          onChat={() => startChat(featuredCars[0].id, featuredHost.id)}
-          chatBusy={chatBusy}
-        />
-      )}
-
-      {/* Attributes (categories) */}
-      <ChipRow
-        label="Categories:"
-        right={
-          <button
-            type="button"
-            onClick={() => setShowMore((v) => !v)}
-            className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
-              showMore
-                ? 'border-brand-300 bg-brand-50 text-brand-700'
-                : 'border-ink-300 text-ink-700 hover:bg-ink-50',
-            )}
+        {/* Filter pill row */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <FilterPill
+            label="Vehicle type"
+            active={typeActive}
+            open={openPanel === 'type'}
+            onToggle={() => setOpenPanel((p) => (p === 'type' ? null : 'type'))}
           >
-            <SlidersHorizontal size={14} /> More filters
-          </button>
-        }
-      >
-        {CAR_CATEGORIES.map(({ value, label }) => (
-          <Chip
-            key={value}
-            active={extra.category === value}
-            onClick={() => setExtra((p) => ({ ...p, category: p.category === value ? undefined : value }))}
+            <div className="flex w-64 flex-wrap gap-2 p-3">
+              {CAR_CATEGORIES.map(({ value, label }) => (
+                <Chip
+                  key={value}
+                  active={extra.category === value}
+                  onClick={() =>
+                    setExtra((p) => ({
+                      ...p,
+                      category: p.category === value ? undefined : value,
+                    }))
+                  }
+                >
+                  {label}
+                </Chip>
+              ))}
+            </div>
+          </FilterPill>
+
+          <FilterPill
+            label="Price"
+            active={priceActive}
+            open={openPanel === 'price'}
+            onToggle={() =>
+              setOpenPanel((p) => (p === 'price' ? null : 'price'))
+            }
           >
-            {label}
-          </Chip>
-        ))}
-      </ChipRow>
+            <div className="w-56 p-3">
+              <Chip
+                active={priceActive}
+                onClick={() => togglePatch(PRICE_FILTER.patch)}
+              >
+                {PRICE_FILTER.label}
+              </Chip>
+            </div>
+          </FilterPill>
 
-      {/* More filters — cities */}
-      {showMore && (
-        <ChipRow label="City:">
-          {citiesFor(country.code).map((c) => (
-            <Chip
-              key={c}
-              active={extra.city === c}
-              onClick={() => setExtra((p) => ({ ...p, city: p.city === c ? undefined : c }))}
-            >
-              {c}
-            </Chip>
-          ))}
-        </ChipRow>
-      )}
+          <FilterPill
+            label="More filters"
+            active={moreActive}
+            open={openPanel === 'more'}
+            onToggle={() => setOpenPanel((p) => (p === 'more' ? null : 'more'))}
+          >
+            <div className="w-72 space-y-3 p-3">
+              <div className="flex flex-wrap gap-2">
+                {MORE_FILTERS.map(({ label, patch }) => (
+                  <Chip
+                    key={label}
+                    active={Object.entries(patch).every(
+                      ([k, v]) => extra[k as keyof ListingFilters] === v,
+                    )}
+                    onClick={() => togglePatch(patch)}
+                  >
+                    {label}
+                  </Chip>
+                ))}
+              </div>
+              <div className="border-t border-ink-100 pt-3">
+                <p className="mb-2 text-xs font-medium text-ink-500">City</p>
+                <div className="flex flex-wrap gap-2">
+                  {citiesFor(country.code).map((c) => (
+                    <Chip
+                      key={c}
+                      active={extra.city === c}
+                      onClick={() =>
+                        setExtra((p) => ({
+                          ...p,
+                          city: p.city === c ? undefined : c,
+                        }))
+                      }
+                    >
+                      {c}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </FilterPill>
 
-      {/* Select by */}
-      <ChipRow
-        label="Select by:"
-        right={
-          activeExtra > 0 ? (
+          {(typeActive || priceActive || moreActive) && (
             <button
               type="button"
               onClick={() => setExtra({})}
-              className="shrink-0 text-sm font-medium text-brand-600 hover:underline"
+              className="text-sm font-medium text-brand-600 hover:underline"
             >
               Clear all
             </button>
-          ) : undefined
-        }
-      >
-        {SELECT_BY.map(({ label, patch }) => (
-          <Chip
-            key={label}
-            active={Object.entries(patch).every(([k, v]) => extra[k as keyof ListingFilters] === v)}
-            onClick={() => togglePatch(patch)}
-          >
-            {label}
-          </Chip>
-        ))}
-      </ChipRow>
+          )}
+        </div>
+      </div>
 
-      {/* Product grid */}
-      <div className="mt-6">
-        {isLoading ? (
-          <div className="flex justify-center py-16">
+      {/* Results — narrow list on the left (scrolls in place), map filling the
+          rest of the viewport on the right. The whole thing fits under the top
+          strip; only the list itself scrolls, the page never does. */}
+      <div className="min-h-0 flex-1 px-4 pb-3 pt-2">
+        {isLoading || aiPending ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2">
             <Spinner size={28} />
+            {aiPending && <p className="text-sm text-ink-500">Asking the assistant…</p>}
           </div>
-        ) : results.length > 0 ? (
-          <>
-            <p className="mb-3 text-sm text-ink-500">
-              {results.length} car{results.length === 1 ? '' : 's'} found
-            </p>
-            <div className={CARD_GRID}>
-              {results.map((l) => (
-                <ListingCard key={l.id} listing={l} />
-              ))}
-            </div>
-          </>
         ) : (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-ink-100 bg-white py-16 text-center">
-            <Search size={28} className="text-ink-300" />
-            <p className="font-medium text-ink-700">No cars match “{q}”.</p>
-            <p className="text-sm text-ink-500">Try a broader search or clear the refinements.</p>
+          <div className="flex h-full gap-5">
+            <div className="h-full w-full max-w-[380px] shrink-0 overflow-y-auto rounded-2xl border border-ink-100 bg-white shadow-card">
+              {results.length > 0 ? (
+                <div className="divide-y divide-ink-100">
+                  {results.map((l) => (
+                    <ListRow
+                      key={l.id}
+                      listing={l}
+                      isActive={l.id === activeId || highlightIds.includes(l.id)}
+                      onHover={(hovering) => setActiveId(hovering ? l.id : null)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                // The map stays up even with nothing to show on it — losing
+                // it too on top of an empty list read as the page itself
+                // being broken, not just this search coming up empty.
+                <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+                  <Search size={28} className="text-ink-300" />
+                  <p className="font-medium text-ink-700">No cars match “{q}”.</p>
+                  <p className="text-sm text-ink-500">
+                    Try a broader search or clear the filters.
+                  </p>
+                </div>
+              )}
+            </div>
+            {/* `isolate` scopes Leaflet's own z-index scale (its zoom control
+                sits at 1000) to inside this box — without it, those values
+                leak into the page's shared stacking context and paint over
+                the header, search bar, and the AI chat bubble below. */}
+            <div className="isolate hidden min-w-0 flex-1 overflow-hidden rounded-2xl border border-ink-100 shadow-card lg:block">
+              <ResultsMap
+                listings={results}
+                activeId={activeId}
+                onHover={setActiveId}
+                highlightIds={highlightIds}
+                onSelect={selectForBooking}
+                focusPoint={focusPoint}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -303,143 +400,3 @@ export function SearchResultsPage() {
   );
 }
 
-/** Featured host card with Chat/Contact + a row of the host's matching cars. */
-function FeaturedSupplier({
-  host,
-  cars,
-  onChat,
-  chatBusy,
-}: {
-  host: Host;
-  cars: Listing[];
-  onChat: () => void;
-  chatBusy: boolean;
-}) {
-  const isBusiness = host.ownerType === 'business';
-  const name = host.businessName || host.fullName;
-  const lead = cars[0];
-  return (
-    <div className="relative mt-4 rounded-2xl border border-ink-200 bg-white p-4 shadow-sm">
-      <span className="absolute bottom-2 right-3 text-[10px] font-medium text-ink-300">Featured</span>
-      <div className="flex flex-col gap-4 lg:flex-row">
-        {/* Hero image */}
-        <Link to={`/cars/${lead.id}`} className="shrink-0 lg:w-64">
-          <Img
-            src={lead.photos[0]}
-            alt={name}
-            className="h-40 w-full rounded-xl object-cover lg:h-full"
-          />
-        </Link>
-
-        <div className="min-w-0 flex-1">
-          {/* Host header + actions */}
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Avatar name={name} src={host.avatarUrl} size="md" />
-              <div>
-                <p className="font-semibold text-ink-900">{name}</p>
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500">
-                  <span className="flex items-center gap-1 font-medium text-brand-600">
-                    <ShieldCheck size={13} /> Verified
-                  </span>
-                  <span className="flex items-center gap-1">
-                    {isBusiness ? <Building2 size={13} /> : <User size={13} />}
-                    {isBusiness ? 'Business host' : 'Individual host'}
-                  </span>
-                  <span>{host.vehicleCount} cars</span>
-                  <span>{lead.city}</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onChat}
-                disabled={chatBusy}
-                className="rounded-full border border-brand-500 bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-              >
-                {chatBusy ? 'Starting…' : 'Chat now'}
-              </button>
-              <Link
-                to={`/cars/${lead.id}`}
-                className="rounded-full border border-ink-300 px-4 py-1.5 text-sm font-medium text-ink-700 hover:bg-ink-50"
-              >
-                Contact host
-              </Link>
-            </div>
-          </div>
-
-          {/* Product row */}
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {cars.slice(0, 6).map((c) => (
-              <Link key={c.id} to={`/cars/${c.id}`} className="group block">
-                <div className="overflow-hidden rounded-lg bg-ink-50">
-                  <Img
-                    src={c.photos[0]}
-                    alt={c.title}
-                    className="h-24 w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                </div>
-                <p className="mt-1 line-clamp-1 text-xs text-ink-600">{c.title}</p>
-                <p className="text-sm font-semibold text-ink-900">
-                  <Price amount={listingHeadlinePrice(c).amount} currency={c.priceCurrency} />
-                  <span className="text-ink-400"> /{listingHeadlinePrice(c).unit}</span>
-                </p>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** A labelled, horizontally scrollable chip row with an optional right action. */
-function ChipRow({
-  label,
-  right,
-  children,
-}: {
-  label: string;
-  right?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="mt-3 flex items-center gap-3">
-      <span className="shrink-0 text-sm font-medium text-ink-500">{label}</span>
-      <div className="flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex w-max items-center gap-2">
-          {children}
-          <ChevronRight size={16} className="shrink-0 text-ink-300" />
-        </div>
-      </div>
-      {right}
-    </div>
-  );
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
-        active
-          ? 'border-brand-500 bg-brand-50 text-brand-700'
-          : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300 hover:bg-ink-50',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
