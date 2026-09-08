@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, Star } from 'lucide-react';
 import { client } from '@/lib/client';
 import { formatDate } from '@/lib/format';
-import { Avatar, Badge, Button, Modal, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Modal, Skeleton } from '@/components/ui';
 
 export const VERIF_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
   verified: 'success',
@@ -40,8 +40,21 @@ export function RequesterModal({
   return (
     <Modal open={open} onClose={onClose} title="Review requester">
       {profileQuery.isLoading ? (
-        <div className="flex justify-center py-8">
-          <Spinner size={22} />
+        // Mirrors the loaded header (avatar, name, badge row) and the summary
+        // lines under it, so the modal keeps its height while the profile loads.
+        <div aria-busy="true" aria-label="Loading" className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="size-12 shrink-0 rounded-[var(--radius-pill)]" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-2/5" />
+              <Skeleton className="h-5 w-24 rounded-[var(--radius-pill)]" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-5/6" />
+            <Skeleton className="h-3.5 w-2/3" />
+          </div>
         </div>
       ) : !p ? (
         <p className="text-body-sm text-[var(--color-content-muted)]">Couldn't load this profile.</p>

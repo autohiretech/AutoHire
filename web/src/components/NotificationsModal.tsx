@@ -18,7 +18,7 @@ import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatDate, timeAgo } from '@/lib/format';
 import { useAppMode } from '@/lib/appMode';
-import { Badge, Button, Spinner } from '@/components/ui';
+import { Badge, Button, Skeleton } from '@/components/ui';
 
 const KIND_ICON: Record<NotificationKind, React.ReactNode> = {
   booking_confirmation: <CheckCircle2 size={18} />,
@@ -201,9 +201,19 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
           {selected ? (
             <NotificationDetail notification={selected} action={action} onAction={go} />
           ) : isLoading ? (
-            <div className="flex justify-center py-16">
-              <Spinner size={24} />
-            </div>
+            // The list's own shape — icon, title, one line of body — so the
+            // panel doesn't snap from an empty well to a full column.
+            <ul aria-busy="true" aria-label="Loading" className="divide-y divide-[var(--color-line)]">
+              {Array.from({ length: 5 }, (_, i) => (
+                <li key={i} className="flex gap-3 px-4 py-3.5">
+                  <Skeleton className="size-9 shrink-0 rounded-[var(--radius-pill)]" />
+                  <div className="min-w-0 flex-1 space-y-2 py-0.5">
+                    <Skeleton className="h-3.5 w-3/5" />
+                    <Skeleton className="h-3 w-4/5" />
+                  </div>
+                </li>
+              ))}
+            </ul>
           ) : list.length > 0 ? (
             <ul className="divide-y divide-[var(--color-line)]">
               {list.map((n) => (
