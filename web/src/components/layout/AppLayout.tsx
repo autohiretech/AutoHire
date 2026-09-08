@@ -39,8 +39,13 @@ export function AppLayout() {
   // Messaging and search are full-bleed app screens: fill the viewport, no footer.
   // Search needs this so its map can occupy the full remaining height instead of
   // being one section in a long scrolling page.
+  // /ai is the agent's own room — a map with a field docked over it — and
+  // needs the same full-height treatment as search for the same reason.
   const fullBleed =
-    pathname === '/messages' || pathname.startsWith('/messages/') || pathname === '/search';
+    pathname === '/messages' ||
+    pathname.startsWith('/messages/') ||
+    pathname === '/search' ||
+    pathname === '/ai';
 
   // The assistant's whole toolset (book, message a host, watchlist a car) is
   // a renter's own actions on a listing — meaningless on a host's own

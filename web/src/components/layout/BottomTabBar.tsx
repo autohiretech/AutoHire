@@ -1,5 +1,14 @@
-import { NavLink } from 'react-router-dom';
-import { Car, KeyRound, LayoutDashboard, MessageSquare, Search, User, Wallet } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
+import {
+  Car,
+  KeyRound,
+  LayoutDashboard,
+  MessageSquare,
+  Search,
+  Sparkles,
+  User,
+  Wallet,
+} from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useAppMode, type AppMode } from '@/lib/appMode';
 import { useAuth } from '@/lib/auth';
@@ -7,28 +16,38 @@ import { useAuth } from '@/lib/auth';
 /**
  * The mobile tab bar. Phones are how this marketplace is actually used in
  * Rwanda, and the desktop header's nav was collapsing into a hamburger there —
- * which buries the four things people came to do behind a tap.
+ * which buries the things people came to do behind a tap.
  *
- * Four tabs, never five. A fifth stops being reachable by thumb on a narrow
- * phone and starts needing a label so short it stops being a word.
+ * Five tabs, with the AI in the middle. The middle slot is the one a thumb
+ * reaches without adjusting the grip, and "say what you want" is the action
+ * the product is being built around — so it gets the slot rather than a
+ * corner. The labels stay whole words; at five the bar is at its limit, and
+ * a sixth would need abbreviations, which is the point to stop.
  *
  * The active tab is marked with a **filled pill behind the icon** rather than
  * just a colour change: colour alone is the one signal that fails for a
  * colour-blind user and in bright Kigali sunlight, which is exactly when this
  * app gets used. The pill carries the accent — one of the few places the
  * accent appears outside a primary button, because "where am I" is worth it.
+ *
+ * The AI tab carries the page the user was on into /ai (`state.from`), so an
+ * ask made from a car page already knows which car "this one" is.
  */
+const AI_TAB = { to: '/ai', label: 'AI', icon: Sparkles } as const;
+
 const TABS_BY_MODE: Record<AppMode, { to: string; label: string; icon: typeof Car; end?: boolean }[]> =
   {
     renter: [
       { to: '/', label: 'Explore', icon: Search, end: true },
       { to: '/trips', label: 'Trips', icon: KeyRound },
+      AI_TAB,
       { to: '/messages', label: 'Messages', icon: MessageSquare },
       { to: '/account', label: 'Account', icon: User },
     ],
     host: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/earnings', label: 'Earnings', icon: Wallet },
+      AI_TAB,
       { to: '/messages', label: 'Messages', icon: MessageSquare },
       { to: '/account', label: 'Account', icon: User },
     ],
@@ -37,6 +56,7 @@ const TABS_BY_MODE: Record<AppMode, { to: string; label: string; icon: typeof Ca
 export function BottomTabBar({ unread = 0 }: { unread?: number }) {
   const { mode } = useAppMode();
   const { user } = useAuth();
+  const { pathname } = useLocation();
 
   // A signed-out visitor has nothing to put in three of the four tabs, and a
   // bar of disabled stubs is worse than no bar — they browse with the header
@@ -61,6 +81,7 @@ export function BottomTabBar({ unread = 0 }: { unread?: number }) {
             <NavLink
               to={to}
               end={end}
+              state={to === AI_TAB.to ? { from: pathname } : undefined}
               className={({ isActive }) =>
                 cn(
                   'flex h-full flex-col items-center gap-1 px-1 pt-2 pb-1.5',

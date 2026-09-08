@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Car, LogOut, Menu, MessageSquare, Rss, ShieldCheck, Star, Users, X } from 'lucide-react';
+import {
+  Bell,
+  Car,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Rss,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Users,
+  X,
+} from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar, Button } from '@/components/ui';
 import { useNotifications } from '@/components/NotificationsProvider';
@@ -116,6 +128,18 @@ export function Header() {
           <CurrencySelector />
           {user ? (
             <>
+              {/* Desktop entry to the agent's own room. On phones the middle
+                  tab is the entry, so this stays hidden there. Carries the
+                  current page along so "book this one" from a car page means
+                  that car. Outline, not primary: the page's own action keeps
+                  the accent. */}
+              <Link
+                to="/ai"
+                state={{ from: pathname }}
+                className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] px-3 py-1.5 text-body-sm font-semibold text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] md:inline-flex"
+              >
+                <Sparkles size={15} className="text-[var(--color-accent-on)]" /> Ask AI
+              </Link>
               {me?.role === 'admin' && (
                 <Link
                   to="/admin"
