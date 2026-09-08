@@ -7,6 +7,7 @@ export interface PromptContext {
   role: string;
   filters?: Record<string, unknown>;
   visibleListingIds?: string[];
+  userLocation?: { lat: number; lng: number; label?: string };
 }
 
 const COUNTRY_NAMES: Record<string, string> = { RW: 'Rwanda', AE: 'UAE', CN: 'China', US: 'United States' };
@@ -38,6 +39,23 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   }
   if (ctx.currency) {
     lines.push(`Prices are currently displayed in ${ctx.currency}.`);
+  }
+  // Whether we know where they are is stated either way, and deliberately
+  // without the coordinate: the model has no use for the numbers (it asks for
+  // `nearMe` and Postgres does the distance), and telling it "you don't know"
+  // explicitly is what stops it from answering "cars near me" with a guessed
+  // city.
+  if (ctx.userLocation) {
+    lines.push(
+      `You know where the renter is${ctx.userLocation.label ? `: ${ctx.userLocation.label}` : ''}. ` +
+        'For "near me" / "closest" / "around here", set `nearMe: true` on apply_filters — results are then ' +
+        'ordered by real distance from them. Never substitute a city name for this.',
+    );
+  } else {
+    lines.push(
+      "You do NOT know where the renter is — they haven't shared a location. Do not guess a city as a " +
+        'stand-in for "near me". Ask them to share their location, or to name a place.',
+    );
   }
   if (ctx.route) {
     lines.push(`They're currently looking at ${ctx.route} in the app.`);

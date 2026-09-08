@@ -28,6 +28,12 @@ export interface AgentContext {
   visibleListingIds: string[];
   country: string;
   currency: string;
+  /** Where the renter is, when we know: a geolocation fix from this session
+   * or the location they saved in Account. Sent so "cars near me" resolves
+   * to a real coordinate the database sorts by, instead of the model
+   * guessing a city. Omitted entirely when unknown — the agent is told it
+   * doesn't know rather than being handed a default. */
+  location?: { lat: number; lng: number; label?: string };
 }
 
 export type AgentAction =

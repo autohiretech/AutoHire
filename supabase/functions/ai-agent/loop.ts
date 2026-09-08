@@ -35,6 +35,12 @@ export interface RunLoopParams {
   confirmToken?: string;
   confirmSecret: string;
   tokenLedger: TokenLedger;
+  /** Earlier turns of this session, oldest first, so a follow-up ("make it
+   * cheaper", "the second one", "what about next weekend") resolves against
+   * what was already said. Without this every turn arrives cold and the
+   * pronouns in a follow-up refer to nothing. The caller decides how far
+   * back to go; the loop just replays what it is given. */
+  history?: ChatMessage[];
   maxSteps?: number;
   /** Every tool call this turn made (successful, errored, or confirm-pending) — the caller persists this as `ai_turns.tool_log`. */
   onToolLog?: (entries: ToolLogEntry[]) => void;
@@ -89,7 +95,10 @@ export async function* runLoop(params: RunLoopParams): AsyncGenerator<LoopEvent>
   const toolLog: ToolLogEntry[] = [];
   const finish = () => params.onToolLog?.(toolLog);
 
-  const messages: ChatMessage[] = [{ role: 'user', parts: [{ type: 'text', text: params.message }] }];
+  const messages: ChatMessage[] = [
+    ...(params.history ?? []),
+    { role: 'user', parts: [{ type: 'text', text: params.message }] },
+  ];
 
   // --- Confirmed money/destructive execution, if this request carries one ---
   // Runs BEFORE any model call: the token already encodes exactly which tool

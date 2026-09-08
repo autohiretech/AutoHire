@@ -102,6 +102,12 @@ class SupabaseTokenLedger implements TokenLedger {
   }
 }
 
+/** How many past turns of a session are replayed to the model. Turns are
+ * user/assistant rows, so this is roughly five exchanges — enough for
+ * "cheaper than that" or "the second one" to resolve, without every request
+ * dragging the whole conversation through the token budget. */
+const HISTORY_TURNS = 10;
+
 interface RequestBody {
   sessionId?: string;
   message?: string;
@@ -112,6 +118,10 @@ interface RequestBody {
     visibleListingIds?: string[];
     country?: string;
     currency?: string;
+    /** The renter's own coordinate, resolved on the client (a geolocation
+     * fix or their saved home location). Optional by design — absent means
+     * unknown, and the agent is told so rather than guessing. */
+    location?: { lat?: number; lng?: number; label?: string };
   };
 }
 
@@ -220,6 +230,34 @@ Deno.serve({ port: Number(Deno.env.get('PORT') ?? '8000') }, async (req: Request
     await supabase.from('ai_sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId);
   }
 
+  // Earlier turns, oldest first — read BEFORE this turn's own row is
+  // inserted below, or the current message would come back as history and be
+  // sent to the model twice. Capped at the most recent HISTORY_TURNS because
+  // this replays into every request's token budget; a rental conversation
+  // that needs more than a few turns of memory is one the renter should be
+  // finishing on the results, not in the field.
+  //
+  // Only the plain text of each turn is replayed. Tool logs and actions are
+  // deliberately left out: they are a record of what the app did, not of what
+  // was said, and feeding them back invites the model to re-issue an action
+  // it already performed.
+  const { data: priorTurns } = await supabase
+    .from('ai_turns')
+    .select('role, content')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: false })
+    .limit(HISTORY_TURNS);
+
+  const history = (priorTurns ?? [])
+    .reverse()
+    .map((row) => {
+      const text = (row.content as { text?: unknown } | null)?.text;
+      if (typeof text !== 'string' || !text.trim()) return null;
+      const role = row.role === 'assistant' ? 'assistant' : 'user';
+      return { role, parts: [{ type: 'text' as const, text }] };
+    })
+    .filter((m): m is { role: 'user' | 'assistant'; parts: { type: 'text'; text: string }[] } => m !== null);
+
   await supabase.from('ai_turns').insert({
     id: `turn-${crypto.randomUUID()}`,
     session_id: sessionId,
@@ -237,8 +275,12 @@ Deno.serve({ port: Number(Deno.env.get('PORT') ?? '8000') }, async (req: Request
     visibleListingIds: context.visibleListingIds,
     route: context.route,
     filters: context.filters,
+    userLocation:
+      typeof context.location?.lat === 'number' && typeof context.location?.lng === 'number'
+        ? { lat: context.location.lat, lng: context.location.lng, label: context.location.label }
+        : undefined,
   };
-  const systemPrompt = buildSystemPrompt({ route: context.route, country, currency: context.currency, role, filters: context.filters, visibleListingIds: context.visibleListingIds });
+  const systemPrompt = buildSystemPrompt({ route: context.route, country, currency: context.currency, role, filters: context.filters, visibleListingIds: context.visibleListingIds, userLocation: ctx.userLocation });
   const tokenLedger = new SupabaseTokenLedger(supabase, sessionId);
 
   const encoder = new TextEncoder();
@@ -258,6 +300,7 @@ Deno.serve({ port: Number(Deno.env.get('PORT') ?? '8000') }, async (req: Request
             ctx,
             systemPrompt,
             message,
+            history,
             confirmToken,
             confirmSecret,
             tokenLedger,

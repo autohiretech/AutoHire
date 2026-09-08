@@ -19,7 +19,7 @@ function keywordConditions(word: string): string {
   return `title.ilike.${t},make.ilike.${t},model.ilike.${t},city.ilike.${t},location.ilike.${t}`;
 }
 
-export const listListingsTool: ToolDef<ListingFilters, ListingSummary[]> = {
+export const listListingsTool: ToolDef<ListingFilters & { nearMe?: boolean }, ListingSummary[]> = {
   name: 'list_listings',
   description:
     "Search AutoHire's listings with the same filters the browse page uses. Call this before booking, " +
@@ -36,12 +36,50 @@ export const listListingsTool: ToolDef<ListingFilters, ListingSummary[]> = {
       minSeats: { type: 'integer' },
       maxPriceRwf: { type: 'integer' },
       query: { type: 'string', description: 'Free-text: make, model, or keywords.' },
+      startDate: {
+        type: 'string',
+        description: 'Pickup date, YYYY-MM-DD. With endDate, returns only cars actually free across that range.',
+      },
+      endDate: { type: 'string', description: 'Return date, YYYY-MM-DD. Use with startDate.' },
+      nearMe: {
+        type: 'boolean',
+        description:
+          "Rank results by real distance from the renter's own location, nearest first. Only has an effect when their location is known.",
+      },
     },
   },
   scope: 'any',
   effect: 'read',
   summary: (input) => `Searching listings${input.query ? ` for "${input.query}"` : ''}${input.city ? ` in ${input.city}` : ''}`,
   async run(ctx, input) {
+    // Availability and distance are not things to re-derive here — the same
+    // `search_available_listings` function the browse page calls already does
+    // both in Postgres (migrations 074/075: booked-range exclusion, haversine
+    // ordering). Route through it whenever either applies, and fall through
+    // to the plain query when neither does, so results stay identical to
+    // before for an ordinary search.
+    const wantsDates = Boolean(input.startDate && input.endDate);
+    const near = input.nearMe ? ctx.userLocation : undefined;
+    if (wantsDates || near) {
+      const rows = await run(
+        ctx.supabase.rpc('search_available_listings', {
+          p_country: input.country ?? null,
+          p_city: input.city ?? null,
+          p_category: input.category ?? null,
+          p_owner_type: input.ownerType ?? null,
+          p_transmission: input.transmission ?? null,
+          p_fuel: input.fuel ?? null,
+          p_min_seats: input.minSeats ?? null,
+          p_max_price_rwf: input.maxPriceRwf ?? null,
+          p_query: input.query ?? null,
+          p_start_date: wantsDates ? input.startDate : null,
+          p_end_date: wantsDates ? input.endDate : null,
+          p_near_lat: near ? near.lat : null,
+          p_near_lng: near ? near.lng : null,
+        }),
+      );
+      return mapRows<ListingSummary>((rows as Record<string, unknown>[]).slice(0, 20));
+    }
     let q = ctx.supabase.from('listings').select('*');
     if (input.country) q = q.eq('country', input.country);
     if (input.city) q = q.eq('city', input.city);

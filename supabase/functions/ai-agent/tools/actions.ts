@@ -52,6 +52,9 @@ export const applyFiltersTool: ToolDef<
     transmission?: string;
     minSeats?: number;
     maxPriceRwf?: number;
+    startDate?: string;
+    endDate?: string;
+    nearMe?: boolean;
     clear?: string[];
   },
   { action: FiltersAction }
@@ -73,18 +76,45 @@ export const applyFiltersTool: ToolDef<
       transmission: { type: 'string', enum: ['automatic', 'manual'] },
       minSeats: { type: 'integer' },
       maxPriceRwf: { type: 'integer' },
+      startDate: {
+        type: 'string',
+        description: 'Pickup date, YYYY-MM-DD. Set with endDate. Real availability filtering: listings already booked across the range are excluded.',
+      },
+      endDate: {
+        type: 'string',
+        description: 'Return date, YYYY-MM-DD. Set with startDate.',
+      },
+      nearMe: {
+        type: 'boolean',
+        description:
+          "Order results by real distance from the renter's own location, nearest first. Use for \"near me\", \"closest\", \"around here\". Only works when their location is known — the system prompt says whether it is. Do NOT guess a city instead.",
+      },
       clear: {
         type: 'array',
-        items: { type: 'string', enum: ['query', 'country', 'city', 'category', 'ownerType', 'transmission', 'minSeats', 'maxPriceRwf'] },
+        items: { type: 'string', enum: ['query', 'country', 'city', 'category', 'ownerType', 'transmission', 'minSeats', 'maxPriceRwf', 'startDate', 'endDate', 'nearMe'] },
       },
     },
   },
   scope: 'any',
   effect: 'write',
   summary: (input) => `Updating filters${input.query ? ` — "${input.query}"` : ''}`,
-  run(_ctx, input) {
-    const { clear, ...filters } = input;
-    return Promise.resolve({ action: { type: 'filters', filters, clear: clear ?? [] } });
+  run(ctx, input) {
+    const { clear, nearMe, ...rest } = input;
+    // `nearMe` is a boolean to the model and a coordinate pair to the app.
+    // The model never sees or invents lat/lng — it only says "near them",
+    // and the real coordinate comes from the client's own geolocation, which
+    // Postgres then sorts by (migration 075). If we don't have a location,
+    // the flag is dropped rather than faked into some default city.
+    const filters: Record<string, unknown> = { ...rest };
+    if (nearMe && ctx.userLocation) {
+      filters.nearLat = ctx.userLocation.lat;
+      filters.nearLng = ctx.userLocation.lng;
+    }
+    const cleared = [...(clear ?? [])];
+    // "nearMe" isn't a filter field — clearing it clears the pair it set.
+    const nearIdx = cleared.indexOf('nearMe');
+    if (nearIdx !== -1) cleared.splice(nearIdx, 1, 'nearLat', 'nearLng');
+    return Promise.resolve({ action: { type: 'filters', filters, clear: cleared } });
   },
 };
 

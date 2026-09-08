@@ -11,6 +11,7 @@ import { streamAgentTurn, type AgentAction, type AgentChip } from '@/lib/aiAgent
 import { useMyLocation, type Coordinates } from '@/lib/useMyLocation';
 import { Chip, ChipRow, toast } from '@/components/ui';
 import { SearchBar, type SearchBarHandle } from '@/components/research/SearchBar';
+import { loadHomeLocation } from '@/lib/homeLocation';
 
 const CONVO_KEY = 'autohire-ai-convo';
 
@@ -127,6 +128,13 @@ export interface ResearchFieldProps {
  * Never renders a turn history — only the current line is ever shown, and it
  * is replaced, not appended to, on every turn.
  */
+/** The renter's saved Account location as an agent-context coordinate, or
+ * null when they never set one. */
+function savedHomeLocation(): { lat: number; lng: number; label: string } | null {
+  const home = loadHomeLocation();
+  return home ? { lat: home.lat, lng: home.lng, label: home.label } : null;
+}
+
 export function ResearchField({
   filters,
   onFilters,
@@ -274,6 +282,12 @@ export function ResearchField({
           visibleListingIds: results.map((l) => l.id),
           country,
           currency,
+          // Whatever this session has already resolved — a coordinate the
+          // renter picked or geolocated in the field — else their saved
+          // Account location. Never a fabricated default: when neither
+          // exists this stays undefined and the agent is told it doesn't
+          // know where they are.
+          location: lastLocationRef.current ?? savedHomeLocation() ?? undefined,
         },
       },
       (evt) => {

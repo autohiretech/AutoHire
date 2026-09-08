@@ -30,6 +30,17 @@ export interface ListingFilters {
   minSeats?: number;
   maxPriceRwf?: number;
   query?: string;
+  /** Both required together. Real availability filtering — excludes any
+   * listing with a conflicting booking (`search_available_listings`,
+   * migration 074), not a hint the model interprets. */
+  startDate?: string;
+  endDate?: string;
+  /** Both required together. Orders results by real haversine distance from
+   * this point (migration 075). This is how "near me" is answered: a
+   * coordinate through an algorithm in Postgres, never the model guessing
+   * which city is close to which. */
+  nearLat?: number;
+  nearLng?: number;
 }
 
 /** The subset of `packages/shared` → Listing a tool result actually surfaces. */

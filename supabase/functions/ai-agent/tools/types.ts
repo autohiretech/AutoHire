@@ -18,6 +18,12 @@ export interface ToolCtx {
   visibleListingIds?: string[];
   route?: string;
   filters?: Record<string, unknown>;
+  /** Where the renter actually is, when the client knows and sent it — a
+   * real geolocation fix or their saved home location, resolved on the
+   * client. The model never sees the numbers; it asks for "near me" and this
+   * is what that resolves to. Absent means we genuinely don't know, and
+   * nothing should pretend otherwise. */
+  userLocation?: { lat: number; lng: number; label?: string };
 }
 
 export interface ToolDef<I = unknown, R = unknown> {

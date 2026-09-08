@@ -226,3 +226,51 @@ Deno.test('the model can end a turn with chips parsed from its own trailing CHIP
     { label: 'Search again', send: 'search cars' },
   ]);
 });
+
+Deno.test('prior turns are replayed so a follow-up has something to refer to', async () => {
+  const provider = new ScriptedProvider([textTurn('The blue one is cheaper.')]);
+
+  await collect(runLoop({
+    provider,
+    tools: [],
+    ctx: fakeCtx(),
+    systemPrompt: 'sys',
+    message: 'is it cheaper?',
+    history: [
+      { role: 'user', parts: [{ type: 'text', text: 'show me SUVs in Kigali' }] },
+      { role: 'assistant', parts: [{ type: 'text', text: 'Here are 4 SUVs in Kigali.' }] },
+    ],
+    confirmSecret: SECRET,
+    tokenLedger: new InMemoryTokenLedger(),
+  }));
+
+  // The model must receive the earlier exchange BEFORE this turn's message,
+  // in order — that ordering is the whole point: "it" in "is it cheaper?"
+  // only resolves against what came before.
+  const sent = provider.calls[0].messages;
+  assertEquals(sent.length, 3);
+  assertEquals(sent[0].role, 'user');
+  assertEquals((sent[0].parts[0] as { text: string }).text, 'show me SUVs in Kigali');
+  assertEquals(sent[1].role, 'assistant');
+  assertEquals((sent[1].parts[0] as { text: string }).text, 'Here are 4 SUVs in Kigali.');
+  assertEquals(sent[2].role, 'user');
+  assertEquals((sent[2].parts[0] as { text: string }).text, 'is it cheaper?');
+});
+
+Deno.test('with no history the turn is sent alone, exactly as before', async () => {
+  const provider = new ScriptedProvider([textTurn('Sure.')]);
+
+  await collect(runLoop({
+    provider,
+    tools: [],
+    ctx: fakeCtx(),
+    systemPrompt: 'sys',
+    message: 'find me a car',
+    confirmSecret: SECRET,
+    tokenLedger: new InMemoryTokenLedger(),
+  }));
+
+  const sent = provider.calls[0].messages;
+  assertEquals(sent.length, 1);
+  assertEquals((sent[0].parts[0] as { text: string }).text, 'find me a car');
+});
