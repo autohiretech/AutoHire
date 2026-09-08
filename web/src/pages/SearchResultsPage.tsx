@@ -15,6 +15,7 @@ import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
 import { MORE_FILTERS, PRICE_FILTER } from '@/components/marketplace/SearchFilters';
 import { useAddressSuggestions, type AddressSuggestion } from '@/lib/geocoding';
+import { useMyLocation } from '@/lib/useMyLocation';
 
 // Floating "map/list" toggle sits a fixed gap above the sheet's current
 // height, so it never overlaps the sheet no matter which detent it's in.
@@ -49,9 +50,9 @@ export function SearchResultsPage() {
   // of the app's known cities below.
   const [focusPoint, setFocusPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
-  const [locating, setLocating] = useState(false);
   const suggestBoxRef = useRef<HTMLDivElement>(null);
   const { suggestions, searching: suggestSearching } = useAddressSuggestions(text);
+  const { locating, locate } = useMyLocation();
 
   // Mobile only: which detent the results sheet is pinned to. The floating
   // map/list pill just flips this between `peek` (map dominant) and `half`
@@ -123,19 +124,11 @@ export function SearchResultsPage() {
   }
 
   function useCurrentLocation() {
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setText(`Current location (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`);
-        setFocusPoint(p);
-        setSuggestOpen(false);
-        setLocating(false);
-      },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 8000 },
-    );
+    locate((p) => {
+      setText(`Current location (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`);
+      setFocusPoint(p);
+      setSuggestOpen(false);
+    });
   }
 
   function togglePatch(patch: ListingFilters) {

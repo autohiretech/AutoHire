@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { formatMoney } from '@/lib/currency';
+import { formatDate } from '@/lib/format';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { streamAgentTurn, type AgentAction, type AgentChip } from '@/lib/aiAgent';
-import { Chip, ChipRow, Spinner, toast } from '@/components/ui';
+import { Chip, ChipRow, toast } from '@/components/ui';
+import { SearchBar, type SearchBarHandle } from '@/components/research/SearchBar';
 
 const CONVO_KEY = 'autohire-ai-convo';
 
@@ -128,7 +130,6 @@ export function ResearchField({
   const navigate = useNavigate();
   const stored = useRef(loadConvo()).current;
 
-  const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<Line | null>(stored.line);
   const [chips, setChips] = useState<AgentChip[]>(stored.chips);
@@ -136,7 +137,7 @@ export function ResearchField({
 
   const sessionIdRef = useRef<string | null>(stored.sessionId);
   const lastMessageRef = useRef<string | null>(stored.lastMessage);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const searchBarRef = useRef<SearchBarHandle>(null);
   const autoAskedRef = useRef(false);
 
   // Per-turn bookkeeping — not state, since nothing renders off these
@@ -283,8 +284,7 @@ export function ResearchField({
 
     setBusy(false);
     if (!gotLineRef.current) setLine(null);
-    if (!hadErrorRef.current) setValue('');
-    inputRef.current?.focus();
+    searchBarRef.current?.focus();
   }
 
   function onChipTap(chip: AgentChip) {
@@ -322,10 +322,21 @@ export function ResearchField({
     }
   }
 
-  const understandingChips = FILTER_ORDER.filter((k) => {
-    const v = filters[k];
-    return v !== undefined && v !== null && v !== '';
-  }).map((k) => ({ key: k, label: filterChipLabel(k, filters[k]) }));
+  // Dates are one chip, not two — `startDate`/`endDate` are both-or-neither
+  // on `ListingFilters`, so a per-key chip (raw ISO text, and removable one
+  // side at a time) would both read wrong and leave the filter in a state
+  // nothing else here produces. `FILTER_ORDER` deliberately excludes them.
+  const dateChip =
+    filters.startDate && filters.endDate
+      ? { key: 'dates' as const, label: `${formatDate(filters.startDate)} – ${formatDate(filters.endDate)}` }
+      : null;
+  const understandingChips = [
+    ...(dateChip ? [dateChip] : []),
+    ...FILTER_ORDER.filter((k) => {
+      const v = filters[k];
+      return v !== undefined && v !== null && v !== '';
+    }).map((k) => ({ key: k, label: filterChipLabel(k, filters[k]) })),
+  ];
 
   return (
     // `flex-col-reverse` on mobile puts the line/chips visually above the
@@ -334,32 +345,18 @@ export function ResearchField({
     // top-to-bottom on desktop (field first, then status, then chips) — one
     // instance, no duplicated state between breakpoints.
     <div className={cn('flex flex-col-reverse gap-2 lg:flex-col', className)}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send(value);
-        }}
-        className="flex h-14 items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] py-1 pl-4 pr-1.5 shadow-[var(--shadow-float)]"
-      >
-        <Sparkles size={17} className="shrink-0 text-[var(--color-accent-on)]" />
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Describe the car you need…"
-          aria-label="Ask the AI assistant"
-          disabled={busy}
-          className="min-w-0 flex-1 bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
-        />
-        <button
-          type="submit"
-          disabled={busy || !value.trim()}
-          aria-label="Send"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
-        >
-          {busy ? <Spinner size={15} /> : <ArrowRight size={17} />}
-        </button>
-      </form>
+      <SearchBar
+        ref={searchBarRef}
+        onSubmit={(input) => void send(input.message)}
+        onCityMatch={(city) => (city ? onFilters({ city }) : onRemoveFilter('city'))}
+        onDateRangeChange={(r) =>
+          r.start && r.end
+            ? onFilters({ startDate: r.start, endDate: r.end })
+            : onFilters({}, ['startDate', 'endDate'])
+        }
+        placeholder="Describe the car you need…"
+        disabled={busy}
+      />
 
       {/* Reserved-height slot so the field never jumps when a line/chips
           appear or clear — height still varies (chips can wrap to nothing),
@@ -400,7 +397,12 @@ export function ResearchField({
       {understandingChips.length > 0 && (
         <ChipRow>
           {understandingChips.map(({ key, label }) => (
-            <Chip key={key} onClick={() => onRemoveFilter(key)}>
+            <Chip
+              key={key}
+              onClick={() =>
+                key === 'dates' ? onFilters({}, ['startDate', 'endDate']) : onRemoveFilter(key)
+              }
+            >
               {label}
               <X size={12} />
             </Chip>

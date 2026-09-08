@@ -10,17 +10,7 @@ import { Sheet, type SheetDetent } from '@/components/ui';
 import { ListingRowSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { ResearchField } from '@/components/research/ResearchField';
-
-const FILTERS_KEY = 'autohire-ai-filters';
-
-function loadFilters(): ListingFilters {
-  try {
-    const raw = sessionStorage.getItem(FILTERS_KEY);
-    return raw ? (JSON.parse(raw) as ListingFilters) : {};
-  } catch {
-    return {};
-  }
-}
+import { AI_FILTERS_KEY, loadAiFilters } from '@/lib/aiFilters';
 
 /**
  * AiPage — the AI's own screen (`/ai`), full-bleed like /search but built
@@ -43,8 +33,8 @@ export function AiPage() {
   const [params, setParams] = useSearchParams();
 
   const [filters, setFilters] = useState<ListingFilters>(() => ({
-    ...loadFilters(),
-    country: loadFilters().country ?? country.code,
+    ...loadAiFilters(),
+    country: loadAiFilters().country ?? country.code,
   }));
   const [activeId, setActiveId] = useState<string | null>(null);
   const [highlightIds, setHighlightIds] = useState<string[]>([]);
@@ -77,7 +67,7 @@ export function AiPage() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(FILTERS_KEY, JSON.stringify(filters));
+      sessionStorage.setItem(AI_FILTERS_KEY, JSON.stringify(filters));
     } catch {
       // Private mode / quota — filters still work this page view.
     }

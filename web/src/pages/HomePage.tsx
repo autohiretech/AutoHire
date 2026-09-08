@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   CarFront,
@@ -10,17 +10,18 @@ import {
   Leaf,
   PlusCircle,
   ShieldCheck,
-  Sparkles,
   Star,
   TrendingUp,
   Zap,
 } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
+import { mergeAiFilters } from '@/lib/aiFilters';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { Badge, Chip, ChipRow } from '@/components/ui';
+import { SearchBar } from '@/components/research/SearchBar';
 import { ListingCardSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { Img } from '@/components/Img';
@@ -60,7 +61,7 @@ const CARD_GRID = 'grid grid-cols-2 gap-5 lg:grid-cols-3';
  * Pairs with <ScrollMemory> which restores the scroll offset.
  */
 const BROWSE_KEY = 'autohire.home-browse';
-type BrowseState = { filters: ListingFilters; topRanked: boolean; page: number };
+type BrowseState = { filters: ListingFilters; topRanked: boolean };
 function loadBrowse(): Partial<BrowseState> {
   if (typeof sessionStorage === 'undefined') return {};
   try {
@@ -84,9 +85,8 @@ export function HomePage() {
   const [savedBrowse] = useState(loadBrowse);
   const [filters, setFilters] = useState<ListingFilters>(savedBrowse.filters ?? {});
   const [topRanked, setTopRanked] = useState(savedBrowse.topRanked ?? false);
-  const [page, setPage] = useState(savedBrowse.page ?? 0);
   const resultsRef = useRef<HTMLDivElement>(null);
-  const [heroAsk, setHeroAsk] = useState('');
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { mode } = useAppMode();
   const { country } = useCountry();
@@ -100,12 +100,25 @@ export function HomePage() {
     queryKey: ['listings', 'featured', country.code],
     queryFn: () => client.listListings({ country: country.code }),
   });
-  // Filtered, PAGINATED pull that drives the recommended grid — one page at a
-  // time (with the total count) instead of every car at once.
-  const { data: pageData, isLoading } = useQuery({
-    queryKey: ['listings-page', scoped, page],
-    queryFn: () => client.listListingsPage(scoped, page, PAGE_SIZE),
-    placeholderData: keepPreviousData, // keep the old page visible while the next loads
+  // Filtered, infinitely-paginated pull that drives the recommended grid.
+  // Changing `scoped` (filters or market) is a different query key entirely,
+  // so react-query starts a fresh page 0 on its own — no manual "reset to
+  // page 1 on filter change" effect needed, unlike the discrete pager this
+  // replaced.
+  const {
+    data: infiniteData,
+    isLoading,
+    isError,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ['listings-page', scoped],
+    queryFn: ({ pageParam }) => client.listListingsPage(scoped, pageParam, PAGE_SIZE),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      allPages.length * PAGE_SIZE < lastPage.total ? allPages.length : undefined,
   });
 
   // The two rails below the chip row: electric cars market-wide, and the top
@@ -136,25 +149,34 @@ export function HomePage() {
     );
   }, [country.code]);
 
-  // Reset to page 1 whenever the filters, market, or ranking change — but NOT on
-  // the initial mount, so a restored page survives coming back from a car.
-  const skipPageReset = useRef(true);
-  useEffect(() => {
-    if (skipPageReset.current) {
-      skipPageReset.current = false;
-      return;
-    }
-    setPage(0);
-  }, [country.code, topRanked, JSON.stringify(filters)]);
-
   // Remember the browse state so returning lands here (see <ScrollMemory> too).
+  // Which page a renter had scrolled to isn't part of this — an infinite
+  // list doesn't have a "page they were on" the way a pager did, and
+  // <ScrollMemory> already restores the scroll offset itself.
   useEffect(() => {
     try {
-      sessionStorage.setItem(BROWSE_KEY, JSON.stringify({ filters, topRanked, page }));
+      sessionStorage.setItem(BROWSE_KEY, JSON.stringify({ filters, topRanked }));
     } catch {
       /* storage full/disabled — non-critical */
     }
-  }, [filters, topRanked, page]);
+  }, [filters, topRanked]);
+
+  // Fetches the next page ~800px before the sentinel actually enters view, so
+  // the next batch is rendered before a renter scrolling fast ever sees the
+  // bottom edge — a fetch triggered only once they're already there would
+  // show a beat of empty space first.
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: '800px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   function setFilter<K extends keyof ListingFilters>(key: K, value: ListingFilters[K]) {
     setFilters((prev) => {
@@ -169,11 +191,24 @@ export function HomePage() {
     resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  // The server already filtered, ranked and paginated — just render the page.
-  const results = pageData?.items ?? [];
-  const total = pageData?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // The server already filtered and ranked — flatten every page fetched so far.
+  const results = infiniteData?.pages.flatMap((p) => p.items) ?? [];
+  const total = infiniteData?.pages[0]?.total ?? 0;
   const heroPhoto = featured?.[0]?.photos?.[0];
+  // Whole calendar days in the picked trip — same rounding CarDetailPage's
+  // own night-count already uses, for one consistent answer to "how many
+  // days is this" app-wide. Undefined (not 0) when no dates are picked, so
+  // ListingCard's `showTotal` check (`!!tripUnits`) stays false rather than
+  // rendering a "0 total" line.
+  const tripDays =
+    filters.startDate && filters.endDate
+      ? Math.max(
+          1,
+          Math.round(
+            (new Date(filters.endDate).getTime() - new Date(filters.startDate).getTime()) / 86_400_000,
+          ),
+        )
+      : undefined;
 
   return (
     <div className="bg-[var(--color-surface)]">
@@ -221,38 +256,59 @@ export function HomePage() {
           </h1>
 
           {/* A real ask, typed here — not a click-through to an empty panel.
-              Styled as a research/ask bar rather than a CTA button: car
-              shopping is a research task, not a booking, and a solid filled
-              pill invited "click to book" rather than "ask me something". A
-              soft pulsing glow behind it keeps it reading as the "alive",
-              AI-driven entry point rather than a plain field. Submitting
-              hands the raw text to /ai, which runs it as the first turn. */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const text = heroAsk.trim();
-              navigate(text ? `/ai?ask=${encodeURIComponent(text)}` : '/ai');
-            }}
-            className="relative mt-4 w-full max-w-2xl"
-          >
+              The compound Where/From/Until bar is the same one /ai's own
+              field uses (see SearchBar), so the two never drift apart. A
+              soft pulsing glow behind it plus the "Ask AI" badge keep this
+              reading as the "alive", AI-driven entry point rather than a
+              plain form — submitting hands the composed text to /ai, which
+              runs it as the first turn. "Where" matching a known city is the
+              one part of this that filters the grid below directly, with no
+              AI round trip. */}
+          <div className="relative mt-4 w-full max-w-2xl">
             <div
               aria-hidden
-              className="animate-ai-glow absolute -inset-1.5 rounded-full bg-gradient-to-r from-brand-400 via-brand-200 to-brand-500 opacity-40 blur-lg"
+              className="animate-ai-glow absolute -inset-1.5 rounded-[var(--radius-sheet)] bg-gradient-to-r from-brand-400 via-brand-200 to-brand-500 opacity-40 blur-lg sm:rounded-[var(--radius-pill)]"
             />
-            <div className="relative flex w-full items-center gap-3 rounded-full border-2 border-brand-200 bg-[var(--color-surface-raised)] px-5 py-3.5 shadow-[var(--shadow-float)] transition focus-within:border-brand-400">
-              <Sparkles size={18} className="shrink-0 animate-pulse text-brand-500" />
-              <input
-                value={heroAsk}
-                onChange={(e) => setHeroAsk(e.target.value)}
-                placeholder="Research your next car with AI…"
-                aria-label="Ask the AI assistant"
-                className="min-w-0 flex-1 bg-transparent text-body text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)]"
-              />
-              <Badge tone="brand" className="hidden shrink-0 sm:inline-flex">
+            <div className="relative">
+              <Badge tone="brand" className="absolute -top-3 right-3 z-10 shadow-[var(--shadow-float)]">
                 Ask AI
               </Badge>
+              <SearchBar
+                onSubmit={(input) => {
+                  // A city match or a date range picked here already filters
+                  // this page's own grid (below) live — carry the same two
+                  // into /ai's stored filters so they're there the instant it
+                  // mounts, instead of the renter's pick vanishing the moment
+                  // they land on a page with its own, separately-empty state.
+                  mergeAiFilters({
+                    city: filters.city,
+                    startDate: filters.startDate,
+                    endDate: filters.endDate,
+                  });
+                  navigate(input.message ? `/ai?ask=${encodeURIComponent(input.message)}` : '/ai');
+                }}
+                onCityMatch={(city) => setFilter('city', city)}
+                onDateRangeChange={(r) =>
+                  setFilters((prev) => {
+                    // Deleted, not set to `undefined` — `filters` feeds an
+                    // `Object.keys(filters).length > 0` check below (the
+                    // "Clear filters" button's visibility), and an `undefined`
+                    // own-property still counts as a key there.
+                    const next = { ...prev };
+                    if (r.start && r.end) {
+                      next.startDate = r.start;
+                      next.endDate = r.end;
+                    } else {
+                      delete next.startDate;
+                      delete next.endDate;
+                    }
+                    return next;
+                  })
+                }
+                placeholder="Anything else? SUV, under 150k, automatic…"
+              />
             </div>
-          </form>
+          </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <Badge tone="overlay">
@@ -360,20 +416,39 @@ export function HomePage() {
             <>
               <div className={CARD_GRID}>
                 {results.map((listing) => (
-                  <ListingCard key={listing.id} listing={listing} />
+                  <ListingCard key={listing.id} listing={listing} tripUnits={tripDays} />
                 ))}
+                {isFetchingNextPage &&
+                  Array.from({ length: 3 }, (_, i) => <ListingCardSkeleton key={`more-${i}`} />)}
               </div>
-              <PageBar
-                page={page}
-                pageCount={pageCount}
-                total={total}
-                pageSize={PAGE_SIZE}
-                onChange={(p) => {
-                  setPage(p);
-                  scrollToResults();
-                }}
-              />
+              <p className="tabular mt-6 text-center text-body-sm text-[var(--color-content-muted)]">
+                Showing {results.length} of {total} cars
+              </p>
+              {/* No visible content — an IntersectionObserver trigger, not a
+                  "load more" button. Sits below the grid so it enters the
+                  viewport (and fires the fetch) while the renter is still
+                  scrolling through the current batch, per the effect above. */}
+              {hasNextPage && <div ref={loadMoreRef} aria-hidden className="h-px" />}
             </>
+          ) : isError ? (
+            // A failed request must never look like "we searched and there's
+            // nothing" — those are different facts, and only one of them is
+            // this renter's problem to fix by changing filters. Caught live:
+            // picking dates before the availability RPC existed 404'd every
+            // time, and without this branch it silently rendered as "No cars
+            // match your search. Clear filters" — true-looking and wrong.
+            <EmptyState
+              label="Couldn't load cars right now. Please try again."
+              action={
+                <button
+                  type="button"
+                  onClick={() => refetch()}
+                  className="text-body-sm font-semibold text-[var(--color-accent-on)] hover:underline"
+                >
+                  Retry
+                </button>
+              }
+            />
           ) : (
             <EmptyState
               label="No cars match your search."
@@ -427,7 +502,12 @@ function ListingRail({
           aria-label="Loading cars"
         >
           {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="w-[68%] shrink-0 sm:w-60">
+            // Bumped from 240px (`sm:w-60`) — six-plus cards fit across a
+            // wide screen at that width, which read as cramped rather than a
+            // deliberate row. 288–320px is four to five per row instead.
+            // Mobile widens to 75% so one card reads clearly with a peek of
+            // the next, rather than two nearly fitting at 68%.
+            <div key={i} className="w-[75%] shrink-0 sm:w-72 md:w-80">
               <ListingCardSkeleton />
             </div>
           ))}
@@ -435,84 +515,13 @@ function ListingRail({
       ) : (
         <div className="-mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(listings ?? []).slice(0, 12).map((listing) => (
-            <div key={listing.id} className="w-[68%] shrink-0 sm:w-60">
+            <div key={listing.id} className="w-[75%] shrink-0 sm:w-72 md:w-80">
               <ListingCard listing={listing} />
             </div>
           ))}
         </div>
       )}
     </section>
-  );
-}
-
-/**
- * Page controls for the recommended grid: Prev / numbered pages / Next, plus a
- * "Showing X–Y of N cars" summary. Shows a windowed range of page numbers so it
- * stays compact even with many pages.
- */
-function PageBar({
-  page,
-  pageCount,
-  total,
-  pageSize,
-  onChange,
-}: {
-  page: number;
-  pageCount: number;
-  total: number;
-  pageSize: number;
-  onChange: (page: number) => void;
-}) {
-  const start = Math.max(0, Math.min(page - 2, pageCount - 5));
-  const end = Math.min(pageCount, start + 5);
-  const nums = Array.from({ length: end - start }, (_, i) => start + i);
-  const btn =
-    'flex h-9 min-w-9 items-center justify-center rounded-[var(--radius-control)] border px-3 text-body-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40';
-  const idle =
-    'border-[var(--color-line-strong)] text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]';
-  // Current page inverts, same "fill and weight, not hue" language as a
-  // selected Chip — a page number is a toggle, not the screen's one action.
-  const active = 'border-[var(--color-surface-inverse)] bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]';
-
-  return (
-    <div className="mt-8 flex flex-col items-center gap-3">
-      <p className="tabular text-body-sm text-[var(--color-content-muted)]">
-        Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} of {total} cars
-      </p>
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => onChange(page - 1)}
-          disabled={page === 0}
-          className={cn(btn, idle)}
-          aria-label="Previous page"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        {start > 0 && <span className="px-1 text-[var(--color-content-subtle)]">…</span>}
-        {nums.map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => onChange(n)}
-            aria-current={n === page ? 'page' : undefined}
-            className={cn(btn, 'tabular', n === page ? active : idle)}
-          >
-            {n + 1}
-          </button>
-        ))}
-        {end < pageCount && <span className="px-1 text-[var(--color-content-subtle)]">…</span>}
-        <button
-          type="button"
-          onClick={() => onChange(page + 1)}
-          disabled={page >= pageCount - 1}
-          className={cn(btn, idle)}
-          aria-label="Next page"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
-    </div>
   );
 }
 
