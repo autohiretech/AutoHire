@@ -88,7 +88,7 @@ export function Header() {
     mode === 'host' ? host?.businessName ?? host?.fullName ?? 'Host' : me?.fullName ?? 'You';
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--color-line)] bg-[var(--color-surface)]/90 backdrop-blur">
+    <header className="sticky top-0 z-[45] border-b border-[var(--color-line)] bg-[var(--color-surface)]/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between gap-3 px-4">
         {/* The wordmark is ink, not green. A green logo plus a green nav pill
             plus a green CTA put the accent on screen three times before the
