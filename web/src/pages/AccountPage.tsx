@@ -8,11 +8,14 @@ import {
   Camera,
   CheckCircle2,
   LogOut,
+  MapPin,
+  Navigation,
   Phone,
   ShieldAlert,
   ShieldCheck,
   Star,
   User,
+  X,
 } from 'lucide-react';
 import type { Host, UserProfile } from '@autohire/shared';
 import { client } from '@/lib/client';
@@ -22,6 +25,9 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry, type Country } from '@/lib/country';
 import { normalizePhone } from '@/lib/phone';
 import { PAYMENTS_PAYHOLD } from '@/lib/payments';
+import { useAddressSuggestions, reverseGeocode, type AddressSuggestion } from '@/lib/geocoding';
+import { useMyLocation } from '@/lib/useMyLocation';
+import { loadHomeLocation, saveHomeLocation, clearHomeLocation, type HomeLocation } from '@/lib/homeLocation';
 import {
   Avatar,
   Badge,
@@ -135,6 +141,7 @@ export function AccountPage() {
                 Cars you're watching
               </ListRow>
             )}
+            <LocationRow />
           </ListGroup>
 
           {/* Companies are host-only, and the renter/host switch itself lives
@@ -631,6 +638,105 @@ function CountryField({ profile }: { profile: UserProfile }) {
       )}
       {error && <p className="mt-1 text-caption text-[var(--color-danger-500)]">{error}</p>}
     </div>
+  );
+}
+
+/**
+ * "Recommended for you" on Home can only sort by real distance once it knows
+ * where "you" is — and asking for a fresh GPS fix on every single visit is
+ * the wrong trade for something that rarely changes. This is the one-time
+ * setting: pick an address (Nominatim suggestions, same as the search bar)
+ * or use the device's current location once, and it's saved (this device —
+ * see `lib/homeLocation.ts`'s own comment on why there's no cross-device
+ * sync yet) for Home to read on every later load without asking again.
+ */
+function LocationRow() {
+  const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState<HomeLocation | null>(() => loadHomeLocation());
+  const [text, setText] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const { suggestions, searching } = useAddressSuggestions(text);
+  const { locating, locate } = useMyLocation();
+
+  function pick(loc: HomeLocation) {
+    saveHomeLocation(loc);
+    setSaved(loc);
+    setOpen(false);
+    setText('');
+  }
+
+  function pickSuggestion(s: AddressSuggestion) {
+    pick({ lat: s.lat, lng: s.lng, label: s.label });
+  }
+
+  function useCurrentLocation() {
+    locate(async (p) => {
+      setResolving(true);
+      try {
+        const resolved = await reverseGeocode(p.lat, p.lng);
+        pick({ lat: p.lat, lng: p.lng, label: resolved?.label ?? `Current location (${p.lat.toFixed(4)}, ${p.lng.toFixed(4)})` });
+      } finally {
+        setResolving(false);
+      }
+    });
+  }
+
+  return (
+    <>
+      <ListRow icon={<MapPin size={18} />} value={saved?.label.split(',')[0] ?? 'Not set'} onClick={() => setOpen(true)}>
+        Your location
+      </ListRow>
+      <Modal open={open} onClose={() => setOpen(false)} title="Your location">
+        <p className="text-body-sm text-[var(--color-content-muted)]">
+          Used to show cars closest to you first. Saved on this device only.
+        </p>
+        <div className="mt-4 flex flex-col gap-3">
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Type an address or city"
+            aria-label="Your address"
+          />
+          {searching && <p className="text-caption text-[var(--color-content-subtle)]">Searching…</p>}
+          {suggestions.length > 0 && (
+            <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--color-line)]">
+              {suggestions.map((s, i) => (
+                <button
+                  key={`${s.lat},${s.lng},${i}`}
+                  type="button"
+                  onClick={() => pickSuggestion(s)}
+                  className="flex w-full items-start gap-2 border-t border-[var(--color-line)] px-3 py-2 text-left text-body-sm text-[var(--color-content)] first:border-t-0 hover:bg-[var(--color-surface-sunken)]"
+                >
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-content-subtle)]" />
+                  <span className="line-clamp-2">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={useCurrentLocation}
+            disabled={locating || resolving}
+          >
+            <Navigation size={16} /> {locating || resolving ? 'Finding you…' : 'Use my current location'}
+          </Button>
+          {saved && (
+            <button
+              type="button"
+              onClick={() => {
+                clearHomeLocation();
+                setSaved(null);
+                setOpen(false);
+              }}
+              className="flex items-center justify-center gap-1.5 text-body-sm font-semibold text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
+            >
+              <X size={14} /> Remove saved location
+            </button>
+          )}
+        </div>
+      </Modal>
+    </>
   );
 }
 

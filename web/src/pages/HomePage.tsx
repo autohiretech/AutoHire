@@ -17,6 +17,7 @@ import {
 import type { Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
 import { mergeAiFilters } from '@/lib/aiFilters';
+import { loadHomeLocation } from '@/lib/homeLocation';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES } from '@/lib/categories';
@@ -83,7 +84,19 @@ function loadBrowse(): Partial<BrowseState> {
 export function HomePage() {
   // Restore where the user was browsing (read once on mount).
   const [savedBrowse] = useState(loadBrowse);
-  const [filters, setFilters] = useState<ListingFilters>(savedBrowse.filters ?? {});
+  const [filters, setFilters] = useState<ListingFilters>(() => {
+    // `savedBrowse.filters` is `undefined` only for a genuinely fresh
+    // session (nothing was ever written to `BROWSE_KEY`) — a session that
+    // exists but has empty filters (the renter hit "Clear filters" and came
+    // back) is `{}`, not `undefined`, and must NOT be overridden here, or
+    // an explicit clear would silently un-clear itself on the next load.
+    // Only the true first case gets "around me" as its starting point, and
+    // only when the renter chose to save one (Account → Your location) — no
+    // fresh GPS prompt fires just from loading this page.
+    if (savedBrowse.filters !== undefined) return savedBrowse.filters;
+    const home = loadHomeLocation();
+    return home ? { nearLat: home.lat, nearLng: home.lng } : {};
+  });
   const [topRanked, setTopRanked] = useState(savedBrowse.topRanked ?? false);
   const resultsRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
