@@ -26,6 +26,11 @@ export interface ListingFilters {
    * Filters on the car's availability for that range, not its base data. */
   startDate?: string;
   endDate?: string;
+  /** The renter's own coordinate, both-or-neither like startDate/endDate.
+   * Migration 075's haversine order-by, not a filter: a listing with no
+   * lat/lng still appears, just sorted last instead of dropped. */
+  nearLat?: number;
+  nearLng?: number;
 }
 
 export interface CreateBookingInput {

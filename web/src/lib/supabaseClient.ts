@@ -113,7 +113,8 @@ function keywordConditions(word: string): string {
 
 /** Every `ListingFilters` field mapped onto `search_available_listings`'s
  * params (migration 074) — same filters as the plain `.eq()`/`.gte()`/`.lte()`
- * chain above, plus the two dates the RPC uses for availability. */
+ * chain above, plus the two dates the RPC uses for availability and the two
+ * coordinates it uses for distance sort (migration 075). */
 function rpcParamsOf(filters: ListingFilters): Record<string, unknown> {
   return {
     p_country: filters.country ?? null,
@@ -127,7 +128,17 @@ function rpcParamsOf(filters: ListingFilters): Record<string, unknown> {
     p_query: filters.query ?? null,
     p_start_date: filters.startDate ?? null,
     p_end_date: filters.endDate ?? null,
+    p_near_lat: filters.nearLat ?? null,
+    p_near_lng: filters.nearLng ?? null,
   };
+}
+
+/** Whether a search needs `search_available_listings` instead of a plain
+ * table query — availability (both dates) and distance sort (both
+ * coordinates) are independent, composable reasons, so either alone is
+ * enough; neither excludes the other from also being applied by the RPC. */
+function needsAvailabilityOrDistanceRpc(filters: ListingFilters): boolean {
+  return !!(filters.startDate && filters.endDate) || (filters.nearLat != null && filters.nearLng != null);
 }
 
 /**
@@ -341,11 +352,11 @@ export const supabaseClient = {
    * order) — so the six oldest fixture rows permanently occupied the hero.
    */
   async listListings(filters: ListingFilters = {}): Promise<Listing[]> {
-    // Both dates given -> availability matters, so this needs the
-    // `search_available_listings` RPC (migration 074) instead of a plain
-    // table query. Either date missing (including neither) falls through to
-    // exactly the query below, unchanged.
-    if (filters.startDate && filters.endDate) {
+    // Both dates given -> availability matters; both coordinates given ->
+    // distance sort matters (migration 075) — either alone routes through
+    // the `search_available_listings` RPC instead of a plain table query.
+    // Neither present falls through to exactly the query below, unchanged.
+    if (needsAvailabilityOrDistanceRpc(filters)) {
       const rows = await run(sb().rpc('search_available_listings', rpcParamsOf(filters)));
       return mapRows<Listing>(rows as Record<string, unknown>[]);
     }
@@ -376,11 +387,12 @@ export const supabaseClient = {
     pageSize = 24,
   ): Promise<{ items: Listing[]; total: number }> {
     const from = page * pageSize;
-    // Both dates given -> route through the availability-aware RPC. It
+    // Both dates given -> availability; both coordinates given -> distance
+    // sort (migration 075) — either alone routes through the RPC. It
     // returns `setof listings` (a set-returning function), so supabase-js's
     // `.rpc()` builder supports `{ count: 'exact' }` and `.range()` exactly
     // like a table `.select()` does — no separate total_count column needed.
-    if (filters.startDate && filters.endDate) {
+    if (needsAvailabilityOrDistanceRpc(filters)) {
       const { data, error, count } = await sb()
         .rpc('search_available_listings', rpcParamsOf(filters), { count: 'exact' })
         .range(from, from + pageSize - 1);

@@ -8,6 +8,7 @@ import { formatMoney } from '@/lib/currency';
 import { formatDate } from '@/lib/format';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { streamAgentTurn, type AgentAction, type AgentChip } from '@/lib/aiAgent';
+import { useMyLocation, type Coordinates } from '@/lib/useMyLocation';
 import { Chip, ChipRow, toast } from '@/components/ui';
 import { SearchBar, type SearchBarHandle } from '@/components/research/SearchBar';
 
@@ -30,6 +31,15 @@ interface StoredConvo {
 }
 
 const EMPTY_CONVO: StoredConvo = { sessionId: null, line: null, chips: [], confirm: null, lastMessage: null };
+
+/** Sentinel `AgentChip.send` value, same trick as `__clear_filters__` below:
+ * a chip label the nudge effect offers, but tapping it never reaches the
+ * model — "closest first" needs the renter's own coordinate, which the
+ * agent has no way to know (no lat/lng anywhere in its tool schema or
+ * request context, by design), so this has to be resolved and applied
+ * entirely on the client, the same principle already applied to city-match
+ * and date-range filtering (see SearchBar's onCityMatch/onDateRangeChange). */
+const CLOSEST_TO_ME_SEND = '__closest_to_me__';
 
 /** Per-tab only (sessionStorage, not localStorage) — deliberately: this is
  * meant to survive a navigate to /cars/:id and back, not to greet the renter
@@ -145,6 +155,13 @@ export function ResearchField({
   const lastMessageRef = useRef<string | null>(stored.lastMessage);
   const searchBarRef = useRef<SearchBarHandle>(null);
   const autoAskedRef = useRef(false);
+  // The last coordinate SearchBar resolved (a picked suggestion or "use my
+  // location"), captured off its onSubmit — not persisted across a page
+  // load, same lifetime as the rest of this field's per-tab state. "Closest
+  // to me" reuses it instead of forcing a fresh GPS prompt when one's
+  // already sitting right there.
+  const lastLocationRef = useRef<Coordinates | null>(null);
+  const { locate } = useMyLocation();
 
   // Per-turn bookkeeping — not state, since nothing renders off these
   // directly. `gotLine` decides whether the "Thinking…" placeholder clears
@@ -198,7 +215,7 @@ export function ResearchField({
     } else if (count > 8) {
       setChips([
         { label: 'Cheapest first', send: 'Sort these results by price, cheapest first.' },
-        { label: 'Closest to me', send: 'Sort these results by distance, closest first.' },
+        { label: 'Closest to me', send: CLOSEST_TO_ME_SEND },
         { label: 'Highest rated', send: 'Sort these results by rating, highest first.' },
       ]);
     } else if (count >= 1 && count <= 3) {
@@ -293,11 +310,48 @@ export function ResearchField({
     searchBarRef.current?.focus();
   }
 
+  /**
+   * Deterministic, zero-agent-round-trip "Closest to me" — the model has no
+   * lat/lng anywhere in its tool schema or request context (by design, see
+   * `CLOSEST_TO_ME_SEND`'s comment), so this applies `nearLat`/`nearLng`
+   * directly through the same `onFilters` callback city/dates already use.
+   * Reuses a coordinate SearchBar already resolved if there is one; otherwise
+   * triggers a fresh `useMyLocation()` request, the same hook and behavior
+   * SearchBar's own "use my location" button already uses for denial/failure.
+   */
+  function closestToMe() {
+    setChips([]);
+    if (lastLocationRef.current) {
+      const { lat, lng } = lastLocationRef.current;
+      onFilters({ nearLat: lat, nearLng: lng });
+      setLine(null);
+      return;
+    }
+    setLine({ text: 'Finding your location…', tone: 'status' });
+    locate(
+      (p) => {
+        lastLocationRef.current = p;
+        onFilters({ nearLat: p.lat, nearLng: p.lng });
+        setLine(null);
+      },
+      () => {
+        setLine({
+          text: "Couldn't get your location — check your browser's location permission.",
+          tone: 'error',
+        });
+      },
+    );
+  }
+
   function onChipTap(chip: AgentChip) {
     if (chip.send === '__clear_filters__') {
       onClearFilters();
       setChips([]);
       setLine(null);
+      return;
+    }
+    if (chip.send === CLOSEST_TO_ME_SEND) {
+      closestToMe();
       return;
     }
     void send(chip.send);
@@ -353,7 +407,13 @@ export function ResearchField({
     <div className={cn('flex flex-col-reverse gap-2 lg:flex-col', className)}>
       <SearchBar
         ref={searchBarRef}
-        onSubmit={(input) => void send(input.message)}
+        onSubmit={(input) => {
+          // Captured for "Closest to me" below — a resolved place/GPS point
+          // from this same field, not a fresh network round trip through the
+          // agent. Doesn't change what's sent to the model at all.
+          if (input.location) lastLocationRef.current = { lat: input.location.lat, lng: input.location.lng };
+          void send(input.message);
+        }}
         onCityMatch={(city) => (city ? onFilters({ city }) : onRemoveFilter('city'))}
         onCountryMatch={onCountryMatch}
         onDateRangeChange={(r) =>
