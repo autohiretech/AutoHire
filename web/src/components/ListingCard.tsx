@@ -87,14 +87,19 @@ export function ListingCard({
         )}
       </div>
 
-      <div className={cn('min-w-0', row ? 'flex-1 py-0.5' : 'pt-3')}>
+      {/* On a phone the card runs one notch denser than the page's own scale:
+          a 13px medium title, 12px meta, 13px price. A card title is not a
+          heading — it is one of many in a grid, read by scanning, and at
+          heading weight a rail of them reads as a wall of bold. Desktop keeps
+          the h4 treatment from `sm` up. */}
+      <div className={cn('min-w-0', row ? 'flex-1 py-0.5' : 'pt-2 sm:pt-3')}>
         <div className="flex items-start justify-between gap-2">
-          <h3 className="min-w-0 flex-1 truncate text-h4 text-[var(--color-content)]">
+          <h3 className="min-w-0 flex-1 truncate text-body-sm font-medium text-[var(--color-content)] sm:text-h4 sm:font-semibold">
             {listing.title}
           </h3>
           {listing.ratingCount > 0 && (
-            <span className="tabular flex shrink-0 items-center gap-1 text-body-sm font-semibold text-[var(--color-content)]">
-              <Star size={13} className="fill-current text-[var(--color-accent-on)]" />
+            <span className="tabular flex shrink-0 items-center gap-1 text-caption font-semibold text-[var(--color-content)] sm:text-body-sm">
+              <Star size={12} className="fill-current text-[var(--color-accent-on)]" />
               {listing.ratingAvg.toFixed(1)}
               <span className="font-normal text-[var(--color-content-subtle)]">
                 ({listing.ratingCount})
@@ -103,17 +108,20 @@ export function ListingCard({
           )}
         </div>
 
-        <p className="mt-0.5 truncate text-body-sm text-[var(--color-content-muted)]">
+        <p className="mt-0.5 truncate text-caption text-[var(--color-content-muted)] sm:text-body-sm">
           {listing.location}
         </p>
 
         {/* Price last and heaviest — it is what the eye lands on after the
             photo, and the unit stays light so the number itself carries. */}
-        <p className="tabular mt-1.5 text-body-sm text-[var(--color-content)]">
+        <p className="tabular mt-1 text-body-sm text-[var(--color-content)] sm:mt-1.5">
           <span className="font-bold">
             <Price amount={price.amount} currency={listing.priceCurrency} />
           </span>
-          <span className="text-[var(--color-content-muted)]"> / {price.unit}</span>
+          <span className="text-caption text-[var(--color-content-muted)] sm:text-body-sm">
+            {' '}
+            / {price.unit}
+          </span>
         </p>
       </div>
     </Link>

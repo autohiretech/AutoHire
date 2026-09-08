@@ -50,12 +50,12 @@ export function TripCard({
           />
           <CardBody className="flex flex-1 flex-col">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="line-clamp-1 font-semibold text-[var(--color-content)]">
+              <h3 className="line-clamp-1 text-body-sm font-medium text-[var(--color-content)] sm:text-body sm:font-semibold">
                 {listing?.title ?? 'Car'}
               </h3>
               <Badge tone={state.tone}>{state.label}</Badge>
             </div>
-            <p className="tabular mt-1 flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
+            <p className="tabular mt-1 flex items-center gap-1.5 text-caption text-[var(--color-content-muted)] sm:text-body-sm">
               <CalendarDays size={15} />
               {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
               <span className="text-[var(--color-content-subtle)]">
@@ -63,7 +63,7 @@ export function TripCard({
               </span>
             </p>
             <div className="mt-auto flex items-end justify-between gap-2 pt-3">
-              <p className="tabular font-semibold text-[var(--color-content)]">{formatRwf(booking.totalRwf)}</p>
+              <p className="tabular text-body-sm font-semibold text-[var(--color-content)] sm:text-body">{formatRwf(booking.totalRwf)}</p>
               {hint && (
                 <span className={cn('inline-flex items-center gap-1 text-body-sm font-medium', HINT_COLOR[hint.tone])}>
                   {hint.label} <ArrowRight size={14} />
