@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Car } from 'lucide-react';
+import { cn } from '@/lib/cn';
+import { useAuth } from '@/lib/auth';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { PaymentMethods } from '@/components/marketplace/PaymentMethods';
 
@@ -26,22 +28,34 @@ const LINK_COLUMNS: { heading: string; links: { to: string; label: string }[] }[
 
 export function Footer() {
   const { data: profile } = useCurrentUser();
+  const { user } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const year = new Date().getFullYear();
 
   return (
-    // Desktop only. A native phone app has no "About us" footer — the tab
-    // bar is the footer there, and legal/about lives under Account — so
-    // below `md` this renders nothing at all rather than a shorter version.
-    // Hiding it here (not in the shell) keeps the shell's tab-bar padding
-    // the single thing that reserves space above the bar.
+    // Shown on every width. This used to be desktop-only on the reasoning
+    // that "a phone app's footer is its tab bar" — but the tab bar only
+    // renders for a signed-in user (BottomTabBar returns null otherwise),
+    // so a signed-out visitor on a phone reached the bottom of the page and
+    // found nothing at all: no links, no payment methods, no way onward.
+    // That gap is the reason this is back.
     //
     // Quiet by design — a footer competing for attention is a footer that
     // looks like another CTA. Sunken ground + a hairline top border read as
     // "you've reached the bottom of the page," not "look here."
-    <footer className="mt-12 hidden border-t border-[var(--color-line)] bg-[var(--color-surface-sunken)] md:block">
-      <div className="mx-auto max-w-[1500px] px-4 py-10">
-        <div className="flex flex-col gap-10 lg:flex-row lg:justify-between">
+    <footer className="mt-12 border-t border-[var(--color-line)] bg-[var(--color-surface-sunken)]">
+      <div
+        className={cn(
+          'mx-auto max-w-[1500px] px-4 py-8 md:py-10',
+          // The tab bar is `fixed`, so on a phone it floats over whatever
+          // ends the page. `AppLayout` only reserves room under `<main>`,
+          // and this sits outside it — without matching clearance the last
+          // row (© line, Admin link) renders behind the bar. Signed-out
+          // visitors have no bar and get no dead space.
+          user && 'pb-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom)+1rem)] md:pb-10',
+        )}
+      >
+        <div className="flex flex-col gap-8 md:gap-10 lg:flex-row lg:justify-between">
           {/* Brand — wordmark in ink, not the accent. The logo mark keeps its
               filled brand chip (a fixed emblem, not a control), but the text
               next to it is not "act on this." No blurb under it: the product
@@ -88,7 +102,7 @@ export function Footer() {
         </div>
 
         {/* Bottom bar */}
-        <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-line)] pt-6 text-caption text-[var(--color-content-subtle)] sm:flex-row">
+        <div className="mt-8 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-line)] pt-6 text-caption text-[var(--color-content-subtle)] sm:mt-10 sm:flex-row">
           <p>© {year} AutoHire. All rights reserved.</p>
           {isAdmin && (
             <Link to="/admin" className="hover:text-[var(--color-content)]">
