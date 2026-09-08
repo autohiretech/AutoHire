@@ -111,6 +111,25 @@ function keywordConditions(word: string): string {
   return `title.ilike.${t},make.ilike.${t},model.ilike.${t},city.ilike.${t},location.ilike.${t}`;
 }
 
+/** Every `ListingFilters` field mapped onto `search_available_listings`'s
+ * params (migration 074) — same filters as the plain `.eq()`/`.gte()`/`.lte()`
+ * chain above, plus the two dates the RPC uses for availability. */
+function rpcParamsOf(filters: ListingFilters): Record<string, unknown> {
+  return {
+    p_country: filters.country ?? null,
+    p_city: filters.city ?? null,
+    p_category: filters.category ?? null,
+    p_owner_type: filters.ownerType ?? null,
+    p_transmission: filters.transmission ?? null,
+    p_fuel: filters.fuel ?? null,
+    p_min_seats: filters.minSeats ?? null,
+    p_max_price_rwf: filters.maxPriceRwf ?? null,
+    p_query: filters.query ?? null,
+    p_start_date: filters.startDate ?? null,
+    p_end_date: filters.endDate ?? null,
+  };
+}
+
 /**
  * The message behind "Edge Function returned a non-2xx status code".
  *
@@ -322,6 +341,14 @@ export const supabaseClient = {
    * order) — so the six oldest fixture rows permanently occupied the hero.
    */
   async listListings(filters: ListingFilters = {}): Promise<Listing[]> {
+    // Both dates given -> availability matters, so this needs the
+    // `search_available_listings` RPC (migration 074) instead of a plain
+    // table query. Either date missing (including neither) falls through to
+    // exactly the query below, unchanged.
+    if (filters.startDate && filters.endDate) {
+      const rows = await run(sb().rpc('search_available_listings', rpcParamsOf(filters)));
+      return mapRows<Listing>(rows as Record<string, unknown>[]);
+    }
     let q = sb().from('listings').select('*');
     if (filters.country) q = q.eq('country', filters.country);
     if (filters.city) q = q.eq('city', filters.city);
@@ -348,6 +375,18 @@ export const supabaseClient = {
     page = 0,
     pageSize = 24,
   ): Promise<{ items: Listing[]; total: number }> {
+    const from = page * pageSize;
+    // Both dates given -> route through the availability-aware RPC. It
+    // returns `setof listings` (a set-returning function), so supabase-js's
+    // `.rpc()` builder supports `{ count: 'exact' }` and `.range()` exactly
+    // like a table `.select()` does — no separate total_count column needed.
+    if (filters.startDate && filters.endDate) {
+      const { data, error, count } = await sb()
+        .rpc('search_available_listings', rpcParamsOf(filters), { count: 'exact' })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      return { items: mapRows<Listing>(data as Record<string, unknown>[]), total: count ?? 0 };
+    }
     let base = sb().from('listings').select('*', { count: 'exact' });
     if (filters.country) base = base.eq('country', filters.country);
     if (filters.city) base = base.eq('city', filters.city);
@@ -359,7 +398,6 @@ export const supabaseClient = {
     if (filters.maxPriceRwf) base = base.lte('price_per_day_rwf', filters.maxPriceRwf);
     for (const word of keywordsOf(filters.query)) base = base.or(keywordConditions(word));
     const ordered = base.order('rating_avg', { ascending: false }).order('id', { ascending: true });
-    const from = page * pageSize;
     const { data, error, count } = await ordered.range(from, from + pageSize - 1);
     if (error) throw new Error(error.message);
     return { items: mapRows<Listing>(data as Record<string, unknown>[]), total: count ?? 0 };

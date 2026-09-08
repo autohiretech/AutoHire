@@ -54,6 +54,7 @@ npx supabase db push --linked
 | `…071_people_in_photos` | Corrects 070's own overcorrection: empty landscape shots still aren't pictures of PEOPLE. Retargets the same loremflickr posts at friends/family/portrait keywords alongside the place |
 | `…072_real_people_photos` | The actual fix: `web/src/lib/images.ts` never fetches loremflickr, it maps keywords onto curated pools — and there was no people pool, so 070/071's keywords silently fell through to a generic car photo. Ships with a real `people` pool (6 verified Wikimedia Commons road-trip photos) added to images.ts, and re-seeds every demo post with the exact tokens `poolFor()` now routes there |
 | `…073_ai_chat_sessions` | `ai_chat_sessions` — the AI assistant's chat history moves off localStorage. One row per conversation (`turns` holds the client's own BotTurn[] JSON verbatim); a renter can have many, so "new chat" is an insert and "choose an old chat" is a pick from their own rows, newest first |
+| `…074_search_availability` | `search_available_listings()` — mirrors `listListings`'s existing filters and adds a date-availability exclusion (booked-status list and half-open overlap test copied verbatim from `listing_booked_ranges` and `CarDetailPage.tsx`'s `isUnavailable`), plus a composite `bookings (listing_id, start_date, end_date)` index it relies on |
 
 040 goes first because 045 and 047 both widen check constraints on the columns
 it creates — run either before it and they fail on a column that does not exist.

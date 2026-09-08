@@ -22,6 +22,10 @@ export interface ListingFilters {
   minSeats?: number;
   maxPriceRwf?: number;
   query?: string;
+  /** ISO dates (yyyy-mm-dd), both-or-neither: with only one set it's ignored.
+   * Filters on the car's availability for that range, not its base data. */
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface CreateBookingInput {
