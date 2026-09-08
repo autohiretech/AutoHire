@@ -156,7 +156,7 @@ export function Header() {
               </Link>
               <Link
                 to="/messages"
-                className="relative rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)]"
+                className="relative hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] md:block"
                 aria-label={unread > 0 ? `Messages (${unread} unread)` : 'Messages'}
               >
                 <MessageSquare size={20} />
@@ -183,7 +183,7 @@ export function Header() {
                   </span>
                 )}
               </button>
-              <Link to="/account" aria-label="Account" className="ml-1">
+              <Link to="/account" aria-label="Account" className="ml-1 hidden md:block">
                 <Avatar name={identityName} src={mode === 'host' ? host?.avatarUrl : me?.avatarUrl} size="sm" />
               </Link>
               <button

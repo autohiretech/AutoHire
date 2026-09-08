@@ -154,12 +154,14 @@
 
 /*
   ── Phone type scale ─────────────────────────────────────────────────────
-  Below Tailwind's `sm` (40rem) every step of the scale drops one notch. The
-  desktop sizes follow Uber's "go big" rule, and on a 390px phone that rule
-  overshoots: a 32px h1 is a third of the width, and 16px body wraps a car's
-  name onto a third line. Line-heights stay on the 4px grid. Nothing goes
-  below 13px body / 11px caption — smaller than that is where legibility
-  drops faster than the space saved.
+  Below Tailwind's `sm` (40rem) the scale is a different scale, not a
+  proportional shrink. The desktop sizes follow Uber's "go big" rule; on a
+  phone that rule overshoots, and the density that reads as native there is
+  Turo's: a page title at 22–24px, a section heading at 16–18px, a card title
+  at 14–15px, body at 13–14px, captions at 11–12px, with leading tightened to
+  match. Line-heights stay on a 2px grid. Nothing goes below 13px body /
+  11px caption — smaller than that is where legibility drops faster than
+  the space saved.
 
   The utilities reference these variables rather than baking the values in,
   so redefining them here re-sizes every `text-*` in the app at once — no
@@ -167,20 +169,20 @@
 */
 @media (width < 40rem) {
   :root {
-    --text-display: 2rem;
-    --text-display--line-height: 2.5rem;
-    --text-h1: 1.625rem;
-    --text-h1--line-height: 2rem;
-    --text-h2: 1.3125rem;
-    --text-h2--line-height: 1.75rem;
-    --text-h3: 1.125rem;
-    --text-h3--line-height: 1.5rem;
-    --text-h4: 1rem;
-    --text-h4--line-height: 1.5rem;
-    --text-body-lg: 1rem;
-    --text-body-lg--line-height: 1.5rem;
-    --text-body: 0.9375rem;
-    --text-body--line-height: 1.375rem;
+    --text-display: 1.5rem;
+    --text-display--line-height: 1.875rem;
+    --text-h1: 1.375rem;
+    --text-h1--line-height: 1.75rem;
+    --text-h2: 1.0625rem;
+    --text-h2--line-height: 1.5rem;
+    --text-h3: 1rem;
+    --text-h3--line-height: 1.375rem;
+    --text-h4: 0.9375rem;
+    --text-h4--line-height: 1.25rem;
+    --text-body-lg: 0.9375rem;
+    --text-body-lg--line-height: 1.375rem;
+    --text-body: 0.875rem;
+    --text-body--line-height: 1.25rem;
     --text-body-sm: 0.8125rem;
     --text-body-sm--line-height: 1.125rem;
     --text-caption: 0.6875rem;
@@ -357,11 +359,53 @@ body,
   height: 100%;
 }
 
+/*
+  ── Phone width discipline ──────────────────────────────────────────────
+  Two rules, both below `sm`:
+
+  1. The page never scrolls sideways. Rails, chip rows and tables scroll
+     inside their own `overflow-x-auto` container; the *page* does not. This
+     is a backstop for anything that still paints past the edge — `clip`
+     rather than `hidden`, because `overflow: hidden` on the root turns it
+     into a scroll container and breaks `position: sticky` headers and
+     bottom bars, while `clip` only clips.
+
+  2. Scroll containers scroll without showing scrollbar chrome. A phone's
+     own bars are overlays and cost nothing, but in desktop DevTools device
+     mode (and inside iframes) classic bars render, eat 15px of width, and
+     read as a broken layout under a row of pills. The elements stay
+     scrollable — only the bar is hidden.
+*/
+@media (width < 40rem) {
+  html,
+  body {
+    overflow-x: clip;
+  }
+  html,
+  body,
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-auto {
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar,
+  .overflow-x-auto::-webkit-scrollbar,
+  .overflow-y-auto::-webkit-scrollbar,
+  .overflow-auto::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 body {
   margin: 0;
   background-color: var(--color-surface);
   color: var(--color-content);
   font-family: var(--font-sans);
+  /* Unstyled text follows the body token, so it takes part in the phone
+     scale above instead of sitting at the browser's 16px regardless. */
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
   -webkit-font-smoothing: antialiased;
 }
 
