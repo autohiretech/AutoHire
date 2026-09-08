@@ -4,6 +4,7 @@ import type { Listing } from '@autohire/shared';
 import { cn } from '@/lib/cn';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
+import { WatchButton } from '@/components/WatchButton';
 import { listingHeadlinePrice } from '@/lib/pricing';
 import { Badge } from '@/components/ui';
 
@@ -20,14 +21,19 @@ import { Badge } from '@/components/ui';
  * phone show three cars instead of one and a half.
  *
  * What survived, and why:
- * • the **rating** moved onto the title row, right-aligned — it is read as a
- *   property of the car, not as a separate badge.
+ * • the **year, rating and review count** sit on one line under the title —
+ *   read together as one property of the car ("2020, 5.0 from 126 trips"),
+ *   the way Turo/Getaround both do it, rather than the rating competing with
+ *   the title for the same line.
  * • the **host type** is now an overlay badge only for business hosts. Every
  *   card saying "Individual host" was a label on the default case, which is
  *   noise; "Business host" is the exception worth flagging.
  * • the **spec line** (category · transmission · seats) is gone from the card.
  *   Nobody chooses between two cars on transmission at grid scale, and it cost
  *   a line on every card to say so. It lives on the detail page.
+ * • the **save button** overlays the photo's top-right corner — the one
+ *   action worth taking without leaving the grid, so it doesn't cost a line
+ *   of text the way a labelled button would.
  *
  * `isActive`/`onHover` sync the card with its map pin — hovering either
  * highlights both. `layout="row"` is the horizontal form used inside the
@@ -39,15 +45,22 @@ export function ListingCard({
   isActive,
   onHover,
   layout = 'stacked',
+  tripUnits,
 }: {
   listing: Listing;
   isActive?: boolean;
   onHover?: (hovering: boolean) => void;
   layout?: 'stacked' | 'row';
+  /** Days (or hours, for an hourly-only car) in the renter's currently
+   * selected trip — e.g. `endDate - startDate` from the search filters.
+   * Undefined/0 when no dates are picked yet, in which case the card shows
+   * only the day/hour rate, same as before there was a trip to total. */
+  tripUnits?: number;
 }) {
   const isBusiness = listing.ownerType === 'business';
   const price = listingHeadlinePrice(listing);
   const row = layout === 'row';
+  const showTotal = !!tripUnits && tripUnits > 0;
 
   return (
     <Link
@@ -85,6 +98,7 @@ export function ListingCard({
             <Building2 size={11} /> Business
           </Badge>
         )}
+        <WatchButton id={listing.id} variant="icon" className="absolute top-2 right-2" />
       </div>
 
       {/* On a phone the card runs one notch denser than the page's own scale:
@@ -93,35 +107,50 @@ export function ListingCard({
           heading weight a rail of them reads as a wall of bold. Desktop keeps
           the h4 treatment from `sm` up. */}
       <div className={cn('min-w-0', row ? 'flex-1 py-0.5' : 'pt-2 sm:pt-3')}>
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="min-w-0 flex-1 truncate text-body-sm font-medium text-[var(--color-content)] sm:text-h4 sm:font-semibold">
-            {listing.title}
-          </h3>
+        <h3 className="min-w-0 truncate text-body-sm font-medium text-[var(--color-content)] sm:text-h4 sm:font-semibold">
+          {listing.title}
+        </h3>
+
+        {/* Year + rating on one line, read as one property of the car —
+            "2020 · 5.0 (126)" — rather than the rating sharing the title's
+            line. No rating yet (a brand-new listing) just drops that half. */}
+        <p className="mt-0.5 flex items-center gap-1 truncate text-caption text-[var(--color-content-muted)] sm:text-body-sm">
+          <span className="tabular">{listing.year}</span>
           {listing.ratingCount > 0 && (
-            <span className="tabular flex shrink-0 items-center gap-1 text-caption font-semibold text-[var(--color-content)] sm:text-body-sm">
-              <Star size={12} className="fill-current text-[var(--color-accent-on)]" />
-              {listing.ratingAvg.toFixed(1)}
-              <span className="font-normal text-[var(--color-content-subtle)]">
-                ({listing.ratingCount})
+            <>
+              <span aria-hidden>·</span>
+              <span className="tabular flex items-center gap-1 font-semibold text-[var(--color-content)]">
+                <Star size={12} className="fill-current text-[var(--color-accent-on)]" />
+                {listing.ratingAvg.toFixed(1)}
               </span>
-            </span>
+              <span>({listing.ratingCount})</span>
+            </>
           )}
-        </div>
+        </p>
 
         <p className="mt-0.5 truncate text-caption text-[var(--color-content-muted)] sm:text-body-sm">
           {listing.location}
         </p>
 
         {/* Price last and heaviest — it is what the eye lands on after the
-            photo, and the unit stays light so the number itself carries. */}
-        <p className="tabular mt-1 text-body-sm text-[var(--color-content)] sm:mt-1.5">
-          <span className="font-bold">
-            <Price amount={price.amount} currency={listing.priceCurrency} />
+            photo, and the unit stays light so the number itself carries. The
+            trip total (once dates are picked) sits beside it, lighter, so the
+            day rate still reads first. */}
+        <p className="tabular mt-1 flex items-baseline gap-1.5 text-body-sm text-[var(--color-content)] sm:mt-1.5">
+          <span>
+            <span className="font-bold">
+              <Price amount={price.amount} currency={listing.priceCurrency} />
+            </span>
+            <span className="text-caption text-[var(--color-content-muted)] sm:text-body-sm">
+              {' '}
+              / {price.unit}
+            </span>
           </span>
-          <span className="text-caption text-[var(--color-content-muted)] sm:text-body-sm">
-            {' '}
-            / {price.unit}
-          </span>
+          {showTotal && (
+            <span className="text-caption text-[var(--color-content-muted)] sm:text-body-sm">
+              <Price amount={price.amount * tripUnits!} currency={listing.priceCurrency} /> total
+            </span>
+          )}
         </p>
       </div>
     </Link>
