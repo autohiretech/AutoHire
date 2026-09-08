@@ -255,24 +255,17 @@ export function HomePage() {
             Find your next ride in {country.name}
           </h1>
 
-          {/* A real ask, typed here — not a click-through to an empty panel.
-              The compound Where/From/Until bar is the same one /ai's own
-              field uses (see SearchBar), so the two never drift apart. A
-              soft pulsing glow behind it plus the "Ask AI" badge keep this
-              reading as the "alive", AI-driven entry point rather than a
-              plain form — submitting hands the composed text to /ai, which
-              runs it as the first turn. "Where" matching a known city is the
-              one part of this that filters the grid below directly, with no
-              AI round trip. */}
+          {/* The compound Where/From/Until bar is the same one /ai's own
+              field uses (see SearchBar), so the two never drift apart. It
+              opens in its own default, plain Search mode — no glow, no
+              floating "Ask AI" badge implying the whole thing is model-driven
+              when the renter hasn't asked for that. SearchBar carries its own
+              Search/Ask AI toggle now, which is the honest, opt-in version of
+              what the glow used to claim ambiently. "Where" matching a known
+              city is the one part of Search mode that filters the grid below
+              directly, with no model call anywhere in that path. */}
           <div className="relative mt-4 w-full max-w-2xl">
-            <div
-              aria-hidden
-              className="animate-ai-glow absolute -inset-1.5 rounded-[var(--radius-sheet)] bg-gradient-to-r from-brand-400 via-brand-200 to-brand-500 opacity-40 blur-lg sm:rounded-[var(--radius-pill)]"
-            />
             <div className="relative">
-              <Badge tone="brand" className="absolute -top-3 right-3 z-10 shadow-[var(--shadow-float)]">
-                Ask AI
-              </Badge>
               <SearchBar
                 onSubmit={(input) => {
                   // A city match or a date range picked here already filters

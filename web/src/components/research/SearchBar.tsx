@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { ChevronDown, Globe, MapPin, Navigation, Search, Sparkles, X } from 'lucide-react';
+import { ChevronDown, Globe, MapPin, Navigation, Search, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Button, Spinner } from '@/components/ui';
 import { useAddressSuggestions, type AddressSuggestion } from '@/lib/geocoding';
@@ -193,6 +193,15 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
 ) {
   const { country } = useCountry();
 
+  // Which face the bar shows — the renter's own choice, not automatic.
+  // 'search' is the default because it's what most of every session is:
+  // pick a place, pick dates, done, no model call anywhere in the loop.
+  // 'ai' is opt-in, for the minority of asks a filter can't express
+  // ("something for a wedding, cheap, automatic"). Switching doesn't touch
+  // whatever's already applied — a city/date match from 'search' stays live
+  // and reaches the agent as `context.filters`, just no longer restated as
+  // prose once excluded below, same as before this toggle existed.
+  const [mode, setMode] = useState<'search' | 'ai'>('search');
   const [locationText, setLocationText] = useState('');
   const [locationPoint, setLocationPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -305,6 +314,19 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   }
 
   function submit() {
+    if (mode === 'search') {
+      // Nothing here goes to a model, on purpose — that's the whole point of
+      // the renter having picked this mode. A matched city and picked dates
+      // already applied live (onCityMatch/onDateRangeChange fire the instant
+      // each changes); the button's only job left is closing an open picker.
+      setDatesOpen(false);
+      if (locationText.trim()) {
+        const entry: RecentSearch = { label: locationText.trim(), dateLabel: formatDateRange(dateRange) ?? undefined };
+        saveRecent(entry);
+        setRecents(loadRecents());
+      }
+      return;
+    }
     const message = composeMessage();
     if (!message) return;
     onSubmit({
@@ -312,15 +334,13 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
       location: locationPoint ? { ...locationPoint, label: locationText.trim() } : undefined,
       dateRange: dateRange.start ? dateRange : undefined,
     });
-    if (locationText.trim()) {
-      const entry: RecentSearch = { label: locationText.trim(), dateLabel: formatDateRange(dateRange) ?? undefined };
-      saveRecent(entry);
-      setRecents(loadRecents());
-    }
     setFreeText('');
   }
 
-  const hasMessage = !!composeMessage();
+  // Search mode's button is a "done, close this" confirm, not a submit gated
+  // on content — the filtering already happened live. Only AI mode needs
+  // something worth sending before it lights up.
+  const hasMessage = mode === 'search' || !!composeMessage();
   const fromLabel = formatSingleDate(dateRange.start);
   const untilLabel = formatSingleDate(dateRange.end);
   const showRecents = locationText.trim().length === 0 && recents.length > 0;
@@ -333,6 +353,68 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
       }}
       className={cn('@container flex flex-col gap-2', className)}
     >
+      {/* The renter's own choice, front and centre — not a corner control
+          easy to miss. Search is first and inverts when active, same
+          fill-and-weight language every selected Chip in this app uses, so
+          "which mode am I in" reads the same way "which filter is on" does
+          everywhere else. */}
+      <div className="flex items-center gap-1 self-start rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] p-1">
+        <button
+          type="button"
+          onClick={() => setMode('search')}
+          aria-pressed={mode === 'search'}
+          className={cn(
+            'flex items-center gap-1.5 rounded-[var(--radius-pill)] px-3 py-1.5 text-body-sm font-semibold transition-colors',
+            mode === 'search'
+              ? 'bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
+              : 'text-[var(--color-content-muted)]',
+          )}
+        >
+          <Search size={13} /> Search
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('ai')}
+          aria-pressed={mode === 'ai'}
+          className={cn(
+            'flex items-center gap-1.5 rounded-[var(--radius-pill)] px-3 py-1.5 text-body-sm font-semibold transition-colors',
+            mode === 'ai'
+              ? 'bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
+              : 'text-[var(--color-content-muted)]',
+          )}
+        >
+          <Sparkles size={13} /> Ask AI
+        </button>
+      </div>
+
+      {mode === 'ai' ? (
+        // AI mode is the single-field surface the toggle promises — no
+        // Where/From/Until here at all, so there's nothing implying the
+        // model does structured filtering it doesn't. A city/date match
+        // from Search mode stays applied (parent state, untouched by this
+        // toggle) and reaches the agent as `context.filters`; this field is
+        // only for what a filter can't say.
+        <div className="flex items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] py-1 pl-4 pr-1.5 shadow-[var(--shadow-float)]">
+          <Sparkles size={16} className="shrink-0 text-[var(--color-accent-on)]" />
+          <input
+            ref={freeTextRef}
+            value={freeText}
+            onChange={(e) => setFreeText(e.target.value)}
+            placeholder={placeholder}
+            aria-label="Describe the car you need"
+            disabled={disabled}
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={disabled || !hasMessage}
+            aria-label="Ask"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
+          >
+            <Search size={16} />
+          </button>
+        </div>
+      ) : (
       <div className="flex flex-col divide-y divide-[var(--color-line)] overflow-visible rounded-[var(--radius-sheet)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)] @md:flex-row @md:items-stretch @md:divide-y-0 @md:divide-x @md:rounded-[var(--radius-pill)]">
         {/* Where */}
         <div ref={locationBoxRef} className="relative flex min-w-0 flex-1 flex-col gap-0.5 px-4 py-2 @md:py-1.5">
@@ -512,34 +594,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
           </button>
         </div>
       </div>
-
-      {/* Free text — a subtler row below the pill, not a fifth field
-          crowding it. Still the one thing that reads as prose to the agent;
-          Where/From/Until above are either a real filter (a matched city) or
-          carried intent folded into `message`, never claimed to filter
-          anything themselves. */}
-      <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3.5 py-2">
-        <Sparkles size={15} className="shrink-0 text-[var(--color-accent-on)]" />
-        <input
-          ref={freeTextRef}
-          value={freeText}
-          onChange={(e) => setFreeText(e.target.value)}
-          placeholder={placeholder}
-          aria-label="Anything else"
-          disabled={disabled}
-          className="min-w-0 flex-1 bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
-        />
-        {freeText && (
-          <button
-            type="button"
-            onClick={() => setFreeText('')}
-            aria-label="Clear"
-            className="shrink-0 text-[var(--color-content-subtle)] hover:text-[var(--color-content)]"
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
+      )}
     </form>
   );
 });
