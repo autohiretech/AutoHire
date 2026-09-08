@@ -30,17 +30,22 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
+    // Desktop only. A native phone app has no "About us" footer — the tab
+    // bar is the footer there, and legal/about lives under Account — so
+    // below `md` this renders nothing at all rather than a shorter version.
+    // Hiding it here (not in the shell) keeps the shell's tab-bar padding
+    // the single thing that reserves space above the bar.
+    //
     // Quiet by design — a footer competing for attention is a footer that
     // looks like another CTA. Sunken ground + a hairline top border read as
     // "you've reached the bottom of the page," not "look here."
-    // No bottom padding of our own: the shell already reserves space above
-    // the mobile tab bar, and doubling that here would just widen the gap.
-    <footer className="mt-12 border-t border-[var(--color-line)] bg-[var(--color-surface-sunken)]">
+    <footer className="mt-12 hidden border-t border-[var(--color-line)] bg-[var(--color-surface-sunken)] md:block">
       <div className="mx-auto max-w-[1500px] px-4 py-10">
         <div className="flex flex-col gap-10 lg:flex-row lg:justify-between">
           {/* Brand — wordmark in ink, not the accent. The logo mark keeps its
               filled brand chip (a fixed emblem, not a control), but the text
-              next to it is not "act on this." */}
+              next to it is not "act on this." No blurb under it: the product
+              explains itself on the page above. */}
           <div className="max-w-xs">
             <div className="flex items-center gap-2 font-bold text-[var(--color-content)]">
               <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] bg-brand-600 text-white">
@@ -48,9 +53,6 @@ export function Footer() {
               </span>
               <span className="text-body-lg">AutoHire</span>
             </div>
-            <p className="mt-3 text-body-sm text-[var(--color-content-muted)]">
-              Peer-to-peer car rental — rent from people and agencies, or earn by hosting your car.
-            </p>
           </div>
 
           {/* Quick links */}
@@ -88,14 +90,11 @@ export function Footer() {
         {/* Bottom bar */}
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-line)] pt-6 text-caption text-[var(--color-content-subtle)] sm:flex-row">
           <p>© {year} AutoHire. All rights reserved.</p>
-          <div className="flex items-center gap-4">
-            <span>Secure payments · Verified hosts</span>
-            {isAdmin && (
-              <Link to="/admin" className="hover:text-[var(--color-content)]">
-                Admin
-              </Link>
-            )}
-          </div>
+          {isAdmin && (
+            <Link to="/admin" className="hover:text-[var(--color-content)]">
+              Admin
+            </Link>
+          )}
         </div>
       </div>
     </footer>
