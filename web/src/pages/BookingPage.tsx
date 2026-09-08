@@ -48,7 +48,7 @@ import {
 } from '@/components/PaymentBrands';
 import { PayholdPayment } from '@/components/PayholdPayment';
 import { Img } from '@/components/Img';
-import { Avatar, Badge, Button, Card, CardBody, Input, Label, Select, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, Input, Label, Notice, Select, Spinner } from '@/components/ui';
 
 type Method = 'card' | 'momo';
 
@@ -144,11 +144,11 @@ export function BookingPage() {
   if (params.get('flw') || params.get('ext')) {
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
           <ShieldCheck size={22} />
         </span>
-        <p className="mt-4 font-semibold text-ink-900">Payment received</p>
-        <p className="mt-1 text-sm text-ink-500">
+        <p className="mt-4 font-semibold text-[var(--color-content)]">Payment received</p>
+        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           We're confirming your payment and creating your trip — it'll appear in My trips shortly.
         </p>
         <Link to="/trips" className="mt-5 inline-block">
@@ -169,11 +169,11 @@ export function BookingPage() {
   if (!listing) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Listing not found</p>
+        <p className="font-medium text-[var(--color-content)]">Listing not found</p>
         <button
           type="button"
           onClick={backToBrowse}
-          className="mt-3 inline-block text-sm text-brand-600 hover:underline"
+          className="mt-3 inline-block text-body-sm text-brand-600 hover:underline"
         >
           Back to browse
         </button>
@@ -187,10 +187,10 @@ export function BookingPage() {
   if (!canRent) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">
+        <p className="font-medium text-[var(--color-content)]">
           {isCompany ? "Company accounts can't rent" : "Host accounts can't rent"}
         </p>
-        <p className="mt-1 text-sm text-ink-500">
+        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           {isCompany ? (
             'Companies host only — you can view any car, but booking is off for this account.'
           ) : (
@@ -203,7 +203,7 @@ export function BookingPage() {
             </>
           )}
         </p>
-        <Link to={`/cars/${id}`} className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+        <Link to={`/cars/${id}`} className="mt-3 inline-block text-body-sm text-brand-600 hover:underline">
           Back to the car
         </Link>
       </div>
@@ -219,10 +219,10 @@ export function BookingPage() {
         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
           <ShieldCheck size={22} />
         </span>
-        <p className="mt-4 font-semibold text-ink-900">
+        <p className="mt-4 font-semibold text-[var(--color-content)]">
           {underReview ? 'Verification in review' : 'Verify your identity to rent'}
         </p>
-        <p className="mt-1 text-sm text-ink-500">
+        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           {underReview
             ? "We're checking your details. You can book as soon as your identity is approved."
             : me.verification === 'rejected'
@@ -235,7 +235,7 @@ export function BookingPage() {
           </Button>
         </Link>
         <div>
-          <Link to={`/cars/${id}`} className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+          <Link to={`/cars/${id}`} className="mt-3 inline-block text-body-sm text-brand-600 hover:underline">
             Back to the car
           </Link>
         </div>
@@ -309,13 +309,13 @@ export function BookingPage() {
         type="button"
         onClick={() => navigate(`/cars/${id}`)}
         aria-label="Back"
-        className="mb-5 flex h-9 w-9 items-center justify-center rounded-full border border-ink-200 text-ink-700 transition hover:bg-ink-50"
+        className="mb-5 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-content-muted)] transition hover:bg-[var(--color-surface-sunken)]"
       >
         <ArrowLeft size={18} />
       </button>
 
-      <h1 className="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">Confirm and pay</h1>
-      <p className="mt-1.5 max-w-xl text-sm text-ink-500">
+      <h1 className="text-h1 text-[var(--color-content)]">Confirm and pay</h1>
+      <p className="mt-1.5 max-w-xl text-body-sm text-[var(--color-content-muted)]">
         Check the car and the dates, then pay. Nothing reaches the host until the trip is over.
       </p>
 
@@ -325,10 +325,10 @@ export function BookingPage() {
           <Card>
             <CardBody className="space-y-4 p-5 sm:p-6">
               <div>
-                <h2 className="text-lg font-semibold text-ink-900 sm:text-xl">
+                <h2 className="text-h3 text-[var(--color-content)]">
                   When are you picking it up?
                 </h2>
-                <p className="mt-1 text-sm text-ink-500">
+                <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
                   {isHourly
                     ? 'A late return past your estimate is settled against the actual time used.'
                     : `Coming back more than 2 hours after ${formatDate(endDate)} at this time bills an overage — see the car's listing.`}
@@ -354,7 +354,7 @@ export function BookingPage() {
                     onChange={(e) => setEstimatedHours(Math.max(1, Number(e.target.value) || 1))}
                     disabled={checkoutOpen}
                   />
-                  <p className="mt-1 text-xs text-ink-400">
+                  <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
                     {checkoutOpen
                       ? 'Locked for this checkout — the amount you were quoted was priced against it.'
                       : `You pay the estimated ${money(estimatedTotal)} now. Extra time beyond it is settled automatically after your trip, based on actual pickup-to-return time.`}
@@ -366,23 +366,23 @@ export function BookingPage() {
 
           <Card>
             <CardBody className="p-5 sm:p-6">
-              <h2 className="text-lg font-semibold text-ink-900 sm:text-xl">
+              <h2 className="text-h3 text-[var(--color-content)]">
                 How do you want to pay?
               </h2>
-              <p className="mb-4 mt-1 text-sm text-ink-500">
+              <p className="mb-4 mt-1 text-body-sm text-[var(--color-content-muted)]">
                 {pickerless
                   ? 'Choose your method on the next step — you stay right here on AutoHire.'
                   : 'Pick a method below and enter your details.'}
               </p>
 
               {!datesValid && (
-                <p className="mb-4 rounded-xl bg-red-50 p-3.5 text-sm text-red-700">
+                <Notice tone="danger" className="mb-4">
                   These dates aren't available.{' '}
                   <Link to={`/cars/${id}`} className="font-medium underline">
                     Choose different dates
                   </Link>
                   .
-                </p>
+                </Notice>
               )}
 
               {PAYMENTS_PAYHOLD ? (
@@ -463,8 +463,8 @@ export function BookingPage() {
               {/* The cards we take, drawn where the renter is deciding. On the
                   picker rails the method rows already carry these marks. */}
               {pickerless && (
-                <div className="mt-5 border-t border-ink-100 pt-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                <div className="mt-5 border-t border-[var(--color-line)] pt-4">
+                  <p className="text-caption font-semibold uppercase tracking-wider text-[var(--color-content-subtle)]">
                     Cards accepted
                   </p>
                   <AcceptedCards className="mt-2.5" />
@@ -477,12 +477,12 @@ export function BookingPage() {
                   now say the same thing truthfully. */}
               {!africanLive && !PAYMENTS_EXTERNAL && !PAYMENTS_PAYHOLD && (
                 isAfrican ? (
-                  <p className="mt-4 text-center text-xs text-ink-400">
+                  <p className="mt-4 text-center text-caption text-[var(--color-content-subtle)]">
                     Payments secured — card, MTN MoMo &amp; Airtel Money.
                   </p>
                 ) : (
-                  <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-ink-400">
-                    Card payments secured by <StripeWordmark className="text-xs" />
+                  <p className="mt-4 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
+                    Card payments secured by <StripeWordmark className="text-caption" />
                   </p>
                 )
               )}
@@ -494,7 +494,7 @@ export function BookingPage() {
               centre they would have to go looking for. */}
           <Card>
             <CardBody className="p-5 sm:p-6">
-              <h2 className="flex items-center gap-2 text-base font-semibold text-ink-900">
+              <h2 className="flex items-center gap-2 text-body font-semibold text-[var(--color-content)]">
                 <ShieldCheck size={18} className="text-brand-600" />
                 Your payment is protected
               </h2>
@@ -536,7 +536,7 @@ export function BookingPage() {
                 className="aspect-[16/9] w-full object-cover"
               />
               {superhost && (
-                <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-ink-800 shadow-sm backdrop-blur">
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-[var(--color-surface-raised)]/95 px-2.5 py-1 text-caption font-semibold text-[var(--color-content)] shadow-[var(--shadow-float)] backdrop-blur">
                   <Award size={13} className="text-brand-600" /> Top-rated host
                 </span>
               )}
@@ -544,17 +544,17 @@ export function BookingPage() {
 
             <CardBody className="space-y-4 p-5 sm:p-5">
               <div>
-                <h2 className="text-lg font-semibold leading-snug text-ink-900">{listing.title}</h2>
-                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-500">
+                <h2 className="text-h4 leading-snug text-[var(--color-content)]">{listing.title}</h2>
+                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm text-[var(--color-content-muted)]">
                   <span className="inline-flex items-center gap-1">
-                    <MapPin size={13} className="text-ink-400" />
+                    <MapPin size={13} className="text-[var(--color-content-subtle)]" />
                     {listing.location}
                   </span>
                   {listing.ratingCount ? (
-                    <span className="inline-flex items-center gap-1 font-medium text-ink-800">
-                      <Star size={13} className="fill-ink-900 text-ink-900" />
+                    <span className="inline-flex items-center gap-1 font-medium text-[var(--color-content)]">
+                      <Star size={13} className="fill-[var(--color-content)] text-[var(--color-content)]" />
                       {listing.ratingAvg?.toFixed(2)}
-                      <span className="font-normal text-ink-500">({listing.ratingCount} trips)</span>
+                      <span className="font-normal text-[var(--color-content-muted)]">({listing.ratingCount} trips)</span>
                     </span>
                   ) : (
                     <span>New listing</span>
@@ -569,23 +569,23 @@ export function BookingPage() {
               </div>
 
               {host && (
-                <div className="flex items-center gap-2.5 border-t border-ink-100 pt-3.5">
+                <div className="flex items-center gap-2.5 border-t border-[var(--color-line)] pt-3.5">
                   <Avatar name={host.businessName || host.fullName} src={host.avatarUrl} size="sm" />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink-900">
+                    <p className="truncate text-body-sm font-medium text-[var(--color-content)]">
                       Hosted by {host.businessName || host.fullName}
                     </p>
                   </div>
                 </div>
               )}
 
-              <div className="flex items-start justify-between border-t border-ink-100 pt-3.5">
+              <div className="flex items-start justify-between border-t border-[var(--color-line)] pt-3.5">
                 <div>
-                  <p className="text-sm font-semibold text-ink-900">Your trip</p>
-                  <p className="mt-0.5 text-sm text-ink-700">
+                  <p className="text-body-sm font-semibold text-[var(--color-content)]">Your trip</p>
+                  <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
                     {formatDate(startDate)} – {formatDate(endDate)} at {pickupTime}
                   </p>
-                  <p className="text-[13px] text-ink-500">
+                  <p className="text-body-sm text-[var(--color-content-muted)]">
                     {isHourly
                       ? `~${estimatedHours} hour${estimatedHours === 1 ? '' : 's'} · billed on actual time used`
                       : `${days} day${days === 1 ? '' : 's'} · free cancellation until ${formatDate(startDate)}`}
@@ -593,54 +593,53 @@ export function BookingPage() {
                 </div>
                 <Link
                   to={`/cars/${id}`}
-                  className="shrink-0 text-sm font-medium text-brand-600 hover:underline"
+                  className="shrink-0 text-body-sm font-medium text-brand-600 hover:underline"
                 >
                   Change
                 </Link>
               </div>
 
-              <div className="border-t border-ink-100 pt-3.5">
-                <p className="text-sm font-semibold text-ink-900">Price details</p>
-                <div className="mt-2 space-y-1.5 text-sm">
+              <div className="border-t border-[var(--color-line)] pt-3.5">
+                <p className="text-body-sm font-semibold text-[var(--color-content)]">Price details</p>
+                <div className="mt-2 space-y-1.5 text-body-sm">
                   {isHourly ? (
-                    <div className="flex justify-between text-ink-600">
+                    <div className="flex justify-between text-[var(--color-content-muted)]">
                       <span>
                         {money(listing.pricePerHourRwf ?? 0)} × {estimatedHours} hr
                         {estimatedHours === 1 ? '' : 's'} (estimated)
                       </span>
-                      <span>{money(subtotal)}</span>
+                      <span className="tabular">{money(subtotal)}</span>
                     </div>
                   ) : (
-                    <div className="flex justify-between text-ink-600">
+                    <div className="flex justify-between text-[var(--color-content-muted)]">
                       <span>
                         {money(listing.pricePerDayRwf ?? 0)} × {days} day{days === 1 ? '' : 's'}
                       </span>
-                      <span>{money(subtotal)}</span>
+                      <span className="tabular">{money(subtotal)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-ink-600">
+                  <div className="flex justify-between text-[var(--color-content-muted)]">
                     <span>Service fee</span>
-                    <span>{money(serviceFee)}</span>
+                    <span className="tabular">{money(serviceFee)}</span>
                   </div>
-                  <div className="flex items-baseline justify-between border-t border-ink-100 pt-2.5 font-bold text-ink-900">
-                    <span className="text-base">{isHourly ? 'Due now' : 'Total'}</span>
-                    <span className="text-xl">{money(total)}</span>
+                  <div className="flex items-baseline justify-between border-t border-[var(--color-line)] pt-2.5 font-bold text-[var(--color-content)]">
+                    <span className="text-body">{isHourly ? 'Due now' : 'Total'}</span>
+                    <span className="text-h4 tabular">{money(total)}</span>
                   </div>
                   {isHourly && (
-                    <p className="text-[13px] text-ink-500">
+                    <p className="text-body-sm text-[var(--color-content-muted)]">
                       The rest is settled after your trip, based on actual pickup-to-return time.
                     </p>
                   )}
                 </div>
-                <div className="mt-3.5 flex items-start gap-2 rounded-xl bg-brand-50/70 p-3 text-[13px] leading-relaxed text-ink-600">
-                  <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-600" />
+                <Notice tone="brand" className="mt-3.5 leading-relaxed">
+                  <ShieldCheck size={16} className="mt-0.5 shrink-0" />
                   <span>
-                    <span className="font-semibold text-ink-800">Payment held securely.</span> Your
-                    payment is held from the moment you book and only released to the host once you
-                    both confirm the car came back — so your money is protected for the whole trip,
-                    not just until pickup.
+                    <span className="font-semibold">Payment held securely.</span> Your payment is held from
+                    the moment you book and only released to the host once you both confirm the car came
+                    back — so your money is protected for the whole trip, not just until pickup.
                   </span>
-                </div>
+                </Notice>
               </div>
             </CardBody>
           </Card>
@@ -666,8 +665,8 @@ function SafetyPoint({
         {icon}
       </span>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-ink-900">{title}</p>
-        <p className="mt-0.5 text-[13px] leading-relaxed text-ink-500">{body}</p>
+        <p className="text-body-sm font-medium text-[var(--color-content)]">{title}</p>
+        <p className="mt-0.5 text-body-sm leading-relaxed text-[var(--color-content-muted)]">{body}</p>
       </div>
     </div>
   );
@@ -676,8 +675,8 @@ function SafetyPoint({
 /** A small fact about the car — seats, gearbox, fuel, year. */
 function SpecChip({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-50 px-2 py-0.5 text-[11px] font-medium capitalize text-ink-700">
-      <span className="text-ink-400">{icon}</span>
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-surface-sunken)] px-2 py-0.5 text-caption font-medium capitalize text-[var(--color-content-muted)]">
+      <span className="text-[var(--color-content-subtle)]">{icon}</span>
       {label}
     </span>
   );
@@ -702,16 +701,16 @@ function MethodRow({
   children?: React.ReactNode;
 }) {
   return (
-    <div className={cn('border-b border-ink-100 last:border-0', disabled && 'opacity-60')}>
+    <div className={cn('border-b border-[var(--color-line)] last:border-0', disabled && 'opacity-60')}>
       <button
         type="button"
         onClick={disabled ? undefined : onSelect}
         disabled={disabled}
         className="flex w-full items-center gap-3 py-4 text-left disabled:cursor-not-allowed"
       >
-        <span className="text-ink-600">{icon}</span>
+        <span className="text-[var(--color-content-muted)]">{icon}</span>
         <span className="flex-1">
-          <span className="flex items-center gap-2 font-medium text-ink-900">
+          <span className="flex items-center gap-2 font-medium text-[var(--color-content)]">
             {label}
             {disabled && <Badge tone="neutral">Coming soon</Badge>}
           </span>
@@ -720,10 +719,10 @@ function MethodRow({
         <span
           className={cn(
             'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
-            selected ? 'border-ink-900' : 'border-ink-300',
+            selected ? 'border-[var(--color-surface-inverse)]' : 'border-[var(--color-line-strong)]',
           )}
         >
-          {selected && <span className="h-2.5 w-2.5 rounded-full bg-ink-900" />}
+          {selected && <span className="h-2.5 w-2.5 rounded-full bg-[var(--color-surface-inverse)]" />}
         </span>
       </button>
       {selected && !disabled && children && <div className="pb-5">{children}</div>}
@@ -820,15 +819,15 @@ function FlutterwavePay({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 rounded-lg border border-ink-200 p-3">
+      <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-line)] p-3">
         <Smartphone size={20} className="text-brand-600" />
         <CreditCard size={20} className="text-brand-600" />
-        <p className="text-sm text-ink-600">Pay with your card, MTN MoMo or Airtel Money.</p>
+        <p className="text-body-sm text-[var(--color-content-muted)]">Pay with your card, MTN MoMo or Airtel Money.</p>
       </div>
-      <p className="text-xs text-ink-400">
+      <p className="text-caption text-[var(--color-content-subtle)]">
         You'll be taken to our secure payment partner to complete payment, then brought back here.
       </p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <Notice tone="danger">{error}</Notice>}
       <Button className="w-full" size="lg" onClick={pay} disabled={busy || disabled}>
         {busy ? 'Redirecting…' : `Pay ${label}`}
       </Button>
@@ -867,10 +866,10 @@ function DemoPayForm({ totalRwf, currency, onPaid, method, disabled }: PayProps 
           <BillingFields country={country} setCountry={setCountry} zip={zip} setZip={setZip} />
         </>
       )}
-      <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+      <Notice tone="warn">
         Demo mode — no real {method === 'card' ? 'card' : 'mobile money'} charge. Confirming creates the booking instantly.
-      </p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      </Notice>
+      {error && <Notice tone="danger">{error}</Notice>}
       <Button className="w-full" size="lg" onClick={pay} disabled={busy || disabled}>
         {busy ? 'Processing…' : `Confirm and pay ${formatMoney(totalRwf, currency)}`}
       </Button>
@@ -966,16 +965,16 @@ function ExternalPay({
     <div className="space-y-3">
       <div>
         <Label>Card details</Label>
-        <div className="rounded-lg border border-ink-200 px-3 py-3">
+        <div className="rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-3">
           <CardElement options={{ style: { base: { fontSize: '15px', color: '#04141F' } } }} />
         </div>
       </div>
       <BillingFields country={country} setCountry={setCountry} zip={zip} setZip={setZip} />
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <Notice tone="danger">{error}</Notice>}
       <Button className="w-full" size="lg" onClick={pay} disabled={busy || disabled}>
         {busy ? 'Processing…' : `Confirm and pay ${formatMoney(totalRwf, currency)}`}
       </Button>
-      <p className="text-center text-xs text-ink-400">
+      <p className="text-center text-caption text-[var(--color-content-subtle)]">
         You won't be charged yet — the amount is held until pickup.
       </p>
     </div>
@@ -1034,13 +1033,13 @@ function CardForm({ listingId, startDate, endDate, totalRwf, currency, onPaid, d
     <div className="space-y-3">
       <div>
         <Label>Card details</Label>
-        <div className="rounded-lg border border-ink-200 px-3 py-3">
+        <div className="rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-3">
           <CardElement options={{ style: { base: { fontSize: '15px', color: '#04141F' } } }} />
         </div>
-        <p className="mt-1 text-xs text-ink-400">Test card: 4242 4242 4242 4242 · any future expiry · any CVC.</p>
+        <p className="mt-1 text-caption text-[var(--color-content-subtle)]">Test card: 4242 4242 4242 4242 · any future expiry · any CVC.</p>
       </div>
       <BillingFields country={country} setCountry={setCountry} zip={zip} setZip={setZip} />
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <Notice tone="danger">{error}</Notice>}
       <Button className="w-full" size="lg" onClick={pay} disabled={busy || !stripe || disabled}>
         {busy ? 'Processing…' : `Confirm and pay ${formatMoney(totalRwf, currency)}`}
       </Button>
@@ -1065,8 +1064,8 @@ function MomoForm({ totalRwf, currency }: { totalRwf: number; currency: Currency
           placeholder="+250 788 123 456"
         />
       </div>
-      <p className="text-xs text-ink-400">You'll get a prompt on your phone to approve the payment.</p>
-      {note && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{note}</p>}
+      <p className="text-caption text-[var(--color-content-subtle)]">You'll get a prompt on your phone to approve the payment.</p>
+      {note && <Notice tone="warn">{note}</Notice>}
       <Button
         className="w-full"
         size="lg"

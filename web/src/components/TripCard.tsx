@@ -9,13 +9,16 @@ import { Badge, Card, CardBody } from '@/components/ui';
 
 type Tone = 'brand' | 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
 
+/** Hint-line colour per tone. `brand`/`success` share the accent — this app
+    has no separate "positive" hue (see index.css); the rest are genuine
+    states, mapped to the semantic tokens. */
 const HINT_COLOR: Record<Tone, string> = {
-  brand: 'text-brand-700',
-  danger: 'text-red-600',
-  warning: 'text-orange-700',
-  neutral: 'text-ink-500',
-  accent: 'text-amber-700',
-  success: 'text-emerald-700',
+  brand: 'text-[var(--color-accent-on)]',
+  danger: 'text-[var(--color-danger-500)]',
+  warning: 'text-[var(--color-warn-500)]',
+  neutral: 'text-[var(--color-content-muted)]',
+  accent: 'text-[var(--color-warn-500)]',
+  success: 'text-[var(--color-accent-on)]',
 };
 
 /**
@@ -35,7 +38,10 @@ export function TripCard({
 
   return (
     <Link to={`/trips/${booking.id}`} className="group block focus:outline-none">
-      <Card className="overflow-hidden transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40">
+      <Card
+        interactive
+        className="overflow-hidden group-focus-visible:ring-2 group-focus-visible:ring-[var(--color-accent-on)]/40"
+      >
         <div className="flex">
           <Img
             src={listing?.photos[0]}
@@ -44,20 +50,22 @@ export function TripCard({
           />
           <CardBody className="flex flex-1 flex-col">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="line-clamp-1 font-semibold text-ink-900">
+              <h3 className="line-clamp-1 font-semibold text-[var(--color-content)]">
                 {listing?.title ?? 'Car'}
               </h3>
               <Badge tone={state.tone}>{state.label}</Badge>
             </div>
-            <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-500">
+            <p className="tabular mt-1 flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
               <CalendarDays size={15} />
               {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
-              <span className="text-ink-400">· {booking.days} day{booking.days === 1 ? '' : 's'}</span>
+              <span className="text-[var(--color-content-subtle)]">
+                · {booking.days} day{booking.days === 1 ? '' : 's'}
+              </span>
             </p>
             <div className="mt-auto flex items-end justify-between gap-2 pt-3">
-              <p className="font-semibold text-ink-900">{formatRwf(booking.totalRwf)}</p>
+              <p className="tabular font-semibold text-[var(--color-content)]">{formatRwf(booking.totalRwf)}</p>
               {hint && (
-                <span className={cn('inline-flex items-center gap-1 text-sm font-medium', HINT_COLOR[hint.tone])}>
+                <span className={cn('inline-flex items-center gap-1 text-body-sm font-medium', HINT_COLOR[hint.tone])}>
                   {hint.label} <ArrowRight size={14} />
                 </span>
               )}

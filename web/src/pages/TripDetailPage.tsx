@@ -26,7 +26,20 @@ import { CameraCapture } from '@/components/CameraCapture';
 import { Img } from '@/components/Img';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
-import { Avatar, Badge, Button, Card, CardBody, CardHeader, Input, Rating, Spinner, toast } from '@/components/ui';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Chip,
+  Input,
+  Notice,
+  Rating,
+  Spinner,
+  toast,
+} from '@/components/ui';
 
 export function TripDetailPage() {
   const { id = '' } = useParams();
@@ -93,8 +106,11 @@ export function TripDetailPage() {
   if (!booking) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Trip not found</p>
-        <Link to="/trips" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+        <p className="font-medium text-[var(--color-content)]">Trip not found</p>
+        <Link
+          to="/trips"
+          className="mt-3 inline-block text-body-sm text-[var(--color-accent-on)] hover:underline"
+        >
           Back to my trips
         </Link>
       </div>
@@ -143,13 +159,13 @@ export function TripDetailPage() {
     <section className="mx-auto max-w-6xl px-4 py-8">
       <Link
         to={amHost ? '/dashboard' : '/trips'}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> {amHost ? 'Dashboard' : 'My trips'}
       </Link>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-ink-900">{listing?.title ?? 'Trip'}</h1>
+        <h1 className="text-h2 text-[var(--color-content)]">{listing?.title ?? 'Trip'}</h1>
         <div className="flex items-center gap-2">
           {isParticipant && (
             <Button variant="outline" size="sm" disabled={messaging} onClick={messageOther}>
@@ -161,7 +177,7 @@ export function TripDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              className="border-red-300 text-red-700 hover:bg-red-50"
+              className="border-[var(--color-danger-500)]/40 text-[var(--color-danger-500)] hover:bg-[var(--color-danger-tint)]"
               disabled={cancelMutation.isPending}
               onClick={onCancel}
             >
@@ -171,7 +187,7 @@ export function TripDetailPage() {
           <Badge tone={state.tone}>{state.label}</Badge>
         </div>
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-500">
+      <div className="tabular mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm text-[var(--color-content-muted)]">
         {listing && (
           <span className="flex items-center gap-1.5">
             <MapPin size={15} /> {listing.location}
@@ -179,7 +195,9 @@ export function TripDetailPage() {
         )}
         <span className="flex items-center gap-1.5">
           <CalendarDays size={15} /> {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
-          <span className="text-ink-400">· {booking.days} day{booking.days === 1 ? '' : 's'}</span>
+          <span className="text-[var(--color-content-subtle)]">
+            · {booking.days} day{booking.days === 1 ? '' : 's'}
+          </span>
         </span>
       </div>
 
@@ -196,16 +214,16 @@ export function TripDetailPage() {
           {/* Timeline */}
           <Card>
             <CardHeader>
-              <h2 className="font-semibold text-ink-900">Trip progress</h2>
+              <h2 className="font-semibold text-[var(--color-content)]">Trip progress</h2>
             </CardHeader>
             <CardBody>
               {isCancelling ? (
-                <p className="text-sm text-ink-500">
+                <p className="text-body-sm text-[var(--color-content-muted)]">
                   Cancellation requested — the refund is on its way. This page updates once
                   PayHold confirms it landed.
                 </p>
               ) : isCancelled ? (
-                <p className="text-sm text-ink-500">
+                <p className="text-body-sm text-[var(--color-content-muted)]">
                   This trip was {TRIP_STATE_META[booking.state].label.toLowerCase()}.
                 </p>
               ) : (
@@ -217,18 +235,19 @@ export function TripDetailPage() {
                       <li key={step} className="flex items-center gap-3">
                         <span
                           className={cn(
-                            'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs',
-                            done && 'border-brand-600 bg-brand-600 text-white',
-                            current && 'border-brand-600 text-brand-700',
-                            !done && !current && 'border-ink-200 text-ink-400',
+                            'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-caption',
+                            done &&
+                              'border-[var(--color-accent-on)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]',
+                            current && 'border-[var(--color-accent-on)] text-[var(--color-accent-on)]',
+                            !done && !current && 'border-[var(--color-line-strong)] text-[var(--color-content-subtle)]',
                           )}
                         >
                           {done ? <Check size={14} /> : i + 1}
                         </span>
                         <span
                           className={cn(
-                            'text-sm',
-                            current ? 'font-medium text-ink-900' : 'text-ink-600',
+                            'text-body-sm',
+                            current ? 'font-medium text-[var(--color-content)]' : 'text-[var(--color-content-muted)]',
                           )}
                         >
                           {TRIP_STATE_META[step].label}
@@ -258,11 +277,11 @@ export function TripDetailPage() {
           {listing && ((listing.lat != null && listing.lng != null) || listing.locationUrl) && (
             <Card>
               <CardHeader>
-                <h2 className="font-semibold text-ink-900">Pickup location</h2>
+                <h2 className="font-semibold text-[var(--color-content)]">Pickup location</h2>
               </CardHeader>
               <CardBody className="space-y-3">
-                <p className="flex items-center gap-1.5 text-sm text-ink-600">
-                  <MapPin size={15} className="text-brand-600" /> {listing.location}
+                <p className="flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
+                  <MapPin size={15} className="text-[var(--color-accent-on)]" /> {listing.location}
                 </p>
                 {listing.lat != null && listing.lng != null && (
                   <LocationMap lat={listing.lat} lng={listing.lng} />
@@ -280,9 +299,9 @@ export function TripDetailPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <h2 className="font-semibold text-ink-900">Price details</h2>
+              <h2 className="font-semibold text-[var(--color-content)]">Price details</h2>
             </CardHeader>
-            <CardBody className="space-y-2 text-sm">
+            <CardBody className="tabular space-y-2 text-body-sm">
               {booking.rentalType === 'hourly' ? (
                 <Row
                   label={`${formatRwf(booking.pricePerHourRwf ?? 0)} × ${booking.estimatedHours ?? '?'} hrs (estimate)`}
@@ -292,11 +311,11 @@ export function TripDetailPage() {
                 <Row label={`${formatRwf(listing?.pricePerDayRwf ?? 0)} × ${booking.days} days`} value={formatRwf(booking.subtotalRwf)} />
               )}
               <Row label="Service fee" value={formatRwf(booking.serviceFeeRwf)} />
-              <div className="border-t border-ink-100 pt-2">
+              <div className="border-t border-[var(--color-line)] pt-2">
                 <Row label={booking.rentalType === 'hourly' ? 'Deposit paid' : 'Total'} value={formatRwf(booking.totalRwf)} strong />
               </div>
               {booking.rentalType === 'hourly' && booking.actualHours != null && (
-                <div className="border-t border-ink-100 pt-2">
+                <div className="border-t border-[var(--color-line)] pt-2">
                   <Row
                     label={`Actual usage — ${booking.actualHours} hr${booking.actualHours === 1 ? '' : 's'}`}
                     value={formatRwf(booking.finalAmountRwf ?? 0)}
@@ -304,7 +323,7 @@ export function TripDetailPage() {
                 </div>
               )}
               {!!booking.amountExceededRwf && booking.amountExceededRwf > 0 && (
-                <div className="mt-1 space-y-1.5 rounded-lg bg-amber-50 p-2.5 text-[13px] leading-relaxed text-amber-800">
+                <Notice tone="warn" className="mt-1 flex-col items-stretch gap-1.5 text-[13px] leading-relaxed">
                   <p>
                     {booking.rentalType === 'hourly'
                       ? 'Actual time used came in over the deposit.'
@@ -318,10 +337,10 @@ export function TripDetailPage() {
                     strong={booking.amountOwedRwf === 0}
                   />
                   {amHost && booking.amountOwedRwf > 0 && <AmountOwedResolver booking={booking} />}
-                </div>
+                </Notice>
               )}
               {booking.overageCollectionFailed && (
-                <div className="mt-1 space-y-1.5 rounded-lg bg-amber-50 p-2.5 text-[13px] leading-relaxed text-amber-800">
+                <Notice tone="warn" className="mt-1 flex-col items-stretch gap-1.5 text-[13px] leading-relaxed">
                   <p>
                     PayHold couldn't charge the overage automatically —
                     {booking.overageCollectionFailedReason
@@ -332,7 +351,7 @@ export function TripDetailPage() {
                       : 'Your host will follow up with you directly to collect it.'}
                   </p>
                   {amHost && <OverageCollectionResolver booking={booking} />}
-                </div>
+                </Notice>
               )}
             </CardBody>
           </Card>
@@ -340,13 +359,13 @@ export function TripDetailPage() {
           {host && (
             <Card>
               <CardHeader>
-                <h2 className="font-semibold text-ink-900">Your host</h2>
+                <h2 className="font-semibold text-[var(--color-content)]">Your host</h2>
               </CardHeader>
               <CardBody className="flex items-center gap-3">
                 <Avatar name={host.businessName ?? host.fullName} src={host.avatarUrl} />
                 <div>
-                  <p className="font-medium text-ink-900">{host.businessName ?? host.fullName}</p>
-                  <p className="text-sm text-ink-500">
+                  <p className="font-medium text-[var(--color-content)]">{host.businessName ?? host.fullName}</p>
+                  <p className="text-body-sm text-[var(--color-content-muted)]">
                     {host.ownerType === 'business' ? 'Business host' : 'Individual host'}
                   </p>
                 </div>
@@ -382,8 +401,8 @@ function AmountOwedResolver({ booking }: { booking: Booking }) {
   const validAmount = Number.isFinite(parsed) && parsed >= 0 && parsed <= booking.amountOwedRwf;
 
   return (
-    <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
-      <p className="text-xs text-amber-800">
+    <div className="mt-2 space-y-2 border-t border-[var(--color-warn-500)]/25 pt-2">
+      <p className="text-caption">
         Collected it yourself, or waiving some of it? This only updates the record here — nothing
         is charged.
       </p>
@@ -394,7 +413,7 @@ function AmountOwedResolver({ booking }: { booking: Booking }) {
           max={booking.amountOwedRwf}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="h-8 max-w-28 text-sm"
+          className="h-8 max-w-28 text-body-sm"
         />
         <Button
           size="sm"
@@ -438,7 +457,7 @@ function OverageCollectionResolver({ booking }: { booking: Booking }) {
   });
 
   return (
-    <div className="mt-2 border-t border-amber-200 pt-2">
+    <div className="mt-2 border-t border-[var(--color-warn-500)]/25 pt-2">
       <Button size="sm" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
         Mark collected
       </Button>
@@ -448,7 +467,12 @@ function OverageCollectionResolver({ booking }: { booking: Booking }) {
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className={cn('flex justify-between', strong ? 'font-semibold text-ink-900' : 'text-ink-600')}>
+    <div
+      className={cn(
+        'flex justify-between',
+        strong ? 'font-semibold text-[var(--color-content)]' : 'text-[var(--color-content-muted)]',
+      )}
+    >
       <span>{label}</span>
       <span>{value}</span>
     </div>
@@ -458,14 +482,14 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 /** A small confirmed/pending row for one party's handoff sign-off. */
 function SignOffRow({ who, at }: { who: string; at?: string | null }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-ink-600">{who}</span>
+    <div className="flex items-center justify-between text-body-sm">
+      <span className="text-[var(--color-content-muted)]">{who}</span>
       {at ? (
-        <span className="flex items-center gap-1 font-medium text-emerald-700">
+        <span className="tabular flex items-center gap-1 font-medium text-[var(--color-accent-on)]">
           <Check size={14} /> Confirmed {formatDate(at)}
         </span>
       ) : (
-        <span className="flex items-center gap-1 text-ink-400">
+        <span className="flex items-center gap-1 text-[var(--color-content-subtle)]">
           <Clock size={14} /> Pending
         </span>
       )}
@@ -550,26 +574,36 @@ function TripTimer({ booking }: { booking: Booking }) {
 
   return (
     <Card>
-      <CardBody className="space-y-2 text-sm">
-        <p className="flex items-center gap-1.5 font-semibold text-ink-900">
-          <Clock size={15} className="text-brand-600" /> Trip timer
+      <CardBody className="tabular space-y-2 text-body-sm">
+        <p className="flex items-center gap-1.5 font-semibold text-[var(--color-content)]">
+          <Clock size={15} className="text-[var(--color-accent-on)]" /> Trip timer
         </p>
         <Row label="Picked up" value={`${formatDate(pickupIso)} at ${formatTime(pickupIso)}`} />
         {limitAt && (
           <Row label={limitLabel} value={`${formatDate(limitAt.toISOString())} at ${formatTime(limitAt.toISOString())}`} />
         )}
         {limitAt && stillRunning && (
-          <div className={cn('rounded-lg p-2.5', pastLimit ? 'bg-red-50' : 'bg-ink-50')}>
+          <div
+            className={cn(
+              'rounded-[var(--radius-control)] p-2.5',
+              pastLimit ? 'bg-[var(--color-danger-tint)]' : 'bg-[var(--color-surface-sunken)]',
+            )}
+          >
             <p
               className={cn(
-                'font-mono text-lg font-semibold tabular-nums',
-                pastLimit ? 'text-red-600' : 'text-ink-900',
+                'font-mono text-h4 font-semibold',
+                pastLimit ? 'text-[var(--color-danger-500)]' : 'text-[var(--color-content)]',
               )}
             >
               {pastLimit ? '+' : '-'}
               {formatDuration(Math.abs(now - limitAt.getTime()))}
             </p>
-            <p className={cn('text-xs', pastLimit ? 'text-red-600' : 'text-ink-500')}>
+            <p
+              className={cn(
+                'text-caption',
+                pastLimit ? 'text-[var(--color-danger-500)]' : 'text-[var(--color-content-muted)]',
+              )}
+            >
               {booking.rentalType === 'hourly'
                 ? pastLimit
                   ? 'Exceeded — that’s fine, the final bill is based on actual time used.'
@@ -678,7 +712,7 @@ function HandoffPanel({
   return (
     <Card>
       <CardHeader className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ink-900">{title}</h3>
+        <h3 className="text-body-sm font-semibold text-[var(--color-content)]">{title}</h3>
         {bothDone && (
           <Badge tone="success">
             <Check size={12} /> Both confirmed
@@ -698,14 +732,14 @@ function HandoffPanel({
                 key={p.url}
                 src={p.url}
                 alt={p.label}
-                className="h-16 w-full rounded-lg border border-ink-100 object-cover"
+                className="h-16 w-full rounded-[var(--radius-control)] border border-[var(--color-line)] object-cover"
               />
             ))}
           </div>
         )}
 
         {notYet && (
-          <p className="text-xs text-ink-500">
+          <p className="text-caption text-[var(--color-content-muted)]">
             {phase === 'pickup'
               ? 'Available once the host confirms the booking.'
               : 'Available once the trip is active.'}
@@ -713,14 +747,14 @@ function HandoffPanel({
         )}
 
         {myDone && !bothDone && (
-          <p className="text-xs text-ink-500">
+          <p className="text-caption text-[var(--color-content-muted)]">
             You've confirmed — waiting for the other party.
           </p>
         )}
 
         {canConfirm && (
-          <div className="space-y-2.5 rounded-lg bg-ink-50 p-3">
-            <p className="text-xs font-medium text-ink-700">
+          <div className="space-y-2.5 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] p-3">
+            <p className="text-caption font-medium text-[var(--color-content)]">
               Confirm your side — proof photos are optional.
             </p>
 
@@ -728,12 +762,16 @@ function HandoffPanel({
               <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
                 {previews.map((url, i) => (
                   <div key={url} className="relative">
-                    <img src={url} alt="" className="h-14 w-full rounded-md border border-ink-200 object-cover" />
+                    <img
+                      src={url}
+                      alt=""
+                      className="h-14 w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] object-cover"
+                    />
                     <button
                       type="button"
                       onClick={() => removeFile(i)}
                       aria-label="Remove photo"
-                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-ink-900 text-white"
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]"
                     >
                       <X size={10} />
                     </button>
@@ -747,11 +785,11 @@ function HandoffPanel({
                 type="button"
                 onClick={() => setCameraOpen(true)}
                 disabled={busy}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-2.5 py-1.5 text-caption font-medium text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-50"
               >
                 <Camera size={14} /> Take photo
               </button>
-              <label className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50">
+              <label className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-2.5 py-1.5 text-caption font-medium text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]">
                 <Upload size={14} /> From gallery
                 <input
                   type="file"
@@ -769,7 +807,7 @@ function HandoffPanel({
 
             {isHost && phase === 'return' && (
               <div className="space-y-1">
-                <label className="text-xs font-medium text-ink-700" htmlFor="overage-override">
+                <label className="text-caption font-medium text-[var(--color-content)]" htmlFor="overage-override">
                   Reduce or waive the overage charge (optional)
                 </label>
                 <Input
@@ -782,16 +820,16 @@ function HandoffPanel({
                   value={overageOverride}
                   onChange={(e) => setOverageOverride(e.target.value)}
                   disabled={busy}
-                  className="h-8 text-sm"
+                  className="h-8 text-body-sm"
                 />
-                <p className="text-[11px] text-ink-500">
+                <p className="text-caption text-[var(--color-content-muted)]">
                   In RWF. PayHold caps this at whatever the overage actually comes to — this can
                   only lower it, never raise it.
                 </p>
               </div>
             )}
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
             <Button
               size="sm"
               className="w-full"
@@ -865,20 +903,22 @@ function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
   return (
     <Card>
       <CardHeader>
-        <h2 className="font-semibold text-ink-900">Reviews</h2>
+        <h2 className="font-semibold text-[var(--color-content)]">Reviews</h2>
       </CardHeader>
       <CardBody className="space-y-4">
         {/* Existing reviews */}
         {reviews && reviews.length > 0 && (
           <ul className="space-y-4">
             {reviews.map((r) => (
-              <li key={r.id} className="border-b border-ink-100 pb-4 last:border-0 last:pb-0">
+              <li key={r.id} className="border-b border-[var(--color-line)] pb-4 last:border-0 last:pb-0">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-ink-900">{authorName(r)}</span>
+                  <span className="text-body-sm font-medium text-[var(--color-content)]">{authorName(r)}</span>
                   <Rating value={r.rating} />
                 </div>
-                <p className="mt-1 text-sm text-ink-700">{r.body}</p>
-                <p className="mt-1 text-xs text-ink-400">{formatDate(r.createdAt)}</p>
+                <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">{r.body}</p>
+                <p className="tabular mt-1 text-caption text-[var(--color-content-subtle)]">
+                  {formatDate(r.createdAt)}
+                </p>
               </li>
             ))}
           </ul>
@@ -887,15 +927,15 @@ function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
         {/* Compose / status — only the renter or host of this trip can review. */}
         {!canReview ? (
           reviews && reviews.length > 0 ? null : (
-            <p className="text-sm text-ink-500">No reviews yet.</p>
+            <p className="text-body-sm text-[var(--color-content-muted)]">No reviews yet.</p>
           )
         ) : !completed ? (
-          <p className="text-sm text-ink-500">
+          <p className="text-body-sm text-[var(--color-content-muted)]">
             You can leave a review once the trip is completed.
           </p>
         ) : mine ? (
           reviews && reviews.length === 1 ? (
-            <p className="text-sm text-ink-500">Thanks for your review.</p>
+            <p className="text-body-sm text-[var(--color-content-muted)]">Thanks for your review.</p>
           ) : null
         ) : (
           <form
@@ -903,16 +943,16 @@ function TripReviews({ booking, host }: { booking: Booking; host?: Host }) {
               e.preventDefault();
               if (rating > 0 && body.trim()) mutation.mutate();
             }}
-            className="space-y-3 rounded-lg bg-ink-50 p-3"
+            className="space-y-3 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] p-3"
           >
-            <p className="text-sm font-medium text-ink-700">Review {subjectName}</p>
+            <p className="text-body-sm font-medium text-[var(--color-content)]">Review {subjectName}</p>
             <StarRatingInput value={rating} onChange={setRating} />
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={3}
               placeholder="How was the experience?"
-              className="w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+              className="w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3 py-2 text-body-sm text-[var(--color-content)] placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] focus:outline-none"
             />
             <Button type="submit" size="sm" disabled={rating === 0 || !body.trim() || mutation.isPending}>
               {mutation.isPending ? 'Submitting…' : 'Submit review'}
@@ -984,13 +1024,13 @@ function TripPostComposer({ booking }: { booking: Booking }) {
   return (
     <Card>
       <CardHeader>
-        <h2 className="font-semibold text-ink-900">Share this trip</h2>
+        <h2 className="font-semibold text-[var(--color-content)]">Share this trip</h2>
       </CardHeader>
       <CardBody>
         {isLoading ? (
           <Spinner size={18} />
         ) : mine ? (
-          <p className="text-sm text-ink-500">
+          <p className="text-body-sm text-[var(--color-content-muted)]">
             Posted to your {VISIBILITY_META[mine.visibility].label.toLowerCase()} feed.
           </p>
         ) : (
@@ -1006,18 +1046,22 @@ function TripPostComposer({ booking }: { booking: Booking }) {
               onChange={(e) => setBody(e.target.value)}
               rows={3}
               placeholder="Where did you go, and what did you do?"
-              className="w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+              className="w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3 py-2 text-body-sm text-[var(--color-content)] placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] focus:outline-none"
             />
 
             {previews.length > 0 && (
               <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
                 {previews.map((url, i) => (
                   <div key={url} className="relative">
-                    <img src={url} alt="" className="h-14 w-full rounded-lg border border-ink-100 object-cover" />
+                    <img
+                      src={url}
+                      alt=""
+                      className="h-14 w-full rounded-[var(--radius-control)] border border-[var(--color-line)] object-cover"
+                    />
                     <button
                       type="button"
                       onClick={() => setFiles((f) => f.filter((_, j) => j !== i))}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink-900 text-white"
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]"
                       aria-label="Remove photo"
                     >
                       <X size={11} />
@@ -1037,7 +1081,7 @@ function TripPostComposer({ booking }: { booking: Booking }) {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-500 hover:text-ink-800"
+              className="inline-flex items-center gap-1.5 text-caption font-medium text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
             >
               <Camera size={13} /> Add photos
             </button>
@@ -1045,22 +1089,15 @@ function TripPostComposer({ booking }: { booking: Booking }) {
             <div className="flex flex-wrap gap-2">
               {(Object.keys(VISIBILITY_META) as PostVisibility[]).map((v) => {
                 const meta = VISIBILITY_META[v];
-                const active = visibility === v;
                 return (
-                  <button
+                  <Chip
                     key={v}
-                    type="button"
+                    selected={visibility === v}
                     onClick={() => setVisibility(v)}
                     title={meta.hint}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
-                      active
-                        ? 'border-brand-300 bg-brand-50 text-brand-700'
-                        : 'border-ink-200 text-ink-600 hover:bg-ink-50',
-                    )}
                   >
                     <meta.icon size={13} /> {meta.label}
-                  </button>
+                  </Chip>
                 );
               })}
             </div>

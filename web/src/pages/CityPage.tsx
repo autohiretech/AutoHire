@@ -26,18 +26,18 @@ export function CityPage() {
       <button
         type="button"
         onClick={backToBrowse}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back to browse
       </button>
 
       <div className="flex items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
+        <span className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
           <MapPin size={22} />
         </span>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Cars in {cityName}</h1>
-          <p className="mt-0.5 text-sm text-ink-500">
+          <h1 className="text-h2">Cars in {cityName}</h1>
+          <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
             {isLoading
               ? 'Loading…'
               : `${listings.length} ${listings.length === 1 ? 'car' : 'cars'} · availability shown live`}
@@ -52,10 +52,13 @@ export function CityPage() {
           </div>
         ) : listings.length === 0 ? (
           <Card>
-            <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-ink-500">
-              <CarFront size={28} className="text-ink-300" />
-              <p className="text-sm">No cars listed in {cityName} yet.</p>
-              <Link to="/cities" className="text-sm font-medium text-brand-600 hover:underline">
+            <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-[var(--color-content-muted)]">
+              <CarFront size={28} className="text-[var(--color-content-subtle)]" />
+              <p className="text-body-sm">No cars listed in {cityName} yet.</p>
+              <Link
+                to="/cities"
+                className="text-body-sm font-semibold text-[var(--color-accent-on)] hover:underline"
+              >
                 Browse other cities
               </Link>
             </CardBody>

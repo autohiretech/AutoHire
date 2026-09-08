@@ -24,7 +24,7 @@ export function HostsPage() {
   }, [hosts, query]);
 
   return (
-    <div className="bg-gradient-to-b from-brand-50 to-white">
+    <div className="bg-[var(--color-surface)]">
       <div className="mx-auto max-w-[1500px] px-4 pt-8">
         <BrowseTabs />
       </div>
@@ -32,25 +32,25 @@ export function HostsPage() {
       <section className="mx-auto max-w-6xl px-4 py-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
+            <span className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
               <Users size={22} />
             </span>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-ink-900">Verified hosts</h1>
-              <p className="mt-0.5 text-sm text-ink-500">
+              <h1 className="text-h2">Verified hosts</h1>
+              <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
                 {isLoading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'host' : 'hosts'}`}
               </p>
             </div>
           </div>
 
-          <div className="flex w-full items-center gap-2 rounded-full border border-ink-200 bg-white px-4 py-2 shadow-sm sm:w-72">
-            <Search size={15} className="shrink-0 text-ink-400" />
+          <div className="flex w-full items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-4 py-2 sm:w-72">
+            <Search size={15} className="shrink-0 text-[var(--color-content-subtle)]" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search hosts by name…"
               aria-label="Search hosts"
-              className="w-full bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-400"
+              className="w-full bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)]"
             />
           </div>
         </div>
@@ -62,9 +62,9 @@ export function HostsPage() {
             </div>
           ) : filtered.length === 0 ? (
             <Card>
-              <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-ink-500">
-                <Users size={28} className="text-ink-300" />
-                <p className="text-sm">{query ? `No hosts match "${query}".` : 'No hosts to show yet.'}</p>
+              <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-[var(--color-content-muted)]">
+                <Users size={28} className="text-[var(--color-content-subtle)]" />
+                <p className="text-body-sm">{query ? `No hosts match "${query}".` : 'No hosts to show yet.'}</p>
               </CardBody>
             </Card>
           ) : (

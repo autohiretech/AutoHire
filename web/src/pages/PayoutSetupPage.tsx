@@ -9,6 +9,7 @@ import {
   CreditCard,
   Landmark,
   Lock,
+  MapPin,
   QrCode,
   ShieldCheck,
   Smartphone,
@@ -29,7 +30,20 @@ import {
   payoutLabel,
   payoutProviderFor,
 } from '@/lib/payments';
-import { Badge, Button, Card, CardBody, Input, Label, Select, Spinner, toast } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  Input,
+  Label,
+  ListGroup,
+  ListRow,
+  Notice,
+  Select,
+  Spinner,
+  toast,
+} from '@/components/ui';
 
 const METHOD_ICON: Record<PayoutMethodType, typeof Smartphone> = {
   momo: Smartphone,
@@ -274,47 +288,38 @@ export function PayoutSetupPage() {
   const routedProvider = selected ? payoutProviderFor(selected, payoutCountry) : null;
 
   return (
-    <section className="mx-auto max-w-2xl px-4 py-8">
+    <section className="mx-auto max-w-2xl px-4 py-8 sm:py-10">
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="mb-5 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-5 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back
       </button>
 
       <div className="flex items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
           <Banknote size={22} />
         </span>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">How you get paid</h1>
-          <p className="mt-0.5 text-sm text-ink-500">
+          <h1 className="text-h2">How you get paid</h1>
+          <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
             Add where your rental earnings are sent. You keep the subtotal; AutoHire's fee is deducted.
           </p>
         </div>
       </div>
 
-      {/* Currently connected */}
-      {connected && me && (
-        <Card
-          className={cn(
-            'mt-6',
-            active ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200 bg-amber-50/50',
-          )}
-        >
-          <CardBody className="flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-6 flex flex-col gap-6">
+        {/* Currently connected — a genuine state, so it's a Notice: reassurance
+            (brand) once active, action-needed (warn) while still verifying. */}
+        {connected && me && (
+          <Notice tone={active ? 'brand' : 'warn'} className="flex-wrap items-center justify-between">
             <div className="flex items-center gap-3">
-              <span
-                className={cn(
-                  'flex h-10 w-10 items-center justify-center rounded-xl bg-white ring-1',
-                  active ? 'text-emerald-600 ring-emerald-100' : 'text-amber-600 ring-amber-100',
-                )}
-              >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-raised)] ring-1 ring-current/20">
                 {active ? <CheckCircle2 size={20} /> : <Clock size={20} />}
               </span>
               <div>
-                <p className="flex items-center gap-2 font-semibold text-ink-900">
+                <p className="flex items-center gap-2 font-semibold text-[var(--color-content)]">
                   {me.payoutLabel ?? 'Payout method'}
                   {active ? (
                     <Badge tone="success">Active</Badge>
@@ -322,7 +327,7 @@ export function PayoutSetupPage() {
                     <Badge tone="warning">Verifying</Badge>
                   )}
                 </p>
-                <p className="text-sm text-ink-500">
+                <p className="text-body-sm text-[var(--color-content-muted)]">
                   {active
                     ? 'Earnings are released here after each completed trip.'
                     : 'Being checked before the first payout. Your earnings keep building up meanwhile.'}
@@ -335,7 +340,7 @@ export function PayoutSetupPage() {
                 would change nothing and imply otherwise. Changing it is a
                 different matter and is the form below. */}
             {PAYMENTS_PAYHOLD ? (
-              <span className="text-xs text-ink-500">
+              <span className="text-caption text-[var(--color-content-muted)]">
                 Moving? Save a new method below.
               </span>
             ) : (
@@ -343,41 +348,33 @@ export function PayoutSetupPage() {
                 <Trash2 size={14} /> Remove
               </Button>
             )}
-          </CardBody>
-        </Card>
-      )}
+          </Notice>
+        )}
 
-      {/* Country decides both the methods on offer and the currency they pay
-          in — a US bank account settles in USD, a Rwandan Mobile Money number
-          in RWF. It used to be set once from the profile and then frozen,
-          with nothing on this screen to change it back — so a host who
-          wanted a different currency than whatever their profile happened to
-          carry had no way to ask for one. Always changeable now, not just on
-          the first visit. */}
-      {payoutCountry && !changingCountry && (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-100 bg-white px-4 py-2.5">
-          <p className="text-sm text-ink-600">
-            Paying out from{' '}
-            <span className="font-medium text-ink-900">
-              {countries.find((c) => c.code === payoutCountry)?.flag} {countryName}
-            </span>
-          </p>
-          <button
-            type="button"
-            onClick={() => setChangingCountry(true)}
-            className="text-xs font-medium text-brand-700 hover:underline"
-          >
-            Get paid in a different country or currency
-          </button>
-        </div>
-      )}
+        {/* Country decides both the methods on offer and the currency they pay
+            in — a US bank account settles in USD, a Rwandan Mobile Money number
+            in RWF. It used to be set once from the profile and then frozen,
+            with nothing on this screen to change it back — so a host who
+            wanted a different currency than whatever their profile happened to
+            carry had no way to ask for one. Always changeable now, not just on
+            the first visit. */}
+        {payoutCountry && !changingCountry && (
+          <ListGroup>
+            <ListRow
+              icon={<MapPin size={18} />}
+              value={`${countries.find((c) => c.code === payoutCountry)?.flag ?? ''} ${countryName}`}
+              onClick={() => setChangingCountry(true)}
+            >
+              Paying out from
+            </ListRow>
+          </ListGroup>
+        )}
 
-      {(!payoutCountry || changingCountry) && (
-        <Card className="mt-6 border-amber-200 bg-amber-50/60">
-          <CardBody className="space-y-3">
+        {(!payoutCountry || changingCountry) && (
+          <Notice tone="warn" className="flex-col items-stretch">
             <div>
-              <p className="font-medium text-ink-900">Where do you get paid?</p>
-              <p className="mt-0.5 text-sm text-ink-600">
+              <p className="font-medium">Where do you get paid?</p>
+              <p className="mt-0.5">
                 This decides which payout methods and which currency are available — pick the
                 country of the account you actually want the money to land in, not necessarily
                 where you live.
@@ -385,6 +382,7 @@ export function PayoutSetupPage() {
             </div>
             <Select
               aria-label="Payout country"
+              className="mt-3"
               value=""
               disabled={saveCountry.isPending}
               onChange={(e) => {
@@ -406,29 +404,27 @@ export function PayoutSetupPage() {
               <button
                 type="button"
                 onClick={() => setChangingCountry(false)}
-                className="text-xs text-ink-500 hover:underline"
+                className="mt-2 self-start text-caption underline underline-offset-2"
               >
                 Cancel
               </button>
             )}
-          </CardBody>
-        </Card>
-      )}
+          </Notice>
+        )}
 
-      {/* PayHold cannot pay this country — say so instead of offering a method
-          that fails on submit. Before this, a host here picked Bank or Card,
-          typed their account number, and got a 422 they could do nothing about. */}
-      {payoutCountry && availability.state !== 'ok' && (
-        <Card className="mt-6 border-amber-200 bg-amber-50/60">
-          <CardBody className="space-y-2">
-            <p className="font-medium text-ink-900">
+        {/* PayHold cannot pay this country — say so instead of offering a method
+            that fails on submit. Before this, a host here picked Bank or Card,
+            typed their account number, and got a 422 they could do nothing about. */}
+        {payoutCountry && availability.state !== 'ok' && (
+          <Notice tone={availability.state === 'unavailable' ? 'warn' : 'danger'} className="flex-col items-stretch">
+            <p className="font-medium">
               {availability.state === 'restricted'
                 ? `Payouts aren't available in ${countryName}.`
                 : availability.state === 'unavailable'
                   ? `We can't send payouts to ${countryName} yet.`
                   : `We couldn't work out how payouts route in ${countryName}.`}
             </p>
-            <p className="text-sm text-ink-600">
+            <p className="mt-1">
               {availability.state === 'restricted'
                 ? 'This market is sanctioned, so money cannot move in either direction.'
                 : availability.state === 'unavailable'
@@ -436,148 +432,164 @@ export function PayoutSetupPage() {
                     `Renters in ${countryName} can still book and pay — it's only payouts that aren't open yet. We'll email you the moment they are.`)
                   : 'This is unexpected — try refreshing, and contact support if it keeps happening.'}
             </p>
-            <p className="text-sm text-ink-600">
+            <p className="mt-1">
               Until then your listings can't take bookings, because we won't hold a renter's money
               for a trip we can't pay you for.
             </p>
-          </CardBody>
-        </Card>
-      )}
-
-      {/* Method chooser */}
-      <div
-        className={cn(
-          'mt-6',
-          (!payoutCountry || availability.state !== 'ok') && 'pointer-events-none hidden',
+          </Notice>
         )}
-      >
-        <p className="mb-2 text-sm font-medium text-ink-700">
-          {connected ? 'Change your payout method' : 'Choose how you want to be paid'}
-        </p>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {methods.map((m) => {
-            const isSel = selected === m;
-            const Icon = METHOD_ICON[m];
-            return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  setSelected(isSel ? null : m);
-                  setDest('');
-                }}
-                aria-pressed={isSel}
-                className={cn(
-                  'flex flex-col gap-2 rounded-2xl border p-4 text-left transition-all',
-                  isSel
-                    ? 'border-brand-400 bg-brand-50 ring-1 ring-brand-200'
-                    : 'border-ink-200 bg-white hover:border-ink-300 hover:shadow-card',
-                )}
-              >
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-                  <Icon size={18} />
-                </span>
-                <span className="font-semibold text-ink-900">{PAYOUT_METHOD_META[m].label}</span>
-                <span className="text-xs leading-relaxed text-ink-500">{PAYOUT_METHOD_META[m].blurb}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* Destination form for the chosen method — or, on Stripe Connect
-          markets, the onboarding handoff instead of a field nothing here can
-          validate. */}
-      {meta && selected && needsStripeConnect && (selected === 'bank' || selected === 'card') ? (
-        <Card className="mt-4">
-          <CardBody className="space-y-3">
-            <p className="text-sm text-ink-600">
-              Getting paid in {countryName} goes through Stripe. You'll set up your account on
-              Stripe's own secure page — bank details go straight to them, never through us.
-            </p>
-            <p className="flex items-center gap-1.5 text-xs text-ink-500">
-              <Lock size={12} className="text-brand-600" /> Processed securely via Stripe. We only ever
-              see that your account is connected, never the details behind it.
-            </p>
-            {connected && (
-              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
-                before they're paid, so payouts pause for up to 24 hours — your cars stay bookable and
-                your earnings keep building up in the meantime.
-              </p>
-            )}
-            <Button
-              className="w-full"
-              disabled={connectStripe.isPending}
-              onClick={() => connectStripe.mutate()}
-            >
-              {connectStripe.isPending ? 'Starting…' : 'Connect with Stripe'}
-            </Button>
-          </CardBody>
-        </Card>
-      ) : (
-        meta &&
-        selected && (
-          <Card className="mt-4">
+        {/* Method chooser. A tile grid, not ListRow — this is a single-select
+            choice among peers, not a list of settings to navigate into, and
+            (per Chip's own rationale, see Chip.tsx) the selected state is
+            carried by inverting to the solid surface rather than by hue, so
+            the accent stays spent on the one Save/Connect action below. */}
+        <div className={cn((!payoutCountry || availability.state !== 'ok') && 'pointer-events-none hidden')}>
+          <p className="mb-2 text-body-sm font-medium text-[var(--color-content)]">
+            {connected ? 'Change your payout method' : 'Choose how you want to be paid'}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {methods.map((m) => {
+              const isSel = selected === m;
+              const Icon = METHOD_ICON[m];
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setSelected(isSel ? null : m);
+                    setDest('');
+                  }}
+                  aria-pressed={isSel}
+                  className={cn(
+                    'flex flex-col gap-2 rounded-[var(--radius-card)] border p-4 text-left transition-colors',
+                    isSel
+                      ? 'border-[var(--color-surface-inverse)] bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
+                      : 'border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)]',
+                      isSel
+                        ? 'bg-white/15 text-[var(--color-content-inverse)]'
+                        : 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
+                    )}
+                  >
+                    <Icon size={18} />
+                  </span>
+                  <span className="font-semibold">{PAYOUT_METHOD_META[m].label}</span>
+                  <span
+                    className={cn(
+                      'text-caption leading-relaxed',
+                      isSel ? 'text-[var(--color-content-inverse)]/80' : 'text-[var(--color-content-muted)]',
+                    )}
+                  >
+                    {PAYOUT_METHOD_META[m].blurb}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Destination form for the chosen method — or, on Stripe Connect
+            markets, the onboarding handoff instead of a field nothing here can
+            validate. This is the one primary (green) action on the whole
+            screen — everything above it is a Notice, a nav row, or a
+            selection tile. */}
+        {meta && selected && needsStripeConnect && (selected === 'bank' || selected === 'card') ? (
+          <Card>
             <CardBody className="space-y-3">
-              <div>
-                <Label htmlFor="payout-dest">{meta.field}</Label>
-                <Input
-                  id="payout-dest"
-                  value={dest}
-                  onChange={(e) => setDest(e.target.value)}
-                  placeholder={meta.placeholder}
-                  inputMode={selected === 'bank' || selected === 'card' ? 'numeric' : 'tel'}
-                />
-              </div>
-              {routedProvider && (
-                <p className="flex items-center gap-1.5 text-xs text-ink-500">
-                  <Lock size={12} className="text-brand-600" /> Processed securely via{' '}
-                  {PROVIDER_NAME[routedProvider]}. Only the last 4 digits are stored.
-                </p>
-              )}
-              {/* What saving actually does, said before they do it. A change is
-                  not a free action — the new account is frozen while it is
-                  checked — and a host who finds that out from a paused payout is
-                  a host who thinks something broke. */}
-              {PAYMENTS_PAYHOLD ? (
-                connected && (
-                  <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                    This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
-                    before they're paid, so payouts pause for up to 24 hours — your cars stay bookable
-                    and your earnings keep building up in the meantime.
-                  </p>
-                )
-              ) : (
-                <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                  Demo: connecting is simulated. In production this opens secure onboarding and
-                  activates once verified.
-                </p>
+              <p className="text-body-sm text-[var(--color-content-muted)]">
+                Getting paid in {countryName} goes through Stripe. You'll set up your account on
+                Stripe's own secure page — bank details go straight to them, never through us.
+              </p>
+              <p className="flex items-center gap-1.5 text-caption text-[var(--color-content-muted)]">
+                <Lock size={12} className="text-[var(--color-accent-on)]" /> Processed securely via
+                Stripe. We only ever see that your account is connected, never the details behind it.
+              </p>
+              {connected && (
+                <Notice tone="warn">
+                  This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
+                  before they're paid, so payouts pause for up to 24 hours — your cars stay bookable and
+                  your earnings keep building up in the meantime.
+                </Notice>
               )}
               <Button
                 className="w-full"
-                disabled={!canSave || connect.isPending}
-                onClick={() => connect.mutate(selected)}
+                disabled={connectStripe.isPending}
+                onClick={() => connectStripe.mutate()}
               >
-                {connect.isPending ? 'Saving…' : connected ? 'Save new payout method' : 'Save payout method'}
+                {connectStripe.isPending ? 'Starting…' : 'Connect with Stripe'}
               </Button>
             </CardBody>
           </Card>
-        )
-      )}
+        ) : (
+          meta &&
+          selected && (
+            <Card>
+              <CardBody className="space-y-3">
+                <div>
+                  <Label htmlFor="payout-dest">{meta.field}</Label>
+                  <Input
+                    id="payout-dest"
+                    value={dest}
+                    onChange={(e) => setDest(e.target.value)}
+                    placeholder={meta.placeholder}
+                    inputMode={selected === 'bank' || selected === 'card' ? 'numeric' : 'tel'}
+                  />
+                </div>
+                {routedProvider && (
+                  <p className="flex items-center gap-1.5 text-caption text-[var(--color-content-muted)]">
+                    <Lock size={12} className="text-[var(--color-accent-on)]" /> Processed securely via{' '}
+                    {PROVIDER_NAME[routedProvider]}. Only the last 4 digits are stored.
+                  </p>
+                )}
+                {/* What saving actually does, said before they do it. A change is
+                    not a free action — the new account is frozen while it is
+                    checked — and a host who finds that out from a paused payout is
+                    a host who thinks something broke. */}
+                {PAYMENTS_PAYHOLD ? (
+                  connected && (
+                    <Notice tone="warn">
+                      This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are
+                      verified before they're paid, so payouts pause for up to 24 hours — your cars
+                      stay bookable and your earnings keep building up in the meantime.
+                    </Notice>
+                  )
+                ) : (
+                  <Notice tone="info">
+                    Demo: connecting is simulated. In production this opens secure onboarding and
+                    activates once verified.
+                  </Notice>
+                )}
+                <Button
+                  className="w-full"
+                  disabled={!canSave || connect.isPending}
+                  onClick={() => connect.mutate(selected)}
+                >
+                  {connect.isPending ? 'Saving…' : connected ? 'Save new payout method' : 'Save payout method'}
+                </Button>
+              </CardBody>
+            </Card>
+          )
+        )}
 
-      <p className="mt-6 flex items-center gap-1.5 text-xs text-ink-400">
-        <ShieldCheck size={14} className="text-brand-600" /> Your payout details are private and never shown to
-        renters.
-      </p>
+        <p className="flex items-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
+          <ShieldCheck size={14} className="text-[var(--color-accent-on)]" /> Your payout details are
+          private and never shown to renters.
+        </p>
 
-      {active && (
-        <div className="mt-4">
-          <Link to="/dashboard" className="text-sm font-medium text-brand-600 hover:underline">
+        {active && (
+          <Link
+            to="/dashboard"
+            className="text-body-sm font-medium text-[var(--color-accent-on)] hover:underline"
+          >
             Back to dashboard
           </Link>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

@@ -76,13 +76,19 @@ export function Header() {
     mode === 'host' ? host?.businessName ?? host?.fullName ?? 'Host' : me?.fullName ?? 'You';
 
   return (
-    <header className="sticky top-0 z-30 border-b border-ink-200 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-[var(--color-line)] bg-[var(--color-surface)]/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between gap-3 px-4">
-        <Link to={MODE_HOME[mode]} className="flex items-center gap-2 font-bold text-brand-700">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
+        {/* The wordmark is ink, not green. A green logo plus a green nav pill
+            plus a green CTA put the accent on screen three times before the
+            page began; the mark earns its colour from the glyph instead. */}
+        <Link
+          to={MODE_HOME[mode]}
+          className="flex items-center gap-2 font-display text-lg font-extrabold text-[var(--color-content)]"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
             <Car size={18} />
           </span>
-          <span className="text-lg">AutoHire</span>
+          <span>AutoHire</span>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
@@ -93,8 +99,10 @@ export function Header() {
               end={item.end}
               className={({ isActive }) =>
                 cn(
-                  'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-600 hover:bg-ink-100',
+                  'rounded-[var(--radius-control)] px-3 py-2 text-body-sm font-semibold transition-colors',
+                  isActive
+                    ? 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]'
+                    : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
                 )
               }
             >

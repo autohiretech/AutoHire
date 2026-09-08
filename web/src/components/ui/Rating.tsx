@@ -12,7 +12,7 @@ export function Rating({ value, count, size = 14, className }: RatingProps) {
   const hasRating = value != null && (count == null || count > 0);
   return (
     <span className={cn('inline-flex items-center gap-1 text-sm text-ink-700', className)}>
-      <Star size={size} className="fill-accent-500 text-accent-500" />
+      <Star size={size} className="fill-[var(--color-accent-on)] text-[var(--color-accent-on)]" />
       {hasRating ? (
         <>
           <span className="font-medium">{(value as number).toFixed(1)}</span>

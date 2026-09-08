@@ -849,14 +849,14 @@ function AutoApproveToggle() {
     <Card
       className={cn(
         'border-2 transition-colors',
-        active ? 'border-accent-400 bg-accent-400/5' : 'border-ink-200',
+        active ? 'border-[var(--color-warn-500)] bg-[var(--color-warn-tint)]' : 'border-ink-200',
       )}
     >
       <CardBody className="flex items-center gap-4">
         <span
           className={cn(
             'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors',
-            active ? 'bg-accent-400/20 text-accent-600' : 'bg-brand-50 text-brand-600',
+            active ? 'bg-[var(--color-warn-500)]/20 text-[var(--color-warn-500)]' : 'bg-brand-50 text-brand-600',
           )}
         >
           {active ? <Zap size={24} /> : <ShieldCheck size={24} />}
@@ -868,7 +868,7 @@ function AutoApproveToggle() {
             <span
               className={cn(
                 'rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide',
-                active ? 'bg-accent-500 text-white' : 'bg-ink-200 text-ink-600',
+                active ? 'bg-[var(--color-warn-500)] text-white' : 'bg-ink-200 text-ink-600',
               )}
             >
               {active ? 'On' : 'Off'}
@@ -892,7 +892,7 @@ function AutoApproveToggle() {
             'relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
             active
-              ? 'bg-accent-500 focus-visible:ring-accent-500'
+              ? 'bg-[var(--color-warn-500)]'
               : 'bg-ink-300 focus-visible:ring-ink-400',
             busy ? 'cursor-wait opacity-70' : 'cursor-pointer',
           )}
@@ -904,7 +904,7 @@ function AutoApproveToggle() {
             )}
           >
             {active ? (
-              <Zap size={12} className="text-accent-600" />
+              <Zap size={12} className="text-[var(--color-warn-500)]" />
             ) : (
               <ShieldCheck size={12} className="text-ink-400" />
             )}

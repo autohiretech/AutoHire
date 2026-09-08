@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   Smartphone,
 } from 'lucide-react';
-import { Button, Input, Label, Modal } from '@/components/ui';
+import { Button, Input, Label, Modal, Notice } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
 import { getStripeFor } from '@/lib/stripe';
 import { formatMoneyMinor } from '@/lib/currency';
@@ -180,21 +180,21 @@ function TransferRow({
 
   return (
     <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-      <span className="text-xs text-ink-500">{label}</span>
+      <span className="text-caption text-[var(--color-content-muted)]">{label}</span>
       <span className="flex items-center gap-2">
-        <span className="font-mono text-sm font-medium text-ink-900">{value}</span>
+        <span className="font-mono text-body-sm font-medium text-[var(--color-content)]">{value}</span>
         {copy && (
           <button
             type="button"
             aria-label={`Copy ${label}`}
-            className="text-ink-400 transition-colors hover:text-brand-600"
+            className="text-[var(--color-content-subtle)] transition-colors hover:text-brand-600"
             onClick={() => {
               navigator.clipboard?.writeText(value);
               setCopied(true);
               window.setTimeout(() => setCopied(false), 1500);
             }}
           >
-            {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+            {copied ? <Check size={14} className="text-brand-600" /> : <Copy size={14} />}
           </button>
         )}
       </span>
@@ -343,11 +343,11 @@ function StripeFields({
   return (
     <div>
       <PaymentElement options={{ layout: 'tabs' }} />
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <Notice tone="danger" className="mt-3">{error}</Notice>}
       <Button className="mt-4 w-full" size="lg" disabled={!stripe || busy} onClick={submit}>
         {busy ? 'Confirming…' : `Pay ${amountLabel}`}
       </Button>
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-500">
+      <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-muted)]">
         <Lock size={12} className="text-brand-600" />
         Your card is entered directly with our payment provider.
       </p>
@@ -450,8 +450,8 @@ function PayPalButtons({
   if (state === 'failed') {
     return (
       <div className="py-4 text-center">
-        <p className="font-medium text-ink-900">One more step</p>
-        <p className="mt-1 text-sm text-ink-600">
+        <p className="font-medium text-[var(--color-content)]">One more step</p>
+        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           We couldn't open PayPal here. This link approves the same payment.
         </p>
         <Button
@@ -466,12 +466,12 @@ function PayPalButtons({
 
   return (
     <div className="py-2">
-      <p className="mb-3 text-center text-sm text-ink-600">
+      <p className="mb-3 text-center text-body-sm text-[var(--color-content-muted)]">
         Approve this booking in your PayPal account. You'll stay on this page.
       </p>
       <div ref={host} />
       {state === 'loading' && (
-        <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+        <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
           <Loader2 size={12} className="animate-spin" />
           Loading PayPal…
         </p>
@@ -547,8 +547,8 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
   if (blocked) {
     return (
       <div className="py-4 text-center">
-        <p className="font-medium text-ink-900">One more step</p>
-        <p className="mt-1 text-sm text-ink-600">
+        <p className="font-medium text-[var(--color-content)]">One more step</p>
+        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           Your bank needs its own page to finish this payment securely.
         </p>
         <Button className="mt-4 w-full" onClick={() => window.location.assign(url)}>
@@ -560,7 +560,7 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
 
   return (
     <div>
-      <div className="overflow-hidden rounded-xl border border-ink-200">
+      <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)]">
         <iframe
           ref={frame}
           src={url}
@@ -577,12 +577,12 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
           allow="payment *"
         />
       </div>
-      <p className="mt-2.5 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+      <p className="mt-2.5 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
         <Loader2 size={12} className="animate-spin" />
         Waiting for your payment to clear…
       </p>
       {stuck && (
-        <p className="mt-2 text-center text-xs text-ink-500">
+        <p className="mt-2 text-center text-caption text-[var(--color-content-muted)]">
           Taking a while?{' '}
           <button
             type="button"
@@ -1038,15 +1038,15 @@ export function CheckoutModal({
       <div className="space-y-4">
         {stage === 'paid' && (
           <div className="py-4 text-center">
-            <CheckCircle2 size={30} className="mx-auto text-emerald-600" />
-            <p className="mt-3 font-medium text-ink-900">Your money is held safely</p>
-            <p className="mt-1 text-sm text-ink-600">
+            <CheckCircle2 size={30} className="mx-auto text-brand-600" />
+            <p className="mt-3 font-medium text-[var(--color-content)]">Your money is held safely</p>
+            <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
               {dealId && onPaid
                 ? "We're setting up your trip — taking you there as soon as it's ready."
                 : "We're setting up your trip — it'll appear in My trips in a moment."}
             </p>
             {dealId && onPaid && (
-              <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
                 <Loader2 size={12} className="animate-spin" /> Opening your trip — this can take up to a
                 minute.
               </p>
@@ -1067,8 +1067,8 @@ export function CheckoutModal({
 
         {stage === 'failed' && (
           <div className="py-4 text-center">
-            <p className="font-medium text-ink-900">That payment didn't go through</p>
-            <p className="mt-1 text-sm text-ink-600">
+            <p className="font-medium text-[var(--color-content)]">That payment didn't go through</p>
+            <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
               Nothing has been charged and the car is still available.
             </p>
             <Button
@@ -1092,16 +1092,16 @@ export function CheckoutModal({
             {selected?.method === 'mobile_money' ? (
               <>
                 <Smartphone size={28} className="mx-auto text-brand-600" />
-                <p className="mt-3 font-medium text-ink-900">Check your phone</p>
+                <p className="mt-3 font-medium text-[var(--color-content)]">Check your phone</p>
               </>
             ) : (
               <>
                 <Loader2 size={28} className="mx-auto animate-spin text-brand-600" />
-                <p className="mt-3 font-medium text-ink-900">Confirming your payment</p>
+                <p className="mt-3 font-medium text-[var(--color-content)]">Confirming your payment</p>
               </>
             )}
-            <p className="mx-auto mt-1 max-w-xs text-sm text-ink-600">{action.message}</p>
-            <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+            <p className="mx-auto mt-1 max-w-xs text-body-sm text-[var(--color-content-muted)]">{action.message}</p>
+            <p className="mt-4 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
               <Loader2 size={12} className="animate-spin" />
               This updates on its own — don't close this window.
             </p>
@@ -1112,8 +1112,8 @@ export function CheckoutModal({
           <div className="py-1">
             <div className="text-center">
               <ShieldCheck size={26} className="mx-auto text-brand-600" />
-              <p className="mt-2.5 font-medium text-ink-900">Enter your code</p>
-              <p className="mx-auto mt-1 max-w-xs text-sm text-ink-600">{action.message}</p>
+              <p className="mt-2.5 font-medium text-[var(--color-content)]">Enter your code</p>
+              <p className="mx-auto mt-1 max-w-xs text-body-sm text-[var(--color-content-muted)]">{action.message}</p>
             </div>
             <div className="mx-auto mt-4 max-w-xs">
               <Label htmlFor="pay-otp">Verification code</Label>
@@ -1126,7 +1126,7 @@ export function CheckoutModal({
                 placeholder="123456"
                 autoFocus
               />
-              {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+              {error && <Notice tone="danger" className="mt-2">{error}</Notice>}
               <Button
                 className="mt-3 w-full"
                 disabled={otp.trim().length < 4 || busy}
@@ -1150,29 +1150,29 @@ export function CheckoutModal({
           <div className="py-1">
             <div className="text-center">
               <Landmark size={26} className="mx-auto text-brand-600" />
-              <p className="mt-2.5 font-medium text-ink-900">Transfer from your bank</p>
-              <p className="mx-auto mt-1 max-w-sm text-sm text-ink-600">
+              <p className="mt-2.5 font-medium text-[var(--color-content)]">Transfer from your bank</p>
+              <p className="mx-auto mt-1 max-w-sm text-body-sm text-[var(--color-content-muted)]">
                 Send exactly this amount to the account below. It's held for this booking
                 only.
               </p>
             </div>
 
-            <div className="mt-4 divide-y divide-ink-100 overflow-hidden rounded-xl border border-ink-200">
+            <div className="mt-4 divide-y divide-[var(--color-line)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)]">
               <TransferRow label="Bank" value={action.bank} />
               <TransferRow label="Account number" value={action.account} copy />
               <TransferRow label="Amount" value={action.amount} copy />
               <TransferRow label="Reference" value={action.reference} copy />
             </div>
 
-            {action.note && <p className="mt-2.5 text-xs text-ink-500">{action.note}</p>}
+            {action.note && <p className="mt-2.5 text-caption text-[var(--color-content-muted)]">{action.note}</p>}
             {action.expires_at && (
-              <p className="mt-2.5 text-center text-xs text-amber-700">
+              <p className="mt-2.5 text-center text-caption text-[var(--color-warn-500)]">
                 This account expires — complete the transfer soon, or start again for a fresh
                 one.
               </p>
             )}
 
-            <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-ink-400">
+            <p className="mt-4 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
               <Loader2 size={12} className="animate-spin" />
               We'll confirm as soon as it lands — don't close this window.
             </p>
@@ -1183,8 +1183,8 @@ export function CheckoutModal({
           <div className="py-1">
             <div className="text-center">
               <ShieldCheck size={26} className="mx-auto text-brand-600" />
-              <p className="mt-2.5 font-medium text-ink-900">Enter your card PIN</p>
-              <p className="mx-auto mt-1 max-w-xs text-sm text-ink-600">{action.message}</p>
+              <p className="mt-2.5 font-medium text-[var(--color-content)]">Enter your card PIN</p>
+              <p className="mx-auto mt-1 max-w-xs text-body-sm text-[var(--color-content-muted)]">{action.message}</p>
             </div>
             <div className="mx-auto mt-4 max-w-xs">
               <Label htmlFor="card-pin">PIN</Label>
@@ -1198,7 +1198,7 @@ export function CheckoutModal({
                 placeholder="••••"
                 autoFocus
               />
-              {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+              {error && <Notice tone="danger" className="mt-2">{error}</Notice>}
               <Button
                 className="mt-3 w-full"
                 disabled={pin.length < 4 || busy}
@@ -1214,8 +1214,8 @@ export function CheckoutModal({
           <div className="py-1">
             <div className="text-center">
               <ShieldCheck size={26} className="mx-auto text-brand-600" />
-              <p className="mt-2.5 font-medium text-ink-900">Confirm your billing address</p>
-              <p className="mx-auto mt-1 max-w-sm text-sm text-ink-600">{action.message}</p>
+              <p className="mt-2.5 font-medium text-[var(--color-content)]">Confirm your billing address</p>
+              <p className="mx-auto mt-1 max-w-sm text-body-sm text-[var(--color-content-muted)]">{action.message}</p>
             </div>
             <div className="mx-auto mt-4 max-w-sm space-y-2.5">
               {action.fields.map((field) => (
@@ -1229,7 +1229,7 @@ export function CheckoutModal({
                   />
                 </div>
               ))}
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && <Notice tone="danger">{error}</Notice>}
               <Button
                 className="w-full"
                 disabled={action.fields.some((f) => !(avs[f] ?? '').trim()) || busy}
@@ -1264,8 +1264,8 @@ export function CheckoutModal({
         {stage === 'validating' && action?.type === 'payment_element' && (
           <div className="py-6 text-center">
             <Loader2 size={26} className="mx-auto animate-spin text-brand-600" />
-            <p className="mt-3 font-medium text-ink-900">Confirming your payment</p>
-            <p className="mt-1 text-sm text-ink-600">
+            <p className="mt-3 font-medium text-[var(--color-content)]">Confirming your payment</p>
+            <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
               This takes a few seconds — don't close this window.
             </p>
           </div>
@@ -1286,24 +1286,22 @@ export function CheckoutModal({
                 flat number here would tell that payer they're paying a
                 deposit when PayHold is about to charge them in full. */}
             {deal?.currency && (selected?.amount ?? deal.amount) != null && (
-              <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3.5 text-center">
-                <p className="text-xs font-medium uppercase tracking-wide text-brand-700">
-                  You'll be charged
-                </p>
-                <p className="mt-0.5 text-xl font-bold text-ink-900">
+              <Notice tone="brand" className="flex-col items-center text-center">
+                <p className="text-caption font-medium uppercase tracking-wide">You'll be charged</p>
+                <p className="mt-0.5 text-h3 tabular text-[var(--color-content)]">
                   {formatMoneyMinor((selected?.amount ?? deal.amount)!, deal.currency)}
                 </p>
                 {selected && deal.amount != null && selected.amount !== deal.amount ? (
-                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">
+                  <p className="mt-2 rounded-[var(--radius-control)] bg-[var(--color-warn-tint)] px-2.5 py-1.5 text-caption font-medium text-[var(--color-warn-500)]">
                     {selected.label} can't be charged again automatically, so this pays the
                     full amount now instead of a deposit.
                   </p>
                 ) : (
-                  <p className="mt-1 text-xs text-ink-500">
+                  <p className="mt-1 text-caption text-[var(--color-content-muted)]">
                     The exact amount and currency PayHold will charge you.
                   </p>
                 )}
-              </div>
+              </Notice>
             )}
 
             {/* PayHold's list, and only PayHold's. It knows which rails are
@@ -1320,10 +1318,10 @@ export function CheckoutModal({
                     <div
                       key={key}
                       className={
-                        'rounded-xl border transition-all ' +
+                        'rounded-[var(--radius-card)] border transition-all ' +
                         (isChosen
-                          ? 'border-brand-400 bg-brand-50 ring-1 ring-brand-200'
-                          : 'border-ink-200 hover:border-ink-300')
+                          ? 'border-[var(--color-accent-on)] bg-[var(--color-accent-on)]/10 ring-1 ring-[var(--color-accent-on)]/25'
+                          : 'border-[var(--color-line)] hover:border-[var(--color-line-strong)]')
                       }
                     >
                       <button
@@ -1336,7 +1334,7 @@ export function CheckoutModal({
                       >
                         <span className="min-w-0 flex-1">
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-semibold text-ink-900">{m.label}</span>
+                            <span className="font-semibold text-[var(--color-content)]">{m.label}</span>
                             {mark && (
                               <span className="flex flex-wrap items-center gap-1.5">
                                 <MethodMarks method={mark} />
@@ -1344,20 +1342,22 @@ export function CheckoutModal({
                             )}
                           </span>
                           {m.blurb && (
-                            <span className="mt-0.5 block text-xs text-ink-500">{m.blurb}</span>
+                            <span className="mt-0.5 block text-caption text-[var(--color-content-muted)]">{m.blurb}</span>
                           )}
                         </span>
                         <span
                           aria-hidden="true"
                           className={
                             'mt-1 h-4 w-4 shrink-0 rounded-full border-2 ' +
-                            (isChosen ? 'border-brand-600 bg-brand-600' : 'border-ink-300')
+                            (isChosen
+                              ? 'border-[var(--color-accent-on)] bg-[var(--color-accent-on)]'
+                              : 'border-[var(--color-line-strong)]')
                           }
                         />
                       </button>
 
                       {isChosen && m.method === 'mobile_money' && (
-                        <div className="space-y-2.5 border-t border-brand-200/70 px-3.5 pb-3.5 pt-3">
+                        <div className="space-y-2.5 border-t border-[var(--color-accent-on)]/20 px-3.5 pb-3.5 pt-3">
                           {(m.networks?.length ?? 0) > 1 && (
                             <div className="flex flex-wrap gap-2">
                               {m.networks!.map((n) => (
@@ -1366,10 +1366,10 @@ export function CheckoutModal({
                                   type="button"
                                   onClick={() => setNetwork(n)}
                                   className={
-                                    'rounded-lg border px-2.5 py-1 text-xs font-medium ' +
+                                    'rounded-[var(--radius-control)] border px-2.5 py-1 text-caption font-medium ' +
                                     (network === n
-                                      ? 'border-brand-500 bg-white text-brand-700'
-                                      : 'border-ink-200 text-ink-600')
+                                      ? 'border-[var(--color-accent-on)] bg-[var(--color-surface-raised)] text-[var(--color-accent-on)]'
+                                      : 'border-[var(--color-line)] text-[var(--color-content-muted)]')
                                   }
                                 >
                                   {n}
@@ -1386,7 +1386,7 @@ export function CheckoutModal({
                               placeholder="+250 788 123 456"
                               inputMode="tel"
                             />
-                            <p className="mt-1.5 text-xs text-ink-500">
+                            <p className="mt-1.5 text-caption text-[var(--color-content-muted)]">
                               You'll get a prompt on this number. Nothing leaves your wallet
                               until you approve it.
                             </p>
@@ -1395,7 +1395,7 @@ export function CheckoutModal({
                       )}
 
                       {isChosen && m.method === 'card' && m.provider !== 'flutterwave' && (
-                        <p className="flex items-start gap-1.5 border-t border-brand-200/70 px-3.5 pb-3.5 pt-3 text-xs text-ink-600">
+                        <p className="flex items-start gap-1.5 border-t border-[var(--color-accent-on)]/20 px-3.5 pb-3.5 pt-3 text-caption text-[var(--color-content-muted)]">
                           <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
                           Your card details come next, entered directly with our payment
                           provider — they never pass through AutoHire.
@@ -1403,7 +1403,7 @@ export function CheckoutModal({
                       )}
 
                       {isChosen && m.method === 'card' && m.provider === 'flutterwave' && (
-                        <div className="space-y-2.5 border-t border-brand-200/70 px-3.5 pb-3.5 pt-3">
+                        <div className="space-y-2.5 border-t border-[var(--color-accent-on)]/20 px-3.5 pb-3.5 pt-3">
                           <div>
                             <Label htmlFor="card-number">Card number</Label>
                             <Input
@@ -1458,7 +1458,7 @@ export function CheckoutModal({
                               autoComplete="cc-name"
                             />
                           </div>
-                          <p className="flex items-start gap-1.5 pt-0.5 text-xs text-ink-500">
+                          <p className="flex items-start gap-1.5 pt-0.5 text-caption text-[var(--color-content-muted)]">
                             <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
                             Sent straight to our payment provider, encrypted. We never store it.
                           </p>
@@ -1466,7 +1466,7 @@ export function CheckoutModal({
                       )}
 
                       {isChosen && m.method !== 'mobile_money' && m.method !== 'card' && (
-                        <p className="flex items-start gap-1.5 border-t border-brand-200/70 px-3.5 pb-3.5 pt-3 text-xs text-ink-600">
+                        <p className="flex items-start gap-1.5 border-t border-[var(--color-accent-on)]/20 px-3.5 pb-3.5 pt-3 text-caption text-[var(--color-content-muted)]">
                           <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
                           You'll approve this on our payment provider's secure checkout — your
                           details never pass through AutoHire.
@@ -1477,16 +1477,16 @@ export function CheckoutModal({
                 })}
               </div>
             ) : methods === null ? (
-              <p className="flex items-center justify-center gap-2 py-6 text-sm text-ink-500">
+              <p className="flex items-center justify-center gap-2 py-6 text-body-sm text-[var(--color-content-muted)]">
                 <Loader2 size={14} className="animate-spin" />
                 Loading your payment options…
               </p>
             ) : (
               <div className="py-4 text-center">
-                <p className="font-medium text-ink-900">
+                <p className="font-medium text-[var(--color-content)]">
                   We can't take a payment for this trip right now
                 </p>
-                <p className="mx-auto mt-1 max-w-xs text-sm text-ink-600">
+                <p className="mx-auto mt-1 max-w-xs text-body-sm text-[var(--color-content-muted)]">
                   Nothing has been charged and the car is still available. This is usually
                   temporary — try again in a moment.
                 </p>
@@ -1503,7 +1503,7 @@ export function CheckoutModal({
               </div>
             )}
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <Notice tone="danger">{error}</Notice>}
 
             {methods && methods.length > 0 && (
               <Button

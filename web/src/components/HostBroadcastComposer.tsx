@@ -33,7 +33,7 @@ export function HostBroadcastComposer() {
     <Card className="mt-5">
       <CardHeader>
         <h2 className="flex items-center gap-1.5 font-semibold text-ink-900">
-          <Megaphone size={16} className="text-accent-600" /> Post an update
+          <Megaphone size={16} className="text-[var(--color-warn-500)]" /> Post an update
         </h2>
       </CardHeader>
       <CardBody>

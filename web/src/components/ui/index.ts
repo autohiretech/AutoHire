@@ -1,9 +1,16 @@
 export { Button } from './Button';
 export type { ButtonProps } from './Button';
-export { Card, CardBody, CardHeader } from './Card';
+export { Card, CardBody, CardHeader, Notice } from './Card';
+export type { CardProps, NoticeProps } from './Card';
 export { Input, Select, Label } from './Input';
 export { Badge } from './Badge';
 export type { BadgeProps } from './Badge';
+export { Chip, ChipRow } from './Chip';
+export type { ChipProps } from './Chip';
+export { Sheet, MapListToggle, useScrollLock } from './Sheet';
+export type { SheetDetent } from './Sheet';
+export { ListGroup, ListRow } from './ListRow';
+export type { ListRowProps } from './ListRow';
 export { Avatar } from './Avatar';
 export { Rating } from './Rating';
 export { Modal } from './Modal';

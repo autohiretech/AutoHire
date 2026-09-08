@@ -5,7 +5,7 @@ import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry } from '@/lib/country';
 import { CheckoutModal } from '@/components/CheckoutModal';
-import { Button, Label, Select } from '@/components/ui';
+import { Button, Label, Notice, Select } from '@/components/ui';
 
 /**
  * Opening checkout. Nothing else.
@@ -119,24 +119,24 @@ export function PayholdPayment({
   return (
     <>
       {!payerCountry && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-          <p className="text-sm font-medium text-ink-900">Tell us where you're paying from</p>
-          <p className="mt-0.5 text-xs text-ink-600">
+        <Notice tone="warn" className="mb-4 flex-col items-start">
+          <p className="font-medium">Tell us where you're paying from</p>
+          <p className="mt-0.5">
             Payment options differ by country — mobile money isn't offered everywhere.{' '}
-            <Link to="/account" className="font-medium text-brand-600 underline">
+            <Link to="/account" className="font-medium underline">
               Set your country
             </Link>
           </p>
-        </div>
+        </Notice>
       )}
 
       {/* Which currency the card gets charged in, not which cars are shown —
           that's the header's country selector. Changing it here only affects
           this one payment; it never touches the account's saved country. */}
       {payerCountry && countries.length > 0 && (
-        <div className="mb-4 rounded-xl border border-ink-200 bg-ink-50/60 p-3">
-          <Label htmlFor="pay-as-country" className="flex items-center gap-1.5 text-ink-700">
-            <Landmark size={14} className="text-ink-400" /> Charge my card as
+        <div className="mb-4 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3">
+          <Label htmlFor="pay-as-country" className="flex items-center gap-1.5 text-[var(--color-content-muted)]">
+            <Landmark size={14} className="text-[var(--color-content-subtle)]" /> Charge my card as
           </Label>
           <Select
             id="pay-as-country"
@@ -149,7 +149,7 @@ export function PayholdPayment({
               </option>
             ))}
           </Select>
-          <p className="mt-1.5 text-xs text-ink-500">
+          <p className="mt-1.5 text-caption text-[var(--color-content-muted)]">
             {chargeCurrency
               ? `Your card will be charged in ${chargeCurrency}. PayHold converts the total automatically.`
               : "PayHold picks the currency your card accepts once you continue."}
@@ -159,18 +159,17 @@ export function PayholdPayment({
 
       {/* The choice lives in a modal so the booking summary stays put behind
           it — a renter deciding how to pay should still see what they are
-          paying for. */}
-      <Button
-        className="h-[52px] w-full rounded-xl text-base font-semibold shadow-sm"
-        size="lg"
-        disabled={disabled || busy}
-        onClick={pay}
-      >
+          paying for. This is the one accent action in this flow. */}
+      <Button className="w-full" size="lg" disabled={disabled || busy} onClick={pay}>
         {busy ? 'Opening…' : `Pay ${label}`}
       </Button>
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[13px] text-ink-500">
-        <Lock size={13} className="shrink-0 text-ink-400" />
+      {error && (
+        <Notice tone="danger" className="mt-3">
+          {error}
+        </Notice>
+      )}
+      <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-body-sm text-[var(--color-content-muted)]">
+        <Lock size={13} className="shrink-0 text-[var(--color-content-subtle)]" />
         Your money is held until the trip is done — the host is paid after you both confirm the
         car came back.
       </p>

@@ -57,7 +57,7 @@ export function RequesterModal({
                 </Badge>
                 {p.ratingCount ? (
                   <span className="inline-flex items-center gap-1 text-sm text-ink-500">
-                    <Star size={13} className="fill-accent-500 text-accent-500" />
+                    <Star size={13} className="fill-[var(--color-accent-on)] text-[var(--color-accent-on)]" />
                     {p.ratingAvg?.toFixed(1)} ({p.ratingCount})
                   </span>
                 ) : (

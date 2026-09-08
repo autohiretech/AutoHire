@@ -1,9 +1,21 @@
 import { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes } from 'react';
 import { cn } from '@/lib/cn';
 
-const baseField =
-  'h-10 w-full rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 ' +
-  'placeholder:text-ink-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20';
+/**
+ * Fields are 44px and sit on a sunken surface rather than a bordered white
+ * box. On a phone that reads as "type here" without a hard 1px outline around
+ * every field, and it keeps a form from looking like a grid of boxes.
+ *
+ * The focus ring is the accent — one of the few places the accent appears
+ * without being a button, because "where am I typing" is worth the emphasis.
+ */
+const baseField = cn(
+  'h-11 w-full rounded-[var(--radius-control)] px-3.5 text-body-sm',
+  'border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)]',
+  'text-[var(--color-content)] placeholder:text-[var(--color-content-subtle)]',
+  'focus:border-[var(--color-accent-on)] focus:outline-none',
+  'disabled:cursor-not-allowed disabled:opacity-50',
+);
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {
@@ -17,13 +29,13 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
   },
 );
 
-export function Label({
-  className,
-  ...props
-}: React.LabelHTMLAttributes<HTMLLabelElement>) {
+export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn('mb-1.5 block text-sm font-medium text-ink-700', className)}
+      className={cn(
+        'mb-1.5 block text-body-sm font-semibold text-[var(--color-content)]',
+        className,
+      )}
       {...props}
     />
   );

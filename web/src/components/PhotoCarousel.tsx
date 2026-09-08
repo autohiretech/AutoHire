@@ -28,7 +28,7 @@ export function PhotoCarousel({
 
   return (
     <div
-      className={cn('group relative overflow-hidden rounded-xl bg-ink-100', className)}
+      className={cn('group relative overflow-hidden rounded-[var(--radius-card)] bg-[var(--color-surface-sunken)]', className)}
       onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
       onTouchEnd={(e) => {
         if (touchX.current !== null) {

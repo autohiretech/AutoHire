@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import type { Host, UserProfile, VerificationDocument, VerificationStatus } from '@autohire/shared';
 import { client } from '@/lib/client';
-import { cn } from '@/lib/cn';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { formatDate } from '@/lib/format';
 import {
@@ -22,27 +21,30 @@ import {
   verificationRoleFor,
   type DocConfig,
 } from '@/lib/verification';
-import { Badge, Button, Card, CardBody, CardHeader, Spinner } from '@/components/ui';
+import { Badge, Button, ListGroup, ListRow, Notice, Spinner } from '@/components/ui';
 
 const STATUS_ICON: Record<VerificationStatus, React.ReactNode> = {
-  unverified: <ShieldCheck size={18} />,
-  pending: <Clock size={18} />,
-  verified: <CheckCircle2 size={18} />,
-  rejected: <XCircle size={18} />,
+  unverified: <ShieldCheck size={18} className="mt-0.5 shrink-0" />,
+  pending: <Clock size={18} className="mt-0.5 shrink-0" />,
+  verified: <CheckCircle2 size={18} className="mt-0.5 shrink-0" />,
+  rejected: <XCircle size={18} className="mt-0.5 shrink-0" />,
 };
 
-const BANNER_STYLES: Record<VerificationStatus, string> = {
-  unverified: 'bg-ink-50 text-ink-700',
-  pending: 'bg-orange-50 text-orange-800',
-  verified: 'bg-emerald-50 text-emerald-800',
-  rejected: 'bg-red-50 text-red-800',
+// `brand` reads as reassurance ("you're all set") rather than as an accent
+// here — Notice's brand tone is the one place that's allowed. `unverified`
+// isn't a problem yet, just informational, so it gets `info` rather than `warn`.
+const NOTICE_TONE: Record<VerificationStatus, 'info' | 'warn' | 'brand' | 'danger'> = {
+  unverified: 'info',
+  pending: 'warn',
+  verified: 'brand',
+  rejected: 'danger',
 };
 
 const BANNER_TEXT: Record<VerificationStatus, string> = {
   unverified: 'Upload your documents to get verified.',
   pending: 'Your documents are under review — this usually takes a few hours.',
-  verified: "You're fully verified. ",
-  rejected: 'One or more documents need attention. See the notes below.',
+  verified: "You're fully verified.",
+  rejected: 'One or more documents need attention. See below.',
 };
 
 export function VerificationPage() {
@@ -62,42 +64,38 @@ export function VerificationPage() {
   const overall = overallStatus(statuses);
 
   return (
-    <section className="mx-auto max-w-2xl px-4 py-8">
+    <section className="mx-auto max-w-2xl px-4 py-8 sm:py-10">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-ink-900">Verification</h1>
+        <h1 className="text-h1">Verification</h1>
         <Badge tone="brand">{roleMeta.label}</Badge>
       </div>
-      <p className="mt-1 text-sm text-ink-500">{roleMeta.blurb}</p>
+      <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">{roleMeta.blurb}</p>
 
       {isLoading ? (
         <div className="flex justify-center py-16">
           <Spinner size={28} />
         </div>
       ) : (
-        <>
-          {/* Overall status banner */}
-          <div
-            className={cn(
-              'mt-6 flex items-center gap-3 rounded-xl px-4 py-3',
-              BANNER_STYLES[overall],
-            )}
-          >
+        <div className="mt-6 flex flex-col gap-6">
+          {/* Overall status — the one thing on this page that genuinely needs
+              the user's attention, so it leads. */}
+          <Notice tone={NOTICE_TONE[overall]}>
             {STATUS_ICON[overall]}
-            <p className="text-sm font-medium">{BANNER_TEXT[overall]}</p>
-          </div>
+            <p className="font-medium">{BANNER_TEXT[overall]}</p>
+          </Notice>
 
-          <div className="mt-5 space-y-4">
+          <ListGroup label="Documents">
             {configs.map((config) => (
-              <DocCard key={config.type} config={config} doc={docsByType.get(config.type)} />
+              <DocRow key={config.type} config={config} doc={docsByType.get(config.type)} />
             ))}
-          </div>
-        </>
+          </ListGroup>
+        </div>
       )}
     </section>
   );
 }
 
-function DocCard({ config, doc }: { config: DocConfig; doc?: VerificationDocument }) {
+function DocRow({ config, doc }: { config: DocConfig; doc?: VerificationDocument }) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const status: VerificationStatus = doc?.status ?? 'unverified';
@@ -112,20 +110,36 @@ function DocCard({ config, doc }: { config: DocConfig; doc?: VerificationDocumen
   });
 
   return (
-    <Card>
-      <CardHeader className="flex items-center justify-between gap-2">
-        <h2 className="font-semibold text-ink-900">{config.label}</h2>
-        <Badge tone={meta.tone}>{meta.label}</Badge>
-      </CardHeader>
-      <CardBody className="space-y-3">
-        <p className="text-sm text-ink-500">{config.hint}</p>
+    <>
+      <ListRow
+        icon={<FileText size={18} />}
+        value={<Badge tone={meta.tone}>{meta.label}</Badge>}
+        onClick={() => fileRef.current?.click()}
+      >
+        {config.label}
+      </ListRow>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) mutation.mutate(file);
+          e.target.value = '';
+        }}
+      />
+
+      <div className="space-y-3 border-t border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-4 py-3">
+        <p className="text-body-sm text-[var(--color-content-muted)]">{config.hint}</p>
 
         {doc?.fileName && (
-          <div className="flex items-center gap-2 rounded-lg bg-ink-50 px-3 py-2 text-sm text-ink-700">
-            <FileText size={16} className="text-ink-400" />
+          <div className="flex items-center gap-2 rounded-[var(--radius-control)] bg-[var(--color-surface-raised)] px-3 py-2 text-body-sm text-[var(--color-content)]">
+            <FileText size={16} className="text-[var(--color-content-subtle)]" />
             <span className="truncate">{doc.fileName}</span>
             {doc.uploadedAt && (
-              <span className="ml-auto shrink-0 text-xs text-ink-400">
+              <span className="tabular ml-auto shrink-0 text-caption text-[var(--color-content-subtle)]">
                 {formatDate(doc.uploadedAt)}
               </span>
             )}
@@ -134,39 +148,33 @@ function DocCard({ config, doc }: { config: DocConfig; doc?: VerificationDocumen
 
         {/* OCR-extracted fields (placeholder until Stage C wires real OCR) */}
         {doc?.extracted && (
-          <dl className="grid grid-cols-1 gap-1.5 rounded-lg border border-ink-100 p-3 text-sm sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-3 text-body-sm sm:grid-cols-2">
             {Object.entries(doc.extracted).map(([k, v]) => (
               <div key={k} className="flex justify-between gap-2 sm:flex-col sm:gap-0">
-                <dt className="text-ink-400">{k}</dt>
-                <dd className="font-medium text-ink-800">{v}</dd>
+                <dt className="text-[var(--color-content-subtle)]">{k}</dt>
+                <dd className="font-medium text-[var(--color-content)]">{v}</dd>
               </div>
             ))}
           </dl>
         )}
 
         {status === 'pending' && !doc?.extracted && (
-          <p className="flex items-center gap-1.5 text-sm text-orange-700">
+          <p className="flex items-center gap-1.5 text-body-sm text-[var(--color-warn-500)]">
             <ScanLine size={15} /> Uploaded — awaiting review.
           </p>
         )}
 
         {status === 'rejected' && doc?.note && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{doc.note}</p>
+          <p className="rounded-[var(--radius-control)] bg-[var(--color-danger-tint)] px-3 py-2 text-body-sm text-[var(--color-danger-500)]">
+            {doc.note}
+          </p>
         )}
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,application/pdf"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) mutation.mutate(file);
-            e.target.value = '';
-          }}
-        />
+        {/* Always `outline`, never `primary` — a checklist of several documents
+            has no single "the one thing this screen does" action, and a row
+            of green buttons would spend the one accent several times over. */}
         <Button
-          variant={doc?.fileName ? 'outline' : 'primary'}
+          variant="outline"
           size="sm"
           onClick={() => fileRef.current?.click()}
           disabled={mutation.isPending}
@@ -180,7 +188,7 @@ function DocCard({ config, doc }: { config: DocConfig; doc?: VerificationDocumen
                 : 'Replace'
               : 'Upload'}
         </Button>
-      </CardBody>
-    </Card>
+      </div>
+    </>
   );
 }

@@ -1,53 +1,227 @@
 @import 'tailwindcss';
 
 /*
+  ─────────────────────────────────────────────────────────────────────────────
   AutoHire design tokens (Tailwind v4 CSS-first config).
-  Brand palette is centred on a Rwandan-green primary with a warm amber accent.
-  Adding/adjusting a token here propagates to utilities (e.g. bg-brand-600, text-accent).
+  ─────────────────────────────────────────────────────────────────────────────
+
+  Three rules this file exists to enforce:
+
+  1. ONE ACCENT. The green is the only hue that means "act on this". It is
+     spent once per screen — a primary button, an active tab, a selected chip
+     — and nowhere else. The previous palette ran four families at once (green
+     brand, amber accent, blue info, slate ink) and nothing could be emphasised
+     because everything already was.
+
+  2. SEMANTIC COLOUR IS NOT ACCENT. `warn` / `info` / `danger` describe a
+     *state* and are allowed only where that state is the message: an alert
+     card, a failed payout, a "cars are filling up" notice. They never style a
+     control. Note `positive` is deliberately absent — in a green-accented app,
+     "good" and "brand" are the same hue, and inventing a second green would
+     make two greens that mean different things.
+
+  3. SURFACES ARE SEMANTIC, THE SCALES ARE RAW. Components should reach for
+     `bg-surface` / `text-content` / `border-line`, which flip with the theme.
+     `ink-*` and `brand-*` remain for the cases that genuinely need one fixed
+     step, but a component built on raw steps is a component that cannot go
+     dark. The app is mid-migration: ~1300 `ink-*` usages predate this file and
+     move over page by page.
+
+  Adding or retuning a token here propagates to every utility (`bg-surface`,
+  `text-brand-600`, `text-h2`) without touching a component.
 */
 @theme {
-  --color-brand-50: #ecfdf5;
-  --color-brand-100: #d1fae5;
-  --color-brand-200: #a7f3d0;
-  --color-brand-300: #6ee7b7;
-  --color-brand-400: #34d399;
-  --color-brand-500: #10b981;
+  /* ── Neutrals ──────────────────────────────────────────────────────────
+     Not slate. Slate is blue-biased, and a blue-grey next to a green accent
+     reads as two competing temperatures. These carry a few degrees of the
+     accent's own hue at very low saturation, so greys sit *under* the green
+     rather than beside it. */
+  --color-ink-50: #f5f8f7;
+  --color-ink-100: #eaefed;
+  --color-ink-200: #d8e0dd;
+  --color-ink-300: #bcc7c3;
+  --color-ink-400: #8f9d98;
+  --color-ink-500: #687773;
+  --color-ink-600: #4e5b57;
+  --color-ink-700: #3b4643;
+  --color-ink-800: #262e2c;
+  --color-ink-900: #141a18;
+  --color-ink-950: #0d1211;
+
+  /* ── Brand — the single accent ─────────────────────────────────────────
+     600 is the anchor and is unchanged from the original palette: a deep,
+     slightly teal green that is recognisably Rwandan without being the
+     generic emerald every Tailwind project ships with. The light end was
+     rebuilt to sit on the new neutrals; the dark end carries it on dark
+     surfaces, where 600 alone is too low-contrast to read as an action. */
+  --color-brand-50: #ecfaf5;
+  --color-brand-100: #d0f3e7;
+  --color-brand-200: #a3e7d2;
+  --color-brand-300: #6bd3b6;
+  --color-brand-400: #34b795;
+  --color-brand-500: #139b79;
   --color-brand-600: #0e7c66;
   --color-brand-700: #0c6353;
   --color-brand-800: #0a4f43;
   --color-brand-900: #08403a;
 
-  --color-accent-400: #fbbf24;
-  --color-accent-500: #f59e0b;
-  --color-accent-600: #d97706;
+  /* ── Semantic states ───────────────────────────────────────────────────
+     Each is a pair: a saturated value for text/icons, and a tint for the card
+     behind them. Only ever used to describe a state, never to style a control. */
+  --color-warn-500: #b7791f;
+  --color-warn-tint: #fdf5e3;
+  --color-info-500: #2563eb;
+  --color-info-tint: #eaf1fe;
+  --color-danger-500: #d13212;
+  --color-danger-tint: #fdeeea;
 
-  /* Informational (attention, not money/success) — used for request counts so
-     they read distinctly from the green "earned" figures. */
-  --color-info-50: #eff6ff;
-  --color-info-100: #dbeafe;
-  --color-info-200: #bfdbfe;
-  --color-info-500: #3b82f6;
-  --color-info-600: #2563eb;
-  --color-info-700: #1d4ed8;
+  /* ── Semantic surfaces (light) ─────────────────────────────────────────
+     `surface` is the page; `raised` is a card on it; `sunken` is a well
+     *inside* a card (a filter tray, an inset row). Three depths is the whole
+     vocabulary — a fourth would stop reading as a distinct level. */
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #f5f8f7;
+  --color-surface-inverse: #141a18;
+  --color-content: #141a18;
+  --color-content-muted: #4e5b57;
+  --color-content-subtle: #8f9d98;
+  --color-content-inverse: #ffffff;
+  --color-line: #eaefed;
+  --color-line-strong: #d8e0dd;
 
-  --color-ink-50: #f8fafc;
-  --color-ink-100: #f1f5f9;
-  --color-ink-200: #e2e8f0;
-  --color-ink-300: #cbd5e1;
-  --color-ink-400: #94a3b8;
-  --color-ink-500: #64748b;
-  --color-ink-600: #475569;
-  --color-ink-700: #334155;
-  --color-ink-800: #1e293b;
-  --color-ink-900: #0f172a;
+  /* ── Type ──────────────────────────────────────────────────────────────
+     Two families, each doing one job. Archivo is a grotesque with enough
+     width and weight to hold a headline without going italic or coloured for
+     emphasis. Manrope is geometric and stays legible at 12–14px, which is
+     most of a marketplace UI. Inter was neither — it was the default.
 
-  --radius-card: 1rem;
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+     Sizes follow Uber Base's structure: a constrained set (no arbitrary
+     `text-[13px]`), line-height ≈ size × 1.45 snapped to the 4px grid, and a
+     bias toward the larger option, because these screens are read one-handed,
+     outdoors, on a phone. */
+  --font-display: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
 
-  /* Soft, layered elevation — a tight contact shadow plus a wider ambient one,
-     so surfaces read as lifted without the hard grey edge of a single shadow. */
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
-  --shadow-card-hover: 0 2px 4px rgba(15, 23, 42, 0.06), 0 12px 24px rgba(15, 23, 42, 0.08);
+  --text-display: 2.5rem;
+  --text-display--line-height: 3rem;
+  --text-display--font-weight: 800;
+  --text-h1: 2rem;
+  --text-h1--line-height: 2.5rem;
+  --text-h1--font-weight: 700;
+  --text-h2: 1.5rem;
+  --text-h2--line-height: 2rem;
+  --text-h2--font-weight: 700;
+  --text-h3: 1.25rem;
+  --text-h3--line-height: 1.75rem;
+  --text-h3--font-weight: 700;
+  --text-h4: 1.0625rem;
+  --text-h4--line-height: 1.5rem;
+  --text-h4--font-weight: 600;
+
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.75rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.25rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+
+  /* ── Radius by role ────────────────────────────────────────────────────
+     Not one radius stamped on everything. A pill says "tap me and I toggle";
+     a card radius says "this is an object"; a sheet says "this slid over the
+     page". Reusing one value for all three flattens that. */
+  --radius-control: 0.625rem;
+  --radius-card: 0.875rem;
+  --radius-sheet: 1.25rem;
+  --radius-pill: 9999px;
+
+  /* ── Elevation ─────────────────────────────────────────────────────────
+     Cards get NO shadow by default — a listing card is a photograph, and the
+     photo's own edge is the boundary. Shadow is reserved for things that
+     genuinely float above the page and would otherwise be ambiguous: a
+     dragged sheet, a popover, a pill sitting on top of a map. */
+  --shadow-lift: 0 1px 2px rgb(13 18 17 / 0.05), 0 8px 20px rgb(13 18 17 / 0.08);
+  --shadow-float: 0 2px 6px rgb(13 18 17 / 0.08), 0 12px 32px rgb(13 18 17 / 0.12);
+  --shadow-sheet: 0 -2px 8px rgb(13 18 17 / 0.06), 0 -16px 40px rgb(13 18 17 / 0.14);
+
+  /* Motion. One easing for things entering under their own weight (sheets,
+     drawers), one snappier curve for small anchored things (popovers, chips). */
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-pop: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/*
+  ── Dark theme ───────────────────────────────────────────────────────────
+  Only the semantic tokens are redefined; every component built on them
+  follows automatically. Two things this is careful about:
+
+  • Surfaces are LAYERED, not flat black. `surface` is a very dark green-grey
+    rather than #000, and `raised` is genuinely lighter than it — that
+    separation is what stops a dark UI reading as one undifferentiated void.
+  • The accent LIGHTENS. brand-600 on a dark ground fails contrast and stops
+    looking clickable, so dark mode promotes the accent to brand-400 via
+    `--color-accent-on`, which is what controls actually reference.
+
+  Guarded so an explicit light choice beats a dark OS preference.
+*/
+:root {
+  --color-accent-on: var(--color-brand-600);
+  --color-accent-contrast: #ffffff;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-surface: #0d1211;
+    --color-surface-raised: #171e1c;
+    --color-surface-sunken: #090d0c;
+    --color-surface-inverse: #f5f8f7;
+    --color-content: #f2f6f5;
+    --color-content-muted: #a9b6b2;
+    --color-content-subtle: #76827e;
+    --color-content-inverse: #141a18;
+    --color-line: #232d2a;
+    --color-line-strong: #33403c;
+
+    --color-accent-on: var(--color-brand-400);
+    --color-accent-contrast: #06120f;
+
+    --color-warn-500: #e0a83c;
+    --color-warn-tint: #2b2313;
+    --color-info-500: #7aa5f7;
+    --color-info-tint: #14203a;
+    --color-danger-500: #f08163;
+    --color-danger-tint: #331810;
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-surface: #0d1211;
+  --color-surface-raised: #171e1c;
+  --color-surface-sunken: #090d0c;
+  --color-surface-inverse: #f5f8f7;
+  --color-content: #f2f6f5;
+  --color-content-muted: #a9b6b2;
+  --color-content-subtle: #76827e;
+  --color-content-inverse: #141a18;
+  --color-line: #232d2a;
+  --color-line-strong: #33403c;
+
+  --color-accent-on: var(--color-brand-400);
+  --color-accent-contrast: #06120f;
+
+  --color-warn-500: #e0a83c;
+  --color-warn-tint: #2b2313;
+  --color-info-500: #7aa5f7;
+  --color-info-tint: #14203a;
+  --color-danger-500: #f08163;
+  --color-danger-tint: #331810;
+
+  color-scheme: dark;
 }
 
 /* Right-edge drawer (notifications): scrim fades, panel slides in from the side. */
@@ -68,10 +242,24 @@
   }
 }
 .animate-drawer-in {
-  animation: drawer-in 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+  animation: drawer-in 0.24s var(--ease-sheet);
 }
 .animate-overlay-in {
   animation: overlay-in 0.2s ease-out;
+}
+
+/* Bottom sheet (mobile search results): rises from the bottom edge. Paired
+   with a drag handle, so the animation and the gesture agree on direction. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-sheet-in {
+  animation: sheet-in 0.28s var(--ease-sheet);
 }
 
 /* Small anchored panels (country selector, menus): fade + slight rise. */
@@ -86,7 +274,7 @@
   }
 }
 .animate-popover-in {
-  animation: popover-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: popover-in 0.14s var(--ease-pop);
 }
 
 /* "Book with AI" (HomePage): a slowly travelling gradient sheen — reads as
@@ -120,6 +308,7 @@
   .animate-drawer-in,
   .animate-overlay-in,
   .animate-popover-in,
+  .animate-sheet-in,
   .animate-ai-sheen,
   .animate-ai-glow {
     animation: none;
@@ -134,8 +323,34 @@ body,
 
 body {
   margin: 0;
-  background-color: var(--color-ink-50);
-  color: var(--color-ink-900);
+  background-color: var(--color-surface);
+  color: var(--color-content);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Headings take the display face automatically, so no component has to
+   remember to ask for it — and a heading that wants the body face opts out
+   rather than every heading opting in. */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+/* Money, distances, ratings and counts line up in columns all over this app
+   (earnings tables, price rows, trip lists). Proportional digits make those
+   columns ragged. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every interactive element gets the same visible focus ring, defined once.
+   Uses the theme-aware accent so it stays visible on both grounds. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent-on);
+  outline-offset: 2px;
 }

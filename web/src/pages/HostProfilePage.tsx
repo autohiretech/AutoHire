@@ -55,11 +55,11 @@ export function HostProfilePage() {
   if (!host) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Host not found</p>
+        <p className="font-medium text-[var(--color-content)]">Host not found</p>
         <button
           type="button"
           onClick={backToBrowse}
-          className="mt-3 inline-block text-sm text-brand-600 hover:underline"
+          className="mt-3 inline-block text-body-sm font-semibold text-[var(--color-accent-on)] hover:underline"
         >
           Back to browse
         </button>
@@ -77,7 +77,7 @@ export function HostProfilePage() {
       <button
         type="button"
         onClick={backToBrowse}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back to browse
       </button>
@@ -88,38 +88,42 @@ export function HostProfilePage() {
           <Avatar name={name} src={host.avatarUrl} size="lg" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-bold text-ink-900">{name}</h1>
+              <h1 className="text-h3">{name}</h1>
               {verified && (
                 <Badge tone="brand">
                   <ShieldCheck size={12} /> Verified
                 </Badge>
               )}
             </div>
-            <p className="mt-0.5 flex items-center gap-1.5 text-sm text-ink-500">
+            <p className="mt-0.5 flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
               {isBusiness ? <Building2 size={14} /> : <User size={14} />}
               {isBusiness ? 'Business host' : 'Individual host'}
-              {since && <span className="text-ink-300">·</span>}
+              {since && <span className="text-[var(--color-content-subtle)]">·</span>}
               {since && <span>Since {since}</span>}
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-600">
-              <span className="inline-flex items-center gap-1">
-                <Star size={14} className="fill-accent-500 text-accent-500" />
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm text-[var(--color-content-muted)]">
+              <span className="tabular inline-flex items-center gap-1">
+                <Star size={14} className="fill-[var(--color-accent-on)] text-[var(--color-accent-on)]" />
                 {host.ratingCount ? (
                   <>
-                    <span className="font-semibold text-ink-900">{host.ratingAvg?.toFixed(1)}</span>
-                    <span className="text-ink-400">({host.ratingCount})</span>
+                    <span className="font-semibold text-[var(--color-content)]">
+                      {host.ratingAvg?.toFixed(1)}
+                    </span>
+                    <span className="text-[var(--color-content-subtle)]">({host.ratingCount})</span>
                   </>
                 ) : (
-                  <span className="text-ink-500">New host</span>
+                  <span>New host</span>
                 )}
               </span>
               <span className="inline-flex items-center gap-1">
-                <CarFront size={14} className="text-ink-400" />
+                <CarFront size={14} className="text-[var(--color-content-subtle)]" />
                 {host.vehicleCount} {host.vehicleCount === 1 ? 'vehicle' : 'vehicles'}
               </span>
               {!followersQuery.isLoading && (
-                <span className="text-ink-500">
-                  <span className="font-semibold text-ink-900">{followersQuery.data?.length ?? 0}</span>{' '}
+                <span>
+                  <span className="font-semibold text-[var(--color-content)]">
+                    {followersQuery.data?.length ?? 0}
+                  </span>{' '}
                   {followersQuery.data?.length === 1 ? 'follower' : 'followers'}
                 </span>
               )}
@@ -133,23 +137,25 @@ export function HostProfilePage() {
           verified trip post: nothing here is checked against a real booking. */}
       {!broadcastsQuery.isLoading && (broadcastsQuery.data ?? []).length > 0 && (
         <div className="mt-6">
-          <h2 className="mb-3 flex items-center gap-1.5 text-lg font-semibold text-ink-900">
-            <Megaphone size={17} className="text-accent-600" /> Updates
+          <h2 className="mb-3 flex items-center gap-1.5 text-h4">
+            <Megaphone size={17} className="text-[var(--color-accent-on)]" /> Updates
           </h2>
           <div className="flex flex-col gap-3">
             {(broadcastsQuery.data ?? []).map((b) => (
-              <Card key={b.id} className="border-accent-200 bg-accent-50/30">
+              <Card key={b.id}>
                 <CardBody className="flex items-center gap-3">
                   {b.listing && (
                     <Img
                       src={b.listing.photos[0]}
                       alt={b.listing.title}
-                      className="h-12 w-16 shrink-0 rounded-md object-cover"
+                      className="h-12 w-16 shrink-0 rounded-[var(--radius-control)] object-cover"
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-ink-700">{b.body}</p>
-                    <p className="mt-0.5 text-xs text-ink-400">{formatDate(b.createdAt)}</p>
+                    <p className="text-body-sm text-[var(--color-content)]">{b.body}</p>
+                    <p className="mt-0.5 text-caption text-[var(--color-content-subtle)]">
+                      {formatDate(b.createdAt)}
+                    </p>
                   </div>
                 </CardBody>
               </Card>
@@ -160,9 +166,9 @@ export function HostProfilePage() {
 
       {/* Cars + availability */}
       <div className="mt-6">
-        <h2 className="mb-3 text-lg font-semibold text-ink-900">
+        <h2 className="mb-3 text-h4">
           {isBusiness ? 'Fleet' : 'Cars'}{' '}
-          <span className="font-normal text-ink-400">
+          <span className="font-normal text-[var(--color-content-subtle)]">
             {listingsQuery.isLoading ? '' : `· ${listings.length}`}
           </span>
         </h2>
@@ -173,9 +179,9 @@ export function HostProfilePage() {
           </div>
         ) : listings.length === 0 ? (
           <Card>
-            <CardBody className="flex flex-col items-center gap-2 py-14 text-center text-ink-500">
-              <CarFront size={26} className="text-ink-300" />
-              <p className="text-sm">This host has no cars listed right now.</p>
+            <CardBody className="flex flex-col items-center gap-2 py-14 text-center text-[var(--color-content-muted)]">
+              <CarFront size={26} className="text-[var(--color-content-subtle)]" />
+              <p className="text-body-sm">This host has no cars listed right now.</p>
             </CardBody>
           </Card>
         ) : (

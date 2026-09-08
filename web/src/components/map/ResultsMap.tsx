@@ -33,10 +33,10 @@ function priceIcon(label: string, active: boolean): L.DivIcon {
     className: '',
     html: `<div class="${
       cn(
-        'whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold shadow-md transition-colors',
+        'whitespace-nowrap rounded-[var(--radius-pill)] border px-2.5 py-1 text-xs font-semibold shadow-md transition-colors',
         active
-          ? 'border-brand-600 bg-brand-600 text-white'
-          : 'border-ink-200 bg-white text-ink-900 hover:border-brand-300',
+          ? 'border-[var(--color-accent-on)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]'
+          : 'border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] text-[var(--color-content)] hover:border-[var(--color-accent-on)]',
       )
     }">${label}</div>`,
     iconSize: undefined,
@@ -62,7 +62,7 @@ function photoIcon(photoUrl: string): L.DivIcon {
   const resolved = resolvePhoto(photoUrl);
   return L.divIcon({
     className: '',
-    html: `<div style="width:${width}px;height:${height}px" class="overflow-hidden rounded-xl border-[3px] border-brand-600 bg-white shadow-lg ring-2 ring-white"><img src="${resolved}" class="h-full w-full object-cover" /></div>`,
+    html: `<div style="width:${width}px;height:${height}px" class="overflow-hidden rounded-[var(--radius-card)] border-[3px] border-[var(--color-accent-on)] bg-[var(--color-surface-raised)] shadow-lg ring-2 ring-[var(--color-surface-raised)]"><img src="${resolved}" class="h-full w-full object-cover" /></div>`,
     iconSize: [width, height],
     iconAnchor: [width / 2, height / 2],
   });
@@ -75,7 +75,7 @@ function clusterIcon(count: number): L.DivIcon {
   const size = count < 10 ? 34 : count < 100 ? 40 : 46;
   return L.divIcon({
     className: '',
-    html: `<div class="flex items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-brand-500 to-brand-700 font-bold text-white shadow-lg ring-1 ring-brand-700/20" style="width:${size}px;height:${size}px;font-size:${count < 100 ? 13 : 11}px">${count}</div>`,
+    html: `<div class="flex items-center justify-center rounded-full border-2 border-[var(--color-surface-raised)] bg-[var(--color-accent-on)] font-bold text-[var(--color-accent-contrast)] shadow-lg" style="width:${size}px;height:${size}px;font-size:${count < 100 ? 13 : 11}px">${count}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -250,25 +250,25 @@ function ClusteredMarkers({
             opacity={1}
             className="!rounded-xl !border-0 !bg-transparent !p-0 !shadow-none"
           >
-            <div className="w-48 overflow-hidden rounded-xl border border-ink-100 bg-white shadow-lg">
+            <div className="w-48 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-lg">
               <Img
                 src={listing.photos[0]}
                 alt={listing.title}
                 className="h-24 w-full object-cover"
               />
               <div className="p-2">
-                <p className="truncate text-xs font-semibold text-ink-900">{listing.title}</p>
-                <p className="truncate text-[11px] text-ink-500">{listing.location}</p>
+                <p className="truncate text-caption font-semibold text-[var(--color-content)]">{listing.title}</p>
+                <p className="truncate text-[11px] text-[var(--color-content-muted)]">{listing.location}</p>
                 <div className="mt-1 flex items-center justify-between">
-                  <span className="flex items-center gap-0.5 text-[11px] font-medium text-ink-700">
-                    <Star size={11} className="fill-amber-400 text-amber-400" />
+                  <span className="tabular flex items-center gap-0.5 text-[11px] font-medium text-[var(--color-content-muted)]">
+                    <Star size={11} className="fill-[var(--color-accent-on)] text-[var(--color-accent-on)]" />
                     {listing.ratingAvg.toFixed(1)} ({listing.ratingCount})
                   </span>
-                  <span className="text-[11px] font-semibold text-ink-900">
+                  <span className="tabular text-[11px] font-semibold text-[var(--color-content)]">
                     {formatMoney(listingHeadlinePrice(listing).amount, listing.priceCurrency)}
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] font-medium text-brand-600">Click for details →</p>
+                <p className="mt-1 text-[11px] font-medium text-[var(--color-accent-on)]">Click for details →</p>
               </div>
             </div>
           </Tooltip>
@@ -360,7 +360,7 @@ export function ResultsMap({
       <button
         type="button"
         onClick={() => setSatellite((v) => !v)}
-        className="absolute right-2.5 top-2.5 z-[1000] flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 shadow-md hover:bg-ink-50"
+        className="absolute right-2.5 top-2.5 z-[1000] flex items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-2.5 py-1.5 text-caption font-medium text-[var(--color-content)] shadow-[var(--shadow-float)] hover:bg-[var(--color-surface-sunken)]"
       >
         <Layers size={14} />
         {satellite ? 'Map view' : 'Satellite'}

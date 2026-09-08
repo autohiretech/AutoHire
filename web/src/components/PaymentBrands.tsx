@@ -107,7 +107,7 @@ export function GooglePayMark() {
       <span style={{ color: '#4285F4' }}>g</span>
       <span style={{ color: '#34A853' }}>l</span>
       <span style={{ color: '#EA4335' }}>e</span>
-      <span className="ml-1 text-ink-700">Pay</span>
+      <span className="ml-1 text-[var(--color-content-muted)]">Pay</span>
     </span>
   );
 }
@@ -197,7 +197,7 @@ function BrandTile({ label, children }: { label: string; children: ReactNode }) 
     <span
       role="img"
       aria-label={label}
-      className="inline-flex h-9 w-14 items-center justify-center rounded-lg border border-ink-200 bg-white shadow-sm"
+      className="inline-flex h-9 w-14 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-line)] bg-white"
     >
       {children}
     </span>

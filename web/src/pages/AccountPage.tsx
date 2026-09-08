@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
+  Banknote,
   Building2,
   Camera,
   CheckCircle2,
+  LogOut,
   Phone,
   ShieldAlert,
   ShieldCheck,
@@ -26,16 +28,18 @@ import {
   Button,
   Card,
   CardBody,
-  CardHeader,
   Input,
   Label,
+  ListGroup,
+  ListRow,
   Modal,
+  Notice,
   Spinner,
 } from '@/components/ui';
 
 /** Account settings: shows who you are and lets you permanently delete the account. */
 export function AccountPage() {
-  const { user, deleteAccount } = useAuth();
+  const { user, signOut, deleteAccount } = useAuth();
   const { data, isLoading } = useCurrentUser();
   // A company account's profile row carries the host columns (owner_type, etc.).
   const profile = data as (UserProfile & Partial<Host>) | undefined;
@@ -47,6 +51,8 @@ export function AccountPage() {
   const [error, setError] = useState<string | null>(null);
 
   const isCompany = profile?.ownerType === 'business';
+  const isHost = profile?.role === 'owner';
+  const phoneVerified = Boolean(user?.phone_confirmed_at);
 
   async function onDelete() {
     setError(null);
@@ -60,56 +66,129 @@ export function AccountPage() {
     }
   }
 
+  async function onSignOut() {
+    await signOut();
+    navigate('/login', { replace: true });
+  }
+
   return (
-    <section className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="text-2xl font-bold text-ink-900">Account</h1>
-      <p className="mt-1 text-sm text-ink-500">Manage your AutoHire account.</p>
+    <section className="mx-auto max-w-2xl px-4 py-8 sm:py-10">
+      <h1 className="text-h1">Account</h1>
+      <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
+        Manage your AutoHire account.
+      </p>
 
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        <div>
-          {isLoading || !profile ? (
-            <Card className="mt-6">
-              <CardBody className="flex justify-center py-6">
-                <Spinner size={22} />
-              </CardBody>
-            </Card>
-          ) : (
-            <ProfileCard profile={profile} email={user?.email ?? ''} />
+      {isLoading || !profile ? (
+        <div className="mt-10 flex justify-center">
+          <Spinner size={22} />
+        </div>
+      ) : (
+        <div className="mt-6 flex flex-col gap-6">
+          {/* Genuine states that need this account's attention, surfaced up
+              front rather than buried in the sections below. */}
+          {isHost && profile.payoutStatus !== 'active' && (
+            <Notice tone="warn">
+              <Banknote size={18} className="mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold">
+                  {profile.payoutStatus === 'pending'
+                    ? 'Your payout method is being verified'
+                    : 'Add a payout method to get paid'}
+                </p>
+                <p className="mt-0.5">
+                  {profile.payoutStatus === 'pending'
+                    ? 'Earnings keep building up in the meantime.'
+                    : "You won't be able to receive earnings until one is on file."}
+                </p>
+                {profile.payoutStatus !== 'pending' && (
+                  <Link
+                    to="/payouts/setup"
+                    className="mt-2 inline-block text-body-sm font-semibold underline underline-offset-2"
+                  >
+                    Set up payouts
+                  </Link>
+                )}
+              </div>
+            </Notice>
           )}
+          {!phoneVerified && (
+            <Notice tone="info">
+              <Phone size={18} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold">Verify your phone number</p>
+                <p className="mt-0.5">
+                  Get booking and pickup updates by SMS — see the Phone section below.
+                </p>
+              </div>
+            </Notice>
+          )}
+
+          <ProfileCard profile={profile} email={user?.email ?? ''} />
+
+          <PhoneVerification defaultPhone={profile.phone ?? ''} />
+
+          <ListGroup label="Account">
+            <ListRow icon={<ShieldCheck size={18} />} to="/verification">
+              Verification & documents
+            </ListRow>
+            {/* Watching is a renter's tool — hosts and companies can't book. */}
+            {!isHost && !isCompany && (
+              <ListRow icon={<Star size={18} />} to="/watchlist">
+                Cars you're watching
+              </ListRow>
+            )}
+          </ListGroup>
+
+          {/* Companies are host-only, and the renter/host switch itself lives
+              inline in the Profile card above (it needs explanatory copy a
+              plain row can't carry) — this group only holds the payout row. */}
+          {isHost && (
+            <ListGroup label="Hosting">
+              <ListRow
+                icon={<Banknote size={18} />}
+                to="/payouts/setup"
+                value={payoutStatusLabel(profile.payoutStatus)}
+              >
+                Payout method
+              </ListRow>
+            </ListGroup>
+          )}
+
+          <ListGroup label="Support">
+            <ListRow icon={<LogOut size={18} />} onClick={onSignOut}>
+              Sign out
+            </ListRow>
+          </ListGroup>
+
+          {/* Danger zone — kept last and visually distinct, on purpose: this
+              is the one destructive, irreversible action on the page. */}
+          <Notice tone="danger" className="flex-col items-stretch">
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={18} className="shrink-0" />
+              <h2 className="text-body font-semibold">Delete account</h2>
+            </div>
+            <p className="mt-1">
+              Permanently deletes your login and all of your data —{' '}
+              {isCompany ? 'fleet listings' : 'listings'}, bookings, messages, reviews, documents,
+              and notifications. This cannot be undone.
+            </p>
+            <Button
+              variant="danger"
+              size="sm"
+              className="mt-3 self-start"
+              onClick={() => setConfirmOpen(true)}
+            >
+              Delete my account
+            </Button>
+          </Notice>
         </div>
-
-        <div>
-          {/* No saved payment method here. PayHold collects the renter's method
-              at checkout, per booking — a card stored on the profile was never
-              read by it, so keeping the screen only implied otherwise. Choosing
-              how to pay now happens at /cars/:id/pay. */}
-
-          {/* Phone verification */}
-          <PhoneVerification defaultPhone={profile?.phone ?? ''} />
-
-          {/* Danger zone */}
-          <Card className="mt-6 border-red-200">
-            <CardHeader className="flex items-center gap-2">
-              <ShieldAlert size={18} className="text-red-600" />
-              <h2 className="font-semibold text-red-700">Delete account</h2>
-            </CardHeader>
-            <CardBody className="space-y-3">
-              <p className="text-sm text-ink-600">
-                Permanently deletes your login and all of your data — {isCompany ? 'fleet listings' : 'listings'},
-                bookings, messages, reviews, documents, and notifications. This cannot be undone.
-              </p>
-              <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setConfirmOpen(true)}>
-                Delete my account
-              </Button>
-            </CardBody>
-          </Card>
-        </div>
-      </div>
+      )}
 
       <Modal open={confirmOpen} onClose={() => !busy && setConfirmOpen(false)} title="Delete account?">
         <div className="space-y-4">
-          <p className="text-sm text-ink-600">
-            This is permanent. Type <span className="font-semibold text-ink-900">DELETE</span> to confirm.
+          <p className="text-body-sm text-[var(--color-content-muted)]">
+            This is permanent. Type{' '}
+            <span className="font-semibold text-[var(--color-content)]">DELETE</span> to confirm.
           </p>
           <Input
             value={confirmText}
@@ -117,13 +196,13 @@ export function AccountPage() {
             placeholder="DELETE"
             aria-label="Type DELETE to confirm"
           />
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={busy}>
               Cancel
             </Button>
             <Button
-              className="bg-red-600 hover:bg-red-700"
+              variant="danger"
               disabled={confirmText !== 'DELETE' || busy}
               onClick={onDelete}
             >
@@ -134,6 +213,12 @@ export function AccountPage() {
       </Modal>
     </section>
   );
+}
+
+function payoutStatusLabel(status?: string): string {
+  if (status === 'active') return 'Active';
+  if (status === 'pending') return 'Verifying';
+  return 'Not set';
 }
 
 /** Editable profile: avatar + name, plus the host/renter role switch. */
@@ -255,16 +340,28 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
   }
 
   return (
-    <Card className="mt-6">
-      <CardHeader>
-        <h2 className="font-semibold text-ink-900">Profile</h2>
-      </CardHeader>
+    <Card>
       <CardBody className="space-y-5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-h4">Profile</h2>
+          <Badge tone={isCompany ? 'brand' : 'neutral'}>
+            {isCompany ? (
+              <span className="flex items-center gap-1">
+                <Building2 size={13} /> Company {isHost ? '· host' : ''}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <User size={13} /> Personal {isHost ? '· host' : '· renter'}
+              </span>
+            )}
+          </Badge>
+        </div>
+
         {/* Avatar + change photo */}
         <div className="flex items-center gap-4">
           <div className="relative">
             <Avatar name={displayName} src={profile.avatarUrl} size="lg" />
-            <label className="absolute -bottom-1 -right-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-ink-200 bg-white text-ink-600 shadow-sm hover:bg-ink-50">
+            <label className="absolute -right-1 -bottom-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] text-[var(--color-content-muted)] shadow-sm hover:bg-[var(--color-surface-sunken)]">
               <Camera size={14} />
               <input
                 type="file"
@@ -276,19 +373,12 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
             </label>
           </div>
           <div>
-            <p className="font-medium text-ink-900">{displayName}</p>
-            <Badge tone={isCompany ? 'brand' : 'neutral'}>
-              {isCompany ? (
-                <span className="flex items-center gap-1">
-                  <Building2 size={13} /> Company {isHost ? '· host' : ''}
-                </span>
-              ) : (
-                <span className="flex items-center gap-1">
-                  <User size={13} /> Personal {isHost ? '· host' : '· renter'}
-                </span>
-              )}
-            </Badge>
-            {uploading && <p className="mt-1 text-xs text-ink-500">Uploading photo…</p>}
+            <p className="font-medium text-[var(--color-content)]">{displayName}</p>
+            {uploading && (
+              <p className="mt-1 text-caption text-[var(--color-content-muted)]">
+                Uploading photo…
+              </p>
+            )}
           </div>
         </div>
 
@@ -309,7 +399,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
               {busy ? 'Saving…' : 'Save'}
             </Button>
             {saved && !nameChanged && (
-              <span className="flex items-center gap-1 text-sm text-emerald-700">
+              <span className="flex items-center gap-1 text-body-sm text-brand-700 dark:text-brand-300">
                 <CheckCircle2 size={14} /> Saved
               </span>
             )}
@@ -323,15 +413,17 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
 
         <CountryField profile={profile} />
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
 
-        {/* Host / renter switch — companies are host-only. */}
+        {/* Host / renter switch — companies are host-only. Kept inline (rather
+            than folded into the ListGroup below) because it needs this
+            explanatory copy, not just a label and a chevron. */}
         {!isCompany && (
-          <div className="rounded-lg bg-ink-50 p-3">
-            <p className="text-sm font-medium text-ink-800">
+          <div className="rounded-[var(--radius-card)] bg-[var(--color-surface-sunken)] p-3">
+            <p className="text-body-sm font-medium text-[var(--color-content)]">
               {isHost ? 'Hosting account' : 'Renter account'}
             </p>
-            <p className="mt-0.5 text-sm text-ink-600">
+            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
               {isHost
                 ? 'You manage listings. Switch to renting to book cars (your listings are kept).'
                 : 'You rent cars. Become a host to list your own vehicle.'}
@@ -341,24 +433,6 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
             </Button>
           </div>
         )}
-
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <Link
-            to="/verification"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
-          >
-            <ShieldCheck size={15} /> Verification & documents
-          </Link>
-          {/* Watching is a renter's tool — hosts and companies can't book. */}
-          {!isHost && !isCompany && (
-            <Link
-              to="/watchlist"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
-            >
-              <Star size={15} /> Cars you're watching
-            </Link>
-          )}
-        </div>
       </CardBody>
     </Card>
   );
@@ -468,9 +542,9 @@ function CountryField({ profile }: { profile: UserProfile }) {
         autoComplete="off"
       />
       {open && (
-        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg">
+        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] py-1 shadow-[var(--shadow-float)]">
           {results.length === 0 ? (
-            <li className="px-3 py-4 text-center text-sm text-ink-400">
+            <li className="px-3 py-4 text-center text-body-sm text-[var(--color-content-subtle)]">
               No countries match &ldquo;{query}&rdquo;
             </li>
           ) : (
@@ -481,9 +555,9 @@ function CountryField({ profile }: { profile: UserProfile }) {
                   onMouseEnter={() => setActive(i)}
                   onClick={() => choose(c)}
                   className={cn(
-                    'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
-                    i === active && 'bg-ink-50',
-                    c.code === profile.country && 'font-medium text-brand-700',
+                    'flex w-full items-center gap-2 px-3 py-2 text-left text-body-sm',
+                    i === active && 'bg-[var(--color-surface-sunken)]',
+                    c.code === profile.country && 'font-medium text-brand-700 dark:text-brand-300',
                   )}
                 >
                   <span className="w-5 shrink-0 text-center">{c.flag}</span>
@@ -494,21 +568,20 @@ function CountryField({ profile }: { profile: UserProfile }) {
           )}
         </ul>
       )}
-      <p className="mt-1 text-xs text-ink-500">
+      <p className="mt-1 text-caption text-[var(--color-content-muted)]">
         {profile.role === 'owner'
           ? 'Where you get paid — it decides which payout methods you can use.'
           : 'Where you pay from — it decides which payment methods you can use.'}
       </p>
       {saved && (
-        <p className="mt-1 flex items-center gap-1 text-xs text-emerald-600">
+        <p className="mt-1 flex items-center gap-1 text-caption text-brand-700 dark:text-brand-300">
           <CheckCircle2 size={13} /> Saved
         </p>
       )}
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-caption text-[var(--color-danger-500)]">{error}</p>}
     </div>
   );
 }
-
 
 /** Verify the account's phone number by SMS one-time code. */
 function PhoneVerification({ defaultPhone }: { defaultPhone: string }) {
@@ -560,28 +633,32 @@ function PhoneVerification({ defaultPhone }: { defaultPhone: string }) {
   }
 
   return (
-    <Card className="mt-6">
-      <CardHeader className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 font-semibold text-ink-900">
-          <Phone size={16} className="text-brand-600" /> Phone verification
-        </h2>
-        {verified && (
-          <Badge tone="success">
-            <span className="flex items-center gap-1">
-              <CheckCircle2 size={13} /> Verified
-            </span>
-          </Badge>
-        )}
-      </CardHeader>
+    <Card>
       <CardBody className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-h4">
+            <Phone size={16} className="text-[var(--color-accent-on)]" /> Phone verification
+          </h2>
+          {verified && (
+            <Badge tone="success">
+              <span className="flex items-center gap-1">
+                <CheckCircle2 size={13} /> Verified
+              </span>
+            </Badge>
+          )}
+        </div>
+
         {verified ? (
-          <p className="text-sm text-ink-600">
+          <p className="text-body-sm text-[var(--color-content-muted)]">
             Your phone number is verified. SMS updates will go to{' '}
-            <span className="font-medium text-ink-900">{defaultPhone || user?.phone}</span>.
+            <span className="font-medium text-[var(--color-content)]">
+              {defaultPhone || user?.phone}
+            </span>
+            .
           </p>
         ) : !codeSent ? (
           <>
-            <p className="text-sm text-ink-600">
+            <p className="text-body-sm text-[var(--color-content-muted)]">
               Verify your number so we can send booking and pickup updates by SMS.
             </p>
             <div>
@@ -594,16 +671,16 @@ function PhoneVerification({ defaultPhone }: { defaultPhone: string }) {
                 placeholder="+250 788 123 456"
               />
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
             <Button onClick={send} disabled={busy}>
               {busy ? 'Sending…' : 'Send code'}
             </Button>
           </>
         ) : (
           <>
-            <p className="text-sm text-ink-600">
+            <p className="text-body-sm text-[var(--color-content-muted)]">
               Enter the 6-digit code we sent to{' '}
-              <span className="font-medium text-ink-900">{phone}</span>.
+              <span className="font-medium text-[var(--color-content)]">{phone}</span>.
             </p>
             <div>
               <Label htmlFor="otp">Verification code</Label>
@@ -615,7 +692,7 @@ function PhoneVerification({ defaultPhone }: { defaultPhone: string }) {
                 placeholder="123456"
               />
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setCodeSent(false)} disabled={busy}>
                 Back
@@ -634,8 +711,8 @@ function PhoneVerification({ defaultPhone }: { defaultPhone: string }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs text-ink-500">{label}</dt>
-      <dd className="mt-0.5 text-sm font-medium text-ink-900">{children}</dd>
+      <dt className="text-caption text-[var(--color-content-muted)]">{label}</dt>
+      <dd className="mt-0.5 text-body-sm font-medium text-[var(--color-content)]">{children}</dd>
     </div>
   );
 }

@@ -23,7 +23,18 @@ import { cn } from '@/lib/cn';
 import { formatMoney, formatMoneyMinor } from '@/lib/currency';
 import { formatDate } from '@/lib/format';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { Badge, Button, Card, CardBody, CardHeader, Spinner, toast } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Chip,
+  ChipRow,
+  Notice,
+  Spinner,
+  toast,
+} from '@/components/ui';
 
 const money = formatMoneyMinor;
 
@@ -143,8 +154,8 @@ export function EarningsPage() {
   if (me && me.role !== 'owner') {
     return (
       <section className="mx-auto max-w-2xl px-4 py-12 text-center">
-        <h1 className="text-2xl font-bold text-ink-900">Earnings are for hosts</h1>
-        <p className="mt-2 text-sm text-ink-600">
+        <h1 className="text-h2 text-[var(--color-content)]">Earnings are for hosts</h1>
+        <p className="mt-2 text-body-sm text-[var(--color-content-muted)]">
           List a car to start earning. Renters don't have a payout balance.
         </p>
         <Button className="mt-5" onClick={() => navigate('/cars/new')}>
@@ -238,80 +249,75 @@ export function EarningsPage() {
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back
       </button>
 
-      {/* Hero — the same gradient band the host dashboard opens with, so this
-          reads as part of one product rather than a plain settings page
-          bolted onto it. The available figure lives here, not three sections
-          down: it's the one number a host opened this page to see. */}
-      <div className="relative overflow-hidden rounded-2xl border border-ink-100 bg-gradient-to-br from-brand-50 via-white to-ink-50 px-5 py-6 shadow-card sm:px-6">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-brand-200/30 blur-3xl"
-        />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
+      {/* Hero — a plain surface, not a tinted band: this is the one screen
+          where the balance figure genuinely is the point, so weight and size
+          carry it, not a green background behind it. */}
+      <div className="rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-5 py-6 sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
-              <Wallet size={22} />
+            <span className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
+              <Wallet size={20} />
             </span>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-ink-900">Earnings</h1>
-              <p className="mt-0.5 text-sm text-ink-500">Every trip's money, and when it reaches you.</p>
+              <h1 className="text-h2 text-[var(--color-content)]">Earnings</h1>
+              <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
+                Every trip's money, and when it reaches you.
+              </p>
             </div>
           </div>
 
           {balanceForCurrency && (
             <div className="text-right">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-ink-400">
+              <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
                 Available to send
               </p>
-              <p className="mt-0.5 text-3xl font-bold tabular-nums leading-tight text-ink-900">
+              <p className="tabular mt-0.5 text-display leading-tight text-[var(--color-content)]">
                 {money(balanceForCurrency.available, balanceForCurrency.currency)}
               </p>
             </div>
           )}
         </div>
 
-        {/* Currency pills — only once there's more than one to choose
+        {/* Currency chips — only once there's more than one to choose
             between. Sits inside the hero, beside the figure it controls,
             rather than as a separate row a host has to connect to it. The
             payout currency gets a dot: everything else on this row is money
             still priced in whatever it was charged in, and converts into
             that one the moment it releases (see the note on "Your money"). */}
         {shownBalances.length > 1 && (
-          <div className="relative mt-4 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-4">
-            <Coins size={13} className="mr-0.5 text-ink-400" />
-            {shownBalances.map((b) => {
-              const isPayoutCurrency = b.currency === primary?.payoutCurrency;
-              return (
-                <button
-                  key={b.currency}
-                  type="button"
-                  onClick={() => setActiveCurrency(b.currency)}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors',
-                    currency === b.currency
-                      ? 'bg-brand-600 text-white shadow-sm'
-                      : 'bg-white text-ink-600 ring-1 ring-inset ring-ink-200 hover:bg-ink-50',
-                  )}
-                >
-                  {isPayoutCurrency && (
-                    <span
-                      className={cn(
-                        'h-1.5 w-1.5 rounded-full',
-                        currency === b.currency ? 'bg-white' : 'bg-emerald-500',
-                      )}
-                    />
-                  )}
-                  {b.currency}
-                </button>
-              );
-            })}
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] pt-4">
+            <Coins size={13} className="mr-0.5 text-[var(--color-content-subtle)]" />
+            <ChipRow>
+              {shownBalances.map((b) => {
+                const isPayoutCurrency = b.currency === primary?.payoutCurrency;
+                return (
+                  <Chip
+                    key={b.currency}
+                    selected={currency === b.currency}
+                    onClick={() => setActiveCurrency(b.currency)}
+                  >
+                    {isPayoutCurrency && (
+                      <span
+                        className={cn(
+                          'h-1.5 w-1.5 rounded-full',
+                          currency === b.currency
+                            ? 'bg-[var(--color-content-inverse)]'
+                            : 'bg-[var(--color-accent-on)]',
+                        )}
+                      />
+                    )}
+                    {b.currency}
+                  </Chip>
+                );
+              })}
+            </ChipRow>
             {primary && (
-              <span className="ml-1 text-[11px] text-ink-400">
+              <span className="ml-1 text-caption text-[var(--color-content-subtle)]">
                 · paid in {primary.payoutCurrency}
               </span>
             )}
@@ -333,9 +339,9 @@ export function EarningsPage() {
       {notConfigured && (
         <Card className="mt-6">
           <CardBody className="space-y-2 py-8 text-center">
-            <Wallet size={22} className="mx-auto text-ink-400" />
-            <p className="font-medium text-ink-900">Earnings aren't switched on yet</p>
-            <p className="mx-auto max-w-md text-sm text-ink-600">
+            <Wallet size={22} className="mx-auto text-[var(--color-content-subtle)]" />
+            <p className="font-medium text-[var(--color-content)]">Earnings aren't switched on yet</p>
+            <p className="mx-auto max-w-md text-body-sm text-[var(--color-content-muted)]">
               Payments are still running on the old system. Once AutoHire is connected to
               PayHold, this page shows every trip's money, what stage it's at, and when it
               reaches your account.
@@ -345,59 +351,52 @@ export function EarningsPage() {
       )}
 
       {wallet.error && !notConfigured && (
-        <Card className="mt-6 border-red-200 bg-red-50/50">
-          <CardBody className="text-sm text-red-700">
-            Couldn't load your balance.{' '}
-            {wallet.error instanceof Error ? wallet.error.message : ''}
-          </CardBody>
-        </Card>
+        <Notice tone="danger" className="mt-6">
+          Couldn't load your balance. {wallet.error instanceof Error ? wallet.error.message : ''}
+        </Notice>
       )}
 
       {/* No payout destination — the wallet is empty because nothing can reach
           it, so say that rather than showing a row of zeroes. */}
       {w && !w.sellerId && !notConfigured && (
-        <Card className="mt-6 border-amber-200 bg-amber-50/60">
-          <CardBody className="space-y-3">
-            <div>
-              <p className="font-medium text-ink-900">Set up payouts to start earning</p>
-              <p className="mt-0.5 text-sm text-ink-600">
-                Your trips can't pay out until we know where to send the money.
-              </p>
-            </div>
-            <Button onClick={() => navigate('/payouts/setup')}>
-              <Banknote size={16} /> Add a payout method
-            </Button>
-          </CardBody>
-        </Card>
+        <Notice tone="warn" className="mt-6 flex-col items-start gap-3">
+          <div>
+            <p className="font-medium">Set up payouts to start earning</p>
+            <p className="mt-0.5 text-body-sm">
+              Your trips can't pay out until we know where to send the money.
+            </p>
+          </div>
+          <Button onClick={() => navigate('/payouts/setup')}>
+            <Banknote size={16} /> Add a payout method
+          </Button>
+        </Notice>
       )}
 
       {/* What's stopping money moving, before the figures — a host with a
           blocked payout needs the reason more than the number. */}
       {w?.sellerId && !w.canReceivePayouts && (
-        <Card className="mt-6 border-amber-200 bg-amber-50/60">
-          <CardBody className="space-y-2">
-            <p className="flex items-center gap-2 font-medium text-ink-900">
-              <AlertTriangle size={16} className="text-amber-600" /> Payouts are on hold
-            </p>
-            {w.reasons.length > 0 && (
-              <ul className="ml-1 list-inside list-disc text-sm text-ink-700">
-                {w.reasons.map((r) => (
+        <Notice tone="warn" className="mt-6 flex-col items-start gap-2">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle size={16} /> Payouts are on hold
+          </p>
+          {w.reasons.length > 0 && (
+            <ul className="ml-1 list-inside list-disc text-body-sm">
+              {w.reasons.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          )}
+          {w.routeReasons.length > 0 && (
+            <>
+              <p className="pt-1 text-body-sm font-medium">On our side:</p>
+              <ul className="ml-1 list-inside list-disc text-body-sm">
+                {w.routeReasons.map((r) => (
                   <li key={r}>{r}</li>
                 ))}
               </ul>
-            )}
-            {w.routeReasons.length > 0 && (
-              <>
-                <p className="pt-1 text-sm font-medium text-ink-700">On our side:</p>
-                <ul className="ml-1 list-inside list-disc text-sm text-ink-600">
-                  {w.routeReasons.map((r) => (
-                    <li key={r}>{r}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </CardBody>
-        </Card>
+            </>
+          )}
+        </Notice>
       )}
 
       {/* --- Overview / Trip by trip -----------------------------------------
@@ -406,37 +405,14 @@ export function EarningsPage() {
           one scroll made the figure a host actually opened this page for
           compete with a list they weren't reading yet. */}
       {w?.sellerId && !notConfigured && !earnings.isLoading && (
-        <div className="mt-6 inline-flex items-center gap-1 rounded-full border border-ink-200 bg-white p-1 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setTab('overview')}
-            className={cn(
-              'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors',
-              tab === 'overview' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-600 hover:bg-ink-50',
-            )}
-          >
+        <div className="mt-6 flex gap-2">
+          <Chip selected={tab === 'overview'} onClick={() => setTab('overview')}>
             <Wallet size={14} /> Overview
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('history')}
-            className={cn(
-              'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors',
-              tab === 'history' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-600 hover:bg-ink-50',
-            )}
-          >
+          </Chip>
+          <Chip selected={tab === 'history'} onClick={() => setTab('history')}>
             <ListOrdered size={14} /> Trip by trip
-            {trips.length > 0 && (
-              <span
-                className={cn(
-                  'rounded-full px-1.5 text-xs',
-                  tab === 'history' ? 'bg-white/20' : 'bg-ink-100 text-ink-500',
-                )}
-              >
-                {trips.length}
-              </span>
-            )}
-          </button>
+            {trips.length > 0 && <span className="tabular">{trips.length}</span>}
+          </Chip>
         </div>
       )}
 
@@ -450,7 +426,7 @@ export function EarningsPage() {
               from here at all. */}
           <Card className="mt-4">
             <CardHeader className="flex items-center justify-between">
-              <h2 className="font-semibold text-ink-900">Where you get paid</h2>
+              <h2 className="font-semibold text-[var(--color-content)]">Where you get paid</h2>
               {/* Offered whether or not a destination exists.
 
                   This used to be hidden for anyone who already had one, on the
@@ -469,23 +445,23 @@ export function EarningsPage() {
             </CardHeader>
             <CardBody className="space-y-2">
               {!primary && (
-                <p className="text-sm text-ink-600">
+                <p className="text-body-sm text-[var(--color-content-muted)]">
                   {me?.payoutLabel
                     ? `${me.payoutLabel} — PayHold is still setting this up, so it can't receive money yet.`
                     : "You don't have a payout method yet. Money from your trips will wait here until you add one."}
                 </p>
               )}
               {primary && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-100 px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
                       <Banknote size={16} />
                     </span>
                     <div>
-                      <p className="text-sm font-medium text-ink-900">
+                      <p className="text-body-sm font-medium text-[var(--color-content)]">
                         {primary.label ?? primary.maskedDestination}
                       </p>
-                      <p className="text-xs text-ink-500">
+                      <p className="text-caption text-[var(--color-content-muted)]">
                         {primary.maskedDestination} · {primary.payoutCurrency}
                       </p>
                     </div>
@@ -510,7 +486,7 @@ export function EarningsPage() {
           {balanceForCurrency && (
             <Card className="mt-4">
               <CardHeader className="flex items-center justify-between">
-                <h2 className="font-semibold text-ink-900">Your money</h2>
+                <h2 className="font-semibold text-[var(--color-content)]">Your money</h2>
                 <Badge tone="neutral">{balanceForCurrency.currency}</Badge>
               </CardHeader>
               <CardBody>
@@ -545,8 +521,8 @@ export function EarningsPage() {
                     sees their own payout currency never sees a sentence about
                     conversion that doesn't apply to them. */}
                 {primary && balanceForCurrency.currency !== primary.payoutCurrency && (
-                  <p className="mt-4 flex items-start gap-1.5 rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-500">
-                    <Coins size={13} className="mt-0.5 shrink-0 text-ink-400" />
+                  <p className="mt-4 flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2 text-caption text-[var(--color-content-muted)]">
+                    <Coins size={13} className="mt-0.5 shrink-0 text-[var(--color-content-subtle)]" />
                     Converts to {primary.payoutCurrency} — what {primary.label ?? 'your payout method'}{' '}
                     actually pays in — the moment each trip releases.
                   </p>
@@ -556,23 +532,20 @@ export function EarningsPage() {
           )}
 
           {/* --- Where it goes, and sending it now -----------------------------
-              A brand-tinted CTA rather than the muted card the rest of the
-              page uses — this is the one action on Overview, and it should
-              look like one rather than blend in with the read-only cards
-              above it. */}
+              A plain surface, not a brand-filled banner — this is the one
+              action on Overview, and the "Send it now" button already carries
+              the page's one accent. A big surface behind it too would be
+              exactly the overuse the design system exists to remove; the
+              number's size and weight say "this matters" instead. */}
           {withdrawableForCurrency && (
-            <div className="relative mt-4 overflow-hidden rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-600 to-brand-700 p-5 text-white shadow-card sm:p-6">
-              <div
-                aria-hidden
-                className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl"
-              />
-              <div className="relative flex flex-wrap items-start justify-between gap-4">
+            <Card className="mt-4">
+              <CardBody className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-sm text-brand-100">Ready to send to your account</p>
-                  <p className="mt-0.5 text-3xl font-bold tabular-nums leading-tight">
+                  <p className="text-body-sm text-[var(--color-content-muted)]">Ready to send to your account</p>
+                  <p className="tabular mt-0.5 text-h1 leading-tight text-[var(--color-content)]">
                     {money(withdrawableForCurrency.availableAmount, withdrawableForCurrency.currency)}
                   </p>
-                  <p className="mt-1.5 text-xs text-brand-100">
+                  <p className="tabular mt-1.5 text-caption text-[var(--color-content-muted)]">
                     {withdrawableForCurrency.availableCount} trip
                     {withdrawableForCurrency.availableCount === 1 ? '' : 's'}
                     {withdrawableForCurrency.clearingAmount > 0 &&
@@ -583,7 +556,7 @@ export function EarningsPage() {
                   {(withdrawableForCurrency.heldCount > 0 ||
                     withdrawableForCurrency.needsVerificationCount > 0 ||
                     withdrawableForCurrency.blockedCount > 0) && (
-                    <p className="mt-1 text-xs text-accent-400">
+                    <p className="tabular mt-1 text-caption text-[var(--color-warn-500)]">
                       {[
                         withdrawableForCurrency.heldCount > 0 &&
                           `${withdrawableForCurrency.heldCount} on hold`,
@@ -599,20 +572,18 @@ export function EarningsPage() {
                   {/* The provider's own sentence, not a paraphrase of it — a
                       host reading "IP Whitelisting" knows this is nothing
                       they did, where a generic "payment failed" would send
-                      them straight back to re-checking their own number. */}
+                      them straight back to re-checking their own number. A
+                      stuck payout is exactly the state `Notice` exists for. */}
                   {stuckReasons.map((reason) => (
-                    <p
-                      key={reason}
-                      className="mt-1.5 max-w-sm rounded-lg bg-white/10 px-2.5 py-1.5 text-xs text-white"
-                    >
+                    <Notice key={reason} tone="danger" className="mt-2 max-w-sm py-2 text-caption">
                       {reason}
-                    </p>
+                    </Notice>
                   ))}
                   {/* One destination, so nothing to pick — just say where it's
                       going, because "send it now" should never be the first
                       time a host finds out. */}
                   {primary && (
-                    <p className="mt-2 text-xs text-brand-100">
+                    <p className="mt-2 text-caption text-[var(--color-content-muted)]">
                       {primaryReady
                         ? `Going to ${primary.label ?? primary.maskedDestination}`
                         : `${primary.label ?? primary.maskedDestination} isn't usable yet — ${
@@ -642,7 +613,6 @@ export function EarningsPage() {
                     withdrawableForCurrency.needsVerificationCount > 0;
                   return (
                     <Button
-                      className="bg-white text-brand-700 shadow-sm hover:bg-brand-50"
                       disabled={
                         (!hasAvailable && !hasRetriable) || withdraw.isPending || !w?.canReceivePayouts
                       }
@@ -659,8 +629,8 @@ export function EarningsPage() {
                     </Button>
                   );
                 })()}
-              </div>
-            </div>
+              </CardBody>
+            </Card>
           )}
         </>
       )}
@@ -680,14 +650,14 @@ export function EarningsPage() {
                 ))}
               </div>
               {earnings.data?.hasMore && (
-                <p className="mt-4 text-center text-xs text-ink-500">
+                <p className="mt-4 text-center text-caption text-[var(--color-content-muted)]">
                   Showing your {trips.length} most recent trips.
                 </p>
               )}
             </>
           ) : (
             <Card>
-              <CardBody className="py-10 text-center text-sm text-ink-500">
+              <CardBody className="py-10 text-center text-body-sm text-[var(--color-content-muted)]">
                 No trips yet — this fills in as your cars get booked.
               </CardBody>
             </Card>
@@ -695,16 +665,28 @@ export function EarningsPage() {
         </div>
       )}
 
-      <p className={cn('mt-6 text-xs text-ink-500', notConfigured && 'hidden')}>
+      <p className={cn('mt-6 text-caption text-[var(--color-content-muted)]', notConfigured && 'hidden')}>
         Money is held while a trip runs and released when you and the renter both confirm the car
         came back. It then clears before it can be sent, and moves to your account on its own
         schedule from there —{' '}
-        <span className="font-medium text-ink-600">use "Send it now" to speed that up</span>, or
-        to retry a payout that didn't go through.
+        <span className="font-medium text-[var(--color-content)]">
+          use "Send it now" to speed that up
+        </span>
+        , or to retry a payout that didn't go through.
       </p>
     </section>
   );
 }
+
+/** Stage tone → text colour. `emerald` reuses the accent: this app has no
+    separate "positive" hue, brand is positive (see index.css). Everything
+    else is a genuine state, not a control, so the semantic tokens apply. */
+const STAGE_COLOR: Record<'ink' | 'amber' | 'emerald' | 'red', string> = {
+  ink: 'text-[var(--color-content-muted)]',
+  amber: 'text-[var(--color-warn-500)]',
+  emerald: 'text-[var(--color-accent-on)]',
+  red: 'text-[var(--color-danger-500)]',
+};
 
 /** One trip: what it earned, where that money is, and when it lands. */
 function TripRow({ trip }: { trip: EarningTrip }) {
@@ -717,31 +699,23 @@ function TripRow({ trip }: { trip: EarningTrip }) {
       <CardBody className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate font-medium text-ink-900">{trip.car}</p>
-            <p className="text-xs text-ink-500">
+            <p className="truncate font-medium text-[var(--color-content)]">{trip.car}</p>
+            <p className="tabular text-caption text-[var(--color-content-muted)]">
               {formatDate(trip.startDate)} – {formatDate(trip.endDate)} · {trip.days} day
               {trip.days === 1 ? '' : 's'}
             </p>
           </div>
           <div className="shrink-0 text-right">
             {trip.net !== null && (
-              <p className="font-bold text-ink-900">{money(trip.net, trip.currency)}</p>
+              <p className="tabular font-bold text-[var(--color-content)]">{money(trip.net, trip.currency)}</p>
             )}
-            <span
-              className={cn(
-                'mt-0.5 inline-flex items-center gap-1 text-xs font-medium',
-                stage.tone === 'emerald' && 'text-emerald-700',
-                stage.tone === 'amber' && 'text-amber-700',
-                stage.tone === 'red' && 'text-red-700',
-                stage.tone === 'ink' && 'text-ink-500',
-              )}
-            >
+            <span className={cn('mt-0.5 inline-flex items-center gap-1 text-caption font-medium', STAGE_COLOR[stage.tone])}>
               <Icon size={13} /> {stage.label}
             </span>
           </div>
         </div>
 
-        <p className="text-xs text-ink-600">
+        <p className="text-caption text-[var(--color-content-muted)]">
           {stage.hint}
           {/* The date is the part a host is really after — "clearing" without
               "until when" is the same as not knowing. */}
@@ -752,7 +726,7 @@ function TripRow({ trip }: { trip: EarningTrip }) {
         </p>
 
         {trip.stage === 'on_hold' && trip.holdReason && (
-          <p className="flex items-start gap-1.5 rounded-lg bg-red-50 p-2 text-xs text-red-700">
+          <p className="flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-danger-tint)] p-2 text-caption text-[var(--color-danger-500)]">
             <ShieldAlert size={13} className="mt-0.5 shrink-0" />
             {trip.holdReason}
           </p>
@@ -762,9 +736,9 @@ function TripRow({ trip }: { trip: EarningTrip }) {
             its deposit, or a daily one returned more than 2 hours late.
             Never charged automatically; this is the reminder to follow up. */}
         {trip.amountOwedRwf > 0 && (
-          <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+          <p className="flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-warn-tint)] p-2 text-caption text-[var(--color-warn-500)]">
             <ShieldAlert size={13} className="mt-0.5 shrink-0" />
-            {formatMoney(trip.amountOwedRwf, trip.currency)} still to pay
+            <span className="tabular">{formatMoney(trip.amountOwedRwf, trip.currency)}</span> still to pay
             {trip.rentalType === 'hourly' ? ' for time beyond the deposit' : ' for a late return'}
             {!!trip.amountExceededRwf &&
               trip.amountExceededRwf > trip.amountOwedRwf &&
@@ -780,12 +754,12 @@ function TripRow({ trip }: { trip: EarningTrip }) {
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="text-xs font-medium text-brand-700 hover:underline"
+              className="text-caption font-medium text-[var(--color-accent-on)] hover:underline"
             >
               {open ? 'Hide breakdown' : 'How this was worked out'}
             </button>
             {open && (
-              <dl className="space-y-1 rounded-lg bg-ink-50 p-3 text-xs">
+              <dl className="tabular space-y-1 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] p-3 text-caption">
                 <Line label="Renter paid" value={money(trip.gross, trip.currency)} />
                 {trip.platformFee !== null && trip.platformFee > 0 && (
                   <Line
@@ -803,7 +777,7 @@ function TripRow({ trip }: { trip: EarningTrip }) {
                   <Line label="Refunded" value={`− ${money(trip.refunded, trip.currency)}`} />
                 )}
                 {trip.net !== null && (
-                  <div className="flex justify-between border-t border-ink-200 pt-1 font-semibold text-ink-900">
+                  <div className="flex justify-between border-t border-[var(--color-line-strong)] pt-1 font-semibold text-[var(--color-content)]">
                     <dt>You earn</dt>
                     <dd>{money(trip.net, trip.currency)}</dd>
                   </div>
@@ -819,7 +793,7 @@ function TripRow({ trip }: { trip: EarningTrip }) {
 
 function Line({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between text-ink-600">
+    <div className="flex justify-between text-[var(--color-content-muted)]">
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -840,26 +814,40 @@ function BalanceBar({ balance }: { balance: PayholdBalance }) {
   const total = held + clearing + available;
 
   if (total <= 0) {
-    return <div className="h-2 w-full rounded-full bg-ink-100" />;
+    return <div className="h-2 w-full rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)]" />;
   }
 
   return (
-    <div className="flex h-2 w-full overflow-hidden rounded-full bg-ink-100">
-      {held > 0 && <div className="h-full bg-ink-300" style={{ width: `${(held / total) * 100}%` }} />}
+    <div className="flex h-2 w-full overflow-hidden rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)]">
+      {held > 0 && (
+        <div
+          className="h-full bg-[var(--color-line-strong)]"
+          style={{ width: `${(held / total) * 100}%` }}
+        />
+      )}
       {clearing > 0 && (
-        <div className="h-full bg-amber-400" style={{ width: `${(clearing / total) * 100}%` }} />
+        <div
+          className="h-full bg-[var(--color-warn-500)]"
+          style={{ width: `${(clearing / total) * 100}%` }}
+        />
       )}
       {available > 0 && (
-        <div className="h-full bg-emerald-500" style={{ width: `${(available / total) * 100}%` }} />
+        <div
+          className="h-full bg-[var(--color-accent-on)]"
+          style={{ width: `${(available / total) * 100}%` }}
+        />
       )}
     </div>
   );
 }
 
+/** Icon-chip tint per figure — `green` reuses the accent (positive = brand,
+    this app has no separate "success" hue), `amber` a genuine "still
+    clearing" state, `muted` a plain fact. */
 const MONEY_STAT_CHIP: Record<'muted' | 'amber' | 'green', string> = {
-  muted: 'bg-ink-100 text-ink-500',
-  amber: 'bg-amber-50 text-amber-600',
-  green: 'bg-emerald-50 text-emerald-600',
+  muted: 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
+  amber: 'bg-[var(--color-warn-tint)] text-[var(--color-warn-500)]',
+  green: 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300',
 };
 
 /** One balance figure as a tinted icon chip — the same shape the host
@@ -877,11 +865,18 @@ function MoneyStat({
 }) {
   return (
     <div>
-      <span className={cn('flex h-8 w-8 items-center justify-center rounded-lg', MONEY_STAT_CHIP[tone])}>
+      <span
+        className={cn(
+          'flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)]',
+          MONEY_STAT_CHIP[tone],
+        )}
+      >
         <Icon size={15} />
       </span>
-      <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-ink-400">{label}</p>
-      <p className="mt-0.5 truncate text-base font-bold tabular-nums leading-tight text-ink-900">
+      <p className="mt-2 text-caption font-medium tracking-wide text-[var(--color-content-subtle)] uppercase">
+        {label}
+      </p>
+      <p className="tabular mt-0.5 truncate text-body font-bold leading-tight text-[var(--color-content)]">
         {value}
       </p>
     </div>

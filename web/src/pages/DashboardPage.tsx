@@ -21,7 +21,6 @@ import {
   Search,
   ShieldCheck,
   Star,
-  TrendingUp,
   Undo2,
   UserRound,
   Wallet,
@@ -46,8 +45,11 @@ import {
   Button,
   Card,
   CardBody,
+  Chip,
   ConfirmDialog,
   Input,
+  ListGroup,
+  Notice,
   Spinner,
   toast,
 } from '@/components/ui';
@@ -293,49 +295,40 @@ export function DashboardPage() {
 
   return (
     <section className="mx-auto max-w-[1500px] px-4 py-6 sm:py-8">
-      {/* Header + summary — subtle brand-tinted band */}
-      <div className="relative overflow-hidden rounded-2xl border border-ink-100 bg-gradient-to-br from-brand-50 via-white to-ink-50 px-5 py-6 shadow-card">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-brand-200/30 blur-3xl"
-        />
-        <div className="relative flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
-              <LayoutDashboard size={22} />
-            </span>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-ink-900">Host dashboard</h1>
-              <p className="mt-0.5 text-sm text-ink-500">
-                {host ? host.businessName ?? host.fullName : 'Loading…'}
-              </p>
-            </div>
+      {/* Header — plain surface. The only accent on this screen's chrome is
+          the "Add a listing" button itself; a tinted band behind it would be
+          a large surface wearing the brand hue for no reason. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
+            <LayoutDashboard size={20} />
+          </span>
+          <div>
+            <h1 className="text-h2 text-[var(--color-content)]">Host dashboard</h1>
+            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
+              {host ? host.businessName ?? host.fullName : 'Loading…'}
+            </p>
           </div>
-          <Link to="/cars/new">
-            <Button className="shadow-sm">
-              <Plus size={16} /> Add a listing
-            </Button>
-          </Link>
         </div>
+        <Link to="/cars/new">
+          <Button>
+            <Plus size={16} /> Add a listing
+          </Button>
+        </Link>
       </div>
 
       {host && <ReconnectPayouts host={host} />}
       {host && <SetupChecklist host={host} listingCount={listings.length} />}
       {host && <HostBroadcastComposer />}
 
-      {/* Stat cards — each metric its own card with a tinted icon chip and a live
-          secondary indicator. Fleet counts filter the list; money cards are totals. */}
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {/* Quick-filter tiles — counts a host scans and taps, not a wall of big
+          numbers. Weight and a state chip carry the signal; no per-metric hue. */}
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
           icon={Car}
           label="Vehicles"
           value={`${listings.length}`}
-          tone="brand"
-          trend={
-            listings.length
-              ? { label: `${indicators.available} available`, tone: indicators.available ? 'up' : 'muted' }
-              : undefined
-          }
+          note={listings.length ? `${indicators.available} available` : undefined}
           onClick={() => focusFilter('all')}
           active={view === 'cars' && filter === 'all'}
         />
@@ -343,14 +336,14 @@ export function DashboardPage() {
           icon={Inbox}
           label="Requests"
           value={`${stats.pending}`}
-          tone={stats.pending ? 'info' : 'muted'}
-          trend={
+          note={
             indicators.newRequests
-              ? { label: `${indicators.newRequests} new this week`, tone: 'up' }
+              ? `${indicators.newRequests} new this week`
               : stats.pending
-                ? { label: 'Awaiting your reply', tone: 'warn' }
-                : { label: 'All caught up', tone: 'muted' }
+                ? 'Awaiting your reply'
+                : 'All caught up'
           }
+          noteTone={stats.pending ? 'info' : 'muted'}
           onClick={() => focusFilter('requests')}
           active={view === 'cars' && filter === 'requests'}
         />
@@ -358,12 +351,14 @@ export function DashboardPage() {
           icon={Navigation}
           label="On trip"
           value={`${stats.active}`}
-          tone={stats.active ? 'amber' : 'muted'}
-          trend={
+          note={
             indicators.dueSoon
-              ? { label: `${indicators.dueSoon} due back soon`, tone: 'warn' }
-              : { label: stats.active ? 'All on schedule' : 'None active', tone: 'muted' }
+              ? `${indicators.dueSoon} due back soon`
+              : stats.active
+                ? 'All on schedule'
+                : 'None active'
           }
+          noteTone={indicators.dueSoon ? 'warn' : 'muted'}
           onClick={() => focusFilter('trip')}
           active={view === 'cars' && filter === 'trip'}
         />
@@ -371,12 +366,8 @@ export function DashboardPage() {
           icon={AlertTriangle}
           label="Overdue"
           value={`${overdueTotal}`}
-          tone={overdueTotal ? 'red' : 'muted'}
-          trend={
-            overdueTotal
-              ? { label: 'Needs action', tone: 'danger' }
-              : { label: 'All returned on time', tone: 'muted' }
-          }
+          note={overdueTotal ? 'Needs action' : 'All returned on time'}
+          noteTone={overdueTotal ? 'danger' : 'muted'}
           onClick={() => focusFilter('overdue')}
           active={view === 'cars' && filter === 'overdue'}
         />
@@ -384,45 +375,30 @@ export function DashboardPage() {
           icon={Banknote}
           label="Earned"
           value={formatRwf(stats.earned)}
-          tone="green"
-          trend={{
-            label: `${stats.completed} completed trip${stats.completed === 1 ? '' : 's'}`,
-            tone: 'muted',
-          }}
+          note={`${stats.completed} completed trip${stats.completed === 1 ? '' : 's'}`}
         />
         <StatCard
           icon={Wallet}
           label="Payouts due"
           value={formatRwf(scheduledTotal)}
-          tone="brand"
-          trend={
+          note={
             scheduledTotal
-              ? {
-                  label: indicators.nextPayoutDays != null ? `Next in ${indicators.nextPayoutDays}d` : 'Scheduled',
-                  tone: 'up',
-                }
-              : { label: 'Nothing scheduled', tone: 'muted' }
+              ? indicators.nextPayoutDays != null
+                ? `Next in ${indicators.nextPayoutDays}d`
+                : 'Scheduled'
+              : 'Nothing scheduled'
           }
           onClick={() => setView('payouts')}
           active={view === 'payouts'}
         />
       </div>
 
-      {/* View toggle — segmented control */}
-      <div className="mt-6 inline-flex rounded-xl bg-ink-100 p-1">
+      {/* View toggle — segmented Chip pair, same control as the Trips filter. */}
+      <div className="mt-6 flex gap-2">
         {(['cars', 'payouts'] as View[]).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setView(v)}
-            aria-pressed={view === v}
-            className={cn(
-              'rounded-lg px-5 py-1.5 text-sm font-medium transition-all',
-              view === v ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-800',
-            )}
-          >
+          <Chip key={v} selected={view === v} onClick={() => setView(v)}>
             {v === 'cars' ? 'Fleet' : 'Payouts'}
-          </button>
+          </Chip>
         ))}
       </div>
 
@@ -468,9 +444,12 @@ export function DashboardPage() {
             {/* The search bar stays visible while the list scrolls, at every
                 screen size — not just desktop — same sticky-under-the-header
                 treatment as the app header itself. */}
-            <div className="sticky top-16 z-10 bg-ink-50/95 pb-3 pt-1 backdrop-blur lg:static lg:z-auto lg:shrink-0 lg:bg-transparent lg:py-0 lg:backdrop-blur-none">
+            <div className="sticky top-16 z-10 bg-[var(--color-surface-sunken)]/95 pb-3 pt-1 backdrop-blur lg:static lg:z-auto lg:shrink-0 lg:bg-transparent lg:py-0 lg:backdrop-blur-none">
               <div className="relative mb-3">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+                <Search
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
+                />
                 <Input
                   placeholder="Search your listings"
                   value={search}
@@ -482,15 +461,15 @@ export function DashboardPage() {
               {/* Active-filter indicator — the stat bar above is the filter control;
                   this just shows what's applied and offers a one-tap clear. */}
               {filter !== 'all' && (
-                <div className="mb-3 flex items-center justify-between rounded-lg bg-ink-100 px-3 py-1.5 text-xs">
-                  <span className="font-medium text-ink-600">
+                <div className="mb-3 flex items-center justify-between rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-1.5 text-caption">
+                  <span className="font-medium text-[var(--color-content-muted)]">
                     Showing{' '}
                     {filter === 'requests' ? 'cars with requests' : filter === 'trip' ? 'cars on a trip' : 'overdue cars'}
                   </span>
                   <button
                     type="button"
                     onClick={() => setFilter('all')}
-                    className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline"
+                    className="inline-flex items-center gap-1 font-medium text-[var(--color-accent-on)] hover:underline"
                   >
                     <X size={12} /> Clear
                   </button>
@@ -498,7 +477,10 @@ export function DashboardPage() {
               )}
             </div>
 
-            <ul className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">
+            {/* Grouped rows in one rounded container with hairline dividers,
+                not a card per car — this is the same list-of-things pattern as
+                a native settings screen, just with a thumbnail per row. */}
+            <ul className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">
               {filtered.map((l) => (
                 <CarListRow
                   key={l.id}
@@ -509,7 +491,7 @@ export function DashboardPage() {
                 />
               ))}
               {filtered.length === 0 && (
-                <li className="px-1 py-6 text-sm text-ink-500">
+                <li className="px-4 py-6 text-body-sm text-[var(--color-content-muted)]">
                   {filter !== 'all' ? (
                     <>
                       No cars {filter === 'requests' ? 'with pending requests' : filter === 'trip' ? 'on a trip' : 'overdue'}
@@ -517,7 +499,7 @@ export function DashboardPage() {
                       <button
                         type="button"
                         onClick={() => setFilter('all')}
-                        className="font-medium text-brand-600 hover:underline"
+                        className="font-medium text-[var(--color-accent-on)] hover:underline"
                       >
                         Show all cars
                       </button>
@@ -546,9 +528,9 @@ export function DashboardPage() {
               />
             ) : (
               <Card>
-                <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-ink-400">
+                <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-[var(--color-content-subtle)]">
                   <Car size={26} />
-                  <p className="text-sm">Select a listing to manage its requests and trips.</p>
+                  <p className="text-body-sm">Select a listing to manage its requests and trips.</p>
                 </CardBody>
               </Card>
             )}
@@ -559,66 +541,58 @@ export function DashboardPage() {
   );
 }
 
-type StatTone = 'muted' | 'brand' | 'info' | 'amber' | 'green' | 'red';
-type TrendTone = 'up' | 'warn' | 'danger' | 'muted';
+type NoteTone = 'muted' | 'info' | 'warn' | 'danger';
 
-/** Tinted icon-chip background/foreground per metric tone. */
-const STAT_CHIP: Record<StatTone, string> = {
-  muted: 'bg-ink-100 text-ink-500',
-  brand: 'bg-brand-50 text-brand-600',
-  info: 'bg-info-50 text-info-600',
-  amber: 'bg-amber-50 text-amber-600',
-  green: 'bg-emerald-50 text-emerald-600',
-  red: 'bg-red-50 text-red-600',
-};
-const TREND_COLOR: Record<TrendTone, string> = {
-  up: 'text-emerald-600',
-  warn: 'text-amber-600',
-  danger: 'text-red-600',
-  muted: 'text-ink-400',
+/** Secondary-line colour — a state, never the metric's own hue. */
+const NOTE_COLOR: Record<NoteTone, string> = {
+  muted: 'text-[var(--color-content-subtle)]',
+  info: 'text-[var(--color-info-500)]',
+  warn: 'text-[var(--color-warn-500)]',
+  danger: 'text-[var(--color-danger-500)]',
 };
 
 /**
- * One metric as a self-contained card: tinted icon chip, label, big value, and a
- * live secondary indicator. With an `onClick` it filters the fleet below (hover
- * lift + active ring); money totals are static.
+ * One metric as a compact tile: icon, label, big tabular value, and a live
+ * secondary line. No per-metric colour — weight carries the number, and the
+ * note only takes a semantic colour when it is actually reporting a state.
+ * With an `onClick` it filters the fleet below.
  */
 function StatCard({
   icon: Icon,
   label,
   value,
-  tone,
-  trend,
+  note,
+  noteTone = 'muted',
   onClick,
   active = false,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
-  tone: StatTone;
-  trend?: { label: string; tone: TrendTone };
+  note?: string;
+  noteTone?: NoteTone;
   onClick?: () => void;
   active?: boolean;
 }) {
   const inner = (
     <>
-      <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl', STAT_CHIP[tone])}>
-        <Icon size={18} />
+      <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
+        <Icon size={16} />
       </span>
       <div className="mt-3">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-ink-400">{label}</p>
-        <p className="mt-0.5 truncate text-2xl font-bold leading-tight tabular-nums text-ink-900">{value}</p>
-        {trend && (
-          <p className={cn('mt-1 flex items-center gap-1 text-xs font-medium', TREND_COLOR[trend.tone])}>
-            {trend.tone === 'up' && <TrendingUp size={13} />}
-            {trend.label}
-          </p>
+        <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
+          {label}
+        </p>
+        <p className="tabular mt-0.5 truncate text-h3 leading-tight text-[var(--color-content)]">{value}</p>
+        {note && (
+          <p className={cn('mt-1 truncate text-caption font-medium', NOTE_COLOR[noteTone])}>{note}</p>
         )}
       </div>
     </>
   );
 
-  const base = 'flex flex-col rounded-2xl border border-ink-100 bg-white p-4 text-left shadow-card';
+  const base =
+    'flex flex-col rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-3.5 text-left';
   if (!onClick) {
     return <div className={base}>{inner}</div>;
   }
@@ -629,8 +603,8 @@ function StatCard({
       aria-pressed={active}
       className={cn(
         base,
-        'transition-all hover:-translate-y-0.5 hover:shadow-card-hover active:translate-y-0',
-        active && 'border-brand-300 ring-1 ring-brand-200',
+        'transition-colors hover:bg-[var(--color-surface-sunken)]',
+        active && 'border-[var(--color-line-strong)] ring-1 ring-[var(--color-line-strong)]',
       )}
     >
       {inner}
@@ -638,27 +612,18 @@ function StatCard({
   );
 }
 
-function MiniStat({
-  label,
-  value,
-  highlight,
-  tone = 'brand',
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-  tone?: 'brand' | 'info';
-}) {
-  const on = highlight
-    ? tone === 'info'
-      ? 'border-info-200 bg-info-50'
-      : 'border-brand-200 bg-brand-50'
-    : 'border-ink-100 bg-ink-50/60';
-  const valueColor = highlight ? (tone === 'info' ? 'text-info-700' : 'text-brand-700') : 'text-ink-900';
+function MiniStat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className={cn('rounded-lg border px-3 py-2', on)}>
-      <p className="text-[11px] uppercase tracking-wide text-ink-400">{label}</p>
-      <p className={cn('text-base font-bold leading-tight', valueColor)}>{value}</p>
+    <div
+      className={cn(
+        'rounded-[var(--radius-control)] border px-3 py-2',
+        highlight
+          ? 'border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)]'
+          : 'border-[var(--color-line)] bg-[var(--color-surface-raised)]',
+      )}
+    >
+      <p className="text-caption tracking-wide text-[var(--color-content-subtle)] uppercase">{label}</p>
+      <p className="tabular text-body font-bold leading-tight text-[var(--color-content)]">{value}</p>
     </div>
   );
 }
@@ -674,17 +639,13 @@ function Centered() {
 /** Something went wrong loading a query — let the host retry instead of staring at zeros. */
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
-    <Card className="mt-6">
-      <CardBody className="flex flex-col items-center gap-3 py-12 text-center">
-        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
-          <AlertTriangle size={20} />
-        </span>
-        <p className="text-sm text-ink-600">Couldn't load this. Check your connection and try again.</p>
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          <RotateCw size={14} /> Retry
-        </Button>
-      </CardBody>
-    </Card>
+    <Notice tone="danger" className="mt-6 flex-col items-center py-12 text-center">
+      <AlertTriangle size={20} />
+      <p className="text-body-sm">Couldn't load this. Check your connection and try again.</p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        <RotateCw size={14} /> Retry
+      </Button>
+    </Notice>
   );
 }
 
@@ -693,18 +654,21 @@ function FleetSkeleton() {
   return (
     <div className="mt-6 grid animate-pulse gap-6 lg:grid-cols-[320px_1fr]">
       <div className="space-y-2">
-        <div className="h-10 rounded-lg bg-ink-100" />
+        <div className="h-10 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)]" />
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-xl border border-ink-100 p-2.5">
-            <div className="h-14 w-20 shrink-0 rounded-lg bg-ink-100" />
+          <div
+            key={i}
+            className="flex items-center gap-3 rounded-[var(--radius-card)] border border-[var(--color-line)] p-2.5"
+          >
+            <div className="h-14 w-20 shrink-0 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)]" />
             <div className="flex-1 space-y-2">
-              <div className="h-3 w-3/4 rounded bg-ink-100" />
-              <div className="h-3 w-1/2 rounded bg-ink-100" />
+              <div className="h-3 w-3/4 rounded bg-[var(--color-surface-sunken)]" />
+              <div className="h-3 w-1/2 rounded bg-[var(--color-surface-sunken)]" />
             </div>
           </div>
         ))}
       </div>
-      <div className="hidden h-72 rounded-[var(--radius-card)] border border-ink-200 bg-ink-50/60 lg:block" />
+      <div className="hidden h-72 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] lg:block" />
     </div>
   );
 }
@@ -718,23 +682,26 @@ function EmptyFleet() {
   return (
     <Card className="mt-6">
       <CardBody className="flex flex-col items-center gap-5 py-12 text-center">
-        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
           <Car size={22} />
         </span>
         <div>
-          <p className="text-base font-semibold text-ink-900">Start hosting in three steps</p>
-          <p className="mt-1 text-sm text-ink-500">Add your first vehicle to begin earning.</p>
+          <p className="text-body-lg font-semibold text-[var(--color-content)]">Start hosting in three steps</p>
+          <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">Add your first vehicle to begin earning.</p>
         </div>
         <ol className="grid w-full max-w-2xl gap-3 sm:grid-cols-3">
           {steps.map((s, i) => (
-            <li key={s.title} className="rounded-xl border border-ink-100 bg-ink-50/60 p-4 text-left">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-brand-600 ring-1 ring-ink-100">
+            <li
+              key={s.title}
+              className="rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-4 text-left"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-surface-raised)] text-[var(--color-content-muted)] ring-1 ring-[var(--color-line)]">
                 <s.icon size={16} />
               </span>
-              <p className="mt-2 text-sm font-semibold text-ink-900">
+              <p className="mt-2 text-body-sm font-semibold text-[var(--color-content)]">
                 {i + 1}. {s.title}
               </p>
-              <p className="mt-0.5 text-xs text-ink-500">{s.body}</p>
+              <p className="mt-0.5 text-caption text-[var(--color-content-muted)]">{s.body}</p>
             </li>
           ))}
         </ol>
@@ -748,7 +715,9 @@ function EmptyFleet() {
   );
 }
 
-/** A row in the left rail: thumbnail, title, status + pending-request badge. */
+/** A row in the left rail: thumbnail, title, status + pending-request badge.
+    Lives inside the grouped `ul` container, so it's a divided row rather
+    than its own bordered card. */
 function CarListRow({
   listing,
   bookings,
@@ -774,16 +743,18 @@ function CarListRow({
         type="button"
         onClick={onSelect}
         className={cn(
-          'flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all',
-          active
-            ? 'border-brand-300 bg-brand-50 ring-1 ring-brand-200'
-            : 'border-ink-200 bg-white hover:border-ink-300 hover:shadow-sm',
+          'flex w-full items-center gap-3 border-t border-[var(--color-line)] p-3 text-left transition-colors first:border-t-0',
+          active ? 'bg-[var(--color-surface-sunken)]' : 'hover:bg-[var(--color-surface-sunken)]',
         )}
       >
-        <Img src={listing.photos[0]} alt={listing.title} className="h-14 w-20 shrink-0 rounded-lg object-cover" />
+        <Img
+          src={listing.photos[0]}
+          alt={listing.title}
+          className="h-14 w-20 shrink-0 rounded-[var(--radius-control)] object-cover"
+        />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-ink-900">{listing.title}</p>
-          <p className="truncate text-xs text-ink-500">
+          <p className="truncate font-medium text-[var(--color-content)]">{listing.title}</p>
+          <p className="tabular truncate text-caption text-[var(--color-content-muted)]">
             {listingPriceLabel(listing)}{activity ? ` · ${activity}` : ''}
           </p>
           <span className="mt-1 inline-flex flex-wrap gap-1">
@@ -797,7 +768,7 @@ function CarListRow({
         </div>
         {open > 0 && (
           <span
-            className="flex h-6 min-w-6 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white"
+            className="tabular flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--color-accent-on)] px-1.5 text-caption font-semibold text-[var(--color-accent-contrast)]"
             title={`${open} active booking${open === 1 ? '' : 's'} (not completed)`}
           >
             {open}
@@ -833,68 +804,78 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-800 lg:hidden"
+          className="inline-flex items-center gap-1 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)] lg:hidden"
         >
           <ChevronLeft size={16} /> Fleet
         </button>
         <div className="flex items-start gap-3">
-          <Img src={listing.photos[0]} alt={listing.title} className="h-16 w-24 shrink-0 rounded-lg object-cover" />
+          <Img
+            src={listing.photos[0]}
+            alt={listing.title}
+            className="h-16 w-24 shrink-0 rounded-[var(--radius-control)] object-cover"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold text-ink-900">{listing.title}</h2>
+              <h2 className="text-h4 text-[var(--color-content)]">{listing.title}</h2>
               <Badge tone={status.tone}>{status.label}</Badge>
             </div>
-            <p className="mt-0.5 text-sm text-ink-500">{listing.location}</p>
-            <p className="mt-0.5 flex items-center gap-2 text-sm text-ink-600">
-              <span className="font-semibold text-ink-900">{listingPriceLabel(listing)}</span>
-              <span className="inline-flex items-center gap-1 text-ink-500">
-                <Star size={13} className="fill-accent-500 text-accent-500" />
+            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">{listing.location}</p>
+            <p className="mt-0.5 flex items-center gap-2 text-body-sm text-[var(--color-content-muted)]">
+              <span className="tabular font-semibold text-[var(--color-content)]">{listingPriceLabel(listing)}</span>
+              <span className="inline-flex items-center gap-1 text-[var(--color-content-muted)]">
+                <Star size={13} className="fill-[var(--color-warn-500)] text-[var(--color-warn-500)]" />
                 {listing.ratingCount ? listing.ratingAvg?.toFixed(1) : 'New'}
               </span>
             </p>
           </div>
           <Link
             to={`/cars/${listing.id}`}
-            className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline"
+            className="inline-flex items-center gap-1 text-body-sm font-medium text-[var(--color-accent-on)] hover:underline"
           >
             <ExternalLink size={14} /> View
           </Link>
         </div>
 
         {overdue.length > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <Notice tone="danger">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
             <span>
               {overdue.length === 1 ? 'A trip is' : `${overdue.length} trips are`} overdue — the car was due
               back on {overdue.map((b) => formatDate(b.endDate)).join(', ')} but isn't completed. The renter has
               been notified.
             </span>
-          </div>
+          </Notice>
         )}
 
         {/* Per-car numbers */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <MiniStat label="Requests" value={`${s.pending}`} highlight={s.pending > 0} tone="info" />
+          <MiniStat label="Requests" value={`${s.pending}`} highlight={s.pending > 0} />
           <MiniStat label="Upcoming" value={`${s.upcoming}`} />
           <MiniStat label="On trip" value={`${s.active}`} />
           <MiniStat label="Earned" value={formatRwf(s.earned)} />
         </div>
 
-        {/* Sub-tabs */}
-        <div className="flex gap-1 border-b border-ink-200">
+        {/* Sub-tabs — the one place besides the primary button an active
+            state is allowed to carry the accent, same rule as a selected tab
+            anywhere else in the app. */}
+        <div className="flex gap-1 border-b border-[var(--color-line)]">
           {tabs.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
               className={cn(
-                '-mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-                tab === t.key ? 'border-brand-600 text-brand-700' : 'border-transparent text-ink-500 hover:text-ink-800',
+                '-mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-body-sm font-medium transition-colors',
+                tab === t.key
+                  ? 'border-[var(--color-accent-on)] text-[var(--color-accent-on)]'
+                  : 'border-transparent text-[var(--color-content-muted)] hover:text-[var(--color-content)]',
               )}
             >
               {t.label}
               {t.badge !== undefined && (
-                <span className="rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">{t.badge}</span>
+                <span className="tabular rounded-full bg-[var(--color-accent-on)] px-1.5 text-caption font-semibold text-[var(--color-accent-contrast)]">
+                  {t.badge}
+                </span>
               )}
             </button>
           ))}
@@ -903,7 +884,9 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
         {/* Content */}
         {tab === 'requests' &&
           (requests.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-500">No pending requests for this listing.</p>
+            <p className="py-6 text-center text-body-sm text-[var(--color-content-muted)]">
+              No pending requests for this listing.
+            </p>
           ) : (
             <div className="space-y-3">
               {requests.map((b) => (
@@ -914,7 +897,9 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
 
         {tab === 'trips' &&
           (trips.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-500">No trips for this listing yet.</p>
+            <p className="py-6 text-center text-body-sm text-[var(--color-content-muted)]">
+              No trips for this listing yet.
+            </p>
           ) : (
             <div className="space-y-3">
               {trips.map((b) => (
@@ -972,14 +957,16 @@ function RequestRow({ booking }: { booking: Booking }) {
     <Card>
       <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="flex-1">
-          <p className="text-sm font-medium text-ink-900">
+          <p className="tabular text-body-sm font-medium text-[var(--color-content)]">
             {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
-            <span className="font-normal text-ink-500">
+            <span className="font-normal text-[var(--color-content-muted)]">
               {' '}
               · {booking.days} day{booking.days === 1 ? '' : 's'}
             </span>
           </p>
-          <p className="mt-0.5 text-sm font-semibold text-ink-900">{formatRwf(booking.totalRwf)}</p>
+          <p className="tabular mt-0.5 text-body-sm font-semibold text-[var(--color-content)]">
+            {formatRwf(booking.totalRwf)}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {/* Secondary, lower-weight actions — a look before deciding. */}
@@ -1004,7 +991,7 @@ function RequestRow({ booking }: { booking: Booking }) {
           >
             {messaging ? <Spinner size={14} /> : <MessageSquare size={16} />}
           </Button>
-          <span className="mx-0.5 h-5 w-px bg-ink-200" />
+          <span className="mx-0.5 h-5 w-px bg-[var(--color-line-strong)]" />
           {/* The actual decision — kept as the visually heavy buttons. */}
           <Button variant="outline" size="sm" onClick={() => decide('decline')} disabled={mutation.isPending}>
             Decline
@@ -1034,11 +1021,11 @@ function RequestRow({ booking }: { booking: Booking }) {
         body={
           <p>
             {confirm === 'approve' ? 'Confirm the booking for' : 'Turn down the booking for'}{' '}
-            <span className="font-medium text-ink-900">
+            <span className="tabular font-medium text-[var(--color-content)]">
               {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
             </span>{' '}
             ({booking.days} day{booking.days === 1 ? '' : 's'} ·{' '}
-            <span className="font-medium text-ink-900">{formatRwf(booking.totalRwf)}</span>).
+            <span className="tabular font-medium text-[var(--color-content)]">{formatRwf(booking.totalRwf)}</span>).
             {confirm === 'approve'
               ? ' These dates will be reserved on your calendar.'
               : ' The renter will be notified and the dates stay open.'}
@@ -1086,8 +1073,8 @@ function CarManage({ listing }: { listing: Listing }) {
   return (
     <div className="space-y-5 pt-1">
       {/* Full details */}
-      <div className="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2.5">
-        <p className="text-sm text-ink-600">Photos, specs, location, booking mode…</p>
+      <div className="flex items-center justify-between rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2.5">
+        <p className="text-body-sm text-[var(--color-content-muted)]">Photos, specs, location, booking mode…</p>
         <Link to={`/cars/${listing.id}/edit`}>
           <Button variant="outline" size="sm">
             <Pencil size={14} /> Edit car details
@@ -1099,7 +1086,9 @@ function CarManage({ listing }: { listing: Listing }) {
           one is fixed on the car's edit page (Pricing mode), not here. */}
       {listing.pricingMode === 'daily' ? (
         <div>
-          <p className="mb-1.5 text-sm font-medium text-ink-700">Price per day ({listing.priceCurrency})</p>
+          <p className="mb-1.5 text-body-sm font-medium text-[var(--color-content)]">
+            Price per day ({listing.priceCurrency})
+          </p>
           <div className="flex items-center gap-2">
             <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="max-w-40" />
             <Button
@@ -1113,7 +1102,9 @@ function CarManage({ listing }: { listing: Listing }) {
         </div>
       ) : (
         <div>
-          <p className="mb-1.5 text-sm font-medium text-ink-700">Price per hour ({listing.priceCurrency})</p>
+          <p className="mb-1.5 text-body-sm font-medium text-[var(--color-content)]">
+            Price per hour ({listing.priceCurrency})
+          </p>
           <div className="flex items-center gap-2">
             <Input
               type="number"
@@ -1134,10 +1125,10 @@ function CarManage({ listing }: { listing: Listing }) {
 
       {/* Maintenance */}
       <div>
-        <p className="mb-1.5 text-sm font-medium text-ink-700">Maintenance</p>
+        <p className="mb-1.5 text-body-sm font-medium text-[var(--color-content)]">Maintenance</p>
         {inMaintenance ? (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-ink-600">
+            <span className="tabular text-body-sm text-[var(--color-content-muted)]">
               Off the market{listing.maintenanceUntil ? ` until ${formatDate(listing.maintenanceUntil)}` : ''}.
             </span>
             <Button
@@ -1151,7 +1142,7 @@ function CarManage({ listing }: { listing: Listing }) {
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-ink-600">Back in service on</span>
+            <span className="text-body-sm text-[var(--color-content-muted)]">Back in service on</span>
             <Input type="date" min={today} value={maintDate} onChange={(e) => setMaintDate(e.target.value)} className="max-w-48" />
             <Button
               variant="outline"
@@ -1167,16 +1158,19 @@ function CarManage({ listing }: { listing: Listing }) {
 
       {/* Blocked dates */}
       <div>
-        <p className="mb-1.5 text-sm font-medium text-ink-700">Blocked / personal-use dates</p>
+        <p className="mb-1.5 text-body-sm font-medium text-[var(--color-content)]">Blocked / personal-use dates</p>
         {listing.blockedDates.length > 0 ? (
           <div className="mb-2 flex flex-wrap gap-2">
             {listing.blockedDates.map((d) => (
-              <span key={d} className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2.5 py-0.5 text-xs text-ink-700">
+              <span
+                key={d}
+                className="tabular inline-flex items-center gap-1 rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] px-2.5 py-0.5 text-caption text-[var(--color-content-muted)]"
+              >
                 {formatDate(d)}
                 <button
                   type="button"
                   onClick={() => mutation.mutate({ blockedDates: listing.blockedDates.filter((x) => x !== d) })}
-                  className="text-ink-400 hover:text-ink-700"
+                  className="text-[var(--color-content-subtle)] hover:text-[var(--color-content)]"
                   aria-label={`Unblock ${d}`}
                 >
                   <X size={12} />
@@ -1185,7 +1179,9 @@ function CarManage({ listing }: { listing: Listing }) {
             ))}
           </div>
         ) : (
-          <p className="mb-2 text-sm text-ink-500">No blocked dates — available throughout.</p>
+          <p className="mb-2 text-body-sm text-[var(--color-content-muted)]">
+            No blocked dates — available throughout.
+          </p>
         )}
         <div className="flex items-center gap-2">
           <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="max-w-48" />
@@ -1214,29 +1210,22 @@ function ReconnectPayouts({ host }: { host: Host }) {
   if (!PAYMENTS_PAYHOLD || host.payholdSellerId) return null;
 
   return (
-    <Card className="mt-5 border-amber-300 bg-amber-50">
-      <CardBody className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-            <AlertTriangle size={15} />
-          </span>
-          <div>
-            <p className="font-semibold text-ink-900">Reconnect your payout account</p>
-            <p className="mt-0.5 max-w-xl text-sm text-ink-700">
-              We've moved to a new payments system that holds each renter's money until the trip
-              is done. For your security we never stored your full account number, so please
-              enter it once more.{' '}
-              <span className="font-medium">
-                Until you do, your cars can't be booked.
-              </span>
-            </p>
-          </div>
+    <Notice tone="warn" className="mt-5 flex-wrap items-center justify-between gap-4">
+      <div className="flex items-start gap-3">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+        <div>
+          <p className="font-semibold">Reconnect your payout account</p>
+          <p className="mt-0.5 max-w-xl text-body-sm">
+            We've moved to a new payments system that holds each renter's money until the trip is
+            done. For your security we never stored your full account number, so please enter it
+            once more. <span className="font-medium">Until you do, your cars can't be booked.</span>
+          </p>
         </div>
-        <Link to="/payouts/setup">
-          <Button>Reconnect</Button>
-        </Link>
-      </CardBody>
-    </Card>
+      </div>
+      <Link to="/payouts/setup">
+        <Button>Reconnect</Button>
+      </Link>
+    </Notice>
   );
 }
 
@@ -1279,45 +1268,46 @@ function SetupChecklist({ host, listingCount }: { host: Host; listingCount: numb
   if (doneCount === steps.length) return null;
 
   return (
-    <Card className="mt-5 border-brand-200 bg-brand-50/40">
-      <CardBody>
-        <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2.5 font-semibold text-ink-900">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
-              <ShieldCheck size={15} />
-            </span>
-            Finish setting up
-          </h2>
-          <span className="text-sm text-ink-500">
-            {doneCount} of {steps.length} done
-          </span>
-        </div>
-        <ul className="mt-3 space-y-2.5">
-          {steps.map((s) => (
-            <li key={s.label} className="flex items-center gap-3">
-              {s.done ? (
-                <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
-              ) : (
-                <Circle size={18} className="shrink-0 text-ink-300" />
+    <Notice tone="brand" className="mt-5 flex-col items-stretch">
+      <div className="flex items-center justify-between">
+        <h2 className="flex items-center gap-2.5 font-semibold">
+          <ShieldCheck size={16} />
+          Finish setting up
+        </h2>
+        <span className="tabular text-caption font-medium">
+          {doneCount} of {steps.length} done
+        </span>
+      </div>
+      <ul className="mt-3 space-y-2.5">
+        {steps.map((s) => (
+          <li key={s.label} className="flex items-center gap-3">
+            {s.done ? (
+              <CheckCircle2 size={18} className="shrink-0" />
+            ) : (
+              <Circle size={18} className="shrink-0 text-[var(--color-content-subtle)]" />
+            )}
+            <span
+              className={cn(
+                'flex-1 text-body-sm',
+                s.done ? 'text-[var(--color-content-subtle)] line-through' : 'text-[var(--color-content)]',
               )}
-              <span className={cn('flex-1 text-sm', s.done ? 'text-ink-400 line-through' : 'text-ink-800')}>
-                {s.label}
-              </span>
-              {!s.done &&
-                (s.muted ? (
-                  <span className="text-xs font-medium text-ink-500">{s.cta}</span>
-                ) : (
-                  <Link to={s.to}>
-                    <Button variant="outline" size="sm">
-                      {s.cta}
-                    </Button>
-                  </Link>
-                ))}
-            </li>
-          ))}
-        </ul>
-      </CardBody>
-    </Card>
+            >
+              {s.label}
+            </span>
+            {!s.done &&
+              (s.muted ? (
+                <span className="text-caption font-medium text-[var(--color-content-muted)]">{s.cta}</span>
+              ) : (
+                <Link to={s.to}>
+                  <Button variant="outline" size="sm">
+                    {s.cta}
+                  </Button>
+                </Link>
+              ))}
+          </li>
+        ))}
+      </ul>
+    </Notice>
   );
 }
 
@@ -1337,28 +1327,25 @@ function ActionQueue({ items, listingsById }: { items: ActionItem[]; listingsByI
   });
 
   return (
-    <Card className="mt-6 border-brand-200 shadow-md ring-1 ring-brand-100">
-      <CardBody>
-        <h2 className="flex items-center gap-2.5 font-semibold text-ink-900">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
-            <AlertTriangle size={15} />
-          </span>
-          Action needed
-          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
-            {items.length}
-          </span>
-        </h2>
-        <ul className="mt-2 divide-y divide-ink-100">
-          {items.map((it) => (
-            <ActionRow
-              key={`${it.kind}-${it.booking.id}`}
-              item={it}
-              listing={listingsById.get(it.booking.listingId)}
-              onReview={() => setReviewing(it.booking)}
-            />
-          ))}
-        </ul>
-      </CardBody>
+    <section className="mt-6">
+      <h2 className="mb-2 flex items-center gap-2 px-1 text-body-sm font-semibold text-[var(--color-content)]">
+        <AlertTriangle size={15} className="text-[var(--color-content-muted)]" />
+        Action needed
+        <span className="tabular flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--color-surface-inverse)] px-1.5 text-caption font-semibold text-[var(--color-content-inverse)]">
+          {items.length}
+        </span>
+      </h2>
+      {/* Grouped rows, one rounded container with hairline dividers. */}
+      <ul className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]">
+        {items.map((it) => (
+          <ActionRow
+            key={`${it.kind}-${it.booking.id}`}
+            item={it}
+            listing={listingsById.get(it.booking.listingId)}
+            onReview={() => setReviewing(it.booking)}
+          />
+        ))}
+      </ul>
 
       <RequesterModal
         open={!!reviewing}
@@ -1367,7 +1354,7 @@ function ActionQueue({ items, listingsById }: { items: ActionItem[]; listingsByI
         onDecide={(action) => mutation.mutate(action)}
         deciding={mutation.isPending}
       />
-    </Card>
+    </section>
   );
 }
 
@@ -1394,13 +1381,22 @@ function ActionRow({
           : 'Confirm return';
 
   return (
-    <li className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-ink-50">
-      <Img src={listing?.photos[0]} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" />
+    <li className="flex items-center gap-3 border-t border-[var(--color-line)] px-3 py-3 transition-colors first:border-t-0 hover:bg-[var(--color-surface-sunken)]">
+      <Img
+        src={listing?.photos[0]}
+        alt=""
+        className="h-12 w-16 shrink-0 rounded-[var(--radius-control)] object-cover"
+      />
       <div className="min-w-0 flex-1">
-        <p className={cn('flex items-center gap-1.5 text-sm font-medium', overdue ? 'text-red-600' : 'text-ink-900')}>
+        <p
+          className={cn(
+            'flex items-center gap-1.5 text-body-sm font-medium',
+            overdue ? 'text-[var(--color-danger-500)]' : 'text-[var(--color-content)]',
+          )}
+        >
           <Icon size={15} /> {label}
         </p>
-        <p className="truncate text-xs text-ink-500">
+        <p className="tabular truncate text-caption text-[var(--color-content-muted)]">
           {listing?.title ?? 'Car'} · {formatDate(b.startDate)} – {formatDate(b.endDate)} · {formatRwf(b.totalRwf)}
         </p>
       </div>
@@ -1426,15 +1422,15 @@ function PayoutsView({ payouts }: { payouts: Payout[] }) {
   const earningsLink = PAYMENTS_PAYHOLD ? (
     <Link
       to="/earnings"
-      className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/50 px-4 py-3 hover:bg-brand-50"
+      className="mb-3 flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-4 py-3 hover:bg-[var(--color-line)]/40"
     >
       <span>
-        <span className="block text-sm font-medium text-ink-900">See your full earnings</span>
-        <span className="block text-xs text-ink-600">
+        <span className="block text-body-sm font-medium text-[var(--color-content)]">See your full earnings</span>
+        <span className="block text-caption text-[var(--color-content-muted)]">
           Every trip, what stage its money is at, and when it reaches you.
         </span>
       </span>
-      <ArrowRight size={16} className="shrink-0 text-brand-600" />
+      <ArrowRight size={16} className="shrink-0 text-[var(--color-content-muted)]" />
     </Link>
   ) : null;
 
@@ -1443,9 +1439,9 @@ function PayoutsView({ payouts }: { payouts: Payout[] }) {
       <>
         {earningsLink}
         <Card>
-          <CardBody className="flex flex-col items-center gap-2 py-12 text-center text-ink-500">
+          <CardBody className="flex flex-col items-center gap-2 py-12 text-center text-[var(--color-content-muted)]">
             <Banknote size={22} />
-            <p className="text-sm">No payouts yet.</p>
+            <p className="text-body-sm">No payouts yet.</p>
           </CardBody>
         </Card>
       </>
@@ -1463,26 +1459,29 @@ function PayoutsView({ payouts }: { payouts: Payout[] }) {
   const Group = ({ title, items }: { title: string; items: Payout[] }) =>
     items.length === 0 ? null : (
       <div>
-        <p className="px-1 pb-1.5 text-xs font-medium uppercase tracking-wide text-ink-400">{title}</p>
-        <Card>
-          <ul className="divide-y divide-ink-100">
-            {items.map((p) => {
-              const status = PAYOUT_STATUS_META[p.status];
-              return (
-                <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
-                  <div>
-                    <p className="font-medium text-ink-900">{formatRwf(p.amountRwf)}</p>
-                    <p className="text-sm text-ink-500">
-                      {PAYOUT_CHANNEL_LABEL[p.channel]} ·{' '}
-                      {p.paidAt ? `Paid ${formatDate(p.paidAt)}` : `Due ${formatDate(p.scheduledFor)}`}
-                    </p>
-                  </div>
-                  <Badge tone={status.tone}>{status.label}</Badge>
-                </li>
-              );
-            })}
-          </ul>
-        </Card>
+        <p className="px-1 pb-1.5 text-caption font-medium tracking-wide text-[var(--color-content-subtle)] uppercase">
+          {title}
+        </p>
+        <ListGroup>
+          {items.map((p) => {
+            const status = PAYOUT_STATUS_META[p.status];
+            return (
+              <div
+                key={p.id}
+                className="flex items-center justify-between gap-3 border-t border-[var(--color-line)] px-4 py-3 first:border-t-0 sm:px-5"
+              >
+                <div>
+                  <p className="tabular font-medium text-[var(--color-content)]">{formatRwf(p.amountRwf)}</p>
+                  <p className="text-body-sm text-[var(--color-content-muted)]">
+                    {PAYOUT_CHANNEL_LABEL[p.channel]} ·{' '}
+                    {p.paidAt ? `Paid ${formatDate(p.paidAt)}` : `Due ${formatDate(p.scheduledFor)}`}
+                  </p>
+                </div>
+                <Badge tone={status.tone}>{status.label}</Badge>
+              </div>
+            );
+          })}
+        </ListGroup>
       </div>
     );
 
@@ -1494,8 +1493,9 @@ function PayoutsView({ payouts }: { payouts: Payout[] }) {
         <MiniStat label="Paid out" value={formatRwf(paidTotal)} />
       </div>
       {nextPayout && (
-        <p className="flex items-center gap-1.5 text-sm text-ink-600">
-          <Banknote size={15} className="text-brand-600" /> Next payout {formatDate(nextPayout)}.
+        <p className="flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
+          <Banknote size={15} className="text-[var(--color-content-muted)]" /> Next payout{' '}
+          <span className="tabular">{formatDate(nextPayout)}</span>.
         </p>
       )}
       <Group title="Scheduled" items={due} />

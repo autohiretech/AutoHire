@@ -49,7 +49,10 @@ export function CarAvailabilityCard({ listing }: { listing: Listing }) {
 
   return (
     <Link to={`/cars/${listing.id}`} className="group block h-full focus:outline-none">
-      <Card className="h-full overflow-hidden transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-card-hover group-focus-visible:ring-2 group-focus-visible:ring-brand-600/40">
+      <Card
+        interactive
+        className="h-full overflow-hidden group-focus-visible:ring-2 group-focus-visible:ring-[var(--color-accent-on)]/40"
+      >
         <div className="relative">
           <Img
             src={listing.photos[0]}
@@ -61,20 +64,20 @@ export function CarAvailabilityCard({ listing }: { listing: Listing }) {
           </span>
         </div>
         <CardBody className="p-3">
-          <p className="line-clamp-1 text-sm font-semibold text-ink-900">{listing.title}</p>
-          <p className="line-clamp-1 text-xs text-ink-500">{listing.location}</p>
+          <p className="line-clamp-1 text-body-sm font-semibold text-[var(--color-content)]">{listing.title}</p>
+          <p className="line-clamp-1 text-caption text-[var(--color-content-muted)]">{listing.location}</p>
           <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="text-sm font-semibold text-ink-900">
+            <span className="text-body-sm font-semibold tabular text-[var(--color-content)]">
               <Price amount={price.amount} currency={listing.priceCurrency} />
-              <span className="font-normal text-ink-500"> / {price.unit}</span>
+              <span className="font-normal text-[var(--color-content-muted)]"> / {price.unit}</span>
             </span>
-            <span className="inline-flex shrink-0 items-center gap-1 text-xs text-ink-500">
-              <Star size={12} className="fill-accent-500 text-accent-500" />
+            <span className="inline-flex shrink-0 items-center gap-1 text-caption text-[var(--color-content-muted)]">
+              <Star size={12} className="fill-[var(--color-content)] text-[var(--color-content)]" />
               {listing.ratingCount ? listing.ratingAvg.toFixed(1) : 'New'}
             </span>
           </div>
           {upcoming && (
-            <p className="mt-1.5 flex items-center gap-1 text-[11px] text-ink-400">
+            <p className="mt-1.5 flex items-center gap-1 text-caption text-[var(--color-content-subtle)]">
               <CalendarClock size={11} />
               Next booked {formatDate(upcoming.startDate)} – {formatDate(upcoming.endDate)}
             </p>

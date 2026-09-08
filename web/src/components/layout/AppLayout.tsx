@@ -6,6 +6,7 @@ import { useRealtime } from '@/lib/useRealtime';
 import { Header } from './Header';
 import { Footer } from './Footer';
 import { RightRail } from './RightRail';
+import { BottomTabBar } from './BottomTabBar';
 import { NotificationsProvider } from '@/components/NotificationsProvider';
 import { LocationPrompt } from '@/components/marketplace/LocationPrompt';
 import { ScrollMemory } from '@/components/ScrollMemory';
@@ -56,22 +57,39 @@ export function AppLayout() {
       <AiAssistantProvider>
         <div className={cn('flex flex-col', fullBleed ? 'h-full overflow-hidden' : 'min-h-full')}>
           <ScrollMemory />
-          {/* Eco commitment banner — AutoHire's fleet is overwhelmingly clean-energy. */}
-          <div className="bg-brand-700 text-white">
-            <p className="mx-auto flex max-w-[1500px] items-center justify-center gap-2 px-4 py-1.5 text-center text-xs font-medium sm:text-[13px]">
-              <Leaf size={14} className="shrink-0 text-brand-200" />
+          {/* Eco commitment banner — AutoHire's fleet is overwhelmingly clean-energy.
+              This used to be a full-width solid brand-green bar above the
+              header, which put the accent at the very top of every screen
+              before the page had said anything. It is a standing fact, not an
+              action, so it now reads as one: quiet type on the page surface,
+              with the accent carried only by the leaf. */}
+          <div className="border-b border-[var(--color-line)] bg-[var(--color-surface-sunken)]">
+            <p className="mx-auto flex max-w-[1500px] items-center justify-center gap-2 px-4 py-1.5 text-center text-caption text-[var(--color-content-muted)]">
+              <Leaf size={13} className="shrink-0 text-[var(--color-accent-on)]" />
               <span>
-                <span className="font-semibold">90% Electric, Hybrid &amp; Ecological.</span> On the road to
-                100% environmentally friendly by 2030.
+                <span className="font-semibold text-[var(--color-content)]">
+                  90% Electric, Hybrid &amp; Ecological.
+                </span>{' '}
+                On the road to 100% environmentally friendly by 2030.
               </span>
             </p>
           </div>
           <Header />
           {!fullBleed && <LocationPrompt />}
-          <main className={cn('flex-1', fullBleed && 'min-h-0 overflow-hidden')}>
+          {/* The tab bar is fixed, so scrolling content needs padding to clear
+              it or the last row of every list sits under the bar. Full-bleed
+              screens (search, messages) manage their own height and place the
+              bar themselves. */}
+          <main
+            className={cn(
+              'flex-1',
+              fullBleed ? 'min-h-0 overflow-hidden' : 'pb-[68px] md:pb-0',
+            )}
+          >
             <Outlet />
           </main>
           {!fullBleed && <Footer />}
+          <BottomTabBar />
           <RightRail />
           {/* Mounted once here, not per-page — this is what makes the
               assistant (and its conversation) survive navigating between

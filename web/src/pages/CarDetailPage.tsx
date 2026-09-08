@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft,
-  Award,
   Car,
+  Award,
+  ArrowLeft,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -39,7 +39,20 @@ import { SocialProofBadge } from '@/components/SocialProofBadge';
 import { AddToBoardButton } from '@/components/AddToBoardButton';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
-import { Avatar, Badge, Button, Card, CardBody, Input, Label, Rating, Spinner, toast } from '@/components/ui';
+import { PhotoCarousel } from '@/components/PhotoCarousel';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  Input,
+  Label,
+  Notice,
+  Rating,
+  Spinner,
+  toast,
+} from '@/components/ui';
 import { LocationMap } from '@/components/map/LocationMap';
 import { LocationLinks } from '@/components/map/LocationLinks';
 import { useAiAssistantSource } from '@/lib/aiAssistantContext';
@@ -129,6 +142,16 @@ export function CarDetailPage() {
     queryFn: () => client.getBookedRanges(id),
     enabled: !!listing,
   });
+  // Same query the "Trusted by your circle" badge below already makes for a
+  // signed-in renter — sharing the key means this doesn't cost a second round
+  // trip when both are on the page. `totalTrips` is the completed-trip count
+  // the meta row wants; guests simply don't get a trip count (no more able to
+  // see it than the RPC is able to answer for them without a follow list).
+  const socialProofQuery = useQuery({
+    queryKey: ['socialProof', listing?.id],
+    queryFn: () => client.socialProof(listing!.id),
+    enabled: !!listing && !!me,
+  });
 
   // Tells the global AI assistant which car this page is showing, so "book
   // this one" or "message the host" resolve against it directly — no need
@@ -150,11 +173,11 @@ export function CarDetailPage() {
   if (!listing) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Listing not found</p>
+        <p className="font-medium text-[var(--color-content)]">Listing not found</p>
         <button
           type="button"
           onClick={backToBrowse}
-          className="mt-3 inline-block text-sm text-brand-600 hover:underline"
+          className="mt-3 inline-block text-body-sm text-brand-600 hover:underline"
         >
           Back to browse
         </button>
@@ -164,12 +187,15 @@ export function CarDetailPage() {
 
   const host = hostQuery.data;
   const reviews = reviewsQuery.data ?? [];
+  const totalTrips = socialProofQuery.data?.totalTrips ?? 0;
   const instant = true;
   const photos = listing.photos;
   // You can message the host unless you ARE the host or you're in host mode.
   const canMessage = !isHost && !!me && me.id !== listing.hostId;
   // The owner (individual or company) viewing their own car — show who's requesting.
   const isOwner = !!me && me.id === listing.hostId;
+  const topRatedHost =
+    host?.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5;
 
   // --- Date selection (calendar + reserve card) -------------------------
   const bookedRanges = bookedQuery.data ?? [];
@@ -232,20 +258,21 @@ export function CarDetailPage() {
     });
   };
 
-  const subtitle = [
-    `${listing.seats} seats`,
-    listing.transmission,
-    listing.fuel,
-    `${listing.year} ${listing.make}`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const reserveLabel = needsVerification
+    ? 'Verify to rent'
+    : datesChosen
+      ? instant
+        ? 'Reserve'
+        : 'Request to book'
+      : 'Choose dates';
+
+  const subtitle = [`${listing.year} ${listing.make}`, listing.model].filter(Boolean).join(' ');
 
   const highlights: { icon: LucideIcon; title: string; body: string }[] = [];
-  if (host?.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5) {
+  if (topRatedHost) {
     highlights.push({
       icon: Award,
-      title: `${host.businessName ?? host.fullName} is a top-rated host`,
+      title: `${host!.businessName ?? host!.fullName} is a top-rated host`,
       body: 'Highly rated by recent renters for a smooth handover.',
     });
   }
@@ -262,36 +289,58 @@ export function CarDetailPage() {
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-5 pb-28 lg:pb-5">
+    <section className="mx-auto max-w-7xl px-4 py-5 pb-28 lg:pb-8">
       <button
         type="button"
         onClick={backToBrowse}
-        className="mb-3 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-3 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back to browse
       </button>
 
-      {/* Header — title + status badge, with Watch / Share actions (BaT style) */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Gallery grid — one large photo left, two stacked right on desktop, a
+          single swipeable photo on mobile. Comes before the title, per the
+          reference pattern: the car sells itself before you read a word. */}
+      <PhotoGallery photos={photos} title={listing.title} onOpen={(i) => setLightbox(i)} />
+
+      {/* Title block — h1, then a meta row (year · rating · trips · host badge). */}
+      <div className="mt-5 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-ink-900 sm:text-[28px]">{listing.title}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <p className="capitalize text-sm text-ink-600">{subtitle}</p>
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <h1 className="text-h1 text-[var(--color-content)]">{listing.title}</h1>
+          <p className="mt-1 text-body-sm capitalize text-[var(--color-content-muted)]">{subtitle}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-body-sm text-[var(--color-content-muted)]">
+            <span>{listing.year}</span>
+            <span aria-hidden="true">·</span>
             {listing.ratingCount ? (
-              <span className="inline-flex items-center gap-1 font-medium text-ink-900">
-                <Star size={14} className="fill-ink-900" /> {listing.ratingAvg?.toFixed(2)}
-                <span className="font-normal text-ink-500">· {listing.ratingCount} reviews</span>
+              <span className="inline-flex items-center gap-1 font-medium text-[var(--color-content)]">
+                <Star size={14} className="fill-[var(--color-content)]" /> {listing.ratingAvg?.toFixed(2)}
+                <span className="font-normal text-[var(--color-content-muted)]">
+                  ({listing.ratingCount} review{listing.ratingCount === 1 ? '' : 's'})
+                </span>
               </span>
             ) : (
-              <span className="text-ink-500">New listing</span>
+              <span>New listing</span>
             )}
-            <span className="text-ink-300">·</span>
-            <span className="inline-flex items-center gap-1 text-ink-600">
-              <MapPin size={14} /> {listing.location}
-            </span>
+            {totalTrips > 0 && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>
+                  {totalTrips} trip{totalTrips === 1 ? '' : 's'}
+                </span>
+              </>
+            )}
+            {topRatedHost && (
+              <>
+                <span aria-hidden="true">·</span>
+                <Badge tone="brand">
+                  <Award size={11} /> Top host
+                </Badge>
+              </>
+            )}
           </div>
+          <p className="mt-1.5 inline-flex items-center gap-1 text-body-sm text-[var(--color-content-muted)]">
+            <MapPin size={14} /> {listing.location}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {/* Watching is a renter's tool — it says "tell me when I can book
@@ -306,9 +355,6 @@ export function CarDetailPage() {
         <SocialProofBadge listingId={listing.id} />
       </div>
 
-      {/* Photo gallery — big hero + thumbnail mosaic (BaT style) */}
-      <PhotoGallery photos={photos} title={listing.title} onOpen={(i) => setLightbox(i)} />
-
       <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
         {/* Left: content */}
         <div className="min-w-0">
@@ -317,53 +363,55 @@ export function CarDetailPage() {
           {/* Overview + host */}
           <div className="flex items-start justify-between gap-4 pb-5">
             <div>
-              <h2 className="text-lg font-semibold text-ink-900">
+              <h2 className="text-h3 text-[var(--color-content)]">
                 Hosted by {host ? host.businessName ?? host.fullName : '…'}
               </h2>
-              <p className="mt-0.5 capitalize text-ink-600">{subtitle}</p>
             </div>
             {host && (
-              <Link to={`/cars/${listing.id}`} className="shrink-0">
+              <Link to={`/hosts/${host.id}`} className="shrink-0">
                 <Avatar name={host.businessName ?? host.fullName} src={host.avatarUrl} size="lg" />
               </Link>
             )}
           </div>
 
+          {/* Spec chips — the vehicle's own facts, as bordered pills rather
+              than a table. No MPG field exists in this marketplace's listing
+              model (host-owned cars, not a spec sheet), so the category takes
+              its place as the fourth chip. */}
+          <div className="flex flex-wrap gap-2 border-t border-[var(--color-line)] py-5">
+            <SpecChip icon={Users} label={`${listing.seats} seats`} />
+            <SpecChip icon={Fuel} label={listing.fuel} />
+            <SpecChip icon={Cog} label={listing.transmission} />
+            <SpecChip icon={Car} label={listing.category} />
+          </div>
+
           {/* Highlights */}
           {highlights.length > 0 && (
-            <ul className="space-y-4 border-t border-ink-200 py-5">
+            <ul className="space-y-4 border-t border-[var(--color-line)] py-5">
               {highlights.map((h) => (
                 <li key={h.title} className="flex items-start gap-4">
-                  <h.icon size={22} className="mt-0.5 shrink-0 text-ink-700" />
+                  <h.icon size={22} className="mt-0.5 shrink-0 text-[var(--color-content-muted)]" />
                   <div>
-                    <p className="font-medium text-ink-900">{h.title}</p>
-                    <p className="text-sm text-ink-500">{h.body}</p>
+                    <p className="font-medium text-[var(--color-content)]">{h.title}</p>
+                    <p className="text-body-sm text-[var(--color-content-muted)]">{h.body}</p>
                   </div>
                 </li>
               ))}
             </ul>
           )}
 
-          {/* Specs */}
-          <div className="grid grid-cols-2 gap-4 border-t border-ink-200 py-5 sm:grid-cols-4">
-            <Spec icon={Users} label="Seats" value={`${listing.seats}`} />
-            <Spec icon={Cog} label="Transmission" value={listing.transmission} />
-            <Spec icon={Fuel} label="Fuel" value={listing.fuel} />
-            <Spec icon={Star} label="Type" value={listing.category} />
-          </div>
-
           {/* What this car offers */}
           {listing.features.length > 0 && (
-            <div className="border-t border-ink-200 py-5">
-              <h2 className="mb-4 text-lg font-semibold text-ink-900">
+            <div className="border-t border-[var(--color-line)] py-5">
+              <h2 className="mb-4 text-h3 text-[var(--color-content)]">
                 What this {isMachine(listing.category) ? 'machine' : 'car'} offers
               </h2>
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {listing.features.map((f) => {
                   const Icon = featureIcon(f);
                   return (
-                    <li key={f} className="flex items-center gap-3 text-ink-700">
-                      <Icon size={18} className="shrink-0 text-ink-500" /> {f}
+                    <li key={f} className="flex items-center gap-3 text-[var(--color-content-muted)]">
+                      <Icon size={18} className="shrink-0 text-[var(--color-content-subtle)]" /> {f}
                     </li>
                   );
                 })}
@@ -373,9 +421,9 @@ export function CarDetailPage() {
 
           {/* Pickup location */}
           {(listing.lat != null && listing.lng != null) || listing.locationUrl ? (
-            <div className="border-t border-ink-200 py-5">
-              <h2 className="mb-3 text-lg font-semibold text-ink-900">Where you'll pick it up</h2>
-              <p className="mb-3 flex items-center gap-1.5 text-sm text-ink-600">
+            <div className="border-t border-[var(--color-line)] py-5">
+              <h2 className="mb-3 text-h3 text-[var(--color-content)]">Where you'll pick it up</h2>
+              <p className="mb-3 flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
                 <MapPin size={15} className="text-brand-600" /> {listing.location}
               </p>
               {listing.lat != null && listing.lng != null && (
@@ -389,69 +437,72 @@ export function CarDetailPage() {
 
           {/* Meet your host */}
           {host && (
-            <div className="border-t border-ink-200 py-5">
-              <h2 className="mb-4 text-lg font-semibold text-ink-900">Meet your host</h2>
+            <div className="border-t border-[var(--color-line)] py-5">
+              <h2 className="mb-4 text-h3 text-[var(--color-content)]">Meet your host</h2>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-[260px_1fr]">
                 {/* Host profile card */}
-                <div className="rounded-2xl border border-ink-100 p-5 shadow-card">
+                <Card className="p-5">
                   <div className="flex items-center gap-4">
                     <Avatar name={host.businessName ?? host.fullName} src={host.avatarUrl} size="lg" />
                     <div className="min-w-0">
-                      <p className="truncate text-lg font-semibold text-ink-900">
+                      <p className="truncate text-body-lg font-semibold text-[var(--color-content)]">
                         {host.businessName ?? host.fullName}
                       </p>
-                      <p className="flex items-center gap-1 text-xs text-ink-500">
+                      <p className="flex items-center gap-1 text-caption text-[var(--color-content-muted)]">
                         {host.ownerType === 'business' ? 'Business host' : 'Individual host'}
                         {host.verification === 'verified' && (
-                          <span className="inline-flex items-center gap-0.5 text-emerald-600">
+                          <span className="inline-flex items-center gap-0.5 text-brand-600">
                             · <ShieldCheck size={12} /> Verified
                           </span>
                         )}
                       </p>
                     </div>
                   </div>
-                  <div className="mt-4 grid grid-cols-3 divide-x divide-ink-100 text-center">
+                  <div className="mt-4 grid grid-cols-3 divide-x divide-[var(--color-line)] text-center">
                     <div className="px-1">
-                      <p className="text-lg font-bold text-ink-900">{host.ratingCount ?? 0}</p>
-                      <p className="text-[11px] text-ink-500">Reviews</p>
-                    </div>
-                    <div className="px-1">
-                      <p className="inline-flex items-center gap-0.5 text-lg font-bold text-ink-900">
-                        {host.ratingCount ? host.ratingAvg?.toFixed(2) : '—'}
-                        <Star size={12} className="fill-ink-900" />
+                      <p className="text-body-lg font-bold tabular text-[var(--color-content)]">
+                        {host.ratingCount ?? 0}
                       </p>
-                      <p className="text-[11px] text-ink-500">Rating</p>
+                      <p className="text-caption text-[var(--color-content-muted)]">Reviews</p>
                     </div>
                     <div className="px-1">
-                      <p className="text-lg font-bold text-ink-900">{host.vehicleCount}</p>
-                      <p className="text-[11px] text-ink-500">Listings</p>
+                      <p className="inline-flex items-center gap-0.5 text-body-lg font-bold tabular text-[var(--color-content)]">
+                        {host.ratingCount ? host.ratingAvg?.toFixed(2) : '—'}
+                        <Star size={12} className="fill-[var(--color-content)]" />
+                      </p>
+                      <p className="text-caption text-[var(--color-content-muted)]">Rating</p>
+                    </div>
+                    <div className="px-1">
+                      <p className="text-body-lg font-bold tabular text-[var(--color-content)]">
+                        {host.vehicleCount}
+                      </p>
+                      <p className="text-caption text-[var(--color-content-muted)]">Listings</p>
                     </div>
                   </div>
-                  <Link
-                    to={`/hosts/${host.id}`}
-                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-ink-200 py-2 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50"
-                  >
-                    View profile &amp; all cars
+                  <Link to={`/hosts/${host.id}`} className="mt-4 block">
+                    <Button variant="outline" className="w-full">
+                      View profile &amp; all cars
+                    </Button>
                   </Link>
-                </div>
+                </Card>
 
                 {/* Host details + safety */}
                 <div>
-                  <p className="font-semibold text-ink-900">
-                    {host.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5
+                  <p className="font-semibold text-[var(--color-content)]">
+                    {topRatedHost
                       ? `${host.businessName ?? host.fullName} is a top-rated host`
                       : `Hosting with ${host.businessName ?? host.fullName}`}
                   </p>
-                  <ul className="mt-3 space-y-2 text-sm text-ink-700">
+                  <ul className="mt-3 space-y-2 text-body-sm text-[var(--color-content-muted)]">
                     <li className="flex items-center gap-2">
-                      <Award size={16} className="text-ink-500" /> {hostingDuration(host.joinedAt)}
+                      <Award size={16} className="text-[var(--color-content-subtle)]" /> {hostingDuration(host.joinedAt)}
                     </li>
                     <li className="flex items-center gap-2">
-                      <ShieldCheck size={16} className="text-ink-500" />
+                      <ShieldCheck size={16} className="text-[var(--color-content-subtle)]" />
                       {host.verification === 'verified' ? 'Identity verified' : 'Identity on file'}
                     </li>
                     <li className="flex items-center gap-2">
-                      <Car size={16} className="text-ink-500" /> {host.vehicleCount} car
+                      <Car size={16} className="text-[var(--color-content-subtle)]" /> {host.vehicleCount} car
                       {host.vehicleCount === 1 ? '' : 's'} on AutoHire
                     </li>
                   </ul>
@@ -467,7 +518,7 @@ export function CarDetailPage() {
                     </Button>
                   )}
 
-                  <p className="mt-4 flex items-start gap-2 border-t border-ink-100 pt-4 text-xs text-ink-500">
+                  <p className="mt-4 flex items-start gap-2 border-t border-[var(--color-line)] pt-4 text-caption text-[var(--color-content-muted)]">
                     <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-600" />
                     To help protect your payment, always message and pay through AutoHire — never off-platform.
                   </p>
@@ -477,11 +528,11 @@ export function CarDetailPage() {
           )}
 
           {/* Reviews */}
-          <div className="border-t border-ink-200 py-5">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-ink-900">
+          <div className="border-t border-[var(--color-line)] py-5">
+            <h2 className="flex items-center gap-2 text-h3 text-[var(--color-content)]">
               {listing.ratingCount ? (
                 <>
-                  <Star size={18} className="fill-ink-900" />
+                  <Star size={18} className="fill-[var(--color-content)]" />
                   {listing.ratingAvg?.toFixed(2)} · {reviews.length} review{reviews.length === 1 ? '' : 's'}
                 </>
               ) : (
@@ -493,14 +544,14 @@ export function CarDetailPage() {
                 <Spinner size={20} />
               </div>
             ) : reviews.length === 0 ? (
-              <p className="mt-3 text-sm text-ink-500">No reviews yet.</p>
+              <p className="mt-3 text-body-sm text-[var(--color-content-muted)]">No reviews yet.</p>
             ) : (
               <ul className="mt-5 grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-2">
                 {reviews.map((r) => (
                   <li key={r.id}>
                     <Rating value={r.rating} />
-                    <p className="mt-1.5 text-sm text-ink-700">{r.body}</p>
-                    <p className="mt-1 text-xs text-ink-400">{formatDate(r.createdAt)}</p>
+                    <p className="mt-1.5 text-body-sm text-[var(--color-content-muted)]">{r.body}</p>
+                    <p className="mt-1 text-caption text-[var(--color-content-subtle)]">{formatDate(r.createdAt)}</p>
                   </li>
                 ))}
               </ul>
@@ -509,23 +560,23 @@ export function CarDetailPage() {
 
           {/* Choose when — a single pickup day + hours for an hourly car, a
               date range for a daily one. Never both. */}
-          <div ref={calendarRef} className="border-t border-ink-200 py-5">
+          <div ref={calendarRef} className="border-t border-[var(--color-line)] py-5">
             {isHourlyListing ? (
               <>
-                <h2 className="text-lg font-semibold text-ink-900">
+                <h2 className="text-h3 text-[var(--color-content)]">
                   {datesChosen
                     ? `${estimatedHours} hour${estimatedHours === 1 ? '' : 's'} in ${listing.location}`
                     : 'Choose your pickup'}
                 </h2>
-                <p className="mt-0.5 text-sm text-ink-500">
+                <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
                   {datesChosen
                     ? `${formatDate(pickupDate!)} at ${pickupTime}`
                     : 'Pick a day, a time and how long you need it — the full price updates as you go.'}
                 </p>
                 {listing.status === 'maintenance' && maintUntil && (
-                  <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                  <Notice tone="warn" className="mt-3">
                     This car is in maintenance — available from {formatDate(maintUntil)}.
-                  </p>
+                  </Notice>
                 )}
                 <div className="mt-4">
                   <DateRangeCalendar
@@ -559,19 +610,19 @@ export function CarDetailPage() {
                   </div>
                 </div>
                 {datesChosen && (
-                  <div className="mt-5 max-w-sm space-y-2 rounded-xl border border-ink-200 bg-ink-50/60 p-4 text-sm">
-                    <div className="flex justify-between text-ink-600">
+                  <div className="mt-5 max-w-sm space-y-2 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-4 text-body-sm">
+                    <div className="flex justify-between text-[var(--color-content-muted)]">
                       <span>
                         {money(listing.pricePerHourRwf ?? 0)} × {estimatedHours} hr
                         {estimatedHours === 1 ? '' : 's'}
                       </span>
-                      <span>{money(estimatedTotal)}</span>
+                      <span className="tabular">{money(estimatedTotal)}</span>
                     </div>
-                    <div className="flex justify-between border-t border-ink-200 pt-2 font-semibold text-ink-900">
+                    <div className="flex justify-between border-t border-[var(--color-line)] pt-2 font-semibold text-[var(--color-content)]">
                       <span>Full price (estimated)</span>
-                      <span>{money(estimatedTotal)}</span>
+                      <span className="tabular">{money(estimatedTotal)}</span>
                     </div>
-                    <p className="pt-1 text-xs text-ink-500">
+                    <p className="pt-1 text-caption text-[var(--color-content-subtle)]">
                       You pay {money(total)} now (50% deposit + service fee). The rest settles from
                       actual pickup-to-return time once the trip is done.
                     </p>
@@ -580,18 +631,18 @@ export function CarDetailPage() {
               </>
             ) : (
               <>
-                <h2 className="text-lg font-semibold text-ink-900">
+                <h2 className="text-h3 text-[var(--color-content)]">
                   {datesChosen ? `${nights} night${nights === 1 ? '' : 's'} in ${listing.location}` : 'Choose your dates'}
                 </h2>
-                <p className="mt-0.5 text-sm text-ink-500">
+                <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
                   {datesChosen
                     ? `${formatDate(range.start!)} – ${formatDate(range.end!)}`
                     : 'Add your trip dates to see the total and reserve.'}
                 </p>
                 {listing.status === 'maintenance' && maintUntil && (
-                  <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                  <Notice tone="warn" className="mt-3">
                     This car is in maintenance — available from {formatDate(maintUntil)}.
-                  </p>
+                  </Notice>
                 )}
                 <div className="mt-4">
                   <DateRangeCalendar
@@ -605,7 +656,7 @@ export function CarDetailPage() {
                   <button
                     type="button"
                     onClick={() => setRange({ start: null, end: null })}
-                    className="mt-3 text-sm font-medium text-brand-600 hover:underline"
+                    className="mt-3 text-body-sm font-medium text-brand-600 hover:underline"
                   >
                     Clear dates
                   </button>
@@ -615,38 +666,40 @@ export function CarDetailPage() {
           </div>
         </div>
 
-        {/* Right: reserve card */}
+        {/* Right: sticky booking panel (desktop). Price, trip dates, location,
+            the one primary CTA — then cancellation policy and payment info
+            below it, never above or beside it. */}
         <div>
-          <Card className="lg:sticky lg:top-20">
+          <Card className="hidden lg:sticky lg:top-20 lg:block">
             <CardBody className="space-y-4">
               <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-ink-900">
+                <span className="text-h2 tabular text-[var(--color-content)]">
                   <Price amount={listingHeadlinePrice(listing).amount} currency={listing.priceCurrency} showNative />
                 </span>
-                <span className="text-ink-500">/ {listingHeadlinePrice(listing).unit}</span>
+                <span className="text-body text-[var(--color-content-muted)]">
+                  / {listingHeadlinePrice(listing).unit}
+                </span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {listing.status === 'maintenance' && (
-                  <Badge tone="warning">
-                    In maintenance
-                    {listing.maintenanceUntil ? ` · back ${formatDate(listing.maintenanceUntil)}` : ''}
-                  </Badge>
-                )}
-              </div>
+              {listing.status === 'maintenance' && (
+                <Badge tone="warn">
+                  In maintenance
+                  {listing.maintenanceUntil ? ` · back ${formatDate(listing.maintenanceUntil)}` : ''}
+                </Badge>
+              )}
               {!canRent ? (
-                isCompany ? (
-                  <p className="rounded-lg bg-ink-50 p-3 text-center text-sm text-ink-500">
-                    Company accounts host only — you can view this car but not book it.
-                  </p>
-                ) : (
-                  <p className="rounded-lg bg-ink-50 p-3 text-center text-sm text-ink-500">
-                    You're viewing as a host — booking is off. Switch to renting in your{' '}
-                    <Link to="/account" className="text-brand-600 hover:underline">
-                      profile
-                    </Link>{' '}
-                    to book.
-                  </p>
-                )
+                <Notice tone="info">
+                  {isCompany ? (
+                    'Company accounts host only — you can view this car but not book it.'
+                  ) : (
+                    <>
+                      You're viewing as a host — booking is off. Switch to renting in your{' '}
+                      <Link to="/account" className="font-medium underline">
+                        profile
+                      </Link>{' '}
+                      to book.
+                    </>
+                  )}
+                </Notice>
               ) : (
                 <>
                   {/* Date fields — open the calendar below */}
@@ -654,90 +707,114 @@ export function CarDetailPage() {
                     <button
                       type="button"
                       onClick={goToCalendar}
-                      className="w-full rounded-lg border border-ink-300 p-2.5 text-left text-sm hover:bg-ink-50"
+                      className="w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] p-2.5 text-left text-body-sm hover:bg-[var(--color-surface-sunken)]"
                     >
-                      <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                      <span className="block text-caption font-semibold uppercase tracking-wide text-[var(--color-content-muted)]">
                         Pickup
                       </span>
-                      <span className="text-ink-900">
+                      <span className="text-[var(--color-content)]">
                         {pickupDate
                           ? `${formatDate(pickupDate)} at ${pickupTime} · ${estimatedHours}h`
                           : 'Add pickup details'}
                       </span>
                     </button>
                   ) : (
-                    <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-ink-300 text-sm">
+                    <div className="grid grid-cols-2 overflow-hidden rounded-[var(--radius-control)] border border-[var(--color-line-strong)] text-body-sm">
                       <button
                         type="button"
                         onClick={goToCalendar}
-                        className="border-r border-ink-300 p-2.5 text-left hover:bg-ink-50"
+                        className="border-r border-[var(--color-line-strong)] p-2.5 text-left hover:bg-[var(--color-surface-sunken)]"
                       >
-                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                        <span className="block text-caption font-semibold uppercase tracking-wide text-[var(--color-content-muted)]">
                           Pick-up
                         </span>
-                        <span className="text-ink-900">{range.start ? formatDate(range.start) : 'Add date'}</span>
+                        <span className="text-[var(--color-content)]">
+                          {range.start ? formatDate(range.start) : 'Add date'}
+                        </span>
                       </button>
-                      <button type="button" onClick={goToCalendar} className="p-2.5 text-left hover:bg-ink-50">
-                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                      <button
+                        type="button"
+                        onClick={goToCalendar}
+                        className="p-2.5 text-left hover:bg-[var(--color-surface-sunken)]"
+                      >
+                        <span className="block text-caption font-semibold uppercase tracking-wide text-[var(--color-content-muted)]">
                           Return
                         </span>
-                        <span className="text-ink-900">{range.end ? formatDate(range.end) : 'Add date'}</span>
+                        <span className="text-[var(--color-content)]">
+                          {range.end ? formatDate(range.end) : 'Add date'}
+                        </span>
                       </button>
                     </div>
                   )}
 
+                  <p className="flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
+                    <MapPin size={14} /> {listing.location}
+                  </p>
+
+                  {/* The one accent on this screen — everything else on the
+                      page is neutral or a tonal badge so this is the only
+                      thing that reads as "act now". */}
                   <Button className="w-full" size="lg" onClick={reserve}>
-                    {needsVerification
-                      ? 'Verify to rent'
-                      : datesChosen
-                        ? instant
-                          ? 'Reserve'
-                          : 'Request to book'
-                        : 'Choose dates'}
+                    {reserveLabel}
                   </Button>
                   {verifNotice ? (
-                    <p className="text-center text-xs text-ink-500">{verifNotice}</p>
+                    <Notice tone={me?.verification === 'rejected' ? 'danger' : 'warn'} className="text-caption">
+                      {verifNotice}
+                    </Notice>
                   ) : (
-                    <p className="text-center text-xs text-ink-400">You won't be charged yet</p>
+                    <p className="text-center text-caption text-[var(--color-content-subtle)]">
+                      You won't be charged yet
+                    </p>
                   )}
 
                   {datesChosen && isHourlyListing && (
-                    <div className="space-y-2 border-t border-ink-100 pt-3 text-sm">
-                      <div className="flex justify-between text-ink-600">
+                    <div className="space-y-2 border-t border-[var(--color-line)] pt-3 text-body-sm">
+                      <div className="flex justify-between text-[var(--color-content-muted)]">
                         <span>
                           {money(listing.pricePerHourRwf ?? 0)} × {estimatedHours} hr
                           {estimatedHours === 1 ? '' : 's'} (full price)
                         </span>
-                        <span>{money(estimatedTotal)}</span>
+                        <span className="tabular">{money(estimatedTotal)}</span>
                       </div>
-                      <div className="flex justify-between text-ink-600">
+                      <div className="flex justify-between text-[var(--color-content-muted)]">
                         <span>Deposit (50%) + service fee</span>
-                        <span>{money(total)}</span>
+                        <span className="tabular">{money(total)}</span>
                       </div>
-                      <div className="flex justify-between border-t border-ink-100 pt-2 font-semibold text-ink-900">
+                      <div className="flex justify-between border-t border-[var(--color-line)] pt-2 font-semibold text-[var(--color-content)]">
                         <span>Due now</span>
-                        <span>{money(total)}</span>
+                        <span className="tabular">{money(total)}</span>
                       </div>
                     </div>
                   )}
                   {datesChosen && !isHourlyListing && (
-                    <div className="space-y-2 border-t border-ink-100 pt-3 text-sm">
-                      <div className="flex justify-between text-ink-600">
+                    <div className="space-y-2 border-t border-[var(--color-line)] pt-3 text-body-sm">
+                      <div className="flex justify-between text-[var(--color-content-muted)]">
                         <span>
                           {money(listing.pricePerDayRwf ?? 0)} × {nights} night{nights === 1 ? '' : 's'}
                         </span>
-                        <span>{money(subtotal)}</span>
+                        <span className="tabular">{money(subtotal)}</span>
                       </div>
-                      <div className="flex justify-between text-ink-600">
+                      <div className="flex justify-between text-[var(--color-content-muted)]">
                         <span>Service fee</span>
-                        <span>{money(serviceFee)}</span>
+                        <span className="tabular">{money(serviceFee)}</span>
                       </div>
-                      <div className="flex justify-between border-t border-ink-100 pt-2 font-semibold text-ink-900">
+                      <div className="flex justify-between border-t border-[var(--color-line)] pt-2 font-semibold text-[var(--color-content)]">
                         <span>Total</span>
-                        <span>{money(total)}</span>
+                        <span className="tabular">{money(total)}</span>
                       </div>
                     </div>
                   )}
+
+                  {/* Cancellation policy + payment info — always below the
+                      CTA, never competing with it. */}
+                  <Notice tone="info" className="text-caption">
+                    Free cancellation any time before pickup — the full amount is refunded automatically.
+                  </Notice>
+                  <Notice tone="info" className="text-caption">
+                    <ShieldCheck size={14} className="mt-0.5 shrink-0" />
+                    Your payment is held securely and only released to the host after the trip is confirmed
+                    complete.
+                  </Notice>
                 </>
               )}
               {canMessage && (
@@ -752,28 +829,27 @@ export function CarDetailPage() {
       </div>
 
       {/* Continue browsing — jump back to the list without losing your place. */}
-      <div className="mt-6 flex flex-col items-center gap-2 border-t border-ink-100 pt-5 text-center">
-        <p className="text-sm text-ink-500">Not the one? Keep looking.</p>
-        <button
-          type="button"
-          onClick={backToBrowse}
-          className="inline-flex items-center gap-1.5 rounded-full border border-brand-300 bg-brand-50 px-5 py-2.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-100"
-        >
+      <div className="mt-6 flex flex-col items-center gap-2 border-t border-[var(--color-line)] pt-5 text-center">
+        <p className="text-body-sm text-[var(--color-content-muted)]">Not the one? Keep looking.</p>
+        <Button variant="outline" pill onClick={backToBrowse}>
           <ArrowLeft size={16} /> Continue browsing cars
-        </button>
+        </Button>
       </div>
 
-      {/* Mobile sticky booking bar — keeps price + reserve reachable without
-          scrolling to the card at the bottom of the page. Desktop uses the
-          sticky sidebar card instead. */}
+      {/* Mobile sticky booking bar — the standard mobile booking pattern:
+          price on the left, the one CTA on the right, fixed to the bottom so
+          it's reachable without scrolling back up to the (hidden-on-mobile)
+          sidebar card. */}
       {canRent && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-ink-200 bg-white/95 px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-line)] bg-[var(--color-surface-raised)]/95 px-4 py-3 shadow-[var(--shadow-float)] backdrop-blur lg:hidden">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
             <div className="min-w-0">
               {datesChosen ? (
                 <>
-                  <p className="truncate text-base font-bold text-ink-900">{money(total)}</p>
-                  <p className="text-xs text-ink-500">
+                  <p className="truncate text-body font-bold tabular text-[var(--color-content)]">
+                    {money(total)}
+                  </p>
+                  <p className="text-caption text-[var(--color-content-muted)]">
                     {isHourlyListing
                       ? `due now · ${estimatedHours}h estimated at ${money(estimatedTotal)}`
                       : `total · ${nights} night${nights === 1 ? '' : 's'}`}
@@ -781,21 +857,17 @@ export function CarDetailPage() {
                 </>
               ) : (
                 <>
-                  <p className="text-base font-bold text-ink-900">
+                  <p className="text-body font-bold tabular text-[var(--color-content)]">
                     <Price amount={listingHeadlinePrice(listing).amount} currency={listing.priceCurrency} />
                   </p>
-                  <p className="text-xs text-ink-500">per {listingHeadlinePrice(listing).unit}</p>
+                  <p className="text-caption text-[var(--color-content-muted)]">
+                    per {listingHeadlinePrice(listing).unit}
+                  </p>
                 </>
               )}
             </div>
             <Button size="lg" className="shrink-0" onClick={reserve}>
-              {needsVerification
-                ? 'Verify to rent'
-                : datesChosen
-                  ? instant
-                    ? 'Reserve'
-                    : 'Request to book'
-                  : 'Choose dates'}
+              {reserveLabel}
             </Button>
           </div>
         </div>
@@ -809,11 +881,12 @@ export function CarDetailPage() {
 }
 
 /**
- * Bring-a-Trailer–style gallery: a large hero on the left and a mosaic of
- * thumbnails on the right, with an "All photos (N)" overlay on the last tile
- * when there are more than fit. Adapts to how many photos a listing has — a
- * richer 2×2 thumbnail block for 5+ photos, a slimmer 2-tile column otherwise —
- * and collapses to a single hero + "All photos" button on mobile.
+ * Turo-style gallery: one large hero photo on the left and two stacked tiles
+ * on the right, with a single "View all N photos" pill over the whole block
+ * (bottom-right) rather than a caption stamped on one arbitrary tile — it
+ * reads as a gallery action, not a label on a random photo. Collapses to a
+ * single swipeable photo on mobile via `PhotoCarousel`, the standard mobile
+ * gallery pattern.
  */
 function PhotoGallery({
   photos,
@@ -827,71 +900,61 @@ function PhotoGallery({
   if (photos.length === 0) return null;
 
   const [hero, ...rest] = photos;
-  const rich = photos.length >= 5;
-  const tiles = rest.slice(0, rich ? 4 : 2);
-  // Photos reachable only through the lightbox (not the hero or a visible tile).
-  const moreCount = photos.length - 1 - tiles.length;
+  const tiles = rest.slice(0, 2);
 
   return (
     <div className="mt-4">
-      {/* Mobile — hero only, with a show-all button */}
-      <div className="relative sm:hidden">
-        <button type="button" onClick={() => onOpen(0)} className="block w-full">
-          <Img src={hero} alt={title} loading="eager" className="h-64 w-full rounded-2xl object-cover" />
-        </button>
+      {/* Mobile — single swipeable photo */}
+      <div className="sm:hidden">
+        <PhotoCarousel photos={photos} alt={title} heightClass="h-64" className="rounded-[var(--radius-card)]" />
+      </div>
+
+      {/* Desktop — one large photo left, two stacked right */}
+      <div className="relative hidden sm:block">
+        <div className="grid h-[420px] grid-cols-[2fr_1fr] gap-2">
+          <button
+            type="button"
+            onClick={() => onOpen(0)}
+            className="group overflow-hidden rounded-[var(--radius-card)]"
+          >
+            <Img
+              src={hero}
+              alt={title}
+              loading="eager"
+              className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+            />
+          </button>
+          <div className="grid grid-rows-2 gap-2">
+            {[0, 1].map((i) => {
+              const p = tiles[i];
+              return p ? (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => onOpen(i + 1)}
+                  className="group overflow-hidden rounded-[var(--radius-card)]"
+                >
+                  <Img
+                    src={p}
+                    alt=""
+                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                  />
+                </button>
+              ) : (
+                <div key={i} className="rounded-[var(--radius-card)] bg-[var(--color-surface-sunken)]" />
+              );
+            })}
+          </div>
+        </div>
         {photos.length > 1 && (
           <button
             type="button"
             onClick={() => onOpen(0)}
-            className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg border border-ink-900/15 bg-white/95 px-3 py-1.5 text-sm font-medium text-ink-900 shadow-sm backdrop-blur hover:bg-white"
+            className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-[var(--color-surface-raised)]/95 px-3.5 py-2 text-body-sm font-semibold text-[var(--color-content)] shadow-[var(--shadow-float)] backdrop-blur transition-colors hover:bg-[var(--color-surface-raised)]"
           >
-            <Grid3x3 size={15} /> All photos ({photos.length})
+            <Grid3x3 size={15} /> View all {photos.length} photos
           </button>
         )}
-      </div>
-
-      {/* Desktop — hero + thumbnail mosaic */}
-      <div
-        className={cn(
-          'hidden gap-2 sm:grid sm:h-[300px] lg:h-[400px]',
-          rich ? 'grid-cols-4 grid-rows-2' : 'grid-cols-3 grid-rows-2',
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => onOpen(0)}
-          className="group col-span-2 row-span-2 overflow-hidden rounded-2xl"
-        >
-          <Img
-            src={hero}
-            alt={title}
-            loading="eager"
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-          />
-        </button>
-        {tiles.map((p, i) => {
-          const showMore = i === tiles.length - 1 && moreCount > 0;
-          return (
-            <button
-              key={p}
-              type="button"
-              onClick={() => onOpen(i + 1)}
-              className="group relative overflow-hidden rounded-xl"
-            >
-              <Img
-                src={p}
-                alt=""
-                className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-              />
-              {showMore && (
-                <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-ink-900/60 text-white">
-                  <Grid3x3 size={22} />
-                  <span className="text-sm font-semibold">All photos ({photos.length})</span>
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
     </div>
   );
@@ -957,10 +1020,10 @@ function WatchButton({ id }: { id: string }) {
       aria-pressed={watched}
       title={watched ? "We'll tell you when this car is available" : 'Get told when this car frees up'}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60',
+        'inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border px-3 py-2 text-body-sm font-medium transition-colors disabled:opacity-60',
         watched
           ? 'border-brand-300 bg-brand-50 text-brand-700'
-          : 'border-ink-200 text-ink-700 hover:bg-ink-50',
+          : 'border-[var(--color-line-strong)] text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
       )}
     >
       <Star size={16} className={watched ? 'fill-brand-500 text-brand-500' : ''} />
@@ -992,7 +1055,7 @@ function ShareButton({ title }: { title: string }) {
     <button
       type="button"
       onClick={share}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-50"
+      className="inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] px-3 py-2 text-body-sm font-medium text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)]"
     >
       <Share2 size={16} /> <span className="hidden sm:inline">Share</span>
     </button>
@@ -1053,7 +1116,7 @@ function Lightbox({
         src={photos[i]}
         alt={title}
         loading="eager"
-        className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
+        className="max-h-[85vh] max-w-[90vw] rounded-[var(--radius-card)] object-contain"
         onClick={(e) => e.stopPropagation()}
       />
       {photos.length > 1 && (
@@ -1069,24 +1132,20 @@ function Lightbox({
           <ChevronRight size={26} />
         </button>
       )}
-      <span className="absolute bottom-4 text-sm text-white/80">
+      <span className="absolute bottom-4 text-body-sm text-white/80">
         {i + 1} / {photos.length}
       </span>
     </div>
   );
 }
 
-function Spec({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+/** A vehicle fact — seats, fuel, transmission, category — as a bordered pill. */
+function SpecChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-ink-200 bg-white p-3 sm:flex-col sm:items-start sm:gap-0">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ink-50 text-ink-600 sm:h-auto sm:w-auto sm:bg-transparent sm:p-0">
-        <Icon size={20} />
-      </span>
-      <div className="min-w-0 sm:mt-2">
-        <p className="text-xs text-ink-500">{label}</p>
-        <p className="truncate font-medium capitalize text-ink-900">{value}</p>
-      </div>
-    </div>
+    <span className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3.5 text-body-sm font-medium capitalize text-[var(--color-content-muted)]">
+      <Icon size={15} className="text-[var(--color-content-subtle)]" />
+      {label}
+    </span>
   );
 }
 
@@ -1118,15 +1177,16 @@ function OwnerRequests({ listingId }: { listingId: string }) {
   if (isLoading) return null;
 
   return (
-    <div className="border-b border-ink-200 pb-6">
-      <h2 className="text-lg font-semibold text-ink-900">
-        Requests for this car{requests.length > 0 && <span className="text-ink-400"> ({requests.length})</span>}
+    <div className="border-b border-[var(--color-line)] pb-6">
+      <h2 className="text-h3 text-[var(--color-content)]">
+        Requests for this car
+        {requests.length > 0 && <span className="text-[var(--color-content-subtle)]"> ({requests.length})</span>}
       </h2>
       {requests.length === 0 ? (
-        <p className="mt-2 text-sm text-ink-500">No pending requests right now.</p>
+        <p className="mt-2 text-body-sm text-[var(--color-content-muted)]">No pending requests right now.</p>
       ) : (
         <>
-          <p className="mt-1 text-sm text-ink-500">
+          <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
             See who's requesting and check their verification before you approve.
           </p>
           <div className="mt-4 space-y-3">
@@ -1155,11 +1215,11 @@ function RequesterRow({ booking, onReview }: { booking: Booking; onReview: () =>
     queryFn: () => client.getProfile(booking.renterId),
   });
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-ink-200 p-3 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--color-line)] p-3 sm:flex-row sm:items-center">
       <div className="flex flex-1 items-center gap-3">
         <Avatar name={p?.fullName ?? 'Renter'} src={p?.avatarUrl} size="md" />
         <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-2 font-medium text-ink-900">
+          <p className="flex flex-wrap items-center gap-2 font-medium text-[var(--color-content)]">
             {p?.fullName ?? 'Renter'}
             {p && (
               <Badge tone={VERIF_TONE[p.verification] ?? 'neutral'}>
@@ -1167,8 +1227,9 @@ function RequesterRow({ booking, onReview }: { booking: Booking; onReview: () =>
               </Badge>
             )}
           </p>
-          <p className="text-sm text-ink-500">
-            {formatDate(booking.startDate)} – {formatDate(booking.endDate)} · {formatRwf(booking.totalRwf)}
+          <p className="text-body-sm text-[var(--color-content-muted)]">
+            {formatDate(booking.startDate)} – {formatDate(booking.endDate)} ·{' '}
+            <span className="tabular">{formatRwf(booking.totalRwf)}</span>
           </p>
         </div>
       </div>

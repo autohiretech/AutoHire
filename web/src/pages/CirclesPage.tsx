@@ -90,7 +90,7 @@ export function CirclesPage() {
                         {meta.label} · {c.memberCount} {c.memberCount === 1 ? 'member' : 'members'}
                       </p>
                       {c.myStatus === 'invited' && (
-                        <p className="mt-1 text-xs font-medium text-accent-600">Invitation pending</p>
+                        <p className="mt-1 text-xs font-medium text-[var(--color-warn-500)]">Invitation pending</p>
                       )}
                     </div>
                   </CardBody>

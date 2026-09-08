@@ -4,9 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Zap } from 'lucide-react';
 import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
-import { cn } from '@/lib/cn';
 import type { CreateListingInput } from '@/lib/types';
-import { Button, Card, CardBody, CardHeader, Input, Label, Select, Spinner, toast } from '@/components/ui';
+import { Button, Card, CardBody, CardHeader, Chip, Input, Label, Notice, Select, Spinner, toast } from '@/components/ui';
 import { Img } from '@/components/Img';
 import { ModelCombobox } from '@/components/ModelCombobox';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
@@ -292,15 +291,15 @@ export function ListCarPage() {
     <section className="mx-auto max-w-3xl px-4 py-8">
       <Link
         to="/dashboard"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back to dashboard
       </Link>
 
-      <h1 className="text-2xl font-bold text-ink-900">
+      <h1 className="text-h2 text-[var(--color-content)]">
         {editing ? 'Edit your listing' : 'List your vehicle or machine'}
       </h1>
-      <p className="mt-1 text-sm text-ink-500">
+      <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
         {editing
           ? 'Update the details, photos, location and availability.'
           : 'Rent out a car, a tractor or an excavator. Your first listing turns your account into a host.'}
@@ -314,7 +313,7 @@ export function ListCarPage() {
       <form onSubmit={onSubmit} className="mt-6 space-y-6">
         <Card>
           <CardHeader>
-            <h2 className="font-semibold text-ink-900">{machine ? 'The machine' : 'The car'}</h2>
+            <h2 className="font-semibold text-[var(--color-content)]">{machine ? 'The machine' : 'The car'}</h2>
           </CardHeader>
           <CardBody className="space-y-4">
             <div>
@@ -341,8 +340,8 @@ export function ListCarPage() {
                     setCategory(m.category);
                   }}
                 />
-                <p className="mt-1 flex items-center gap-1 text-xs text-ink-400">
-                  <Zap size={12} className="text-brand-600" /> Pick a model to fill in make, model
+                <p className="mt-1 flex items-center gap-1 text-caption text-[var(--color-content-subtle)]">
+                  <Zap size={12} className="text-[var(--color-accent-on)]" /> Pick a model to fill in make, model
                   and fuel — electric cars are badged. Or type them in below.
                 </p>
               </div>
@@ -420,28 +419,28 @@ export function ListCarPage() {
                 onChange={(e) => setFeatures(e.target.value)}
                 placeholder="Air conditioning, Bluetooth, Backup camera"
               />
-              <p className="mt-1 text-xs text-ink-400">Separate with commas.</p>
+              <p className="mt-1 text-caption text-[var(--color-content-subtle)]">Separate with commas.</p>
             </div>
           </CardBody>
         </Card>
 
         <Card>
           <CardHeader>
-            <h2 className="font-semibold text-ink-900">Location</h2>
-            <p className="mt-0.5 text-sm text-ink-500">Where renters pick it up.</p>
+            <h2 className="font-semibold text-[var(--color-content)]">Location</h2>
+            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">Where renters pick it up.</p>
           </CardHeader>
           <CardBody className="space-y-4">
             <div>
               <Label>Country</Label>
               {accountCountry ? (
                 <>
-                  <div className="flex h-10 items-center rounded-lg border border-ink-200 bg-ink-50 px-3 text-sm text-ink-700">
+                  <div className="flex h-10 items-center rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-3 text-body-sm text-[var(--color-content)]">
                     {selectedCountry?.flag} {selectedCountry?.name ?? accountCountry}
                   </div>
-                  <p className="mt-1 text-xs text-ink-400">
+                  <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
                     Where the car is located. This follows your account's country — change it on
                     the{' '}
-                    <Link to="/account" className="text-brand-600 hover:underline">
+                    <Link to="/account" className="text-[var(--color-accent-on)] hover:underline">
                       Account
                     </Link>{' '}
                     page, not per listing. The price currency below can still differ — useful if
@@ -449,13 +448,13 @@ export function ListCarPage() {
                   </p>
                 </>
               ) : (
-                <p className="rounded-lg border border-accent-200 bg-accent-50 px-3 py-2.5 text-sm text-accent-800">
+                <Notice tone="warn">
                   Set your country on the{' '}
                   <Link to="/account" className="font-medium underline">
                     Account
                   </Link>{' '}
                   page before listing a car — that's where it'll be listed.
-                </p>
+                </Notice>
               )}
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -489,7 +488,7 @@ export function ListCarPage() {
                   if (!location.trim()) setLocation(address.split(',').slice(0, 2).join(',').trim());
                 }}
               />
-              <p className="mt-1 text-xs text-ink-400">
+              <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
                 Search, click, or drag to drop the exact pin — this is what puts the car on
                 renters' maps. The link below is just a convenience for arrival instructions, not
                 a substitute for this.
@@ -516,13 +515,13 @@ export function ListCarPage() {
                   </Button>
                 )}
               </div>
-              <p className="mt-1 text-xs text-ink-400">
+              <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
                 A Google Maps share link, What3Words, or any page with arrival instructions.
                 Renters can open it when heading to pickup — and a Google Maps link can set the
                 pickup pin above directly, long or shortened.
               </p>
               {locationUrl.trim() && !isLikelyUrl(locationUrl) && (
-                <p className="mt-1 text-sm text-red-600">That doesn't look like a valid link.</p>
+                <p className="mt-1 text-body-sm text-[var(--color-danger-500)]">That doesn't look like a valid link.</p>
               )}
             </div>
           </CardBody>
@@ -530,8 +529,8 @@ export function ListCarPage() {
 
         <Card>
           <CardHeader>
-            <h2 className="font-semibold text-ink-900">Pricing</h2>
-            <p className="mt-0.5 text-sm text-ink-500">
+            <h2 className="font-semibold text-[var(--color-content)]">Pricing</h2>
+            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
               Choose how this {machine ? 'machine' : 'car'} is booked — by the day, or by the hour.
             </p>
           </CardHeader>
@@ -539,32 +538,22 @@ export function ListCarPage() {
             <div>
               <Label>Booking type</Label>
               <div className="flex gap-2">
-                <button
-                  type="button"
+                <Chip
+                  selected={pricingMode === 'daily'}
                   onClick={() => setPricingMode('daily')}
-                  className={cn(
-                    'flex-1 rounded-lg border px-3 py-2 text-sm font-medium',
-                    pricingMode === 'daily'
-                      ? 'border-ink-900 bg-ink-900 text-white'
-                      : 'border-ink-200 text-ink-700',
-                  )}
+                  className="flex-1 justify-center"
                 >
                   Per day
-                </button>
-                <button
-                  type="button"
+                </Chip>
+                <Chip
+                  selected={pricingMode === 'hourly'}
                   onClick={() => setPricingMode('hourly')}
-                  className={cn(
-                    'flex-1 rounded-lg border px-3 py-2 text-sm font-medium',
-                    pricingMode === 'hourly'
-                      ? 'border-ink-900 bg-ink-900 text-white'
-                      : 'border-ink-200 text-ink-700',
-                  )}
+                  className="flex-1 justify-center"
                 >
                   Per hour
-                </button>
+                </Chip>
               </div>
-              <p className="mt-1.5 text-xs text-ink-400">
+              <p className="mt-1.5 text-caption text-[var(--color-content-subtle)]">
                 {pricingMode === 'hourly'
                   ? 'Renters pay a 50% deposit up front and are settled against actual pickup-to-return time — no day price on this car.'
                   : 'Renters book by the calendar day, paid in full up front.'}
@@ -617,9 +606,9 @@ export function ListCarPage() {
             </div>
 
             {pricingMode === 'daily' && (
-              <div className="border-t border-ink-100 pt-5">
+              <div className="border-t border-[var(--color-line)] pt-5">
                 <Label htmlFor="overage-multiplier">Late-return rate</Label>
-                <p className="mb-1.5 text-xs text-ink-500">
+                <p className="mb-1.5 text-caption text-[var(--color-content-muted)]">
                   A car returned more than 2 hours past the agreed time is billed extra for the
                   hours over, at a multiple of an implied hourly price (day price ÷ 24).
                 </p>
@@ -633,9 +622,9 @@ export function ListCarPage() {
                     value={overageMultiplier}
                     onChange={(e) => setOverageMultiplier(e.target.value)}
                   />
-                  <span className="text-sm text-ink-500">× hourly price</span>
+                  <span className="text-body-sm text-[var(--color-content-muted)]">× hourly price</span>
                 </div>
-                <p className="mt-1.5 text-xs text-ink-400">
+                <p className="tabular mt-1.5 text-caption text-[var(--color-content-subtle)]">
                   {Number(pricePerHour) > 0 && Number(overageMultiplier) > 0
                     ? `Currently ${Math.round(Number(pricePerHour) * Number(overageMultiplier)).toLocaleString()} ${currency} per extra hour, after the grace period.`
                     : ''}{' '}
@@ -648,7 +637,7 @@ export function ListCarPage() {
 
         <Card>
           <CardHeader>
-            <h2 className="font-semibold text-ink-900">Availability</h2>
+            <h2 className="font-semibold text-[var(--color-content)]">Availability</h2>
           </CardHeader>
           <CardBody className="space-y-3">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -676,20 +665,20 @@ export function ListCarPage() {
                 </div>
               )}
             </div>
-            <p className="text-xs text-ink-400">
+            <p className="text-caption text-[var(--color-content-subtle)]">
               {status === 'maintenance'
                 ? 'Renters can only book trips that start on or after this date.'
                 : 'The car is bookable on any free date. Booked dates fill in automatically.'}
             </p>
             {!statusValid && (
-              <p className="text-sm text-red-600">Pick a back-in-service date (today or later).</p>
+              <p className="text-body-sm text-[var(--color-danger-500)]">Pick a back-in-service date (today or later).</p>
             )}
           </CardBody>
         </Card>
 
         <Card>
           <CardHeader>
-            <h2 className="font-semibold text-ink-900">Photos</h2>
+            <h2 className="font-semibold text-[var(--color-content)]">Photos</h2>
           </CardHeader>
           <CardBody className="space-y-3">
             <Label htmlFor="photos">Upload photos</Label>
@@ -700,13 +689,13 @@ export function ListCarPage() {
               multiple
               disabled={uploading}
               onChange={onPickPhotos}
-              className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100 disabled:opacity-60"
+              className="block w-full text-body-sm text-[var(--color-content-muted)] file:mr-3 file:rounded-[var(--radius-control)] file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-body-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100 disabled:opacity-60"
             />
-            <p className="text-xs text-ink-400">
+            <p className="text-caption text-[var(--color-content-subtle)]">
               JPG or PNG, up to a few photos. You can add more in several goes.
             </p>
-            {uploading && <p className="text-xs text-ink-500">Uploading…</p>}
-            {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
+            {uploading && <p className="text-caption text-[var(--color-content-muted)]">Uploading…</p>}
+            {uploadError && <p className="text-body-sm text-[var(--color-danger-500)]">{uploadError}</p>}
             {photoUrls.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {photoUrls.map((url) => (
@@ -714,12 +703,12 @@ export function ListCarPage() {
                     <Img
                       src={url}
                       alt=""
-                      className="h-16 w-24 rounded-lg border border-ink-100 object-cover"
+                      className="h-16 w-24 rounded-[var(--radius-control)] border border-[var(--color-line)] object-cover"
                     />
                     <button
                       type="button"
                       onClick={() => setPhotoUrls((prev) => prev.filter((u) => u !== url))}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink-900/80 text-xs text-white hover:bg-ink-900"
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface-inverse)]/80 text-caption text-[var(--color-content-inverse)] hover:bg-[var(--color-surface-inverse)]"
                       aria-label="Remove photo"
                     >
                       ×
@@ -732,11 +721,11 @@ export function ListCarPage() {
         </Card>
 
         {blockedNonElectric && quota && (
-          <div className="flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
-            <Zap size={18} className="mt-0.5 shrink-0 text-brand-600" />
-            <div className="text-sm">
-              <p className="font-semibold text-brand-800">Only electric cars can be listed right now</p>
-              <p className="mt-0.5 text-brand-700">
+          <Notice tone="brand">
+            <Zap size={18} className="mt-0.5 shrink-0" />
+            <div className="text-body-sm">
+              <p className="font-semibold">Only electric cars can be listed right now</p>
+              <p className="mt-0.5">
                 AutoHire keeps at least {quota.minPercent}% of its cars electric. The fleet is at{' '}
                 {quota.totalCars > 0
                   ? Math.round((quota.electricCars / quota.totalCars) * 100)
@@ -745,11 +734,11 @@ export function ListCarPage() {
                 Choose an electric model above, or set the fuel to Electric.
               </p>
             </div>
-          </div>
+          </Notice>
         )}
 
         {mutation.isError && (
-          <p className="text-sm text-red-600">
+          <p className="text-body-sm text-[var(--color-danger-500)]">
             {mutation.error instanceof Error
               ? mutation.error.message
               : `Could not ${editing ? 'save the changes' : 'create the listing'}.`}
@@ -757,14 +746,14 @@ export function ListCarPage() {
         )}
 
         {submitAttempted && missing.length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-800">
+          <Notice tone="warn" className="flex-col items-stretch">
             <p className="font-medium">Before you can publish, you still need:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5">
               {missing.map((m) => (
                 <li key={m}>{m}</li>
               ))}
             </ul>
-          </div>
+          </Notice>
         )}
 
         <div className="flex justify-end gap-3">

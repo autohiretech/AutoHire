@@ -62,8 +62,13 @@ export function MegaSearch({
       <form
         onSubmit={submit}
         className={cn(
-          'flex items-stretch overflow-hidden rounded-full border-2 bg-white shadow-sm',
-          aiMode ? 'border-accent-500 focus-within:border-accent-500' : 'border-brand-500 focus-within:border-brand-600',
+          'flex items-stretch overflow-hidden rounded-[var(--radius-pill)] border-2 bg-[var(--color-surface-raised)]',
+          // AI mode is the one state that earns the accent here — it changes
+          // what the field *does*. The plain field is a neutral input like any
+          // other, so it takes the line colour rather than a second green.
+          aiMode
+            ? 'border-[var(--color-accent-on)]'
+            : 'border-[var(--color-line-strong)] focus-within:border-[var(--color-accent-on)]',
         )}
       >
         {aiMode ? (

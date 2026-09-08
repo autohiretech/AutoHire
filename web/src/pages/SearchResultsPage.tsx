@@ -3,23 +3,35 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MapPin, Navigation, Search } from 'lucide-react';
 import type { ListingFilters } from '@/lib/types';
+import { cn } from '@/lib/cn';
 import { client } from '@/lib/client';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { interpretQuery } from '@/lib/demoAi';
 import { ResultsMap } from '@/components/map/ResultsMap';
-import { Spinner } from '@/components/ui';
+import { Spinner, Chip, ChipRow, Button, Sheet, MapListToggle, type SheetDetent } from '@/components/ui';
+import { ListingCard } from '@/components/ListingCard';
 import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
 import { useAiAssistantActions, useAiAssistantSource } from '@/lib/aiAssistantContext';
-import { Chip, FilterPill, MORE_FILTERS, PRICE_FILTER, type PanelId } from '@/components/marketplace/SearchFilters';
-import { ListRow } from '@/components/marketplace/ListRow';
+import { MORE_FILTERS, PRICE_FILTER } from '@/components/marketplace/SearchFilters';
 import { useAddressSuggestions, type AddressSuggestion } from '@/lib/geocoding';
 
+// Floating "map/list" toggle sits a fixed gap above the sheet's current
+// height, so it never overlaps the sheet no matter which detent it's in.
+const TOGGLE_BOTTOM_CLASS: Record<SheetDetent, string> = {
+  peek: 'bottom-[104px]',
+  half: 'bottom-[calc(55svh+16px)]',
+  full: 'bottom-[calc(92svh+16px)]',
+};
+
 /**
- * Search results page — Getaround's own layout: a slim filter-pill row, a
- * narrow result list, and a map that takes most of the page. The Gemini bot
+ * Search results page. Desktop keeps Getaround's own layout: a slim filter
+ * chip row, a narrow result list, and a map that takes most of the page. On
+ * mobile the map is the whole screen and the list lives in a bottom sheet
+ * over it — in Kigali "where is this car relative to me" is the question, and
+ * a `hidden lg:block` map answered it for nobody on a phone. The Gemini bot
  * is an addition on top of this, not a replacement for it: a floating
- * bubble that writes into the same filter state these pills use, so
+ * bubble that writes into the same filter state these chips use, so
  * whichever one touched it last drives the same list + map underneath.
  */
 export function SearchResultsPage() {
@@ -28,7 +40,6 @@ export function SearchResultsPage() {
   const q = params.get('q') ?? '';
   const [text, setText] = useState(q);
   const [extra, setExtra] = useState<ListingFilters>({});
-  const [openPanel, setOpenPanel] = useState<PanelId>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cars the assistant's last filter turn actually matched — highlighted on
   // the map/list so a chat reply isn't the only place they show up.
@@ -41,6 +52,11 @@ export function SearchResultsPage() {
   const [locating, setLocating] = useState(false);
   const suggestBoxRef = useRef<HTMLDivElement>(null);
   const { suggestions, searching: suggestSearching } = useAddressSuggestions(text);
+
+  // Mobile only: which detent the results sheet is pinned to. The floating
+  // map/list pill just flips this between `peek` (map dominant) and `half`
+  // (list dominant) — dragging the sheet's own handle still reaches `full`.
+  const [sheetDetent, setSheetDetent] = useState<SheetDetent>('peek');
 
   // Filters are per-market, so drop them when the query or the market changes.
   useEffect(() => {
@@ -172,7 +188,6 @@ export function SearchResultsPage() {
     });
   }
 
-  const typeActive = !!extra.category;
   const priceActive = Object.entries(PRICE_FILTER.patch).every(
     ([k, v]) => extra[k as keyof ListingFilters] === v,
   );
@@ -182,16 +197,29 @@ export function SearchResultsPage() {
         ([k, v]) => extra[k as keyof ListingFilters] === v,
       ),
     ) || !!extra.city;
+  const anyActive = !!extra.category || priceActive || moreActive;
+
+  function rowProps(l: (typeof results)[number]) {
+    return {
+      key: l.id,
+      listing: l,
+      layout: 'row' as const,
+      isActive: l.id === activeId || highlightIds.includes(l.id),
+      onHover: (hovering: boolean) => setActiveId(hovering ? l.id : null),
+    };
+  }
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Top strip — search + filters. Kept to a minimal fixed height so the
-          list + map below start immediately, not partway down a long page. */}
-      <div className="mx-auto w-full max-w-[1600px] shrink-0 px-4 pt-3">
+      {/* Top strip — search + filters. Always in normal flow (not floating
+          over the map) so it stays put regardless of the mobile sheet's
+          detent or the map/list toggle — "pinned to the top in both states"
+          falls out of it simply never moving. */}
+      <div className="mx-auto w-full max-w-[1600px] shrink-0 border-b border-[var(--color-line)] px-4 pt-3 pb-3">
         <div ref={suggestBoxRef} className="relative sm:max-w-xl">
           <form onSubmit={onSubmit} className="flex items-stretch gap-2">
-            <div className="flex flex-1 items-center overflow-hidden rounded-full border-2 border-brand-500 bg-white shadow-sm transition-shadow focus-within:border-brand-600 focus-within:shadow-md">
-              <Search size={16} className="ml-4 shrink-0 text-ink-400" />
+            <div className="flex flex-1 items-center overflow-hidden rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] transition-shadow focus-within:border-[var(--color-accent-on)]">
+              <Search size={16} className="ml-4 shrink-0 text-[var(--color-content-subtle)]" />
               <input
                 value={text}
                 onChange={(e) => {
@@ -204,30 +232,29 @@ export function SearchResultsPage() {
                 }}
                 placeholder="Where do you want to pick up?"
                 aria-label="Search cars"
-                className="min-w-0 flex-1 px-3 py-2 text-sm text-ink-900 outline-none placeholder:text-ink-400"
+                className="min-w-0 flex-1 bg-transparent px-3 py-2 text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)]"
               />
-              <button
-                type="submit"
-                className="m-1 flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-1.5 text-sm font-medium text-white shadow-sm transition hover:brightness-95 hover:shadow"
-              >
+              <Button type="submit" size="sm" pill className="m-1">
                 Search
-              </button>
+              </Button>
             </div>
           </form>
           {suggestOpen && (
-            <div className="absolute z-[1100] mt-1 max-h-72 w-full overflow-auto rounded-lg border border-ink-200 bg-white shadow-lg">
+            <div className="absolute z-[1100] mt-1 max-h-72 w-full overflow-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={useCurrentLocation}
                 disabled={locating}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50 disabled:opacity-60"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-body-sm text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
               >
-                <Navigation className="h-4 w-4 shrink-0 text-brand-600" />
+                <Navigation className="h-4 w-4 shrink-0 text-[var(--color-accent-on)]" />
                 {locating ? 'Finding you…' : 'Use my current location'}
               </button>
               {suggestSearching && (
-                <div className="border-t border-ink-100 px-3 py-2 text-xs text-ink-400">Searching…</div>
+                <div className="border-t border-[var(--color-line)] px-3 py-2 text-caption text-[var(--color-content-subtle)]">
+                  Searching…
+                </div>
               )}
               {suggestions.map((s, i) => (
                 <button
@@ -235,9 +262,9 @@ export function SearchResultsPage() {
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pickSuggestion(s)}
-                  className="flex w-full items-start gap-2 border-t border-ink-100 px-3 py-2 text-left text-sm hover:bg-ink-50"
+                  className="flex w-full items-start gap-2 border-t border-[var(--color-line)] px-3 py-2 text-left text-body-sm text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]"
                 >
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-content-subtle)]" />
                   <span className="line-clamp-2">{s.label}</span>
                 </button>
               ))}
@@ -245,158 +272,171 @@ export function SearchResultsPage() {
           )}
         </div>
 
-        {/* Filter pill row */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <FilterPill
-            label="Vehicle type"
-            active={typeActive}
-            open={openPanel === 'type'}
-            onToggle={() => setOpenPanel((p) => (p === 'type' ? null : 'type'))}
-          >
-            <div className="flex w-64 flex-wrap gap-2 p-3">
-              {CAR_CATEGORIES.map(({ value, label }) => (
-                <Chip
-                  key={value}
-                  active={extra.category === value}
-                  onClick={() =>
-                    setExtra((p) => ({
-                      ...p,
-                      category: p.category === value ? undefined : value,
-                    }))
-                  }
-                >
-                  {label}
-                </Chip>
-              ))}
-            </div>
-          </FilterPill>
-
-          <FilterPill
-            label="Price"
-            active={priceActive}
-            open={openPanel === 'price'}
-            onToggle={() =>
-              setOpenPanel((p) => (p === 'price' ? null : 'price'))
-            }
-          >
-            <div className="w-56 p-3">
-              <Chip
-                active={priceActive}
-                onClick={() => togglePatch(PRICE_FILTER.patch)}
-              >
-                {PRICE_FILTER.label}
-              </Chip>
-            </div>
-          </FilterPill>
-
-          <FilterPill
-            label="More filters"
-            active={moreActive}
-            open={openPanel === 'more'}
-            onToggle={() => setOpenPanel((p) => (p === 'more' ? null : 'more'))}
-          >
-            <div className="w-72 space-y-3 p-3">
-              <div className="flex flex-wrap gap-2">
-                {MORE_FILTERS.map(({ label, patch }) => (
-                  <Chip
-                    key={label}
-                    active={Object.entries(patch).every(
-                      ([k, v]) => extra[k as keyof ListingFilters] === v,
-                    )}
-                    onClick={() => togglePatch(patch)}
-                  >
-                    {label}
-                  </Chip>
-                ))}
-              </div>
-              <div className="border-t border-ink-100 pt-3">
-                <p className="mb-2 text-xs font-medium text-ink-500">City</p>
-                <div className="flex flex-wrap gap-2">
-                  {citiesFor(country.code).map((c) => (
-                    <Chip
-                      key={c}
-                      active={extra.city === c}
-                      onClick={() =>
-                        setExtra((p) => ({
-                          ...p,
-                          city: p.city === c ? undefined : c,
-                        }))
-                      }
-                    >
-                      {c}
-                    </Chip>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </FilterPill>
-
-          {(typeActive || priceActive || moreActive) && (
+        {/* Filter chip row — a flat, always-visible scroller rather than the
+            old dropdown panels: `Chip`'s selected state (fill+weight, not
+            hue) already reads clearly at this density, and a dropdown is one
+            more tap standing between a renter and the map on a phone. */}
+        <ChipRow className="mt-2.5">
+          {CAR_CATEGORIES.map(({ value, label }) => (
+            <Chip
+              key={value}
+              selected={extra.category === value}
+              onClick={() =>
+                setExtra((p) => ({
+                  ...p,
+                  category: p.category === value ? undefined : value,
+                }))
+              }
+            >
+              {label}
+            </Chip>
+          ))}
+          <Chip selected={priceActive} onClick={() => togglePatch(PRICE_FILTER.patch)}>
+            {PRICE_FILTER.label}
+          </Chip>
+          {MORE_FILTERS.map(({ label, patch }) => (
+            <Chip
+              key={label}
+              selected={Object.entries(patch).every(
+                ([k, v]) => extra[k as keyof ListingFilters] === v,
+              )}
+              onClick={() => togglePatch(patch)}
+            >
+              {label}
+            </Chip>
+          ))}
+          {citiesFor(country.code).map((c) => (
+            <Chip
+              key={c}
+              selected={extra.city === c}
+              onClick={() =>
+                setExtra((p) => ({ ...p, city: p.city === c ? undefined : c }))
+              }
+            >
+              {c}
+            </Chip>
+          ))}
+          {anyActive && (
             <button
               type="button"
               onClick={() => setExtra({})}
-              className="text-sm font-medium text-brand-600 hover:underline"
+              className="shrink-0 whitespace-nowrap text-body-sm font-semibold text-[var(--color-content-muted)] hover:text-[var(--color-content)] hover:underline"
             >
               Clear all
             </button>
           )}
-        </div>
+        </ChipRow>
       </div>
 
-      {/* Results — narrow list on the left (scrolls in place), map filling the
-          rest of the viewport on the right. The whole thing fits under the top
-          strip; only the list itself scrolls, the page never does. */}
-      <div className="min-h-0 flex-1 px-4 pb-3 pt-2">
+      {/* Results. Desktop keeps the list-left/map-right split. Below `lg` the
+          map becomes the full-bleed base layer with the list living in a
+          bottom sheet over it — a tab that hides one or the other answers
+          only half of "where is this car relative to me" at a time. */}
+      <div className="relative min-h-0 flex-1">
         {isLoading || aiPending ? (
           <div className="flex h-full flex-col items-center justify-center gap-2">
             <Spinner size={28} />
-            {aiPending && <p className="text-sm text-ink-500">Asking the assistant…</p>}
+            {aiPending && (
+              <p className="text-body-sm text-[var(--color-content-muted)]">Asking the assistant…</p>
+            )}
           </div>
         ) : (
-          <div className="flex h-full gap-5">
-            <div className="h-full w-full max-w-[380px] shrink-0 overflow-y-auto rounded-2xl border border-ink-100 bg-white shadow-card">
-              {results.length > 0 ? (
-                <div className="divide-y divide-ink-100">
-                  {results.map((l) => (
-                    <ListRow
-                      key={l.id}
-                      listing={l}
-                      isActive={l.id === activeId || highlightIds.includes(l.id)}
-                      onHover={(hovering) => setActiveId(hovering ? l.id : null)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                // The map stays up even with nothing to show on it — losing
-                // it too on top of an empty list read as the page itself
-                // being broken, not just this search coming up empty.
-                <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                  <Search size={28} className="text-ink-300" />
-                  <p className="font-medium text-ink-700">No cars match “{q}”.</p>
-                  <p className="text-sm text-ink-500">
-                    Try a broader search or clear the filters.
-                  </p>
-                </div>
-              )}
-            </div>
-            {/* `isolate` scopes Leaflet's own z-index scale (its zoom control
-                sits at 1000) to inside this box — without it, those values
-                leak into the page's shared stacking context and paint over
-                the header, search bar, and the AI chat bubble below. */}
-            <div className="isolate hidden min-w-0 flex-1 overflow-hidden rounded-2xl border border-ink-100 shadow-card lg:block">
-              <ResultsMap
-                listings={results}
-                activeId={activeId}
-                onHover={setActiveId}
-                highlightIds={highlightIds}
-                onSelect={selectForBooking}
-                focusPoint={focusPoint}
+          <>
+            {/* ── Mobile (<lg) ──────────────────────────────────────────── */}
+            <div className="absolute inset-0 lg:hidden">
+              {/* `isolate` scopes Leaflet's own z-index scale (its zoom
+                  control sits at 1000) to inside this box — without it, those
+                  values leak into the page's shared stacking context and
+                  paint over the sheet and the floating toggle above it. */}
+              <div className="isolate absolute inset-0">
+                <ResultsMap
+                  listings={results}
+                  activeId={activeId}
+                  onHover={setActiveId}
+                  highlightIds={highlightIds}
+                  onSelect={selectForBooking}
+                  focusPoint={focusPoint}
+                />
+              </div>
+
+              <MapListToggle
+                showing={sheetDetent === 'peek' ? 'map' : 'list'}
+                onToggle={() => setSheetDetent((d) => (d === 'peek' ? 'half' : 'peek'))}
+                className={cn('absolute left-1/2 z-30 -translate-x-1/2', TOGGLE_BOTTOM_CLASS[sheetDetent])}
               />
+
+              <Sheet
+                detent={sheetDetent}
+                onDetentChange={setSheetDetent}
+                header={
+                  <p className="text-body-sm font-semibold text-[var(--color-content)]">
+                    <span className="tabular">{results.length}</span> car{results.length === 1 ? '' : 's'}{' '}
+                    {q ? `for “${q}”` : 'available'}
+                  </p>
+                }
+              >
+                {results.length > 0 ? (
+                  <div className="flex flex-col gap-3 px-4 pb-4">
+                    {results.map((l) => (
+                      <ListingCard {...rowProps(l)} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2 px-4 pb-6 pt-2 text-center">
+                    <Search size={24} className="text-[var(--color-content-subtle)]" />
+                    <p className="font-medium text-[var(--color-content)]">No cars match “{q}”.</p>
+                    <p className="text-body-sm text-[var(--color-content-muted)]">
+                      Try a broader search or clear the filters.
+                    </p>
+                  </div>
+                )}
+              </Sheet>
             </div>
-          </div>
+
+            {/* ── Desktop (lg+) ─────────────────────────────────────────── */}
+            <div className="hidden h-full gap-5 px-4 pb-3 pt-2 lg:flex">
+              {/* 380px left every title wrapping onto three or four lines —
+                  the photo takes 160 of it and a car's name is long ("Hyundai
+                  Ioniq 5 — electric in Rubavu"). Turo gives this column ~660px
+                  for the same reason. It widens with the viewport rather than
+                  taking a fixed share, so the map keeps the space it needs to
+                  be a map. */}
+              <div className="h-full w-full max-w-[460px] shrink-0 overflow-y-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] xl:max-w-[560px]">
+                {results.length > 0 ? (
+                  <div className="divide-y divide-[var(--color-line)]">
+                    {results.map((l) => (
+                      <div key={l.id} className="p-3">
+                        <ListingCard {...rowProps(l)} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  // The map stays up even with nothing to show on it — losing
+                  // it too on top of an empty list read as the page itself
+                  // being broken, not just this search coming up empty.
+                  <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+                    <Search size={28} className="text-[var(--color-content-subtle)]" />
+                    <p className="font-medium text-[var(--color-content)]">No cars match “{q}”.</p>
+                    <p className="text-body-sm text-[var(--color-content-muted)]">
+                      Try a broader search or clear the filters.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="isolate hidden min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] lg:block">
+                <ResultsMap
+                  listings={results}
+                  activeId={activeId}
+                  onHover={setActiveId}
+                  highlightIds={highlightIds}
+                  onSelect={selectForBooking}
+                  focusPoint={focusPoint}
+                />
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>
   );
 }
-

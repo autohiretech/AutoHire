@@ -132,14 +132,14 @@ function TripPostCard({ post }: { post: Extract<FeedItem, { kind: 'trip' }> }) {
 /** No visibility icon, no "verified" styling — this is a host talking, not a checked trip. */
 function BroadcastCard({ broadcast }: { broadcast: Extract<FeedItem, { kind: 'broadcast' }> }) {
   return (
-    <Card className="border-accent-200 bg-accent-50/30">
+    <Card className="border-[var(--color-warn-500)]/25 bg-[var(--color-warn-tint)]">
       <CardBody className="space-y-3">
         <div className="flex items-center gap-2.5">
           <Avatar name={broadcast.host.fullName} src={broadcast.host.avatarUrl} size="sm" />
           <div>
             <p className="flex items-center gap-1.5 text-sm font-semibold text-ink-900">
               {broadcast.host.businessName ?? broadcast.host.fullName}
-              <Megaphone size={13} className="text-accent-600" />
+              <Megaphone size={13} className="text-[var(--color-warn-500)]" />
             </p>
             <p className="text-xs text-ink-400">{formatDate(broadcast.createdAt)}</p>
           </div>

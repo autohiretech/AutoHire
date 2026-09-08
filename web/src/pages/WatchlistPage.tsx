@@ -9,7 +9,7 @@ import { useCanRent } from '@/lib/account';
 import { formatDate } from '@/lib/format';
 import { readLocalWatchlist, writeLocalWatchlist } from '@/lib/watchlist';
 import { ListingCard } from '@/components/ListingCard';
-import { Badge, Button, Card, CardBody, Spinner, toast } from '@/components/ui';
+import { Badge, Button, Card, CardBody, Notice, Spinner, toast } from '@/components/ui';
 
 /**
  * "Watching" — the cars this renter has starred. A watch subscribes you to a
@@ -70,14 +70,14 @@ export function WatchlistPage() {
   if (!canRent && !meLoading) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Watching is for renter accounts</p>
-        <p className="mt-1 text-sm text-ink-500">
+        <p className="font-medium text-[var(--color-content)]">Watching is for renter accounts</p>
+        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           A watch tells you when a car is free to book, which host and company accounts can't do.
         </p>
         <button
           type="button"
           onClick={backToBrowse}
-          className="mt-3 inline-block text-sm text-brand-600 hover:underline"
+          className="mt-3 inline-block text-body-sm text-[var(--color-accent-on)] hover:underline"
         >
           Back to browse
         </button>
@@ -89,32 +89,32 @@ export function WatchlistPage() {
     <section className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink-900">Watching</h1>
-          <p className="mt-1 text-sm text-ink-500">
+          <h1 className="text-h1">Watching</h1>
+          <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
             {signedIn
               ? "We'll notify you the moment one of these frees up."
               : 'Saved in this browser. Sign in to be notified when one frees up.'}
           </p>
         </div>
         {listings.length > 0 && (
-          <span className="text-sm text-ink-500">
+          <span className="tabular text-body-sm text-[var(--color-content-muted)]">
             {listings.length} car{listings.length === 1 ? '' : 's'}
           </span>
         )}
       </div>
 
+      {/* An opportunity, not a problem — these watches already work, signing
+          in just carries them past this browser. */}
       {!signedIn && !meLoading && listings.length > 0 && (
-        <Card className="mb-6 border-brand-200 bg-brand-50">
-          <CardBody className="flex flex-wrap items-center justify-between gap-3 py-4">
-            <p className="flex items-center gap-2 text-sm text-ink-700">
-              <Bell size={16} className="shrink-0 text-brand-600" />
-              Alerts need an account — these watches only live in this browser.
-            </p>
-            <Link to="/login">
-              <Button size="sm">Sign in</Button>
-            </Link>
-          </CardBody>
-        </Card>
+        <Notice tone="info" className="mb-6 flex-wrap items-center justify-between">
+          <p className="flex items-center gap-2">
+            <Bell size={16} className="shrink-0" />
+            Alerts need an account — these watches only live in this browser.
+          </p>
+          <Link to="/login">
+            <Button size="sm">Sign in</Button>
+          </Link>
+        </Notice>
       )}
 
       {isLoading ? (
@@ -124,12 +124,14 @@ export function WatchlistPage() {
       ) : listings.length === 0 ? (
         <Card>
           <CardBody className="flex flex-col items-center gap-3 py-16 text-center">
-            <Star size={32} className="text-ink-300" />
+            <Star size={32} className="text-[var(--color-content-subtle)]" />
             <div>
-              <p className="font-medium text-ink-900">You're not watching any cars</p>
-              <p className="mt-1 text-sm text-ink-500">
-                Hit <span className="font-medium text-ink-700">Watch</span> on a car and we'll tell
-                you when it's available.
+              <p className="font-medium text-[var(--color-content)]">
+                You're not watching any cars
+              </p>
+              <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
+                Hit <span className="font-medium text-[var(--color-content)]">Watch</span> on a car
+                and we'll tell you when it's available.
               </p>
             </div>
             <Link to="/">
@@ -155,7 +157,7 @@ export function WatchlistPage() {
                   type="button"
                   onClick={() => unwatch.mutate(listing.id)}
                   disabled={unwatch.isPending}
-                  className="text-sm font-medium text-ink-500 hover:text-ink-800 disabled:opacity-50"
+                  className="text-body-sm font-medium text-[var(--color-content-muted)] hover:text-[var(--color-content)] disabled:opacity-50"
                 >
                   Unwatch
                 </button>
