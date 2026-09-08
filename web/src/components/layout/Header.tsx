@@ -19,6 +19,7 @@ import { Avatar, Button } from '@/components/ui';
 import { useNotifications } from '@/components/NotificationsProvider';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
 import { CurrencySelector } from '@/components/marketplace/CurrencySelector';
+import { LanguageSelector } from '@/components/marketplace/LanguageSelector';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCanRent } from '@/lib/account';
@@ -126,6 +127,7 @@ export function Header() {
         <div className="flex items-center gap-2">
           <CountrySelector />
           <CurrencySelector />
+          <LanguageSelector />
           {user ? (
             <>
               {/* Desktop entry to the agent's own room. On phones the middle

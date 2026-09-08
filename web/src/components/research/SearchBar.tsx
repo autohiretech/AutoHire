@@ -23,6 +23,7 @@ import {
 import { useMyLocation } from '@/lib/useMyLocation';
 import { useCountry } from '@/lib/country';
 import { matchKnownCity } from '@/lib/cities';
+import { useT } from '@/lib/i18n';
 import { DateRangeCalendar, type DateRange } from '@/components/marketplace/DateRangeCalendar';
 
 export interface SearchBarLocation {
@@ -163,10 +164,11 @@ const KIND_ICONS: Record<PlaceKind, typeof MapPin> = {
  * form drops the verb rather than clipping the noun. Two spans, because CSS
  * can swap visibility per container width and cannot swap text. */
 function EmptyDateLabel() {
+  const t = useT();
   return (
     <>
-      <span className="@md:hidden">Dates</span>
-      <span className="hidden @md:inline">Add dates</span>
+      <span className="@md:hidden">{t('search.dates')}</span>
+      <span className="hidden @md:inline">{t('search.addDates')}</span>
     </>
   );
 }
@@ -296,6 +298,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   ref,
 ) {
   const { country } = useCountry();
+  const t = useT();
 
   // Which face the bar shows — the renter's own choice, not automatic.
   // 'search' is the default because it's what most of every session is:
@@ -500,7 +503,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               : 'text-[var(--color-content-muted)]',
           )}
         >
-          <Search size={13} /> Search
+          <Search size={13} /> {t('search.modeSearch')}
         </button>
         <button
           type="button"
@@ -513,7 +516,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               : 'text-[var(--color-content-muted)]',
           )}
         >
-          <Sparkles size={13} /> Ask AI
+          <Sparkles size={13} /> {t('search.modeAskAi')}
         </button>
       </div>
 
@@ -564,14 +567,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
           ref={locationBoxRef}
           className="relative flex min-w-0 flex-[1.4] flex-col gap-0.5 border-r border-[var(--color-line)] px-3 py-1.5 @md:flex-1 @md:px-4"
         >
-          <span className="text-caption font-semibold text-[var(--color-content-muted)]">Where</span>
+          <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.where')}</span>
           <div className="flex items-center gap-2">
             <input
               value={locationText}
               onChange={(e) => onLocationTextChange(e.target.value)}
               onFocus={() => setSuggestOpen(true)}
               onKeyDown={(e) => e.key === 'Escape' && setSuggestOpen(false)}
-              placeholder="City or airport"
+              placeholder={t('search.wherePlaceholder')}
               aria-label="Pickup location"
               disabled={disabled}
               className="min-w-0 flex-1 truncate bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
@@ -580,7 +583,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               type="button"
               onClick={useCurrentLocationClick}
               disabled={disabled || busyLocating}
-              aria-label="Use my current location"
+              aria-label={t('search.useMyLocation')}
               // Visible at every width. Hiding it on phones to buy room for
               // the one-row bar was the wrong trade: "find cars near me" is
               // the single most likely thing a renter on a phone wants, and
@@ -603,14 +606,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
             <div className="absolute left-0 top-[calc(100%+8px)] z-[1100] max-h-[min(70vh,26rem)] w-full animate-popover-in overflow-y-auto overscroll-contain rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-float)] @md:w-[420px]">
               <PickerRow
                 icon={Navigation}
-                title={busyLocating ? 'Finding you…' : 'Current location'}
+                title={busyLocating ? t('search.findingYou') : t('search.currentLocation')}
                 onClick={useCurrentLocationClick}
                 disabled={disabled || busyLocating}
               />
               <PickerRow
                 icon={Globe}
-                title="Anywhere"
-                subtitle="Browse all cars"
+                title={t('search.anywhere')}
+                subtitle={t('search.anywhereSub')}
                 onClick={pickAnywhere}
               />
 
@@ -634,7 +637,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               )}
 
               {searching && (
-                <p className="px-2.5 py-2 text-caption text-[var(--color-content-subtle)]">Searching…</p>
+                <p className="px-2.5 py-2 text-caption text-[var(--color-content-subtle)]">{t('search.searching')}</p>
               )}
               {suggestions.map((s, i) => {
                 const { name, context } = splitAddress(s.label);
@@ -650,7 +653,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               })}
               {suggestions.length > 0 && (
                 <p className="px-2.5 pt-2 pb-1 text-center text-caption text-[var(--color-content-subtle)]">
-                  Powered by OpenStreetMap
+                  {t('search.poweredByOsm')}
                 </p>
               )}
             </div>
@@ -663,7 +666,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
           className="relative flex min-w-0 flex-[1.1] flex-row divide-x divide-[var(--color-line)] @md:flex-[1.6]"
         >
           <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 @md:px-4">
-            <span className="text-caption font-semibold text-[var(--color-content-muted)]">From</span>
+            <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.from')}</span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -686,13 +689,13 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
                   dates" itself down to nothing. */}
               <span className="hidden items-center gap-1.5 @xl:flex">
                 <span className="h-3.5 w-px shrink-0 bg-[var(--color-line)]" />
-                <TimeSelect value={pickupTime} onChange={setPickupTime} placeholder="Add time" disabled={disabled} />
+                <TimeSelect value={pickupTime} onChange={setPickupTime} placeholder={t('search.addTime')} disabled={disabled} />
               </span>
             </div>
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 @md:px-4">
-            <span className="text-caption font-semibold text-[var(--color-content-muted)]">Until</span>
+            <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.until')}</span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -711,7 +714,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               </button>
               <span className="hidden items-center gap-1.5 @xl:flex">
                 <span className="h-3.5 w-px shrink-0 bg-[var(--color-line)]" />
-                <TimeSelect value={returnTime} onChange={setReturnTime} placeholder="Add time" disabled={disabled} />
+                <TimeSelect value={returnTime} onChange={setReturnTime} placeholder={t('search.addTime')} disabled={disabled} />
               </span>
             </div>
           </div>
@@ -749,7 +752,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
           <button
             type="submit"
             disabled={disabled || !hasMessage}
-            aria-label="Search"
+            aria-label={t('search.submit')}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
           >
             <Search size={18} />

@@ -14,6 +14,7 @@ import { cn } from '@/lib/cn';
 import { client } from '@/lib/client';
 import { useAppMode, type AppMode } from '@/lib/appMode';
 import { useAuth } from '@/lib/auth';
+import { useT, type TranslationKey } from '@/lib/i18n';
 
 /**
  * The mobile tab bar. Phones are how this marketplace is actually used in
@@ -35,23 +36,32 @@ import { useAuth } from '@/lib/auth';
  * The AI tab carries the page the user was on into /ai (`state.from`), so an
  * ask made from a car page already knows which car "this one" is.
  */
-const AI_TAB = { to: '/ai', label: 'AI', icon: Sparkles } as const;
+const AI_TAB = { to: '/ai', label: 'nav.ai', icon: Sparkles } as const;
 
-const TABS_BY_MODE: Record<AppMode, { to: string; label: string; icon: typeof Car; end?: boolean }[]> =
+interface Tab {
+  to: string;
+  /** A key, not a word — resolved through `t()` at render so the bar speaks
+   * whatever language the app is set to. */
+  label: TranslationKey;
+  icon: typeof Car;
+  end?: boolean;
+}
+
+const TABS_BY_MODE: Record<AppMode, Tab[]> =
   {
     renter: [
-      { to: '/', label: 'Explore', icon: Search, end: true },
-      { to: '/trips', label: 'Trips', icon: KeyRound },
+      { to: '/', label: 'nav.explore', icon: Search, end: true },
+      { to: '/trips', label: 'nav.trips', icon: KeyRound },
       AI_TAB,
-      { to: '/messages', label: 'Messages', icon: MessageSquare },
-      { to: '/account', label: 'Account', icon: User },
+      { to: '/messages', label: 'nav.messages', icon: MessageSquare },
+      { to: '/account', label: 'nav.account', icon: User },
     ],
     host: [
-      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { to: '/earnings', label: 'Earnings', icon: Wallet },
+      { to: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard },
+      { to: '/earnings', label: 'nav.earnings', icon: Wallet },
       AI_TAB,
-      { to: '/messages', label: 'Messages', icon: MessageSquare },
-      { to: '/account', label: 'Account', icon: User },
+      { to: '/messages', label: 'nav.messages', icon: MessageSquare },
+      { to: '/account', label: 'nav.account', icon: User },
     ],
   };
 
@@ -59,6 +69,7 @@ export function BottomTabBar() {
   const { mode } = useAppMode();
   const { user } = useAuth();
   const { pathname } = useLocation();
+  const t = useT();
 
   // Same query Header's desktop nav reads (shared cache key, so this doesn't
   // double the request) — the bar needs its own copy because it renders
@@ -80,11 +91,11 @@ export function BottomTabBar() {
   // no host to be yet), and the last one says what it actually does — "Sign
   // in", going straight to /login rather than calling itself Account when
   // there is no account behind it.
-  const tabs = user
+  const tabs: Tab[] = user
     ? TABS_BY_MODE[mode]
     : [
         ...TABS_BY_MODE.renter.slice(0, -1),
-        { to: '/login', label: 'Sign in', icon: User },
+        { to: '/login', label: 'nav.signIn', icon: User },
       ];
 
   return (
@@ -125,13 +136,13 @@ export function BottomTabBar() {
                     )}
                   >
                     <Icon size={20} strokeWidth={isActive ? 2.4 : 2} />
-                    {label === 'Messages' && unread > 0 && (
+                    {label === 'nav.messages' && unread > 0 && (
                       <span className="tabular absolute top-0 right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger-500)] px-1 text-[10px] font-bold text-white">
                         {unread > 9 ? '9+' : unread}
                       </span>
                     )}
                   </span>
-                  <span className="text-[11px] leading-none font-semibold">{label}</span>
+                  <span className="text-[11px] leading-none font-semibold">{t(label)}</span>
                 </>
               )}
             </NavLink>

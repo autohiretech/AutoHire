@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Download, Share, SquarePlus } from 'lucide-react';
 import { Modal, Button } from '@/components/ui';
 import { usePwaInstall } from '@/lib/usePwaInstall';
+import { useT } from '@/lib/i18n';
 
 const DISMISS_KEY = 'autohire.pwa-install-dismissed-at';
 // Re-asking on every visit is what the user explicitly flagged as a bug in
@@ -28,6 +29,7 @@ function recentlyDismissed(): boolean {
 export function PwaInstallPrompt() {
   const { installed, canPromptNatively, isIosSafari, promptInstall } = usePwaInstall();
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   const eligible = !installed && (canPromptNatively || isIosSafari);
 
@@ -54,7 +56,7 @@ export function PwaInstallPrompt() {
   }
 
   return (
-    <Modal open={open} onClose={dismiss} title="Get the AutoHire app">
+    <Modal open={open} onClose={dismiss} title={t('install.title')}>
       <div className="flex flex-col items-center gap-4 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-card)] bg-[var(--color-accent-on)]/10">
           <Download size={26} className="text-[var(--color-accent-on)]" />
@@ -63,34 +65,33 @@ export function PwaInstallPrompt() {
         {isIosSafari && !canPromptNatively ? (
           <>
             <p className="text-body-sm text-[var(--color-content-muted)]">
-              Add AutoHire to your Home Screen for one-tap access, faster loading, and no browser
-              bar in the way.
+              {t('install.iosBody')}
             </p>
             <div className="w-full space-y-2.5 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] p-4 text-left text-body-sm text-[var(--color-content)]">
               <p className="flex items-center gap-2.5">
                 <Share size={16} className="shrink-0 text-[var(--color-content-muted)]" />
-                Tap the Share button in Safari's toolbar
+                {t('install.iosStep1')}
               </p>
               <p className="flex items-center gap-2.5">
                 <SquarePlus size={16} className="shrink-0 text-[var(--color-content-muted)]" />
-                Then choose "Add to Home Screen"
+                {t('install.iosStep2')}
               </p>
             </div>
             <Button type="button" variant="outline" className="w-full" onClick={dismiss}>
-              Got it
+              {t('common.gotIt')}
             </Button>
           </>
         ) : (
           <>
             <p className="text-body-sm text-[var(--color-content-muted)]">
-              Install AutoHire for one-tap access, faster loading, and no browser bar in the way.
+              {t('install.body')}
             </p>
             <div className="flex w-full gap-2.5">
               <Button type="button" variant="outline" className="flex-1" onClick={dismiss}>
-                Not now
+                {t('common.notNow')}
               </Button>
               <Button type="button" className="flex-1" onClick={install}>
-                Install
+                {t('install.install')}
               </Button>
             </div>
           </>

@@ -6,6 +6,7 @@ import App from './App';
 import { queryClient } from './lib/queryClient';
 import { AppModeProvider } from './lib/appMode';
 import { CountryProvider } from './lib/country';
+import { LanguageProvider } from './lib/i18n';
 import { AuthProvider } from './lib/auth';
 import { Toaster } from './components/ui';
 import './index.css';
@@ -28,8 +29,10 @@ createRoot(document.getElementById('root')!).render(
         <AuthProvider>
           <AppModeProvider>
             <CountryProvider>
-              <App />
-              <Toaster />
+              <LanguageProvider>
+                <App />
+                <Toaster />
+              </LanguageProvider>
             </CountryProvider>
           </AppModeProvider>
         </AuthProvider>

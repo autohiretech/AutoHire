@@ -18,6 +18,7 @@ import type { Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
 import { mergeAiFilters } from '@/lib/aiFilters';
 import { loadHomeLocation } from '@/lib/homeLocation';
+import { useT } from '@/lib/i18n';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES } from '@/lib/categories';
@@ -84,6 +85,7 @@ function loadBrowse(): Partial<BrowseState> {
 export function HomePage() {
   // Restore where the user was browsing (read once on mount).
   const [savedBrowse] = useState(loadBrowse);
+  const t = useT();
   const [filters, setFilters] = useState<ListingFilters>(() => {
     // `savedBrowse.filters` is `undefined` only for a genuinely fresh
     // session (nothing was ever written to `BROWSE_KEY`) — a session that
@@ -275,7 +277,7 @@ export function HomePage() {
           </div>
 
           <h1 className="mt-5 max-w-lg text-h3 text-white sm:text-h2">
-            Find your next ride in {country.name}
+            {t('home.heroTitle', { country: country.name })}
           </h1>
 
           {/* The compound Where/From/Until bar is the same one /ai's own
@@ -375,14 +377,14 @@ export function HomePage() {
         <div className="mt-2">
           <ListingRail
             title={`Electric cars in ${country.name}`}
-            subtitle="Zero-emission rides, ready to book"
+            subtitle={t('home.electricSubtitle')}
             listings={electricCars}
             isLoading={electricLoading}
           />
           {cityA && (
             <ListingRail
               title={`Popular in ${cityA}`}
-              subtitle="Top-rated cars near you"
+              subtitle={t('home.topRatedNearYou')}
               listings={cityACars}
               isLoading={cityALoading}
             />
@@ -390,7 +392,7 @@ export function HomePage() {
           {cityB && (
             <ListingRail
               title={`Popular in ${cityB}`}
-              subtitle="Top-rated cars near you"
+              subtitle={t('home.topRatedNearYou')}
               listings={cityBCars}
               isLoading={cityBLoading}
             />
@@ -400,7 +402,7 @@ export function HomePage() {
         {/* Featured slideshow — a rotating BaT-style hero (auto every 3s) ─── */}
         {(featured?.length ?? 0) > 0 && (
           <div className="mt-2">
-            <h2 className="mb-3 text-h3">Featured this week</h2>
+            <h2 className="mb-3 text-h3">{t('home.featured')}</h2>
             <FeaturedSlideshow listings={featured ?? []} />
           </div>
         )}
@@ -409,7 +411,7 @@ export function HomePage() {
             chips filter this. */}
         <section className="mt-8 min-w-0">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-h3">{topRanked ? 'Top ranked cars' : 'Recommended for you'}</h2>
+            <h2 className="text-h3">{topRanked ? 'Top ranked cars' : t('home.recommended')}</h2>
             <ChipRow>
               <Chip
                 selected={filters.fuel === 'electric'}
