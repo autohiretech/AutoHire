@@ -23,3 +23,10 @@ verify_jwt = false
 # signed-in user, so the gateway JWT check is off. It writes with the service role.
 [functions.refresh-fx-rates]
 verify_jwt = false
+
+# The AI agent verifies the caller's JWT itself (anon key + the caller's own
+# Authorization header — see ai-agent/index.ts), so the gateway check is off
+# here too, for the same reason as create-payment-intent above: otherwise the
+# unauthenticated CORS preflight (OPTIONS) is rejected with 401.
+[functions.ai-agent]
+verify_jwt = false
