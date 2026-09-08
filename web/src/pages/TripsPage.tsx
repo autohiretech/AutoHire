@@ -4,8 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Car } from 'lucide-react';
 import { client } from '@/lib/client';
 import { TRIP_GROUPS } from '@/lib/trips';
-import { Button, Card, CardBody, Chip, Spinner } from '@/components/ui';
-import { TripCard } from '@/components/TripCard';
+import { Button, Card, CardBody, Chip } from '@/components/ui';
+import { TripCard, TripCardSkeleton } from '@/components/TripCard';
 
 /** Which lifecycle groups the Upcoming / Ended filter shows. "Active" trips
     are live right now, so they read as "upcoming" (not yet wrapped up) rather
@@ -55,8 +55,10 @@ export function TripsPage() {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner size={28} />
+        <div className="space-y-3" aria-busy="true" aria-label="Loading">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <TripCardSkeleton key={i} />
+          ))}
         </div>
       ) : bookings.length === 0 ? (
         <Card>

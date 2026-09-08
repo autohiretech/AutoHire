@@ -20,7 +20,8 @@ import type { ListingFilters } from '@/lib/types';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES } from '@/lib/categories';
-import { Badge, Chip, ChipRow, Spinner } from '@/components/ui';
+import { Badge, Chip, ChipRow } from '@/components/ui';
+import { ListingCardSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
@@ -342,8 +343,10 @@ export function HomePage() {
           </div>
 
           {isLoading ? (
-            <div className="flex justify-center py-16">
-              <Spinner size={28} />
+            <div className={CARD_GRID} aria-busy="true" aria-label="Loading cars">
+              {Array.from({ length: 9 }, (_, i) => (
+                <ListingCardSkeleton key={i} />
+              ))}
             </div>
           ) : results.length > 0 ? (
             <>
@@ -410,8 +413,16 @@ function ListingRail({
         <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">{subtitle}</p>
       )}
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <Spinner size={22} />
+        <div
+          className="-mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-busy="true"
+          aria-label="Loading cars"
+        >
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="w-[68%] shrink-0 sm:w-60">
+              <ListingCardSkeleton />
+            </div>
+          ))}
         </div>
       ) : (
         <div className="-mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

@@ -48,7 +48,7 @@ import {
 } from '@/components/PaymentBrands';
 import { PayholdPayment } from '@/components/PayholdPayment';
 import { Img } from '@/components/Img';
-import { Avatar, Badge, Button, Card, CardBody, Input, Label, Notice, Select, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, Input, Label, Notice, Select, Skeleton } from '@/components/ui';
 
 type Method = 'card' | 'momo';
 
@@ -159,11 +159,7 @@ export function BookingPage() {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Spinner size={28} />
-      </div>
-    );
+    return <BookingSkeleton />;
   }
 
   if (!listing) {
@@ -640,6 +636,87 @@ export function BookingPage() {
                     back — so your money is protected for the whole trip, not just until pickup.
                   </span>
                 </Notice>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Loaded-layout stand-in for the initial `getListing` fetch — the "Confirm
+ * and pay" heading is static copy, so it's kept live; everything below it
+ * needs the listing and is blocked out in the same three-card left column
+ * plus sticky order-summary shape as the real page.
+ */
+function BookingSkeleton() {
+  return (
+    <section className="mx-auto max-w-5xl px-4 py-8 sm:py-9" aria-busy="true" aria-label="Loading">
+      <div className="mb-5 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-content-muted)]">
+        <ArrowLeft size={18} />
+      </div>
+
+      <h1 className="text-h1 text-[var(--color-content)]">Confirm and pay</h1>
+      <p className="mt-1.5 max-w-xl text-body-sm text-[var(--color-content-muted)]">
+        Check the car and the dates, then pay. Nothing reaches the host until the trip is over.
+      </p>
+
+      <div className="mt-7 grid grid-cols-1 gap-7 lg:grid-cols-[1fr_minmax(0,400px)] lg:gap-9">
+        {/* Left: payment methods */}
+        <div className="min-w-0 space-y-5">
+          <Card>
+            <CardBody className="space-y-4 p-5 sm:p-6">
+              <Skeleton className="h-5 w-56" />
+              <div>
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="mt-1.5 h-11 w-full" />
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody className="p-5 sm:p-6">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="mt-4 h-16 w-full" />
+              <Skeleton className="mt-3 h-16 w-full" />
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody className="p-5 sm:p-6">
+              <Skeleton className="h-5 w-64" />
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+
+        {/* Right: order summary — photo, title/specs, then the price-details
+            block, matching the sticky card's own breakpoint and structure. */}
+        <div>
+          <Card className="overflow-hidden lg:sticky lg:top-20">
+            <Skeleton className="aspect-[16/9] w-full rounded-none" />
+            <CardBody className="space-y-4 p-5 sm:p-5">
+              <div>
+                <Skeleton className="h-5 w-48" />
+                <Skeleton className="mt-2 h-4 w-32" />
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <Skeleton className="h-6 w-16 rounded-[var(--radius-pill)]" />
+                  <Skeleton className="h-6 w-20 rounded-[var(--radius-pill)]" />
+                  <Skeleton className="h-6 w-16 rounded-[var(--radius-pill)]" />
+                  <Skeleton className="h-6 w-14 rounded-[var(--radius-pill)]" />
+                </div>
+              </div>
+              <div className="space-y-2 border-t border-[var(--color-line)] pt-3.5">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-6 w-full" />
               </div>
             </CardBody>
           </Card>

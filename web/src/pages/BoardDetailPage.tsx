@@ -4,7 +4,7 @@ import { ArrowLeft, Calendar, LayoutGrid } from 'lucide-react';
 import { client } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import { ListingCard } from '@/components/ListingCard';
-import { Avatar, Card, CardBody, Spinner, toast } from '@/components/ui';
+import { Avatar, Card, CardBody, Skeleton, toast } from '@/components/ui';
 
 /**
  * A board's pinned cars — what the group is actually weighing against each
@@ -30,11 +30,7 @@ export function BoardDetailPage() {
   });
 
   if (boardQuery.isLoading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Spinner size={28} />
-      </div>
-    );
+    return <BoardDetailSkeleton />;
   }
 
   const board = boardQuery.data;
@@ -71,9 +67,7 @@ export function BoardDetailPage() {
       </div>
 
       {itemsQuery.isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner size={28} />
-        </div>
+        <BoardItemsSkeleton />
       ) : items.length === 0 ? (
         <Card>
           <CardBody className="flex flex-col items-center gap-3 py-16 text-center">
@@ -124,6 +118,55 @@ export function BoardDetailPage() {
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+/** One card's loaded shape — photo, title, location, price, then the
+ * added-by row below it — with content removed. Mirrors `ListingCard` +
+ * the attribution row so the grid doesn't resize when items land. */
+function BoardItemsSkeleton() {
+  return (
+    <div
+      className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+      aria-busy="true"
+      aria-label="Loading"
+    >
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex flex-col gap-2">
+          <div className="h-full">
+            <Skeleton className="aspect-[4/3] w-full" />
+            <div className="space-y-1.5 pt-3">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="mt-1.5 h-4 w-16" />
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 px-1">
+            <Skeleton className="h-5 w-5 rounded-[var(--radius-pill)]" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The whole page's loaded shape — back link, title + count line, item
+ * grid — with content removed. */
+function BoardDetailSkeleton() {
+  return (
+    <section className="mx-auto max-w-5xl px-4 py-6" aria-busy="true" aria-label="Loading">
+      <div className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
+        <ArrowLeft size={16} /> Back
+      </div>
+
+      <div className="mb-6 space-y-1.5">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-4 w-24" />
+      </div>
+
+      <BoardItemsSkeleton />
     </section>
   );
 }

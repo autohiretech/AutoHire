@@ -32,7 +32,7 @@ import {
   Chip,
   ChipRow,
   Notice,
-  Spinner,
+  Skeleton,
   toast,
 } from '@/components/ui';
 
@@ -271,7 +271,7 @@ export function EarningsPage() {
             </div>
           </div>
 
-          {balanceForCurrency && (
+          {balanceForCurrency ? (
             <div className="text-right">
               <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
                 Available to send
@@ -280,6 +280,14 @@ export function EarningsPage() {
                 {money(balanceForCurrency.available, balanceForCurrency.currency)}
               </p>
             </div>
+          ) : (
+            (wallet.isLoading || earnings.isLoading) &&
+            !notConfigured && (
+              <div className="text-right" aria-busy="true" aria-label="Loading">
+                <Skeleton className="ml-auto h-3 w-28" />
+                <Skeleton className="ml-auto mt-1.5 h-9 w-32" />
+              </div>
+            )
           )}
         </div>
 
@@ -325,13 +333,7 @@ export function EarningsPage() {
         )}
       </div>
 
-      {(wallet.isLoading || earnings.isLoading) && !notConfigured && (
-        <Card className="mt-6">
-          <CardBody className="flex justify-center py-10">
-            <Spinner size={22} />
-          </CardBody>
-        </Card>
-      )}
+      {(wallet.isLoading || earnings.isLoading) && !notConfigured && <EarningsSkeleton />}
 
       {/* PayHold isn't connected on this deployment. Not the host's problem and
           not a failure they can act on, so it reads as a status rather than an
@@ -675,6 +677,61 @@ export function EarningsPage() {
         , or to retry a payout that didn't go through.
       </p>
     </section>
+  );
+}
+
+/** Placeholder for the Overview tab's three cards — "Where you get paid",
+    "Your money" (bar + three `MoneyStat` tiles) and "Ready to send" — sized
+    to match so nothing jumps once the wallet and trip history land. */
+function EarningsSkeleton() {
+  return (
+    <div className="mt-4" aria-busy="true" aria-label="Loading">
+      <Card>
+        <CardHeader className="flex items-center justify-between">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-8 w-24" />
+        </CardHeader>
+        <CardBody>
+          <div className="flex items-center gap-3 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5">
+            <Skeleton className="h-9 w-9 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-1/4" />
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader className="flex items-center justify-between">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-5 w-12 rounded-[var(--radius-pill)]" />
+        </CardHeader>
+        <CardBody>
+          <Skeleton className="h-2 w-full rounded-[var(--radius-pill)]" />
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i}>
+                <Skeleton className="h-8 w-8" />
+                <Skeleton className="mt-2 h-3 w-14" />
+                <Skeleton className="mt-1.5 h-5 w-16" />
+              </div>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card className="mt-4">
+        <CardBody className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="mt-1.5 h-9 w-32" />
+            <Skeleton className="mt-2 h-3 w-24" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 

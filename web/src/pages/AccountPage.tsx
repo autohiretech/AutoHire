@@ -34,7 +34,7 @@ import {
   ListRow,
   Modal,
   Notice,
-  Spinner,
+  Skeleton,
 } from '@/components/ui';
 
 /** Account settings: shows who you are and lets you permanently delete the account. */
@@ -79,9 +79,7 @@ export function AccountPage() {
       </p>
 
       {isLoading || !profile ? (
-        <div className="mt-10 flex justify-center">
-          <Spinner size={22} />
-        </div>
+        <AccountSkeleton />
       ) : (
         <div className="mt-6 flex flex-col gap-6">
           {/* Genuine states that need this account's attention, surfaced up
@@ -219,6 +217,59 @@ function payoutStatusLabel(status?: string): string {
   if (status === 'active') return 'Active';
   if (status === 'pending') return 'Verifying';
   return 'Not set';
+}
+
+/**
+ * Loaded-layout stand-in for the initial `useCurrentUser` fetch — the
+ * profile card's shape (avatar, name field, a two-field grid, a country
+ * field) plus two grouped-row sections, so the page doesn't reflow once the
+ * profile arrives and reveals which sections (Hosting, watchlist row) apply.
+ */
+function AccountSkeleton() {
+  return (
+    <div className="mt-6 flex flex-col gap-6" aria-busy="true" aria-label="Loading">
+      <Card>
+        <CardBody className="space-y-5">
+          <div className="flex items-center justify-between gap-2">
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-6 w-24 rounded-[var(--radius-pill)]" />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-14 w-14 rounded-full" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+
+          <div>
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="mt-1.5 h-11 w-full max-w-sm" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Skeleton className="h-11 w-full" />
+            <Skeleton className="h-11 w-full" />
+          </div>
+
+          <Skeleton className="h-11 w-full" />
+        </CardBody>
+      </Card>
+
+      <ListGroup label="Account">
+        <ListRow icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />} chevron={false}>
+          <Skeleton className="h-4 w-40" />
+        </ListRow>
+        <ListRow icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />} chevron={false}>
+          <Skeleton className="h-4 w-32" />
+        </ListRow>
+      </ListGroup>
+
+      <ListGroup label="Support">
+        <ListRow icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />} chevron={false}>
+          <Skeleton className="h-4 w-24" />
+        </ListRow>
+      </ListGroup>
+    </div>
+  );
 }
 
 /** Editable profile: avatar + name, plus the host/renter role switch. */

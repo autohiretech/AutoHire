@@ -4,7 +4,27 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sprout, Tractor, Users, Users2 } from 'lucide-react';
 import type { CircleKind } from '@autohire/shared';
 import { client } from '@/lib/client';
-import { Button, Card, CardBody, Input, Label, Modal, Select, Spinner, toast } from '@/components/ui';
+import { Button, Card, CardBody, Input, Label, Modal, Select, Skeleton, toast } from '@/components/ui';
+
+/** Same grid as the loaded state — icon square, title line, count line — so
+ * the cards don't resize when the real circles land. */
+function CirclesSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-busy="true" aria-label="Loading">
+      {[0, 1, 2, 3].map((i) => (
+        <Card key={i} className="h-full">
+          <CardBody className="flex items-start gap-3">
+            <Skeleton className="h-11 w-11 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-36" />
+            </div>
+          </CardBody>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 const KIND_META: Record<CircleKind, { label: string; icon: typeof Users }> = {
   crew: { label: 'Road-trip crew', icon: Users },
@@ -55,9 +75,7 @@ export function CirclesPage() {
       </div>
 
       {circlesQuery.isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner size={28} />
-        </div>
+        <CirclesSkeleton />
       ) : circles.length === 0 ? (
         <Card>
           <CardBody className="flex flex-col items-center gap-3 py-16 text-center">

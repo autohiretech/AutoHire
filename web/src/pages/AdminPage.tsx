@@ -58,6 +58,7 @@ import {
   ConfirmDialog,
   Input,
   Label,
+  Skeleton,
   Spinner,
 } from '@/components/ui';
 import { PhotoCarousel } from '@/components/PhotoCarousel';
@@ -187,11 +188,7 @@ function OverviewTab({ kyc }: { kyc?: KycMetrics }) {
   });
 
   if (isLoading || !stats) {
-    return (
-      <div className="flex justify-center py-16">
-        <Spinner size={24} />
-      </div>
-    );
+    return <OverviewSkeleton />;
   }
 
   return (
@@ -234,6 +231,51 @@ function OverviewTab({ kyc }: { kyc?: KycMetrics }) {
         <ElectricQuotaCard />
       </div>
     </div>
+  );
+}
+
+/** Placeholder for the Overview tab — the two `Stat` tile grids (Marketplace,
+    KYC verification) plus the electric-fleet card, sized to match so nothing
+    jumps once `adminStats`/`kycMetrics` land. */
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Loading">
+      <div>
+        <Skeleton className="mb-3 ml-1 h-3 w-24" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <StatSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+      <div>
+        <Skeleton className="mb-3 ml-1 h-3 w-32" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <StatSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+      <div>
+        <Skeleton className="mb-3 ml-1 h-3 w-36" />
+        <Skeleton className="h-44 w-full" />
+      </div>
+    </div>
+  );
+}
+
+/** Matches `Stat`'s icon-square + caption + value layout. */
+function StatSkeleton() {
+  return (
+    <Card>
+      <CardBody className="flex items-center gap-3">
+        <Skeleton className="h-9 w-9 shrink-0" />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-4 w-12" />
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -358,8 +400,10 @@ function UsersTab() {
       </form>
 
       {query.isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner size={24} />
+        <div className="space-y-3" aria-busy="true" aria-label="Loading">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <PersonRowSkeleton key={i} />
+          ))}
         </div>
       ) : !data || data.items.length === 0 ? (
         <Empty text="No users found." />
@@ -374,6 +418,23 @@ function UsersTab() {
         </>
       )}
     </div>
+  );
+}
+
+/** Matches the collapsed row shared by `UserCard` and `PersonCard` — avatar,
+    name + email lines, and a badge on the right. */
+function PersonRowSkeleton() {
+  return (
+    <Card>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+        <Skeleton className="h-5 w-16 rounded-[var(--radius-pill)]" />
+      </div>
+    </Card>
   );
 }
 
@@ -1027,8 +1088,10 @@ function VerificationTab() {
       </div>
 
       {query.isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner size={24} />
+        <div className="space-y-3" aria-busy="true" aria-label="Loading">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <PersonRowSkeleton key={i} />
+          ))}
         </div>
       ) : !data || data.items.length === 0 ? (
         <Empty text={scope === 'pending' ? 'Nobody is awaiting review.' : 'No one has uploaded documents.'} />
@@ -1281,11 +1344,7 @@ function ActivityTab() {
   const data = query.data;
 
   if (query.isLoading) {
-    return (
-      <div className="flex justify-center py-16">
-        <Spinner size={24} />
-      </div>
-    );
+    return <ActivitySkeleton />;
   }
   if (!data || data.items.length === 0) {
     return <Empty text="No KYC activity yet." />;
@@ -1306,6 +1365,29 @@ function ActivityTab() {
         onPage={setPage}
         busy={query.isFetching}
       />
+    </div>
+  );
+}
+
+/** Matches `ActivityRow` — a dot, two text lines and a trailing timestamp,
+    inside the same divided Card the loaded feed uses. */
+function ActivitySkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading">
+      <Card>
+        <CardBody className="divide-y divide-[var(--color-line)] p-0">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3">
+              <Skeleton className="h-2 w-2 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-3 w-12 shrink-0" />
+            </div>
+          ))}
+        </CardBody>
+      </Card>
     </div>
   );
 }
@@ -1415,13 +1497,36 @@ function Pagination({
 
 function TabState({ query, children }: { query: { isLoading: boolean }; children: React.ReactNode }) {
   if (query.isLoading) {
-    return (
-      <div className="flex justify-center py-16">
-        <Spinner size={24} />
-      </div>
-    );
+    return <CardListSkeleton />;
   }
   return <>{children}</>;
+}
+
+/** Generic placeholder for a moderation/dispute list — `FlagCard` and
+    `DisputeCard` share this shape: a header line + badge, two body lines,
+    and a row of action-sized buttons. */
+function CardListSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Card key={i}>
+          <CardHeader className="flex items-center gap-2">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="ml-auto h-5 w-20 rounded-[var(--radius-pill)]" />
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-3 w-1/3" />
+            <div className="flex gap-2">
+              <Skeleton className="h-8 w-20" />
+              <Skeleton className="h-8 w-20" />
+              <Skeleton className="h-8 w-20" />
+            </div>
+          </CardBody>
+        </Card>
+      ))}
+    </div>
+  );
 }
 
 function Empty({ text }: { text: string }) {

@@ -7,7 +7,7 @@ import { formatDate } from '@/lib/format';
 import { CarAvailabilityCard } from '@/components/CarAvailabilityCard';
 import { FollowButton } from '@/components/FollowButton';
 import { Img } from '@/components/Img';
-import { Avatar, Badge, Card, CardBody, Spinner } from '@/components/ui';
+import { Avatar, Badge, Card, CardBody, Skeleton } from '@/components/ui';
 
 /** "Member since May 2025" from the ISO join date. */
 function memberSince(iso?: string): string | null {
@@ -46,9 +46,37 @@ export function HostProfilePage() {
 
   if (hostQuery.isLoading) {
     return (
-      <div className="flex justify-center py-20">
-        <Spinner size={28} />
-      </div>
+      <section className="mx-auto max-w-6xl px-4 py-6" aria-busy="true" aria-label="Loading host profile">
+        <div className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
+          <ArrowLeft size={16} /> Back to browse
+        </div>
+
+        <Card>
+          <CardBody className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+            <Skeleton className="h-14 w-14 shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-5" style={{ width: '35%' }} />
+              <Skeleton className="mt-2 h-3.5" style={{ width: '25%' }} />
+              <Skeleton className="mt-3 h-3.5" style={{ width: '45%' }} />
+            </div>
+          </CardBody>
+        </Card>
+
+        <div className="mt-6">
+          <Skeleton className="mb-3 h-4" style={{ width: '15%' }} />
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }, (_, i) => (
+              <Card key={i} className="overflow-hidden">
+                <Skeleton className="h-32 w-full rounded-none" />
+                <CardBody className="p-3">
+                  <Skeleton className="h-3.5" style={{ width: '75%' }} />
+                  <Skeleton className="mt-1.5 h-3" style={{ width: '50%' }} />
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -174,8 +202,20 @@ export function HostProfilePage() {
         </h2>
 
         {listingsQuery.isLoading ? (
-          <div className="flex justify-center py-12">
-            <Spinner size={24} />
+          <div
+            className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4"
+            aria-busy="true"
+            aria-label="Loading cars"
+          >
+            {Array.from({ length: 4 }, (_, i) => (
+              <Card key={i} className="overflow-hidden">
+                <Skeleton className="h-32 w-full rounded-none" />
+                <CardBody className="p-3">
+                  <Skeleton className="h-3.5" style={{ width: '75%' }} />
+                  <Skeleton className="mt-1.5 h-3" style={{ width: '50%' }} />
+                </CardBody>
+              </Card>
+            ))}
           </div>
         ) : listings.length === 0 ? (
           <Card>

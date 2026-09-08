@@ -41,7 +41,7 @@ import {
   ListRow,
   Notice,
   Select,
-  Spinner,
+  Skeleton,
   toast,
 } from '@/components/ui';
 
@@ -276,11 +276,7 @@ export function PayoutSetupPage() {
   });
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Spinner size={26} />
-      </div>
-    );
+    return <PayoutSetupSkeleton />;
   }
 
   const meta = selected ? PAYOUT_METHOD_META[selected] : null;
@@ -589,6 +585,71 @@ export function PayoutSetupPage() {
             Back to dashboard
           </Link>
         )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Loaded-layout stand-in for the initial profile/payout-status fetch. The
+ * header (icon, title, blurb) is static copy so it stays live; below it
+ * mirrors the "paying out from" row, the method tile grid and the
+ * destination-form card that fill this space once `me` and the payout
+ * country are known.
+ */
+function PayoutSetupSkeleton() {
+  const navigate = useNavigate();
+  return (
+    <section className="mx-auto max-w-2xl px-4 py-8 sm:py-10" aria-busy="true" aria-label="Loading">
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="mb-5 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
+      >
+        <ArrowLeft size={16} /> Back
+      </button>
+
+      <div className="flex items-center gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
+          <Banknote size={22} />
+        </span>
+        <div>
+          <h1 className="text-h2">How you get paid</h1>
+          <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
+            Add where your rental earnings are sent. You keep the subtotal; AutoHire's fee is deducted.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-6">
+        <ListGroup>
+          <ListRow
+            icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />}
+            value={<Skeleton className="h-4 w-24" />}
+            chevron={false}
+          >
+            <Skeleton className="h-4 w-32" />
+          </ListRow>
+        </ListGroup>
+
+        <div>
+          <Skeleton className="mb-2 h-4 w-48" />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Skeleton className="h-28 w-full rounded-[var(--radius-card)]" />
+            <Skeleton className="h-28 w-full rounded-[var(--radius-card)]" />
+            <Skeleton className="h-28 w-full rounded-[var(--radius-card)]" />
+          </div>
+        </div>
+
+        <Card>
+          <CardBody className="space-y-3">
+            <div>
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+            <Skeleton className="h-11 w-full" />
+          </CardBody>
+        </Card>
       </div>
     </section>
   );

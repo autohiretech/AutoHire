@@ -5,7 +5,7 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatRwf } from '@/lib/format';
 import { TRIP_STATE_META } from '@/lib/trips';
 import { Img } from '@/components/Img';
-import { Badge, Card, CardBody } from '@/components/ui';
+import { Badge, Card, CardBody, Skeleton } from '@/components/ui';
 
 type Tone = 'brand' | 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
 
@@ -74,5 +74,28 @@ export function TripCard({
         </div>
       </Card>
     </Link>
+  );
+}
+
+/** Loading placeholder for `TripCard` — same thumbnail, title, badge, date
+    and price positions, so a list of these doesn't reflow once trips load. */
+export function TripCardSkeleton() {
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex">
+        <Skeleton className="h-28 w-28 shrink-0 rounded-none sm:h-32 sm:w-40" />
+        <CardBody className="flex flex-1 flex-col">
+          <div className="flex items-start justify-between gap-2">
+            <Skeleton className="h-5 w-2/5" />
+            <Skeleton className="h-5 w-16 rounded-[var(--radius-pill)]" />
+          </div>
+          <Skeleton className="mt-2 h-4 w-3/5" />
+          <div className="mt-auto flex items-end justify-between gap-2 pt-3">
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+        </CardBody>
+      </div>
+    </Card>
   );
 }

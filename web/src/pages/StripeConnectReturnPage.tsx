@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { client } from '@/lib/client';
-import { Button, Notice, Spinner } from '@/components/ui';
+import { Button, Notice, Skeleton } from '@/components/ui';
 
 /**
  * Where Stripe sends a host back after (or during) Connect onboarding.
@@ -39,8 +39,12 @@ export function StripeConnectReturnPage() {
   return (
     <section className="mx-auto max-w-md px-4 py-16 text-center">
       {status.isLoading ? (
-        <div className="flex justify-center py-10">
-          <Spinner size={26} />
+        <div className="flex flex-col items-center gap-3" aria-busy="true" aria-label="Loading">
+          <Skeleton className="h-8 w-8 rounded-full" />
+          <Skeleton className="h-5 w-52" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-4/5" />
+          <Skeleton className="mt-1 h-11 w-full" />
         </div>
       ) : status.data?.status === 'connected' ? (
         <Notice tone="brand" className="flex-col items-center text-center">

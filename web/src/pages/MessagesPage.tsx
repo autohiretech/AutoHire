@@ -21,7 +21,7 @@ import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
 import { formatDayLabel, formatTime, timeAgo } from '@/lib/format';
-import { Avatar, Spinner } from '@/components/ui';
+import { Avatar, Skeleton } from '@/components/ui';
 
 type Party = UserProfile & Partial<Host>;
 
@@ -144,9 +144,7 @@ export function MessagesPage() {
           </div>
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (
-              <div className="flex justify-center py-16">
-                <Spinner size={24} />
-              </div>
+              <ConversationListSkeleton />
             ) : filtered.length > 0 ? (
               <ul>
                 {filtered.map((c) => (
@@ -184,6 +182,49 @@ export function MessagesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Rows shaped like `ConversationRow` — avatar circle, a name-width line and
+ * a shorter preview line beneath it — so the list doesn't resize once
+ * conversations land. */
+function ConversationListSkeleton() {
+  return (
+    <ul aria-busy="true" aria-label="Loading">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <li key={i} className="flex items-center gap-3 border-b border-[var(--color-line)] px-4 py-3">
+          <Skeleton className="h-10 w-10 shrink-0 rounded-[var(--radius-pill)]" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-40" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Alternating bubble-shaped blocks — narrower ones right-aligned for "mine",
+ * left-aligned for "theirs" — standing in for a loading thread above the
+ * composer, which stays rendered throughout. */
+function ThreadSkeleton() {
+  const bubbles: { mine: boolean; w: string }[] = [
+    { mine: false, w: 'w-44' },
+    { mine: false, w: 'w-56' },
+    { mine: true, w: 'w-32' },
+    { mine: false, w: 'w-48' },
+    { mine: true, w: 'w-40' },
+    { mine: true, w: 'w-28' },
+  ];
+  return (
+    <>
+      {bubbles.map((b, i) => (
+        <Skeleton
+          key={i}
+          className={cn('h-9 max-w-[78%]', b.w, b.mine ? 'self-end' : 'self-start')}
+        />
+      ))}
+    </>
   );
 }
 
@@ -375,11 +416,10 @@ function Thread({ conversation, party }: { conversation: Conversation; party?: P
       <div
         ref={scrollRef}
         className="flex flex-1 flex-col gap-1.5 overflow-y-auto bg-[var(--color-surface)] p-4"
+        {...(messagesQuery.isLoading ? { 'aria-busy': 'true', 'aria-label': 'Loading' } : {})}
       >
         {messagesQuery.isLoading ? (
-          <div className="flex flex-1 items-center justify-center">
-            <Spinner size={22} />
-          </div>
+          <ThreadSkeleton />
         ) : (
           messages?.map((m, i) => (
             <MessageBubble

@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, Users } from 'lucide-react';
 import { client } from '@/lib/client';
 import { HostCard } from '@/components/HostCard';
-import { Spinner, Card, CardBody } from '@/components/ui';
+import { Card, CardBody } from '@/components/ui';
 import { BrowseTabs } from '@/components/marketplace/BrowseTabs';
+import { HostCardSkeleton } from '@/components/skeletons';
 
 /**
  * All verified hosts — its own page (was a tab inline on the home dashboard,
@@ -57,8 +58,14 @@ export function HostsPage() {
 
         <div className="mt-6">
           {isLoading ? (
-            <div className="flex justify-center py-16">
-              <Spinner size={26} />
+            <div
+              className="grid grid-cols-2 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+              aria-busy="true"
+              aria-label="Loading hosts"
+            >
+              {Array.from({ length: 9 }, (_, i) => (
+                <HostCardSkeleton key={i} />
+              ))}
             </div>
           ) : filtered.length === 0 ? (
             <Card>

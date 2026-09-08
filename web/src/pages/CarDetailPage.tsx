@@ -50,7 +50,7 @@ import {
   Label,
   Notice,
   Rating,
-  Spinner,
+  Skeleton,
   toast,
 } from '@/components/ui';
 import { LocationMap } from '@/components/map/LocationMap';
@@ -163,11 +163,7 @@ export function CarDetailPage() {
   useAiAssistantSource(aiListings, { loading: isLoading });
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Spinner size={28} />
-      </div>
-    );
+    return <CarDetailSkeleton />;
   }
 
   if (!listing) {
@@ -540,9 +536,15 @@ export function CarDetailPage() {
               )}
             </h2>
             {reviewsQuery.isLoading ? (
-              <div className="py-4">
-                <Spinner size={20} />
-              </div>
+              <ul className="mt-5 grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-2" aria-busy="true" aria-label="Loading reviews">
+                {[0, 1].map((i) => (
+                  <li key={i}>
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="mt-1.5 h-4 w-full" />
+                    <Skeleton className="mt-1 h-3 w-20" />
+                  </li>
+                ))}
+              </ul>
             ) : reviews.length === 0 ? (
               <p className="mt-3 text-body-sm text-[var(--color-content-muted)]">No reviews yet.</p>
             ) : (
@@ -1140,6 +1142,79 @@ function Lightbox({
 }
 
 /** A vehicle fact — seats, fuel, transmission, category — as a bordered pill. */
+/**
+ * Loaded-layout stand-in for the initial `getListing` fetch — same gallery
+ * grid, title block and sticky reserve panel shapes as the real page, so
+ * nothing jumps once the listing arrives. Only the data-dependent content is
+ * blocked out; the back-to-browse affordance above it needs no listing data,
+ * so it isn't duplicated here.
+ */
+function CarDetailSkeleton() {
+  return (
+    <section className="mx-auto max-w-7xl px-4 py-5 pb-28 lg:pb-8" aria-busy="true" aria-label="Loading">
+      {/* Gallery — hero + two stacked tiles on desktop, one block on mobile */}
+      <div className="mt-4">
+        <div className="sm:hidden">
+          <Skeleton className="h-64 w-full rounded-[var(--radius-card)]" />
+        </div>
+        <div className="hidden h-[420px] grid-cols-[2fr_1fr] gap-2 sm:grid">
+          <Skeleton className="h-full w-full rounded-[var(--radius-card)]" />
+          <div className="grid grid-rows-2 gap-2">
+            <Skeleton className="h-full w-full rounded-[var(--radius-card)]" />
+            <Skeleton className="h-full w-full rounded-[var(--radius-card)]" />
+          </div>
+        </div>
+      </div>
+
+      {/* Title block — h1-height line, subtitle line, meta line */}
+      <div className="mt-5 flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-7 w-2/3 max-w-sm" />
+          <Skeleton className="mt-2 h-4 w-44" />
+          <Skeleton className="mt-2.5 h-4 w-56" />
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
+        {/* Left: overview + spec chips + a paragraph block */}
+        <div className="min-w-0">
+          <div className="flex items-center justify-between gap-4 pb-5">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-11 w-11 rounded-[var(--radius-pill)]" />
+          </div>
+          <div className="flex flex-wrap gap-2 border-t border-[var(--color-line)] py-5">
+            <Skeleton className="h-9 w-24 rounded-[var(--radius-pill)]" />
+            <Skeleton className="h-9 w-24 rounded-[var(--radius-pill)]" />
+            <Skeleton className="h-9 w-28 rounded-[var(--radius-pill)]" />
+            <Skeleton className="h-9 w-24 rounded-[var(--radius-pill)]" />
+          </div>
+          <div className="space-y-3 border-t border-[var(--color-line)] py-5">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        </div>
+
+        {/* Right: the sticky reserve panel's shape — price line, two field
+            blocks, a button-height block. Same `hidden lg:block` breakpoint
+            as the loaded panel so it doesn't flash on mobile. */}
+        <div>
+          <Card className="hidden lg:sticky lg:top-20 lg:block">
+            <CardBody className="space-y-4">
+              <Skeleton className="h-8 w-32" />
+              <div className="grid grid-cols-2 gap-2">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </div>
+              <Skeleton className="h-11 w-full" />
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SpecChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
     <span className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3.5 text-body-sm font-medium capitalize text-[var(--color-content-muted)]">

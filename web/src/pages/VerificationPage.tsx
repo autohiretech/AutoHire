@@ -21,7 +21,7 @@ import {
   verificationRoleFor,
   type DocConfig,
 } from '@/lib/verification';
-import { Badge, Button, ListGroup, ListRow, Notice, Spinner } from '@/components/ui';
+import { Badge, Button, ListGroup, ListRow, Notice, Skeleton } from '@/components/ui';
 
 const STATUS_ICON: Record<VerificationStatus, React.ReactNode> = {
   unverified: <ShieldCheck size={18} className="mt-0.5 shrink-0" />,
@@ -72,8 +72,20 @@ export function VerificationPage() {
       <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">{roleMeta.blurb}</p>
 
       {isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner size={28} />
+        <div className="mt-6 flex flex-col gap-6" aria-busy="true" aria-label="Loading">
+          <Skeleton className="h-14 w-full" />
+          <ListGroup label="Documents">
+            {configs.map((config) => (
+              <ListRow
+                key={config.type}
+                icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />}
+                value={<Skeleton className="h-5 w-16 rounded-[var(--radius-pill)]" />}
+                chevron={false}
+              >
+                <Skeleton className="h-4 w-32" />
+              </ListRow>
+            ))}
+          </ListGroup>
         </div>
       ) : (
         <div className="mt-6 flex flex-col gap-6">

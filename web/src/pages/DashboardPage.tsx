@@ -50,6 +50,7 @@ import {
   Input,
   ListGroup,
   Notice,
+  Skeleton,
   Spinner,
   toast,
 } from '@/components/ui';
@@ -409,7 +410,7 @@ export function DashboardPage() {
       {view === 'payouts' ? (
         <div className="mt-6">
           {payoutsQuery.isLoading ? (
-            <Centered />
+            <PayoutsSkeleton />
           ) : payoutsQuery.isError ? (
             <ErrorState onRetry={() => payoutsQuery.refetch()} />
           ) : (
@@ -628,10 +629,40 @@ function MiniStat({ label, value, highlight }: { label: string; value: string; h
   );
 }
 
-function Centered() {
+/** Placeholder for `PayoutsView` — the two MiniStat tiles plus a "Scheduled"
+    group of row-height blocks, matching that layout so nothing jumps once
+    payouts land. */
+function PayoutsSkeleton() {
   return (
-    <div className="flex justify-center py-16">
-      <Spinner size={24} />
+    <div className="space-y-5" aria-busy="true" aria-label="Loading">
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-3 py-2"
+          >
+            <Skeleton className="h-3 w-14" />
+            <Skeleton className="mt-1.5 h-5 w-24" />
+          </div>
+        ))}
+      </div>
+      <div>
+        <Skeleton className="mb-1.5 ml-1 h-3 w-20" />
+        <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-3 border-t border-[var(--color-line)] px-4 py-3 first:border-t-0 sm:px-5"
+            >
+              <div className="space-y-1.5">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-3 w-36" />
+              </div>
+              <Skeleton className="h-5 w-16 rounded-[var(--radius-pill)]" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -649,26 +680,58 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-/** Placeholder bars that match the master–detail layout so it doesn't jump on load. */
+/** Placeholder for the master–detail layout — the same rail (search bar +
+    grouped car rows) and the same detail Card shape as `CarDetail`, so
+    nothing jumps once listings and bookings land. */
 function FleetSkeleton() {
   return (
-    <div className="mt-6 grid animate-pulse gap-6 lg:grid-cols-[320px_1fr]">
-      <div className="space-y-2">
-        <div className="h-10 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)]" />
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 rounded-[var(--radius-card)] border border-[var(--color-line)] p-2.5"
-          >
-            <div className="h-14 w-20 shrink-0 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)]" />
-            <div className="flex-1 space-y-2">
-              <div className="h-3 w-3/4 rounded bg-[var(--color-surface-sunken)]" />
-              <div className="h-3 w-1/2 rounded bg-[var(--color-surface-sunken)]" />
+    <div className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start" aria-busy="true" aria-label="Loading">
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-full" />
+        <ul className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <li key={i} className="flex items-center gap-3 border-t border-[var(--color-line)] p-3 first:border-t-0">
+              <Skeleton className="h-14 w-20 shrink-0" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-5 w-20 rounded-[var(--radius-pill)]" />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <Card className="hidden lg:block">
+        <CardBody className="space-y-4">
+          <div className="flex items-start gap-3">
+            <Skeleton className="h-16 w-24 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-5 w-1/2" />
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-4 w-1/4" />
             </div>
           </div>
-        ))}
-      </div>
-      <div className="hidden h-72 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] lg:block" />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="space-y-1.5 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2">
+                <Skeleton className="h-3 w-14" />
+                <Skeleton className="h-5 w-10" />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-4 border-b border-[var(--color-line)] pb-2">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-4 w-12" />
+            <Skeleton className="h-4 w-16" />
+          </div>
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-20 w-full" />
+            ))}
+          </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }

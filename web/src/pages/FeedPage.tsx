@@ -6,7 +6,7 @@ import { client } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { Img } from '@/components/Img';
-import { Avatar, Badge, Button, Card, CardBody, Spinner } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, Skeleton } from '@/components/ui';
 
 const VISIBILITY_ICON: Record<PostVisibility, typeof Globe> = {
   public: Globe,
@@ -43,9 +43,7 @@ export function FeedPage() {
       </div>
 
       {feedQuery.isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner size={28} />
-        </div>
+        <FeedSkeleton />
       ) : items.length === 0 ? (
         <Card>
           <CardBody className="flex flex-col items-center gap-3 py-16 text-center">
@@ -70,6 +68,31 @@ export function FeedPage() {
         </div>
       )}
     </section>
+  );
+}
+
+/** Same card shape as `TripPostCard` — avatar, name/date lines, a photo block
+ * for the cards that would have one, a trailing text line — so nothing
+ * resizes when the real feed lands. */
+function FeedSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading">
+      {[0, 1, 2].map((i) => (
+        <Card key={i}>
+          <CardBody className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-[var(--radius-pill)]" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+            {i !== 1 && <Skeleton className="aspect-[4/3] w-full" />}
+            <Skeleton className="h-4 w-3/4" />
+          </CardBody>
+        </Card>
+      ))}
+    </div>
   );
 }
 

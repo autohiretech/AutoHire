@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { client } from '@/lib/client';
-import { Button, Card, CardBody, Spinner } from '@/components/ui';
+import { Button, Card, CardBody, Skeleton } from '@/components/ui';
 
 /**
  * Where a share link (migration 063) lands. Wrapped in RequireAuth by the
@@ -38,10 +38,10 @@ export function CircleInvitePage() {
       <Card className="w-full">
         <CardBody className="flex flex-col items-center gap-3 py-10">
           {state === 'claiming' && (
-            <>
-              <Spinner size={28} />
-              <p className="text-body-sm text-[var(--color-content-muted)]">Joining the circle…</p>
-            </>
+            <div className="flex w-full flex-col items-center gap-3" aria-busy="true" aria-label="Loading">
+              <Skeleton className="h-8 w-8 rounded-[var(--radius-pill)]" />
+              <Skeleton className="h-4 w-40" />
+            </div>
           )}
           {state === 'joined' && (
             <>

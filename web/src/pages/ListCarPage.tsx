@@ -5,7 +5,7 @@ import { ArrowLeft, Zap } from 'lucide-react';
 import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
 import type { CreateListingInput } from '@/lib/types';
-import { Button, Card, CardBody, CardHeader, Chip, Input, Label, Notice, Select, Spinner, toast } from '@/components/ui';
+import { Button, Card, CardBody, CardHeader, Chip, Input, Label, Notice, Select, Skeleton, toast } from '@/components/ui';
 import { Img } from '@/components/Img';
 import { ModelCombobox } from '@/components/ModelCombobox';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
@@ -306,9 +306,7 @@ export function ListCarPage() {
       </p>
 
       {editing && existingQuery.isLoading ? (
-        <div className="flex justify-center py-20">
-          <Spinner size={28} />
-        </div>
+        <ListCarSkeleton />
       ) : (
       <form onSubmit={onSubmit} className="mt-6 space-y-6">
         <Card>
@@ -773,5 +771,155 @@ export function ListCarPage() {
       </form>
       )}
     </section>
+  );
+}
+
+/**
+ * Loaded-layout stand-in for fetching the existing listing in edit mode —
+ * the same five Card groups (car, location, pricing, availability, photos)
+ * with a label-height line + `h-11` field block per input, so the form
+ * doesn't reflow once the listing's values fill it in.
+ */
+function ListCarSkeleton() {
+  return (
+    <div className="mt-6 space-y-6" aria-busy="true" aria-label="Loading">
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-24" />
+        </CardHeader>
+        <CardBody className="space-y-4">
+          <div>
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="mt-1.5 h-11 w-full" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+            <div>
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+            <div>
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <Skeleton className="h-4 w-14" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+            <div>
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+            <div>
+              <Skeleton className="h-4 w-14" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+          </div>
+          <div>
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="mt-1.5 h-20 w-full" />
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-20" />
+        </CardHeader>
+        <CardBody className="space-y-4">
+          <div>
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="mt-1.5 h-10 w-full" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Skeleton className="h-4 w-10" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+            <div>
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+          </div>
+          <div>
+            <Skeleton className="h-4 w-52" />
+            <Skeleton className="mt-1.5 h-56 w-full" />
+          </div>
+          <div>
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="mt-1.5 h-11 w-full" />
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-16" />
+        </CardHeader>
+        <CardBody className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+            <div>
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="mt-1.5 h-11 w-full" />
+            </div>
+          </div>
+          <div>
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="mt-1.5 h-11 w-full" />
+          </div>
+          <div>
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="mt-1.5 h-11 w-full" />
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-24" />
+        </CardHeader>
+        <CardBody className="space-y-3">
+          <div>
+            <Skeleton className="h-4 w-14" />
+            <Skeleton className="mt-1.5 h-11 w-full" />
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-16" />
+        </CardHeader>
+        <CardBody className="space-y-3">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-10 w-full max-w-xs" />
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-16 w-24" />
+            <Skeleton className="h-16 w-24" />
+            <Skeleton className="h-16 w-24" />
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="flex justify-end gap-3">
+        <Skeleton className="h-11 w-24" />
+        <Skeleton className="h-11 w-32" />
+      </div>
+    </div>
   );
 }

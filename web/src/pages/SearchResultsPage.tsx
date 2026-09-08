@@ -8,7 +8,8 @@ import { client } from '@/lib/client';
 import { CAR_CATEGORIES } from '@/lib/categories';
 import { interpretQuery } from '@/lib/demoAi';
 import { ResultsMap } from '@/components/map/ResultsMap';
-import { Spinner, Chip, ChipRow, Button, Sheet, MapListToggle, type SheetDetent } from '@/components/ui';
+import { Chip, ChipRow, Button, Sheet, MapListToggle, Skeleton, type SheetDetent } from '@/components/ui';
+import { ListingRowSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
@@ -332,14 +333,37 @@ export function SearchResultsPage() {
           map becomes the full-bleed base layer with the list living in a
           bottom sheet over it — a tab that hides one or the other answers
           only half of "where is this car relative to me" at a time. */}
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1" aria-busy={isLoading || aiPending || undefined}>
+        {aiPending && (
+          <p className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-[var(--radius-pill)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-3 py-1.5 text-body-sm text-[var(--color-content-muted)] shadow-[var(--shadow-lift)]">
+            Asking the assistant…
+          </p>
+        )}
         {isLoading || aiPending ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2">
-            <Spinner size={28} />
-            {aiPending && (
-              <p className="text-body-sm text-[var(--color-content-muted)]">Asking the assistant…</p>
-            )}
-          </div>
+          <>
+            {/* ── Mobile (<lg) ──────────────────────────────────────────── */}
+            <div className="absolute inset-0 flex flex-col gap-3 overflow-y-auto px-4 pb-4 pt-3 lg:hidden">
+              {Array.from({ length: 6 }, (_, i) => (
+                <ListingRowSkeleton key={i} />
+              ))}
+            </div>
+
+            {/* ── Desktop (lg+) ─────────────────────────────────────────── */}
+            <div className="hidden h-full gap-5 px-4 pb-3 pt-2 lg:flex">
+              <div className="h-full w-full max-w-[460px] shrink-0 overflow-y-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] xl:max-w-[560px]">
+                <div className="divide-y divide-[var(--color-line)]">
+                  {Array.from({ length: 6 }, (_, i) => (
+                    <div key={i} className="p-3">
+                      <ListingRowSkeleton />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="hidden min-w-0 flex-1 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] lg:block">
+                <Skeleton className="h-full w-full rounded-none" />
+              </div>
+            </div>
+          </>
         ) : (
           <>
             {/* ── Mobile (<lg) ──────────────────────────────────────────── */}

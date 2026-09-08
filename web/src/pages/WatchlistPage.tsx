@@ -9,7 +9,8 @@ import { useCanRent } from '@/lib/account';
 import { formatDate } from '@/lib/format';
 import { readLocalWatchlist, writeLocalWatchlist } from '@/lib/watchlist';
 import { ListingCard } from '@/components/ListingCard';
-import { Badge, Button, Card, CardBody, Notice, Spinner, toast } from '@/components/ui';
+import { Badge, Button, Card, CardBody, Notice, Skeleton, toast } from '@/components/ui';
+import { ListingCardSkeleton } from '@/components/skeletons';
 
 /**
  * "Watching" — the cars this renter has starred. A watch subscribes you to a
@@ -118,8 +119,19 @@ export function WatchlistPage() {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner size={28} />
+        <div
+          className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+          aria-busy="true"
+          aria-label="Loading watchlist"
+        >
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="flex flex-col gap-2">
+              <ListingCardSkeleton />
+              <div className="px-1">
+                <Skeleton className="h-5" style={{ width: '35%' }} />
+              </div>
+            </div>
+          ))}
         </div>
       ) : listings.length === 0 ? (
         <Card>

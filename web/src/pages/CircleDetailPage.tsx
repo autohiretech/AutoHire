@@ -13,7 +13,7 @@ import {
   ConfirmDialog,
   ListGroup,
   ListRow,
-  Spinner,
+  Skeleton,
   toast,
 } from '@/components/ui';
 
@@ -74,11 +74,7 @@ export function CircleDetailPage() {
   });
 
   if (circleQuery.isLoading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Spinner size={28} />
-      </div>
-    );
+    return <CircleDetailSkeleton />;
   }
 
   const circle = circleQuery.data;
@@ -137,7 +133,7 @@ export function CircleDetailPage() {
       {/* Members */}
       <div className="mt-6">
         {membersQuery.isLoading ? (
-          <Spinner size={20} />
+          <MembersSkeleton />
         ) : (
           <ListGroup label="Members">
             {members.map((m) => (
@@ -163,7 +159,7 @@ export function CircleDetailPage() {
           </Button>
         </div>
         {boardsQuery.isLoading ? (
-          <Spinner size={20} />
+          <BoardsGridSkeleton />
         ) : boards.length === 0 ? (
           <Card>
             <CardBody className="flex flex-col items-center gap-2 py-10 text-center text-[var(--color-content-muted)]">
@@ -203,6 +199,76 @@ export function CircleDetailPage() {
         onConfirm={() => leave.mutate()}
         onClose={() => setLeaving(false)}
       />
+    </section>
+  );
+}
+
+/** Rows shaped like the loaded `ListGroup` — icon circle, name line, no
+ * trailing value — so the group doesn't resize once members land. */
+function MembersSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading">
+      <ListGroup label="Members">
+        {[0, 1, 2].map((i) => (
+          <ListRow key={i} icon={<Skeleton className="h-9 w-9 rounded-[var(--radius-pill)]" />} chevron={false}>
+            <Skeleton className="h-4 w-32" />
+          </ListRow>
+        ))}
+      </ListGroup>
+    </div>
+  );
+}
+
+/** Same two-column card grid as the loaded boards list — title line + count
+ * line, no icon block, matching the real board cards. */
+function BoardsGridSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-busy="true" aria-label="Loading">
+      {[0, 1].map((i) => (
+        <Card key={i} className="h-full">
+          <CardBody className="space-y-1.5">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-20" />
+          </CardBody>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/** The whole page's loaded shape — back link, header card, members group,
+ * boards heading + grid — with content removed. */
+function CircleDetailSkeleton() {
+  return (
+    <section className="mx-auto max-w-3xl px-4 py-6" aria-busy="true" aria-label="Loading">
+      <div className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
+        <ArrowLeft size={16} /> Back to circles
+      </div>
+
+      <Card>
+        <CardBody className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1.5">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-8 w-28" />
+            <Skeleton className="h-8 w-8" />
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="mt-6">
+        <MembersSkeleton />
+      </div>
+
+      <div className="mt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-h4 text-[var(--color-content)]">Boards</h2>
+          <Skeleton className="h-8 w-24" />
+        </div>
+        <BoardsGridSkeleton />
+      </div>
     </section>
   );
 }
