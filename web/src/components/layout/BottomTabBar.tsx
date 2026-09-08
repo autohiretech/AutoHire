@@ -69,12 +69,23 @@ export function BottomTabBar() {
     enabled: !!user,
   });
 
-  // A signed-out visitor has nothing to put in three of the four tabs, and a
-  // bar of disabled stubs is worse than no bar — they browse with the header
-  // and hit the sign-in gate when they reach for something that needs it.
-  if (!user) return null;
-
-  const tabs = TABS_BY_MODE[mode];
+  // Guests get the bar too. It used to return null for them, on the reasoning
+  // that most tabs would be dead stubs — but they aren't stubs: RequireAuth
+  // sends a guest to /login remembering where they were headed, and bounces
+  // them back after they sign in, which is how a marketplace is expected to
+  // behave. Returning null meant a signed-out visitor on a phone had no
+  // navigation at the bottom of the screen at all.
+  //
+  // Two differences for a guest: the tabs are always the renter set (there is
+  // no host to be yet), and the last one says what it actually does — "Sign
+  // in", going straight to /login rather than calling itself Account when
+  // there is no account behind it.
+  const tabs = user
+    ? TABS_BY_MODE[mode]
+    : [
+        ...TABS_BY_MODE.renter.slice(0, -1),
+        { to: '/login', label: 'Sign in', icon: User },
+      ];
 
   return (
     <nav

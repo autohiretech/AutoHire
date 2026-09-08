@@ -12,11 +12,9 @@ import { LocationPrompt } from '@/components/marketplace/LocationPrompt';
 import { PwaInstallPrompt } from '@/components/PwaInstallPrompt';
 import { ScrollMemory } from '@/components/ScrollMemory';
 import { AiAssistantProvider } from '@/lib/aiAssistantContext';
-import { useAuth } from '@/lib/auth';
 
 export function AppLayout() {
   const { pathname } = useLocation();
-  const { user } = useAuth();
 
   // Tracks the path being left, not just the one arrived at — useBackToBrowse
   // reads this to tell whether history.back() would land somewhere that's
@@ -77,18 +75,17 @@ export function AppLayout() {
           </div>
           <Header />
           {!fullBleed && <LocationPrompt />}
-          {/* The tab bar is fixed and only exists for a signed-in user on a
-              phone, so content reserves exactly that much room and only then:
-              a scrolling page pads its bottom so the last row clears the bar,
-              and a full-bleed screen (search, messages) shortens itself so its
-              own bottom edge — the results sheet, the composer — sits above
-              the bar rather than behind it. Guests get neither, since they
-              have no bar. */}
+          {/* The tab bar is fixed and exists for every visitor on a phone —
+              guests included, since BottomTabBar stopped returning null for
+              them — so content always reserves that much room below `md`: a
+              scrolling page pads its bottom so the last row clears the bar,
+              and a full-bleed screen (search, messages) shortens itself so
+              its own bottom edge — the results sheet, the composer — sits
+              above the bar rather than behind it. */}
           <main
             className={cn(
-              'flex-1',
+              'flex-1 pb-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom))] md:pb-0',
               fullBleed && 'min-h-0 overflow-hidden',
-              user && 'pb-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom))] md:pb-0',
             )}
           >
             <Outlet />
