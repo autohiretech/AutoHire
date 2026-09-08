@@ -42,7 +42,7 @@ export function AiPage() {
  * dropping an understanding-chip here is exactly unclicking a filter there.
  */
 function RenterAiPage() {
-  const { country, currency } = useCountry();
+  const { country, currency, setCountry } = useCountry();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
 
@@ -154,6 +154,7 @@ function RenterAiPage() {
       fromListingId={fromListingId}
       initialAsk={initialAskRef.current}
       onConsumedInitialAsk={() => setAiPending(false)}
+      onCountryMatch={(code) => setCountry(code)}
     />
   );
 

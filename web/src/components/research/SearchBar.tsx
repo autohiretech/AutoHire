@@ -2,10 +2,10 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { ChevronDown, Globe, MapPin, Navigation, Search, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Button, Spinner } from '@/components/ui';
-import { useAddressSuggestions, type AddressSuggestion } from '@/lib/geocoding';
+import { useAddressSuggestions, reverseGeocode, type AddressSuggestion } from '@/lib/geocoding';
 import { useMyLocation } from '@/lib/useMyLocation';
 import { useCountry } from '@/lib/country';
-import { citiesFor } from '@/lib/cities';
+import { matchKnownCity } from '@/lib/cities';
 import { DateRangeCalendar, type DateRange } from '@/components/marketplace/DateRangeCalendar';
 
 export interface SearchBarLocation {
@@ -40,6 +40,12 @@ export interface SearchBarProps {
    * (`search_available_listings`, migration 074) rather than prose the
    * agent has to interpret. `{ start: null, end: null }` means cleared. */
   onDateRangeChange?: (range: { start: string | null; end: string | null }) => void;
+  /** Fires when "use my location" reverse-geocodes into a different market
+   * than the one currently selected — e.g. the renter is physically in
+   * Kigali but the header is still set to a market from a past visit.
+   * Optional: a caller with no market to switch (there's only ever the one
+   * header) can simply not pass it. */
+  onCountryMatch?: (country: string) => void;
   initialValue?: string;
   placeholder?: string;
   disabled?: boolean;
@@ -120,12 +126,6 @@ function shortLocationLabel(label: string): string {
   return label.startsWith('Current location') ? 'your location' : label.split(',')[0].trim();
 }
 
-function matchCity(text: string, country: string): string | undefined {
-  const t = text.trim().toLowerCase();
-  if (!t) return undefined;
-  return citiesFor(country).find((c) => t.includes(c.toLowerCase()));
-}
-
 function TimeSelect({
   value,
   onChange,
@@ -184,6 +184,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     onSubmit,
     onCityMatch,
     onDateRangeChange,
+    onCountryMatch,
     initialValue = '',
     placeholder = 'Anything else? SUV, under 150k, automatic…',
     disabled = false,
@@ -213,6 +214,11 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   const [recents, setRecents] = useState<RecentSearch[]>(() => loadRecents());
 
   const { locating, locate } = useMyLocation();
+  // Covers the reverse-geocode network call too, which happens after the GPS
+  // fix `locating` already tracks — without this the button would flash back
+  // to idle between "found your GPS fix" and "found what that place is."
+  const [resolvingPlace, setResolvingPlace] = useState(false);
+  const busyLocating = locating || resolvingPlace;
   const { suggestions, searching } = useAddressSuggestions(locationText);
 
   const locationBoxRef = useRef<HTMLDivElement>(null);
@@ -234,31 +240,46 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     setLocationText(value);
     setLocationPoint(null);
     setSuggestOpen(true);
-    onCityMatch?.(matchCity(value, country.code));
+    onCityMatch?.(matchKnownCity(value, country.code));
   }
 
   function pickSuggestion(s: AddressSuggestion) {
     setLocationText(s.label);
     setLocationPoint({ lat: s.lat, lng: s.lng });
     setSuggestOpen(false);
-    onCityMatch?.(matchCity(s.label, country.code));
+    onCityMatch?.(matchKnownCity(s.label, country.code));
   }
 
   function pickRecent(r: RecentSearch) {
     setLocationText(r.label);
     setLocationPoint(null);
     setSuggestOpen(false);
-    onCityMatch?.(matchCity(r.label, country.code));
+    onCityMatch?.(matchKnownCity(r.label, country.code));
   }
 
   function useCurrentLocationClick() {
-    locate((p) => {
+    locate(async (p) => {
+      // Show the raw fix immediately — reverse geocoding is a second network
+      // round trip, and the renter shouldn't stare at "Finding you…" for both
+      // when the GPS fix alone is already worth showing.
       setLocationText(`Current location (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`);
       setLocationPoint(p);
       setSuggestOpen(false);
-      // No reverse geocoding in this app — a raw coordinate can't be matched
-      // to a known city, so any earlier match is cleared rather than left stale.
       onCityMatch?.(undefined);
+
+      setResolvingPlace(true);
+      try {
+        const resolved = await reverseGeocode(p.lat, p.lng);
+        if (!resolved) return; // network/lookup failure — the raw fix stands.
+        setLocationText(resolved.label);
+        const matched = matchKnownCity(resolved.place, resolved.countryCode ?? country.code);
+        onCityMatch?.(matched);
+        if (resolved.countryCode && resolved.countryCode !== country.code) {
+          onCountryMatch?.(resolved.countryCode);
+        }
+      } finally {
+        setResolvingPlace(false);
+      }
     });
   }
 
@@ -295,7 +316,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   function composeMessage(): string {
     const bits: string[] = [];
     const loc = locationText.trim();
-    const matchedCity = matchCity(loc, country.code);
+    const matchedCity = matchKnownCity(loc, country.code);
     if (loc && !matchedCity) {
       bits.push(
         locationPoint
@@ -433,25 +454,30 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
             <button
               type="button"
               onClick={useCurrentLocationClick}
-              disabled={disabled || locating}
+              disabled={disabled || busyLocating}
               aria-label="Use my current location"
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-pill)] text-[var(--color-accent-on)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
             >
-              {locating ? <Spinner size={14} /> : <Navigation size={15} />}
+              {busyLocating ? <Spinner size={14} /> : <Navigation size={15} />}
             </button>
           </div>
 
           {suggestOpen && (
-            <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[1100] max-h-72 animate-popover-in overflow-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+            // Full-width on a phone (there's nothing beside it to look narrow
+            // against), but pinned to the Where segment's own width alone on
+            // a wide screen reads as an unfinished sliver next to the rest of
+            // the hero — a proper panel, like Turo's own, needs real width of
+            // its own rather than borrowing whatever one field happens to be.
+            <div className="absolute left-0 top-[calc(100%+6px)] z-[1100] max-h-72 w-full animate-popover-in overflow-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)] @md:w-[380px]">
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={useCurrentLocationClick}
-                disabled={disabled || locating}
+                disabled={disabled || busyLocating}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-body-sm text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
               >
                 <Navigation className="h-4 w-4 shrink-0 text-[var(--color-accent-on)]" />
-                {locating ? 'Finding you…' : 'Current location'}
+                {busyLocating ? 'Finding you…' : 'Current location'}
               </button>
               <button
                 type="button"

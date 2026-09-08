@@ -91,6 +91,11 @@ export interface ResearchFieldProps {
   results: Listing[];
   country: string;
   currency: string;
+  /** "Use my location" reverse-geocoded into a different market than the one
+   * selected — same as typing a city that belongs to another market already
+   * retargets `/search`. Optional: a caller with no market switch to offer
+   * can leave it out. */
+  onCountryMatch?: (country: string) => void;
   /** Where the renter arrived from, e.g. a specific car's page — lets "book
    * this one" resolve immediately instead of asking which car. Neither is
    * wired up by any current entry point; AiPage just forwards whatever
@@ -121,6 +126,7 @@ export function ResearchField({
   results,
   country,
   currency,
+  onCountryMatch,
   fromRoute,
   fromListingId,
   initialAsk,
@@ -349,6 +355,7 @@ export function ResearchField({
         ref={searchBarRef}
         onSubmit={(input) => void send(input.message)}
         onCityMatch={(city) => (city ? onFilters({ city }) : onRemoveFilter('city'))}
+        onCountryMatch={onCountryMatch}
         onDateRangeChange={(r) =>
           r.start && r.end
             ? onFilters({ startDate: r.start, endDate: r.end })

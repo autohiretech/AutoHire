@@ -89,7 +89,7 @@ export function HomePage() {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { mode } = useAppMode();
-  const { country } = useCountry();
+  const { country, setCountry } = useCountry();
 
   // Every pull is scoped to the selected market — switching country in the
   // header refilters the catalogue (and reprices via the display currency).
@@ -281,6 +281,7 @@ export function HomePage() {
                   navigate(input.message ? `/ai?ask=${encodeURIComponent(input.message)}` : '/ai');
                 }}
                 onCityMatch={(city) => setFilter('city', city)}
+                onCountryMatch={(code) => setCountry(code)}
                 onDateRangeChange={(r) =>
                   setFilters((prev) => {
                     // Deleted, not set to `undefined` — `filters` feeds an

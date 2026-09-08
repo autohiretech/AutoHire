@@ -46,3 +46,61 @@ export function useAddressSuggestions(query: string) {
 
   return { suggestions, searching };
 }
+
+export interface ReverseGeocodeResult {
+  /** A real, human place name for the coordinate — Nominatim's own
+   * `display_name`, not a raw "(lat, lng)" string. */
+  label: string;
+  /** ISO 3166-1 alpha-2, uppercased to match this app's own country codes
+   * (`RW`, `AE`, …) — Nominatim returns it lowercase. */
+  countryCode?: string;
+  /** The narrowest place name Nominatim offers, for matching against our
+   * own known cities (`matchKnownCity`) — city, falling back to town/county/
+   * state, since a GPS fix can land outside any city Nominatim recognizes as
+   * one (a coordinate on the highway 20km from Kigali is still "near
+   * Kigali" in `address.county`, even with no `address.city`). */
+  place?: string;
+}
+
+/**
+ * Turns a raw coordinate (from `navigator.geolocation`, typically) into an
+ * actual place — algorithmic reverse geocoding against Nominatim, the same
+ * free service `useAddressSuggestions` already calls for the forward
+ * direction, not a hardcoded list of city coordinates and not a model call.
+ * `null` on any failure (network, no result) — callers fall back to the raw
+ * coordinate label rather than showing nothing.
+ */
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+): Promise<ReverseGeocodeResult | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`,
+      { headers: { 'Accept-Language': 'en' }, signal },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      display_name?: string;
+      address?: {
+        city?: string;
+        town?: string;
+        village?: string;
+        county?: string;
+        state?: string;
+        country_code?: string;
+      };
+    };
+    if (!data.display_name) return null;
+    const a = data.address ?? {};
+    return {
+      label: data.display_name,
+      countryCode: a.country_code?.toUpperCase(),
+      place: a.city ?? a.town ?? a.village ?? a.county ?? a.state,
+    };
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw err;
+    return null;
+  }
+}

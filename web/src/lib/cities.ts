@@ -41,3 +41,16 @@ export function countryOfCity(city: string | undefined): string | undefined {
   if (!city) return undefined;
   return Object.keys(COUNTRY_CITIES).find((code) => COUNTRY_CITIES[code].includes(city));
 }
+
+/**
+ * Loose substring match against one market's own known cities — the same
+ * rule `SearchBar`'s typed-text matching already uses, exposed here so a
+ * *resolved* place name (from reverse geocoding, not typed by the renter)
+ * can be matched the identical way instead of a second, subtly different
+ * rule living in two files.
+ */
+export function matchKnownCity(text: string | undefined, country: string): string | undefined {
+  const t = (text ?? '').trim().toLowerCase();
+  if (!t) return undefined;
+  return citiesFor(country).find((c) => t.includes(c.toLowerCase()));
+}
