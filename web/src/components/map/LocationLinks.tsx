@@ -2,7 +2,7 @@ import { ExternalLink, Navigation } from 'lucide-react';
 import { directionsUrl } from '@/lib/location';
 
 const linkClass =
-  'inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-1.5 text-sm font-medium text-ink-700 transition-colors hover:border-ink-300 hover:bg-ink-50';
+  'inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-1.5 text-body-sm font-medium text-[var(--color-content-muted)] transition-colors hover:border-[var(--color-line-strong)] hover:bg-[var(--color-surface-sunken)]';
 
 /**
  * Outbound location links: the host's own "location link" (directions / arrival
@@ -24,7 +24,7 @@ export function LocationLinks({
     <div className="flex flex-wrap gap-2">
       {url && (
         <a href={url} target="_blank" rel="noreferrer noopener" className={linkClass}>
-          <ExternalLink size={15} className="text-brand-600" /> Open location link
+          <ExternalLink size={15} className="text-[var(--color-accent-on)]" /> Open location link
         </a>
       )}
       {hasPin && (
@@ -34,7 +34,7 @@ export function LocationLinks({
           rel="noreferrer noopener"
           className={linkClass}
         >
-          <Navigation size={15} className="text-brand-600" /> Get directions
+          <Navigation size={15} className="text-[var(--color-accent-on)]" /> Get directions
         </a>
       )}
     </div>

@@ -9,6 +9,7 @@ import { formatMoney } from '@/lib/currency';
 import { timeAgo } from '@/lib/format';
 import { listingHeadlinePrice } from '@/lib/pricing';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useAuth } from '@/lib/auth';
 import { useCountry } from '@/lib/country';
 import { useAiAssistantContext } from '@/lib/aiAssistantContext';
 import { Img } from '@/components/Img';
@@ -50,6 +51,37 @@ type BookingPrompt = {
 // this is the only chat — no more per-page keys to keep in sync.
 const CHAT_STORAGE_KEY = 'autohire-ai-chat';
 
+// How far the bubble/panel sit above the bottom edge, computed per route +
+// auth state rather than a single fixed offset: two other fixed-position
+// elements now live at the bottom of the screen below `lg`, and either can
+// be taller than the bubble's default clearance.
+//   - BottomTabBar (layout/BottomTabBar.tsx): 68px + safe-area-inset-bottom,
+//     shown only when signed in, only below `md`.
+//   - the /search results sheet at its `peek` detent: 88px, shown below `lg`
+//     regardless of auth — hence 88 + 20 = 108px of clearance there.
+// CarDetailPage's own sticky Reserve bar (96px, below `lg`) is the third.
+// Where two would apply at once, the larger offset wins, via CSS max() —
+// the tab bar's own height includes a device-dependent safe-area inset
+// that isn't known until paint, so the comparison can't happen in JS.
+//
+// Returned as one of a fixed set of complete literal strings (not built by
+// interpolating a shared fragment) — Tailwind's class scanner reads this
+// file's source text statically, so an arbitrary-value class only makes it
+// into the build if it appears here verbatim.
+function bubbleBottomClass(isCarPage: boolean, isSearchPage: boolean, signedIn: boolean): string {
+  if (isCarPage) {
+    return signedIn
+      ? 'bottom-[max(calc(68px+env(safe-area-inset-bottom)+16px),96px)] md:bottom-24 lg:bottom-5'
+      : 'bottom-24 lg:bottom-5';
+  }
+  if (isSearchPage) {
+    return signedIn
+      ? 'bottom-[max(calc(68px+env(safe-area-inset-bottom)+16px),108px)] md:bottom-[108px] lg:bottom-5'
+      : 'bottom-[108px] lg:bottom-5';
+  }
+  return signedIn ? 'bottom-[calc(68px+env(safe-area-inset-bottom)+16px)] md:bottom-5' : 'bottom-5';
+}
+
 function loadStoredChat(): { turns: BotTurn[]; open: boolean } {
   try {
     const raw = localStorage.getItem(CHAT_STORAGE_KEY);
@@ -87,6 +119,7 @@ export function AiAssistant() {
   } = useAiAssistantContext();
   const [searchParams] = useSearchParams();
   const { pathname } = useLocation();
+  const { user } = useAuth();
   // A car's own page has its own mobile-only sticky Reserve bar pinned to
   // bottom-0 (CarDetailPage's `lg:hidden` bar) — below the `lg` breakpoint
   // this bubble's usual bottom-5 sits right on top of that button's tap
@@ -94,7 +127,14 @@ export function AiAssistant() {
   // instead of reserving the car. Lifting clear of it below `lg`, where the
   // conflict actually exists, and dropping back to bottom-5 at `lg` and up,
   // where CarDetailPage's bar is hidden.
-  const liftAboveStickyBar = pathname.startsWith('/cars/');
+  const isCarPage = pathname.startsWith('/cars/');
+  // /search's own results sheet sits at the bottom below `lg` too (peek
+  // detent, 88px) — present for signed-out visitors as well, unlike the tab
+  // bar below.
+  const isSearchPage = pathname.startsWith('/search');
+  // Signed-in visitors get BottomTabBar (layout/BottomTabBar.tsx) fixed to
+  // the bottom below `md`; a signed-out visitor never sees it.
+  const bottomClass = bubbleBottomClass(isCarPage, isSearchPage, !!user);
 
   const stored = useRef(loadStoredChat()).current;
   const [open, setOpen] = useState(stored.open);
@@ -583,8 +623,8 @@ export function AiAssistant() {
           onClick={() => setOpen(true)}
           aria-label="Open AI assistant"
           className={cn(
-            'fixed right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-lg transition-transform hover:scale-105',
-            liftAboveStickyBar ? 'bottom-24 lg:bottom-5' : 'bottom-5',
+            'fixed right-5 z-40 flex h-14 w-14 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] shadow-[var(--shadow-float)] transition-transform hover:scale-105',
+            bottomClass,
           )}
         >
           <MessageCircle size={22} />
@@ -595,13 +635,13 @@ export function AiAssistant() {
       {open && (
         <div
           className={cn(
-            'fixed right-5 z-40 flex h-[32rem] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-2xl',
-            liftAboveStickyBar ? 'bottom-24 lg:bottom-5' : 'bottom-5',
+            'animate-popover-in fixed right-5 z-40 flex h-[32rem] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]',
+            bottomClass,
           )}
         >
-          <div className="flex items-center gap-2 border-b border-ink-100 bg-brand-50/60 px-4 py-3">
-            <Sparkles size={16} className="text-brand-600" />
-            <p className="text-sm font-semibold text-ink-900">
+          <div className="flex items-center gap-2 border-b border-[var(--color-line)] bg-brand-50/60 px-4 py-3 dark:bg-brand-900/20">
+            <Sparkles size={16} className="text-[var(--color-accent-on)]" />
+            <p className="text-body-sm font-semibold text-[var(--color-content)]">
               AutoHire assistant
             </p>
             <div className="ml-auto flex items-center gap-1">
@@ -611,38 +651,38 @@ export function AiAssistant() {
                     type="button"
                     onClick={() => void toggleHistory()}
                     aria-label="Past chats"
-                    className="rounded-full p-1 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700"
+                    className="rounded-[var(--radius-pill)] p-1 text-[var(--color-content-subtle)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content-muted)]"
                   >
                     <History size={16} />
                   </button>
                   {historyOpen && (
-                    <div className="absolute right-0 top-8 z-10 max-h-72 w-64 overflow-y-auto rounded-xl border border-ink-100 bg-white p-1.5 shadow-lg">
+                    <div className="absolute right-0 top-8 z-10 max-h-72 w-64 overflow-y-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-float)]">
                       {sessions.length === 0 ? (
-                        <p className="p-2 text-xs text-ink-400">No past chats yet.</p>
+                        <p className="p-2 text-caption text-[var(--color-content-subtle)]">No past chats yet.</p>
                       ) : (
                         sessions.map((s) => (
                           <div
                             key={s.id}
                             className={cn(
-                              'group flex items-center gap-0.5 rounded-lg transition-colors hover:bg-ink-50',
-                              s.id === sessionId && 'bg-brand-50/70',
+                              'group flex items-center gap-0.5 rounded-[var(--radius-control)] transition-colors hover:bg-[var(--color-surface-sunken)]',
+                              s.id === sessionId && 'bg-brand-50/70 dark:bg-brand-900/20',
                             )}
                           >
                             <button
                               type="button"
                               onClick={() => void switchToSession(s.id)}
-                              className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs"
+                              className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-caption"
                             >
-                              <span className={cn('block truncate', s.id === sessionId ? 'text-brand-700' : 'text-ink-700')}>
+                              <span className={cn('block truncate', s.id === sessionId ? 'text-brand-700 dark:text-brand-300' : 'text-[var(--color-content-muted)]')}>
                                 {s.preview ?? 'New chat'}
                               </span>
-                              <span className="text-[11px] text-ink-400">{timeAgo(s.updatedAt)}</span>
+                              <span className="text-caption text-[var(--color-content-subtle)]">{timeAgo(s.updatedAt)}</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => void deleteSession(s.id)}
                               aria-label="Delete this chat"
-                              className="shrink-0 rounded-full p-1.5 text-ink-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+                              className="shrink-0 rounded-[var(--radius-pill)] p-1.5 text-[var(--color-content-subtle)] opacity-0 transition-opacity hover:bg-[var(--color-danger-tint)] hover:text-[var(--color-danger-500)] group-hover:opacity-100"
                             >
                               <Trash2 size={13} />
                             </button>
@@ -658,7 +698,7 @@ export function AiAssistant() {
                   type="button"
                   onClick={startNewChat}
                   aria-label="New chat"
-                  className="rounded-full p-1 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700"
+                  className="rounded-[var(--radius-pill)] p-1 text-[var(--color-content-subtle)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content-muted)]"
                 >
                   <Plus size={16} />
                 </button>
@@ -667,7 +707,7 @@ export function AiAssistant() {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close AI assistant"
-                className="rounded-full p-1 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700"
+                className="rounded-[var(--radius-pill)] p-1 text-[var(--color-content-subtle)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content-muted)]"
               >
                 <X size={16} />
               </button>
@@ -677,14 +717,14 @@ export function AiAssistant() {
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
             {turns.length === 0 && (
               <>
-                <p className="text-sm text-ink-500">
+                <p className="text-body-sm text-[var(--color-content-muted)]">
                   Ask for what you need, or tell me to book one of the cars you're
                   looking at.
                 </p>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="rounded-full border border-ink-200 px-3 py-1.5 text-xs font-medium text-ink-600 transition-colors hover:border-ink-300 hover:bg-ink-50"
+                  className="rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] px-3 py-1.5 text-caption font-medium text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)]"
                 >
                   Search manually instead
                 </button>
@@ -692,15 +732,15 @@ export function AiAssistant() {
             )}
             {turns.map((t) => (
               <div key={t.id}>
-                <p className="rounded-2xl rounded-tr-sm bg-brand-50 px-3 py-1.5 text-sm text-brand-800">
+                <p className="rounded-[var(--radius-card)] rounded-tr-sm bg-brand-50 px-3 py-1.5 text-body-sm text-brand-800 dark:bg-brand-900/20 dark:text-brand-300">
                   {t.query}
                 </p>
                 {t.status === 'thinking' ? (
-                  <p className="mt-1.5 text-sm text-ink-400">Thinking…</p>
+                  <p className="mt-1.5 text-body-sm text-[var(--color-content-subtle)]">Thinking…</p>
                 ) : (
                   <>
                     {t.reply && (
-                      <p className="mt-1.5 whitespace-pre-line text-sm text-ink-800">{t.reply}</p>
+                      <p className="mt-1.5 whitespace-pre-line text-body-sm text-[var(--color-content)]">{t.reply}</p>
                     )}
                     {t.matches && t.matches.length > 0 && (
                       <div className="mt-2 space-y-1.5">
@@ -741,20 +781,20 @@ export function AiAssistant() {
               lastSelectedListingId.current = null;
               void ask(input, selectedListingId);
             }}
-            className="flex items-center gap-2 border-t border-ink-100 p-2.5"
+            className="flex items-center gap-2 border-t border-[var(--color-line)] p-2.5"
           >
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask a follow-up…"
               aria-label="Message the AI assistant"
-              className="w-full min-w-0 flex-1 rounded-full border border-ink-200 px-3.5 py-2 text-sm outline-none focus:border-brand-400"
+              className="w-full min-w-0 flex-1 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3.5 py-2 text-body-sm text-[var(--color-content)] outline-none focus:border-[var(--color-accent-on)]"
             />
             <button
               type="submit"
               disabled={busy || !input.trim()}
               aria-label="Send"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white disabled:opacity-40"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
             >
               {busy ? <Spinner size={14} /> : <ArrowRight size={16} />}
             </button>
@@ -807,59 +847,59 @@ function BookingPromptForm({
   const estimatedTotal = units > 0 ? formatMoney(price.amount * units, listing.priceCurrency) : null;
 
   return (
-    <div className="space-y-2 rounded-xl border-2 border-brand-200 bg-brand-50/40 p-3">
+    <div className="space-y-2 rounded-[var(--radius-card)] border-2 border-brand-200 bg-brand-50/40 p-3 dark:border-brand-900/50 dark:bg-brand-900/10">
       <div className="flex items-center gap-2.5">
         <Img
           src={listing.photos[0]}
           alt={listing.title}
-          className="h-11 w-16 shrink-0 rounded-lg object-cover"
+          className="h-11 w-16 shrink-0 rounded-[var(--radius-control)] object-cover"
         />
-        <p className="min-w-0 truncate text-xs font-semibold text-ink-900">{listing.title}</p>
+        <p className="min-w-0 truncate text-caption font-semibold text-[var(--color-content)]">{listing.title}</p>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <label className="block text-[11px] text-ink-500">
+        <label className="block text-caption text-[var(--color-content-muted)]">
           {rentalType === 'hourly' ? 'Pickup date' : 'Start date'}
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="mt-0.5 w-full rounded-lg border border-ink-200 px-2 py-1 text-xs text-ink-900 outline-none focus:border-brand-400"
+            className="mt-0.5 w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] px-2 py-1 text-caption text-[var(--color-content)] outline-none focus:border-[var(--color-accent-on)]"
           />
         </label>
         {rentalType === 'daily' ? (
-          <label className="block text-[11px] text-ink-500">
+          <label className="block text-caption text-[var(--color-content-muted)]">
             Return date
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="mt-0.5 w-full rounded-lg border border-ink-200 px-2 py-1 text-xs text-ink-900 outline-none focus:border-brand-400"
+              className="mt-0.5 w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] px-2 py-1 text-caption text-[var(--color-content)] outline-none focus:border-[var(--color-accent-on)]"
             />
           </label>
         ) : (
-          <label className="block text-[11px] text-ink-500">
+          <label className="block text-caption text-[var(--color-content-muted)]">
             Hours needed
             <input
               type="number"
               min={1}
               value={hours}
               onChange={(e) => setHours(Math.max(1, Number(e.target.value) || 1))}
-              className="mt-0.5 w-full rounded-lg border border-ink-200 px-2 py-1 text-xs text-ink-900 outline-none focus:border-brand-400"
+              className="mt-0.5 w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] px-2 py-1 text-caption text-[var(--color-content)] outline-none focus:border-[var(--color-accent-on)]"
             />
           </label>
         )}
-        <label className="col-span-2 block text-[11px] text-ink-500">
+        <label className="col-span-2 block text-caption text-[var(--color-content-muted)]">
           Pickup time
           <input
             type="time"
             value={pickupTime}
             onChange={(e) => setPickupTime(e.target.value)}
-            className="mt-0.5 w-full rounded-lg border border-ink-200 px-2 py-1 text-xs text-ink-900 outline-none focus:border-brand-400"
+            className="mt-0.5 w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] px-2 py-1 text-caption text-[var(--color-content)] outline-none focus:border-[var(--color-accent-on)]"
           />
         </label>
       </div>
       {estimatedTotal && (
-        <p className="text-xs font-medium text-ink-700">Estimated total: {estimatedTotal}</p>
+        <p className="text-caption font-medium text-[var(--color-content-muted)]">Estimated total: {estimatedTotal}</p>
       )}
       <button
         type="button"
@@ -872,7 +912,7 @@ function BookingPromptForm({
             estimatedHours: rentalType === 'hourly' ? hours : null,
           })
         }
-        className="w-full rounded-lg bg-brand-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+        className="w-full rounded-[var(--radius-control)] bg-[var(--color-accent-on)] px-2 py-1.5 text-caption font-semibold text-[var(--color-accent-contrast)] transition-opacity hover:opacity-90 disabled:opacity-40"
       >
         Continue on the car's page
       </button>
@@ -910,16 +950,16 @@ function MatchCard({ listing }: { listing: Listing }) {
     <div className="relative">
       <Link
         to={`/cars/${listing.id}`}
-        className="flex items-center gap-2.5 rounded-xl border-2 border-brand-200 bg-brand-50/40 p-2 pr-9 transition-colors hover:border-brand-400 hover:bg-brand-50/70"
+        className="flex items-center gap-2.5 rounded-[var(--radius-card)] border-2 border-brand-200 bg-brand-50/40 p-2 pr-9 transition-colors hover:bg-brand-50/70 dark:border-brand-900/50 dark:bg-brand-900/10 dark:hover:bg-brand-900/20"
       >
         <Img
           src={listing.photos[0]}
           alt={listing.title}
-          className="h-11 w-16 shrink-0 rounded-lg object-cover"
+          className="h-11 w-16 shrink-0 rounded-[var(--radius-control)] object-cover"
         />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-ink-900">{listing.title}</p>
-          <p className="text-xs text-ink-500">
+          <p className="truncate text-caption font-semibold text-[var(--color-content)]">{listing.title}</p>
+          <p className="text-caption text-[var(--color-content-muted)]">
             <Price amount={price.amount} currency={listing.priceCurrency} />
             <span> / {price.unit}</span>
           </p>
@@ -936,7 +976,7 @@ function MatchCard({ listing }: { listing: Listing }) {
           disabled={messaging}
           aria-label={`Message ${listing.title}'s host`}
           title="Message the host"
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-ink-400 transition-colors hover:bg-white hover:text-brand-600 disabled:opacity-50"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[var(--radius-pill)] p-1.5 text-[var(--color-content-subtle)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-accent-on)] disabled:opacity-50"
         >
           <MessageCircle size={15} />
         </button>

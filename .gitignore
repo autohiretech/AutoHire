@@ -12,3 +12,6 @@ npm-debug.log*
 .vite/
 coverage/
 supabase/.temp/
+
+# Dev-only phone-viewport harness served by Vite; never committed.
+web/public/__phone.html

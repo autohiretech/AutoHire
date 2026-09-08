@@ -151,30 +151,30 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
 
   return (
     <div className="fixed inset-0 z-50">
-      <div className="animate-overlay-in absolute inset-0 bg-ink-900/50" onClick={close} aria-hidden="true" />
+      <div className="animate-overlay-in absolute inset-0 bg-black/50" onClick={close} aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Notifications"
         tabIndex={-1}
-        className="animate-drawer-in absolute inset-y-0 right-0 flex w-full max-w-sm flex-col bg-white shadow-2xl outline-none sm:rounded-l-2xl"
+        className="animate-drawer-in absolute inset-y-0 right-0 flex w-full max-w-sm flex-col bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)] outline-none sm:rounded-l-[var(--radius-sheet)]"
       >
         {/* Header */}
-        <div className="flex items-center gap-2 border-b border-ink-100 px-4 py-3">
+        <div className="flex items-center gap-2 border-b border-[var(--color-line)] px-4 py-3">
           {selected ? (
             <button
               type="button"
               onClick={() => setSelectedId(null)}
-              className="-ml-1 rounded-md p-1 text-ink-500 hover:bg-ink-100 hover:text-ink-800"
+              className="-ml-1 rounded-[var(--radius-control)] p-1 text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content)]"
               aria-label="Back to notifications"
             >
               <ChevronLeft size={18} />
             </button>
           ) : (
-            <Bell size={18} className="text-brand-600" />
+            <Bell size={18} className="text-[var(--color-accent-on)]" />
           )}
-          <h2 className="flex-1 text-base font-semibold text-ink-900">
+          <h2 className="flex-1 text-h4 text-[var(--color-content)]">
             {selected ? KIND_LABEL[selected.kind] : 'Notifications'}
           </h2>
           {!selected && unread > 0 && (
@@ -182,14 +182,14 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
               type="button"
               onClick={() => readAllMutation.mutate()}
               disabled={readAllMutation.isPending}
-              className="text-xs font-medium text-brand-600 hover:underline disabled:opacity-50"
+              className="text-caption font-medium text-[var(--color-accent-on)] hover:underline disabled:opacity-50"
             >
               Mark all read
             </button>
           )}
           <button
             onClick={close}
-            className="rounded-md p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+            className="rounded-[var(--radius-control)] p-1 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content)]"
             aria-label="Close"
           >
             <X size={18} />
@@ -205,15 +205,15 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
               <Spinner size={24} />
             </div>
           ) : list.length > 0 ? (
-            <ul className="divide-y divide-ink-100">
+            <ul className="divide-y divide-[var(--color-line)]">
               {list.map((n) => (
                 <NotificationRow key={n.id} notification={n} onOpen={() => openNotification(n)} />
               ))}
             </ul>
           ) : (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
-              <Bell size={32} className="text-ink-300" />
-              <p className="text-sm text-ink-500">You're all caught up.</p>
+              <Bell size={32} className="text-[var(--color-content-subtle)]" />
+              <p className="text-body-sm text-[var(--color-content-muted)]">You're all caught up.</p>
             </div>
           )}
         </div>
@@ -229,27 +229,39 @@ function NotificationRow({ notification: n, onOpen }: { notification: AppNotific
       <button
         type="button"
         onClick={onOpen}
-        className={cn('flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-ink-50', !n.read && 'bg-brand-50/40')}
+        className={cn(
+          'flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-surface-sunken)]',
+          !n.read && 'bg-brand-50/40 dark:bg-brand-900/10',
+        )}
       >
         <span
           className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-            n.read ? 'bg-ink-100 text-ink-500' : 'bg-brand-100 text-brand-700',
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)]',
+            n.read
+              ? 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]'
+              : 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300',
           )}
         >
           {KIND_ICON[n.kind]}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className={cn('truncate', n.read ? 'font-medium text-ink-800' : 'font-semibold text-ink-900')}>{n.title}</p>
+            <p
+              className={cn(
+                'truncate text-body-sm',
+                n.read ? 'font-medium text-[var(--color-content-muted)]' : 'font-semibold text-[var(--color-content)]',
+              )}
+            >
+              {n.title}
+            </p>
             <span className="flex shrink-0 items-center gap-2">
-              {!n.read && <span className="h-2 w-2 rounded-full bg-brand-600" aria-label="Unread" />}
-              <span className="text-xs text-ink-400">{timeAgo(n.createdAt)}</span>
+              {!n.read && <span className="h-2 w-2 rounded-[var(--radius-pill)] bg-[var(--color-accent-on)]" aria-label="Unread" />}
+              <span className="text-caption text-[var(--color-content-subtle)]">{timeAgo(n.createdAt)}</span>
             </span>
           </div>
-          <p className="mt-0.5 truncate text-sm text-ink-600">{n.body}</p>
+          <p className="mt-0.5 truncate text-body-sm text-[var(--color-content-muted)]">{n.body}</p>
         </div>
-        <ChevronLeft size={16} className="mt-2.5 shrink-0 rotate-180 text-ink-300" />
+        <ChevronLeft size={16} className="mt-2.5 shrink-0 rotate-180 text-[var(--color-content-subtle)]" />
       </button>
     </li>
   );
@@ -268,21 +280,21 @@ function NotificationDetail({
   return (
     <div className="p-5">
       <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
           {KIND_ICON[n.kind]}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-ink-900">{n.title}</p>
-          <p className="mt-0.5 text-xs text-ink-400">
+          <p className="font-semibold text-[var(--color-content)]">{n.title}</p>
+          <p className="mt-0.5 text-caption text-[var(--color-content-subtle)]">
             {formatDate(n.createdAt)} · {timeAgo(n.createdAt)}
           </p>
         </div>
       </div>
 
-      <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-ink-700">{n.body}</p>
+      <p className="mt-4 whitespace-pre-line text-body-sm leading-relaxed text-[var(--color-content-muted)]">{n.body}</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-ink-400">Sent via</span>
+        <span className="text-caption text-[var(--color-content-subtle)]">Sent via</span>
         {n.channels.map((c) => (
           <Badge key={c} tone="neutral">
             {CHANNEL_LABEL[c]}

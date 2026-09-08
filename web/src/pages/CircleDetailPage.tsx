@@ -4,7 +4,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, LayoutGrid, Link2, LogOut } from 'lucide-react';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { Avatar, Badge, Button, Card, CardBody, ConfirmDialog, Spinner, toast } from '@/components/ui';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  ConfirmDialog,
+  ListGroup,
+  ListRow,
+  Spinner,
+  toast,
+} from '@/components/ui';
 
 /**
  * A circle's home: who's in it, an invite link to grow it, and the boards its
@@ -74,8 +85,11 @@ export function CircleDetailPage() {
   if (!circle) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Circle not found</p>
-        <Link to="/circles" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+        <p className="font-medium text-[var(--color-content)]">Circle not found</p>
+        <Link
+          to="/circles"
+          className="mt-3 inline-block text-body-sm text-[var(--color-accent-on)] hover:underline"
+        >
           Back to circles
         </Link>
       </div>
@@ -90,7 +104,7 @@ export function CircleDetailPage() {
     <section className="mx-auto max-w-3xl px-4 py-6">
       <Link
         to="/circles"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back to circles
       </Link>
@@ -98,8 +112,8 @@ export function CircleDetailPage() {
       <Card>
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-ink-900">{circle.name}</h1>
-            <p className="text-sm text-ink-500">
+            <h1 className="text-h3 text-[var(--color-content)]">{circle.name}</h1>
+            <p className="text-body-sm text-[var(--color-content-muted)]">
               {circle.memberCount} {circle.memberCount === 1 ? 'member' : 'members'}
             </p>
           </div>
@@ -111,7 +125,7 @@ export function CircleDetailPage() {
               size="sm"
               variant="ghost"
               onClick={() => setLeaving(true)}
-              className="text-ink-500"
+              className="text-[var(--color-content-muted)]"
               title="Leave circle"
             >
               <LogOut size={15} />
@@ -122,26 +136,28 @@ export function CircleDetailPage() {
 
       {/* Members */}
       <div className="mt-6">
-        <h2 className="mb-3 text-lg font-semibold text-ink-900">Members</h2>
         {membersQuery.isLoading ? (
           <Spinner size={20} />
         ) : (
-          <div className="flex flex-wrap gap-3">
+          <ListGroup label="Members">
             {members.map((m) => (
-              <div key={m.profile.id} className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-2">
-                <Avatar name={m.profile.fullName} src={m.profile.avatarUrl} size="sm" />
-                <span className="text-sm font-medium text-ink-800">{m.profile.fullName}</span>
-                {m.role === 'owner' && <Badge tone="brand">Owner</Badge>}
-              </div>
+              <ListRow
+                key={m.profile.id}
+                icon={<Avatar name={m.profile.fullName} src={m.profile.avatarUrl} size="sm" />}
+                chevron={false}
+                value={m.role === 'owner' ? <Badge tone="brand">Owner</Badge> : undefined}
+              >
+                {m.profile.fullName}
+              </ListRow>
             ))}
-          </div>
+          </ListGroup>
         )}
       </div>
 
       {/* Boards */}
       <div className="mt-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-ink-900">Boards</h2>
+          <h2 className="text-h4 text-[var(--color-content)]">Boards</h2>
           <Button size="sm" variant="outline" onClick={() => newBoard.mutate()} disabled={newBoard.isPending}>
             New board
           </Button>
@@ -150,19 +166,19 @@ export function CircleDetailPage() {
           <Spinner size={20} />
         ) : boards.length === 0 ? (
           <Card>
-            <CardBody className="flex flex-col items-center gap-2 py-10 text-center text-ink-500">
-              <LayoutGrid size={24} className="text-ink-300" />
-              <p className="text-sm">No boards yet — pin cars here for the group to weigh in on.</p>
+            <CardBody className="flex flex-col items-center gap-2 py-10 text-center text-[var(--color-content-muted)]">
+              <LayoutGrid size={24} className="text-[var(--color-content-subtle)]" />
+              <p className="text-body-sm">No boards yet — pin cars here for the group to weigh in on.</p>
             </CardBody>
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {boards.map((b) => (
               <Link key={b.id} to={`/boards/${b.id}`}>
-                <Card className="h-full transition-shadow hover:shadow-card-hover">
+                <Card interactive className="h-full">
                   <CardBody>
-                    <p className="font-semibold text-ink-900">{b.title}</p>
-                    <p className="text-sm text-ink-500">
+                    <p className="font-semibold text-[var(--color-content)]">{b.title}</p>
+                    <p className="text-body-sm text-[var(--color-content-muted)]">
                       {b.itemCount} {b.itemCount === 1 ? 'car' : 'cars'} pinned
                     </p>
                   </CardBody>

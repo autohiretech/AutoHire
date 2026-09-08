@@ -44,8 +44,8 @@ export function CirclesPage() {
     <section className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink-900">Circles</h1>
-          <p className="mt-1 text-sm text-ink-500">
+          <h1 className="text-h2 text-[var(--color-content)]">Circles</h1>
+          <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
             Small groups you plan trips with, or share equipment through.
           </p>
         </div>
@@ -61,10 +61,10 @@ export function CirclesPage() {
       ) : circles.length === 0 ? (
         <Card>
           <CardBody className="flex flex-col items-center gap-3 py-16 text-center">
-            <Users size={32} className="text-ink-300" />
+            <Users size={32} className="text-[var(--color-content-subtle)]" />
             <div>
-              <p className="font-medium text-ink-900">No circles yet</p>
-              <p className="mt-1 text-sm text-ink-500">
+              <p className="font-medium text-[var(--color-content)]">No circles yet</p>
+              <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
                 Start one for a road trip, a cooperative, or anyone you regularly plan with.
               </p>
             </div>
@@ -79,18 +79,20 @@ export function CirclesPage() {
             const meta = KIND_META[c.kind];
             return (
               <Link key={c.id} to={`/circles/${c.id}`}>
-                <Card className="h-full transition-shadow hover:shadow-card-hover">
+                <Card interactive className="h-full">
                   <CardBody className="flex items-start gap-3">
-                    <div className="rounded-lg bg-brand-50 p-2 text-brand-700">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
                       <meta.icon size={20} />
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-ink-900">{c.name}</p>
-                      <p className="text-sm text-ink-500">
+                      <p className="truncate font-semibold text-[var(--color-content)]">{c.name}</p>
+                      <p className="text-body-sm text-[var(--color-content-muted)]">
                         {meta.label} · {c.memberCount} {c.memberCount === 1 ? 'member' : 'members'}
                       </p>
                       {c.myStatus === 'invited' && (
-                        <p className="mt-1 text-xs font-medium text-[var(--color-warn-500)]">Invitation pending</p>
+                        <p className="mt-1 text-caption font-medium text-[var(--color-warn-500)]">
+                          Invitation pending
+                        </p>
                       )}
                     </div>
                   </CardBody>

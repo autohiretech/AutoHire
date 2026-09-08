@@ -472,7 +472,7 @@ export function PayoutSetupPage() {
                     className={cn(
                       'flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)]',
                       isSel
-                        ? 'bg-white/15 text-[var(--color-content-inverse)]'
+                        ? 'bg-[var(--color-content-inverse)]/15 text-[var(--color-content-inverse)]'
                         : 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
                     )}
                   >

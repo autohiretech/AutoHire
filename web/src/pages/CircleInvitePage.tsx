@@ -40,21 +40,23 @@ export function CircleInvitePage() {
           {state === 'claiming' && (
             <>
               <Spinner size={28} />
-              <p className="text-sm text-ink-500">Joining the circle…</p>
+              <p className="text-body-sm text-[var(--color-content-muted)]">Joining the circle…</p>
             </>
           )}
           {state === 'joined' && (
             <>
-              <CheckCircle2 size={32} className="text-brand-600" />
-              <p className="font-medium text-ink-900">You're in</p>
-              <p className="text-sm text-ink-500">Taking you there…</p>
+              <CheckCircle2 size={32} className="text-[var(--color-accent-on)]" />
+              <p className="font-medium text-[var(--color-content)]">You're in</p>
+              <p className="text-body-sm text-[var(--color-content-muted)]">Taking you there…</p>
             </>
           )}
           {state === 'invalid' && (
             <>
-              <XCircle size={32} className="text-ink-300" />
-              <p className="font-medium text-ink-900">This invite link is no longer valid</p>
-              <p className="text-sm text-ink-500">It may have already been used — ask for a fresh one.</p>
+              <XCircle size={32} className="text-[var(--color-content-subtle)]" />
+              <p className="font-medium text-[var(--color-content)]">This invite link is no longer valid</p>
+              <p className="text-body-sm text-[var(--color-content-muted)]">
+                It may have already been used — ask for a fresh one.
+              </p>
               <Link to="/circles">
                 <Button size="sm" variant="outline" className="mt-2">
                   Go to your circles

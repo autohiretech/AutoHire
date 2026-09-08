@@ -83,7 +83,7 @@ export function Header() {
             page began; the mark earns its colour from the glyph instead. */}
         <Link
           to={MODE_HOME[mode]}
-          className="flex items-center gap-2 font-display text-lg font-extrabold text-[var(--color-content)]"
+          className="flex items-center gap-2 font-display text-body-lg font-extrabold text-[var(--color-content)]"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
             <Car size={18} />
@@ -119,7 +119,7 @@ export function Header() {
               {me?.role === 'admin' && (
                 <Link
                   to="/admin"
-                  className="rounded-lg p-2 text-ink-500 hover:bg-ink-100"
+                  className="rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)]"
                   aria-label="Admin panel"
                 >
                   <ShieldCheck size={20} />
@@ -130,7 +130,7 @@ export function Header() {
               {canRent && (
                 <Link
                   to="/watchlist"
-                  className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 sm:block"
+                  className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] sm:block"
                   aria-label="Cars you're watching"
                   title="Watching"
                 >
@@ -139,7 +139,7 @@ export function Header() {
               )}
               <Link
                 to="/feed"
-                className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 sm:block"
+                className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] sm:block"
                 aria-label="Feed"
                 title="Feed"
               >
@@ -148,7 +148,7 @@ export function Header() {
               {/* Circles are role-agnostic — a host and a renter both use them. */}
               <Link
                 to="/circles"
-                className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 sm:block"
+                className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] sm:block"
                 aria-label="Your circles"
                 title="Circles"
               >
@@ -156,12 +156,12 @@ export function Header() {
               </Link>
               <Link
                 to="/messages"
-                className="relative rounded-lg p-2 text-ink-500 hover:bg-ink-100"
+                className="relative rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)]"
                 aria-label={unread > 0 ? `Messages (${unread} unread)` : 'Messages'}
               >
                 <MessageSquare size={20} />
                 {unread > 0 && (
-                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white">
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger-500)] px-1 text-[10px] font-bold text-white">
                     {unread}
                   </span>
                 )}
@@ -169,7 +169,7 @@ export function Header() {
               <button
                 type="button"
                 onClick={openNotifications}
-                className="relative hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 sm:block"
+                className="relative hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] sm:block"
                 aria-label={
                   unreadNotifications > 0
                     ? `Notifications (${unreadNotifications} unread)`
@@ -178,7 +178,7 @@ export function Header() {
               >
                 <Bell size={20} />
                 {unreadNotifications > 0 && (
-                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white">
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger-500)] px-1 text-[10px] font-bold text-white">
                     {unreadNotifications}
                   </span>
                 )}
@@ -189,7 +189,7 @@ export function Header() {
               <button
                 type="button"
                 onClick={() => signOut()}
-                className="ml-1 hidden rounded-lg p-2 text-ink-500 hover:bg-ink-100 md:block"
+                className="ml-1 hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] md:block"
                 aria-label="Sign out"
                 title={user.email ?? 'Sign out'}
               >
@@ -213,7 +213,7 @@ export function Header() {
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="ml-1 rounded-lg p-2 text-ink-500 hover:bg-ink-100 md:hidden"
+            className="ml-1 rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] md:hidden"
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={menuOpen}
             aria-controls="mobile-nav"
@@ -225,7 +225,7 @@ export function Header() {
 
       {/* Mobile nav panel */}
       {menuOpen && (
-        <nav id="mobile-nav" className="border-t border-ink-200 bg-white px-4 py-2 md:hidden">
+        <nav id="mobile-nav" className="border-t border-[var(--color-line)] bg-[var(--color-surface-raised)] px-4 py-2 md:hidden">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -234,8 +234,8 @@ export function Header() {
               onClick={closeMenu}
               className={({ isActive }) =>
                 cn(
-                  'block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
+                  'block rounded-[var(--radius-control)] px-3 py-2.5 text-body-sm font-semibold transition-colors',
+                  isActive ? 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]' : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
                 )
               }
             >
@@ -248,8 +248,8 @@ export function Header() {
               onClick={closeMenu}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
+                  'flex items-center gap-2 rounded-[var(--radius-control)] px-3 py-2.5 text-body-sm font-semibold transition-colors',
+                  isActive ? 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]' : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
                 )
               }
             >
@@ -262,8 +262,8 @@ export function Header() {
               onClick={closeMenu}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
+                  'flex items-center gap-2 rounded-[var(--radius-control)] px-3 py-2.5 text-body-sm font-semibold transition-colors',
+                  isActive ? 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]' : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
                 )
               }
             >
@@ -276,8 +276,8 @@ export function Header() {
               onClick={closeMenu}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-100',
+                  'flex items-center gap-2 rounded-[var(--radius-control)] px-3 py-2.5 text-body-sm font-semibold transition-colors',
+                  isActive ? 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]' : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
                 )
               }
             >
@@ -291,19 +291,19 @@ export function Header() {
                 closeMenu();
                 openNotifications();
               }}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100"
+              className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2.5 text-body-sm font-semibold text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)]"
             >
               <span className="flex items-center gap-2">
                 <Bell size={16} /> Notifications
               </span>
               {unreadNotifications > 0 && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-semibold text-white">
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--color-danger-500)] px-1.5 text-[11px] font-bold text-white">
                   {unreadNotifications}
                 </span>
               )}
             </button>
           )}
-          <div className="my-2 border-t border-ink-100" />
+          <div className="my-2 border-t border-[var(--color-line)]" />
           {user ? (
             <button
               type="button"
@@ -311,7 +311,7 @@ export function Header() {
                 closeMenu();
                 signOut();
               }}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-ink-700 hover:bg-ink-100"
+              className="flex w-full items-center gap-2 rounded-[var(--radius-control)] px-3 py-2.5 text-left text-body-sm font-semibold text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]"
             >
               <LogOut size={16} /> Sign out
             </button>

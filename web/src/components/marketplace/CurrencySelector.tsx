@@ -85,24 +85,31 @@ export function CurrencySelector() {
         aria-haspopup="listbox"
         aria-expanded={open}
         className={cn(
-          'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-ink-600 transition-colors hover:bg-ink-100',
-          open && 'bg-ink-100',
+          // Same shrinkability fix as CountrySelector: this sits next to it
+          // (plus a hamburger) in the mobile header, and without min-w-0 +
+          // shrink the pair refuses to compress and pushes the header wider
+          // than the viewport.
+          'flex min-w-0 shrink items-center gap-1.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-body-sm text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)]',
+          open && 'bg-[var(--color-surface-sunken)]',
         )}
       >
-        <Coins size={15} className="hidden text-ink-400 sm:block" />
+        <Coins size={15} className="hidden shrink-0 text-[var(--color-content-subtle)] sm:block" />
         <span className="hidden flex-col items-start leading-tight sm:flex">
-          <span className="text-[10px] uppercase tracking-wide text-ink-400">Prices in</span>
-          <span className="font-medium text-ink-800">{currency}</span>
+          <span className="text-[10px] uppercase tracking-wide text-[var(--color-content-subtle)]">Prices in</span>
+          <span className="font-medium text-[var(--color-content)]">{currency}</span>
         </span>
-        <span className="font-medium text-ink-800 sm:hidden">{currency}</span>
-        <ChevronDown size={14} className={cn('text-ink-400 transition-transform', open && 'rotate-180')} />
+        <span className="shrink-0 font-medium text-[var(--color-content)] sm:hidden">{currency}</span>
+        <ChevronDown
+          size={14}
+          className={cn('shrink-0 text-[var(--color-content-subtle)] transition-transform', open && 'rotate-180')}
+        />
       </button>
 
       {open && (
-        <div className="animate-popover-in absolute right-0 z-40 mt-1.5 w-64 origin-top-right overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-xl ring-1 ring-black/5">
-          <div className="border-b border-ink-100 p-2.5">
-            <div className="flex items-center gap-2 rounded-lg border border-ink-200 bg-ink-50 px-2.5 py-2 transition-colors focus-within:border-brand-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-100">
-              <Search size={15} className="shrink-0 text-ink-400" />
+        <div className="animate-popover-in absolute right-0 z-40 mt-1.5 w-64 origin-top-right overflow-hidden rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+          <div className="border-b border-[var(--color-line)] p-2.5">
+            <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-2.5 py-2 transition-colors focus-within:border-[var(--color-accent-on)] focus-within:bg-[var(--color-surface-raised)]">
+              <Search size={15} className="shrink-0 text-[var(--color-content-subtle)]" />
               <input
                 ref={searchRef}
                 value={query}
@@ -112,7 +119,7 @@ export function CurrencySelector() {
                 }}
                 onKeyDown={onSearchKeyDown}
                 placeholder="Search currencies…"
-                className="w-full bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-400"
+                className="w-full bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)]"
               />
               {query && (
                 <button
@@ -122,7 +129,7 @@ export function CurrencySelector() {
                     setActiveIndex(0);
                     searchRef.current?.focus();
                   }}
-                  className="shrink-0 rounded-full p-0.5 text-ink-400 hover:bg-ink-200 hover:text-ink-600"
+                  className="shrink-0 rounded-[var(--radius-pill)] p-0.5 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-content-muted)]"
                   aria-label="Clear search"
                 >
                   <X size={13} />
@@ -133,7 +140,7 @@ export function CurrencySelector() {
 
           <div ref={listRef} role="listbox" className="max-h-80 overflow-y-auto p-1.5">
             {filtered.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-ink-400">
+              <p className="px-3 py-6 text-center text-body-sm text-[var(--color-content-subtle)]">
                 No currencies match &ldquo;{query}&rdquo;
               </p>
             ) : (
@@ -151,17 +158,23 @@ export function CurrencySelector() {
                       onMouseEnter={() => setActiveIndex(i)}
                       onClick={() => choose(c.currency)}
                       className={cn(
-                        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                        focused && 'bg-ink-50',
-                        active && 'bg-brand-50',
+                        'flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-left text-body-sm transition-colors',
+                        focused && 'bg-[var(--color-surface-sunken)]',
                       )}
                     >
                       <span className="w-5 shrink-0 text-center text-base leading-none">{c.flag}</span>
-                      <span className={cn('flex-1 truncate font-medium', active ? 'text-ink-900' : 'text-ink-700')}>
+                      <span
+                        className={cn(
+                          'flex-1 truncate font-medium',
+                          active ? 'text-[var(--color-content)]' : 'text-[var(--color-content-muted)]',
+                        )}
+                      >
                         {c.currency}
                       </span>
-                      <span className="shrink-0 truncate text-xs text-ink-400">{c.name}</span>
-                      {active && <Check size={15} className="shrink-0 text-brand-600" />}
+                      <span className="shrink-0 truncate text-caption text-[var(--color-content-subtle)]">
+                        {c.name}
+                      </span>
+                      {active && <Check size={15} className="shrink-0 text-[var(--color-content)]" />}
                     </button>
                   );
                 })}

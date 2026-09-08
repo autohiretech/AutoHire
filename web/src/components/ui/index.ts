@@ -18,3 +18,4 @@ export { Spinner } from './Spinner';
 export { Toaster, toast } from './Toast';
 export { ConfirmDialog } from './ConfirmDialog';
 export type { ConfirmDialogProps } from './ConfirmDialog';
+export { Skeleton } from './Skeleton';

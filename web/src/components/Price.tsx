@@ -34,13 +34,13 @@ export function Price({
   const isEstimate = shownCurrency !== currency;
 
   return (
-    <span className={className}>
-      <span className={cn(isEstimate && 'text-ink-900')}>
-        {isEstimate && <span className="text-ink-400">≈ </span>}
+    <span className={cn('tabular', className)}>
+      <span className={cn(isEstimate && 'text-[var(--color-content)]')}>
+        {isEstimate && <span className="text-[var(--color-content-subtle)]">≈ </span>}
         {formatMoney(shown, shownCurrency)}
       </span>
       {showNative && isEstimate && (
-        <span className="ml-1 text-xs font-normal text-ink-400">
+        <span className="ml-1 text-caption font-normal text-[var(--color-content-subtle)]">
           ({formatMoney(amount, currency)})
         </span>
       )}

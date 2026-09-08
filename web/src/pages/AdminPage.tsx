@@ -46,7 +46,20 @@ import {
   FLAG_REASON_LABEL,
   MODERATION_STATUS_META,
 } from '@/lib/admin';
-import { Avatar, Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, Spinner } from '@/components/ui';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Chip,
+  ChipRow,
+  ConfirmDialog,
+  Input,
+  Label,
+  Spinner,
+} from '@/components/ui';
 import { PhotoCarousel } from '@/components/PhotoCarousel';
 
 type Tab = 'overview' | 'users' | 'verification' | 'activity' | 'moderation' | 'disputes';
@@ -94,34 +107,34 @@ export function AdminPage() {
   ];
 
   return (
-    <section className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="text-2xl font-bold text-ink-900">Admin</h1>
-      <p className="mt-1 text-sm text-ink-500">
+    <section className="mx-auto max-w-4xl px-4 py-6 sm:py-8">
+      <h1 className="text-h2 text-[var(--color-content)]">Admin</h1>
+      <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
         Platform overview, KYC verification, moderation, and disputes.
       </p>
 
-      <div className="mt-6 flex gap-1 overflow-x-auto border-b border-ink-200">
+      {/* Section switcher as Chips, same control as every other filter/tab row
+          in the app — an operator scans this, so weight+fill (not hue) marks
+          the active section. */}
+      <ChipRow className="mt-5 -mx-4 px-4 pb-1">
         {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              '-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
-              tab === t.key
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-ink-500 hover:text-ink-800',
-            )}
-          >
+          <Chip key={t.key} selected={tab === t.key} onClick={() => setTab(t.key)}>
             {t.label}
             {t.badge !== undefined && (
-              <span className="rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
+              <span
+                className={cn(
+                  'tabular rounded-[var(--radius-pill)] px-1.5 text-caption font-semibold',
+                  tab === t.key
+                    ? 'bg-[var(--color-content-inverse)]/20'
+                    : 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
+                )}
+              >
                 {t.badge}
               </span>
             )}
-          </button>
+          </Chip>
         ))}
-      </div>
+      </ChipRow>
 
       <div className="mt-6">
         {tab === 'overview' && <OverviewTab kyc={kycQuery.data} />}
@@ -184,8 +197,10 @@ function OverviewTab({ kyc }: { kyc?: KycMetrics }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-ink-700">Marketplace</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <h2 className="mb-3 px-1 text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
+          Marketplace
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Stat icon={<BarChart3 size={18} />} label="Gross bookings" value={formatRwf(stats.grossRwf)} />
           <Stat icon={<BarChart3 size={18} />} label="Platform revenue" value={formatRwf(stats.revenueRwf)} />
           <Stat icon={<BarChart3 size={18} />} label="Payouts paid" value={formatRwf(stats.payoutsPaidRwf)} />
@@ -199,8 +214,10 @@ function OverviewTab({ kyc }: { kyc?: KycMetrics }) {
       </div>
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-ink-700">KYC verification</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <h2 className="mb-3 px-1 text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
+          KYC verification
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Stat icon={<Clock size={18} />} label="Docs awaiting review" value={`${kyc?.pendingDocs ?? '—'}`} />
           <Stat icon={<CheckCircle2 size={18} />} label="Verified users" value={`${kyc?.verifiedUsers ?? '—'}`} />
           <Stat icon={<Clock size={18} />} label="Pending users" value={`${kyc?.pendingUsers ?? '—'}`} />
@@ -211,7 +228,9 @@ function OverviewTab({ kyc }: { kyc?: KycMetrics }) {
       </div>
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-ink-700">Electric fleet rule</h2>
+        <h2 className="mb-3 px-1 text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
+          Electric fleet rule
+        </h2>
         <ElectricQuotaCard />
       </div>
     </div>
@@ -240,12 +259,12 @@ function ElectricQuotaCard() {
     <Card>
       <CardBody className="space-y-4">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
             <Zap size={20} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-ink-900">Minimum electric cars</p>
-            <p className="text-xs text-ink-500">
+            <p className="font-semibold text-[var(--color-content)]">Minimum electric cars</p>
+            <p className="text-body-sm text-[var(--color-content-muted)]">
               Non-electric cars can’t be listed if it would drop the fleet below this. Machinery is
               exempt.
             </p>
@@ -260,20 +279,18 @@ function ElectricQuotaCard() {
 
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-600" htmlFor="electric-pct">
-              Required electric %
-            </label>
+            <Label htmlFor="electric-pct">Required electric %</Label>
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 id="electric-pct"
                 type="number"
                 min={0}
                 max={100}
                 value={value}
                 onChange={(e) => setPct(e.target.value)}
-                className="w-24 rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                className="tabular w-24"
               />
-              <span className="text-sm text-ink-500">%</span>
+              <span className="text-body-sm text-[var(--color-content-muted)]">%</span>
             </div>
           </div>
           <Button
@@ -289,7 +306,7 @@ function ElectricQuotaCard() {
           >
             {save.isPending ? 'Saving…' : 'Save'}
           </Button>
-          <span className="text-xs text-ink-400">Set 0 to turn the rule off.</span>
+          <span className="text-caption text-[var(--color-content-subtle)]">Set 0 to turn the rule off.</span>
         </div>
       </CardBody>
     </Card>
@@ -328,12 +345,15 @@ function UsersTab() {
           setPage(0);
         }}
       >
-        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-        <input
+        <Search
+          size={15}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
+        />
+        <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search users by name or email…"
-          className="w-full rounded-lg border border-ink-200 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none"
+          className="pl-9"
         />
       </form>
 
@@ -396,7 +416,7 @@ function UserCard({ user }: { user: AdminUser }) {
   });
 
   return (
-    <Card className={cn(user.suspended && 'border-red-200 bg-red-50/40')}>
+    <Card className={cn(user.suspended && 'border-l-4 border-l-[var(--color-danger-500)]')}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -404,22 +424,26 @@ function UserCard({ user }: { user: AdminUser }) {
       >
         <Avatar name={user.fullName} src={user.avatarUrl} size="sm" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-ink-900">{user.fullName}</p>
-          <p className="truncate text-xs text-ink-400">{user.email}</p>
+          <p className="truncate font-medium text-[var(--color-content)]">{user.fullName}</p>
+          <p className="truncate text-caption text-[var(--color-content-subtle)]">{user.email}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {user.suspended && <Badge tone="danger">Suspended</Badge>}
-          <span className="hidden rounded-full bg-ink-100 px-2 py-0.5 text-xs font-medium text-ink-600 sm:inline">
+          <Badge tone="neutral" className="hidden sm:inline-flex">
             {ROLE_LABEL[user.role] ?? user.role}
-          </span>
+          </Badge>
           <Badge tone={VERIF_TONE[user.verification]}>{user.verification}</Badge>
-          {open ? <ChevronUp size={16} className="text-ink-400" /> : <ChevronDown size={16} className="text-ink-400" />}
+          {open ? (
+            <ChevronUp size={16} className="text-[var(--color-content-subtle)]" />
+          ) : (
+            <ChevronDown size={16} className="text-[var(--color-content-subtle)]" />
+          )}
         </div>
       </button>
 
       {open && (
-        <div className="space-y-5 border-t border-ink-100 px-4 py-4">
-          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <div className="space-y-5 border-t border-[var(--color-line)] px-4 py-4">
+          <dl className="grid grid-cols-2 gap-3 text-body-sm sm:grid-cols-4">
             <Detail label="Phone" value={user.phone || '—'} />
             <Detail label="Joined" value={user.joinedAt ? formatDate(user.joinedAt) : '—'} />
             <Detail label="Listings" value={`${user.listingCount}`} />
@@ -471,7 +495,7 @@ function UserCard({ user }: { user: AdminUser }) {
                   cannot be undone.
                 </p>
                 {remove.isError && (
-                  <p className="mt-2 text-red-600">
+                  <p className="mt-2 text-[var(--color-danger-500)]">
                     {remove.error instanceof Error ? remove.error.message : 'Could not delete.'}
                   </p>
                 )}
@@ -480,13 +504,12 @@ function UserCard({ user }: { user: AdminUser }) {
           />
 
           {compose && (
-            <div className="space-y-2 rounded-lg bg-ink-50 p-3">
+            <div className="space-y-2 rounded-[var(--radius-card)] bg-[var(--color-surface-sunken)] p-3">
               {compose === 'message' && (
-                <input
+                <Input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Subject (optional)"
-                  className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
                 />
               )}
               <textarea
@@ -494,10 +517,10 @@ function UserCard({ user }: { user: AdminUser }) {
                 onChange={(e) => setBody(e.target.value)}
                 rows={3}
                 placeholder={compose === 'warn' ? 'Warning to this user…' : 'Message to this user…'}
-                className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                className="w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3.5 py-2.5 text-body-sm text-[var(--color-content)] placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] focus:outline-none"
               />
               {send.isError && (
-                <p className="text-sm text-red-600">
+                <p className="text-body-sm text-[var(--color-danger-500)]">
                   {send.error instanceof Error ? send.error.message : 'Could not send.'}
                 </p>
               )}
@@ -517,7 +540,9 @@ function UserCard({ user }: { user: AdminUser }) {
             </div>
           )}
           {user.role === 'admin' && !user.suspended && (
-            <p className="-mt-3 text-xs text-ink-400">Admins can’t be suspended from here.</p>
+            <p className="-mt-3 text-caption text-[var(--color-content-subtle)]">
+              Admins can’t be suspended from here.
+            </p>
           )}
 
           <UserVerificationSection user={user} />
@@ -531,7 +556,11 @@ function UserCard({ user }: { user: AdminUser }) {
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">{children}</h3>;
+  return (
+    <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-[var(--color-content-subtle)]">
+      {children}
+    </h3>
+  );
 }
 
 /** Verification: override the overall status (incl. Unverify) + review documents. */
@@ -566,7 +595,7 @@ function UserVerificationSection({ user }: { user: AdminUser }) {
       {isLoading ? (
         <Spinner size={16} />
       ) : (docs ?? []).length === 0 ? (
-        <p className="text-sm text-ink-400">No documents uploaded.</p>
+        <p className="text-body-sm text-[var(--color-content-subtle)]">No documents uploaded.</p>
       ) : (
         <div className="space-y-3">
           {(docs ?? []).map((d) => (
@@ -608,22 +637,28 @@ function ListingRow({ listing: l }: { listing: Listing }) {
   const headline = listingHeadlinePrice(l);
   const price = `${formatRwf(headline.amount)}/${headline.unit}`;
   return (
-    <div className="rounded-lg border border-ink-200">
+    <div className="rounded-[var(--radius-card)] border border-[var(--color-line)]">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm"
+        className="flex w-full items-center gap-3 px-3 py-2 text-left text-body-sm"
       >
-        <Car size={15} className="shrink-0 text-ink-400" />
+        <Car size={15} className="shrink-0 text-[var(--color-content-subtle)]" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-ink-800">{l.title}</p>
-          <p className="truncate text-xs text-ink-400">
+          <p className="truncate font-medium text-[var(--color-content)]">{l.title}</p>
+          <p className="truncate text-caption text-[var(--color-content-subtle)]">
             {l.make} {l.model} · {l.year} · {l.fuel} · {l.city}
           </p>
         </div>
-        <span className="hidden shrink-0 text-xs text-ink-500 sm:inline">{price}</span>
+        <span className="tabular hidden shrink-0 text-caption text-[var(--color-content-muted)] sm:inline">
+          {price}
+        </span>
         <Badge tone={l.status === 'available' ? 'success' : 'neutral'}>{l.status}</Badge>
-        {open ? <ChevronUp size={15} className="text-ink-400" /> : <ChevronDown size={15} className="text-ink-400" />}
+        {open ? (
+          <ChevronUp size={15} className="text-[var(--color-content-subtle)]" />
+        ) : (
+          <ChevronDown size={15} className="text-[var(--color-content-subtle)]" />
+        )}
       </button>
       {open && <ListingDetail listing={l} />}
     </div>
@@ -636,10 +671,10 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
     queryFn: () => client.listListingBookings(l.id),
   });
   return (
-    <div className="space-y-4 border-t border-ink-100 bg-ink-50/50 px-3 py-4">
+    <div className="space-y-4 border-t border-[var(--color-line)] bg-[var(--color-surface-sunken)]/50 px-3 py-4">
       <PhotoCarousel photos={l.photos} alt={l.title} heightClass="h-52" />
 
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-ink-200 bg-ink-200 text-sm sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-line)] text-body-sm sm:grid-cols-4">
         <Spec label="Category" value={l.category} />
         <Spec label="Seats" value={`${l.seats}`} />
         <Spec label="Transmission" value={l.transmission} />
@@ -652,9 +687,11 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
         <Spec label="Country" value={l.country} />
       </dl>
 
-      <div className="text-sm">
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Location</p>
-        <p className="mt-0.5 text-ink-800">
+      <div className="text-body-sm">
+        <p className="text-caption font-medium uppercase tracking-wide text-[var(--color-content-subtle)]">
+          Location
+        </p>
+        <p className="mt-0.5 text-[var(--color-content)]">
           {l.location}
           {l.locationUrl && (
             <>
@@ -663,7 +700,7 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
                 href={l.locationUrl}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="text-brand-700 hover:underline"
+                className="text-[var(--color-accent-on)] hover:underline"
               >
                 map link
               </a>
@@ -674,12 +711,14 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
 
       {l.features.length > 0 && (
         <div>
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-500">Features</p>
+          <p className="mb-1.5 text-caption font-medium uppercase tracking-wide text-[var(--color-content-subtle)]">
+            Features
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {l.features.map((f) => (
               <span
                 key={f}
-                className="rounded-full border border-ink-200 bg-white px-2.5 py-0.5 text-xs capitalize text-ink-700"
+                className="rounded-[var(--radius-pill)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-2.5 py-0.5 text-caption capitalize text-[var(--color-content)]"
               >
                 {f}
               </span>
@@ -689,25 +728,27 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
       )}
 
       <div>
-        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-500">
+        <p className="mb-1.5 text-caption font-medium uppercase tracking-wide text-[var(--color-content-subtle)]">
           Bookings on this car {bookings ? `(${bookings.length})` : ''}
         </p>
         {isLoading ? (
           <Spinner size={14} />
         ) : (bookings ?? []).length === 0 ? (
-          <p className="text-xs text-ink-400">No bookings yet.</p>
+          <p className="text-caption text-[var(--color-content-subtle)]">No bookings yet.</p>
         ) : (
           <div className="space-y-1.5">
             {(bookings ?? []).map((b) => (
               <div
                 key={b.id}
-                className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs"
+                className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-3 py-2 text-caption"
               >
                 <Badge tone={BOOKING_TONE[b.state] ?? 'neutral'}>{b.state}</Badge>
-                <span className="text-ink-600">
+                <span className="tabular text-[var(--color-content-muted)]">
                   {formatDate(b.startDate)} → {formatDate(b.endDate)}
                 </span>
-                <span className="ml-auto font-medium text-ink-700">{formatRwf(b.totalRwf)}</span>
+                <span className="tabular ml-auto font-medium text-[var(--color-content)]">
+                  {formatRwf(b.totalRwf)}
+                </span>
               </div>
             ))}
           </div>
@@ -719,9 +760,14 @@ function ListingDetail({ listing: l }: { listing: Listing }) {
 
 function Spec({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="bg-white px-3 py-2">
-      <dt className="text-xs text-ink-500">{label}</dt>
-      <dd className={cn('font-medium capitalize', highlight ? 'text-brand-700' : 'text-ink-800')}>
+    <div className="bg-[var(--color-surface-raised)] px-3 py-2">
+      <dt className="text-caption text-[var(--color-content-muted)]">{label}</dt>
+      <dd
+        className={cn(
+          'tabular font-medium capitalize',
+          highlight ? 'text-[var(--color-accent-on)]' : 'text-[var(--color-content)]',
+        )}
+      >
         {value}
       </dd>
     </div>
@@ -744,15 +790,20 @@ function UserActivitySection({ userId, count }: { userId: string; count: number 
       ) : (
         <div className="space-y-2">
           {(data ?? []).map((b) => (
-            <div key={b.id} className="flex items-center gap-3 rounded-lg border border-ink-200 px-3 py-2 text-sm">
+            <div
+              key={b.id}
+              className="flex items-center gap-3 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2 text-body-sm"
+            >
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-ink-800">{b.carTitle ?? b.listingId}</p>
-                <p className="truncate text-xs text-ink-400">
+                <p className="truncate font-medium text-[var(--color-content)]">{b.carTitle ?? b.listingId}</p>
+                <p className="tabular truncate text-caption text-[var(--color-content-subtle)]">
                   {b.renterId === userId ? 'As renter' : 'As host'} · {formatDate(b.startDate)} →{' '}
                   {formatDate(b.endDate)}
                 </p>
               </div>
-              <span className="shrink-0 text-xs text-ink-500">{formatRwf(b.totalRwf)}</span>
+              <span className="tabular shrink-0 text-caption text-[var(--color-content-muted)]">
+                {formatRwf(b.totalRwf)}
+              </span>
               <Badge tone={BOOKING_TONE[b.state] ?? 'neutral'}>{b.state}</Badge>
             </div>
           ))}
@@ -783,15 +834,17 @@ function UserAdminLogSection({ userId }: { userId: string }) {
       {isLoading ? (
         <Spinner size={16} />
       ) : (data ?? []).length === 0 ? (
-        <p className="text-sm text-ink-400">No admin actions recorded.</p>
+        <p className="text-body-sm text-[var(--color-content-subtle)]">No admin actions recorded.</p>
       ) : (
-        <ol className="space-y-1.5 border-l-2 border-ink-100 pl-3 text-xs">
+        <ol className="space-y-1.5 border-l-2 border-[var(--color-line)] pl-3 text-caption">
           {(data ?? []).map((a: AdminAction) => (
             <li key={a.id} className="flex flex-wrap items-center gap-x-2">
-              <span className="font-medium text-ink-700">{ACTION_LABEL[a.action] ?? a.action}</span>
-              {a.detail && <span className="text-ink-500">— {a.detail}</span>}
-              {a.adminName && <span className="text-ink-400">by {a.adminName}</span>}
-              <span className="ml-auto text-ink-400">{timeAgo(a.createdAt)}</span>
+              <span className="font-medium text-[var(--color-content)]">
+                {ACTION_LABEL[a.action] ?? a.action}
+              </span>
+              {a.detail && <span className="text-[var(--color-content-muted)]">— {a.detail}</span>}
+              {a.adminName && <span className="text-[var(--color-content-subtle)]">by {a.adminName}</span>}
+              <span className="tabular ml-auto text-[var(--color-content-subtle)]">{timeAgo(a.createdAt)}</span>
             </li>
           ))}
         </ol>
@@ -812,8 +865,8 @@ const ACTION_LABEL: Record<string, string> = {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs text-ink-500">{label}</dt>
-      <dd className="font-medium text-ink-800">{value}</dd>
+      <dt className="text-caption text-[var(--color-content-muted)]">{label}</dt>
+      <dd className="tabular font-medium text-[var(--color-content)]">{value}</dd>
     </div>
   );
 }
@@ -849,14 +902,16 @@ function AutoApproveToggle() {
     <Card
       className={cn(
         'border-2 transition-colors',
-        active ? 'border-[var(--color-warn-500)] bg-[var(--color-warn-tint)]' : 'border-ink-200',
+        active ? 'border-[var(--color-warn-500)] bg-[var(--color-warn-tint)]' : 'border-[var(--color-line)]',
       )}
     >
       <CardBody className="flex items-center gap-4">
         <span
           className={cn(
-            'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors',
-            active ? 'bg-[var(--color-warn-500)]/20 text-[var(--color-warn-500)]' : 'bg-brand-50 text-brand-600',
+            'flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-control)] transition-colors',
+            active
+              ? 'bg-[var(--color-warn-500)]/20 text-[var(--color-warn-500)]'
+              : 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
           )}
         >
           {active ? <Zap size={24} /> : <ShieldCheck size={24} />}
@@ -864,17 +919,19 @@ function AutoApproveToggle() {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="text-base font-semibold text-ink-900">Auto-approve KYC</p>
+            <p className="text-body font-semibold text-[var(--color-content)]">Auto-approve KYC</p>
             <span
               className={cn(
-                'rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide',
-                active ? 'bg-[var(--color-warn-500)] text-white' : 'bg-ink-200 text-ink-600',
+                'rounded-[var(--radius-pill)] px-2 py-0.5 text-caption font-bold uppercase tracking-wide',
+                active
+                  ? 'bg-[var(--color-warn-500)] text-white'
+                  : 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
               )}
             >
               {active ? 'On' : 'Off'}
             </span>
           </div>
-          <p className="mt-0.5 text-sm text-ink-500">
+          <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
             {active
               ? 'Documents are verified instantly — turning this on also cleared the pending queue.'
               : 'New documents wait in the queue for you to review. Turning this on verifies the whole queue.'}
@@ -889,24 +946,24 @@ function AutoApproveToggle() {
           disabled={busy}
           onClick={() => toggle.mutate(!active)}
           className={cn(
-            'relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200',
+            'relative h-8 w-14 shrink-0 rounded-[var(--radius-pill)] transition-colors duration-200',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
             active
               ? 'bg-[var(--color-warn-500)]'
-              : 'bg-ink-300 focus-visible:ring-ink-400',
+              : 'bg-[var(--color-line-strong)] focus-visible:ring-[var(--color-line-strong)]',
             busy ? 'cursor-wait opacity-70' : 'cursor-pointer',
           )}
         >
           <span
             className={cn(
-              'absolute top-1 grid h-6 w-6 place-items-center rounded-full bg-white shadow-md transition-transform duration-200',
+              'absolute top-1 grid h-6 w-6 place-items-center rounded-[var(--radius-pill)] bg-white shadow-[var(--shadow-float)] transition-transform duration-200',
               active ? 'translate-x-7' : 'translate-x-1',
             )}
           >
             {active ? (
               <Zap size={12} className="text-[var(--color-warn-500)]" />
             ) : (
-              <ShieldCheck size={12} className="text-ink-400" />
+              <ShieldCheck size={12} className="text-[var(--color-content-subtle)]" />
             )}
           </span>
         </button>
@@ -934,22 +991,18 @@ function VerificationTab() {
       <AutoApproveToggle />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg border border-ink-200 p-0.5">
+        <div className="flex gap-1.5">
           {SCOPE_FILTERS.map((s) => (
-            <button
+            <Chip
               key={s.key}
-              type="button"
+              selected={scope === s.key}
               onClick={() => {
                 setScope(s.key);
                 setPage(0);
               }}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                scope === s.key ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800',
-              )}
             >
               {s.label}
-            </button>
+            </Chip>
           ))}
         </div>
         <form
@@ -960,12 +1013,15 @@ function VerificationTab() {
             setPage(0);
           }}
         >
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-          <input
+          <Search
+            size={15}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
+          />
+          <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name or email…"
-            className="w-full rounded-lg border border-ink-200 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none"
+            className="pl-9"
           />
         </form>
       </div>
@@ -1017,20 +1073,24 @@ function PersonCard({ person }: { person: KycProfile }) {
       >
         <Avatar name={person.fullName} src={person.avatarUrl} size="sm" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-ink-900">{person.fullName}</p>
-          <p className="truncate text-xs text-ink-400">{person.email}</p>
+          <p className="truncate font-medium text-[var(--color-content)]">{person.fullName}</p>
+          <p className="truncate text-caption text-[var(--color-content-subtle)]">{person.email}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {person.pendingCount > 0 && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+            <Badge tone="warn" className="tabular">
               {person.pendingCount} to review
-            </span>
+            </Badge>
           )}
           <Badge tone={meta.tone}>
             {person.verification}
             {person.verificationOverride ? ' (override)' : ''}
           </Badge>
-          {open ? <ChevronUp size={16} className="text-ink-400" /> : <ChevronDown size={16} className="text-ink-400" />}
+          {open ? (
+            <ChevronUp size={16} className="text-[var(--color-content-subtle)]" />
+          ) : (
+            <ChevronDown size={16} className="text-[var(--color-content-subtle)]" />
+          )}
         </div>
       </button>
       {open && <PersonReview person={person} />}
@@ -1057,15 +1117,15 @@ function PersonReview({ person }: { person: KycProfile }) {
   });
 
   return (
-    <div className="space-y-3 border-t border-ink-100 px-4 py-3">
+    <div className="space-y-3 border-t border-[var(--color-line)] px-4 py-3">
       {isLoading ? (
         <Spinner size={18} />
       ) : (
         (docs ?? []).map((d) => <DocumentRow key={d.id} doc={d} />)
       )}
 
-      <div className="rounded-lg bg-ink-50 px-3 py-2.5">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
+      <div className="rounded-[var(--radius-card)] bg-[var(--color-surface-sunken)] px-3 py-2.5">
+        <p className="mb-2 text-caption font-semibold uppercase tracking-wide text-[var(--color-content-subtle)]">
           Override overall status
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -1095,7 +1155,7 @@ function PersonReview({ person }: { person: KycProfile }) {
             </Button>
           )}
         </div>
-        <p className="mt-2 text-xs text-ink-400">
+        <p className="mt-2 text-caption text-[var(--color-content-subtle)]">
           An override sticks — it won’t be recomputed when the user changes documents.
           {person.verificationOverride ? ' This user is currently overridden.' : ''}
         </p>
@@ -1128,39 +1188,41 @@ function DocumentRow({ doc }: { doc: VerificationReviewItem }) {
   const meta = STATUS_META[doc.status];
 
   return (
-    <div className="rounded-lg border border-ink-200 p-3">
+    <div className="rounded-[var(--radius-card)] border border-[var(--color-line)] p-3">
       <div className="flex items-center gap-2">
-        <span className="flex-1 truncate text-sm font-medium text-ink-800">
+        <span className="flex-1 truncate text-body-sm font-medium text-[var(--color-content)]">
           {DOC_TYPE_LABEL[doc.type] ?? doc.type}
         </span>
         <Badge tone={meta.tone}>{doc.status}</Badge>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-ink-50 px-3 py-2 text-sm">
-        <span className="flex min-w-0 items-center gap-2 text-ink-700">
-          <ShieldCheck size={15} className="shrink-0 text-ink-400" />
+      <div className="mt-2 flex items-center justify-between gap-2 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2 text-body-sm">
+        <span className="flex min-w-0 items-center gap-2 text-[var(--color-content-muted)]">
+          <ShieldCheck size={15} className="shrink-0 text-[var(--color-content-subtle)]" />
           <span className="truncate">{doc.fileName ?? 'Document'}</span>
         </span>
         {doc.storagePath ? (
           <button
             type="button"
             onClick={openDocument}
-            className="inline-flex shrink-0 items-center gap-1 text-brand-700 hover:underline"
+            className="inline-flex shrink-0 items-center gap-1 text-[var(--color-accent-on)] hover:underline"
           >
             View <ExternalLink size={13} />
           </button>
         ) : (
-          <span className="shrink-0 text-xs text-ink-400">No file (legacy)</span>
+          <span className="shrink-0 text-caption text-[var(--color-content-subtle)]">No file (legacy)</span>
         )}
       </div>
 
-      <p className="mt-1.5 text-xs text-ink-400">
+      <p className="tabular mt-1.5 text-caption text-[var(--color-content-subtle)]">
         {doc.uploadedAt && <>Uploaded {timeAgo(doc.uploadedAt)}</>}
         {doc.reviewedAt && <> · Reviewed {timeAgo(doc.reviewedAt)}</>}
       </p>
 
       {doc.status === 'rejected' && doc.note && (
-        <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{doc.note}</p>
+        <p className="mt-2 rounded-[var(--radius-control)] bg-[var(--color-danger-tint)] px-3 py-2 text-body-sm text-[var(--color-danger-500)]">
+          {doc.note}
+        </p>
       )}
 
       {rejecting ? (
@@ -1170,7 +1232,7 @@ function DocumentRow({ doc }: { doc: VerificationReviewItem }) {
             onChange={(e) => setNote(e.target.value)}
             rows={2}
             placeholder="Reason shown to the applicant (e.g. photo is blurry)…"
-            className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3.5 py-2.5 text-body-sm text-[var(--color-content)] placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] focus:outline-none"
           />
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1231,7 +1293,7 @@ function ActivityTab() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardBody className="divide-y divide-ink-100 p-0">
+        <CardBody className="divide-y divide-[var(--color-line)] p-0">
           {data.items.map((e) => (
             <ActivityRow key={e.id} event={e} />
           ))}
@@ -1250,23 +1312,25 @@ function ActivityTab() {
 
 function ActivityRow({ event }: { event: VerificationEvent }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 text-sm">
+    <div className="flex items-center gap-3 px-4 py-3 text-body-sm">
       <EventDot kind={event.event} />
       <div className="min-w-0 flex-1">
-        <p className="text-ink-800">
+        <p className="text-[var(--color-content)]">
           <span className="font-medium">{event.owner?.fullName ?? event.profileId}</span>
-          <span className="text-ink-500">
+          <span className="text-[var(--color-content-muted)]">
             {' · '}
             {event.docType ? DOC_TYPE_LABEL[event.docType] ?? event.docType : 'Overall status'}
           </span>
         </p>
-        <p className="text-xs text-ink-400">
+        <p className="text-caption text-[var(--color-content-subtle)]">
           {EVENT_LABEL[event.event]}
           {event.actorName ? ` by ${event.actorName}` : ''}
           {event.note ? ` — “${event.note}”` : ''}
         </p>
       </div>
-      <span className="shrink-0 text-xs text-ink-400">{timeAgo(event.createdAt)}</span>
+      <span className="tabular shrink-0 text-caption text-[var(--color-content-subtle)]">
+        {timeAgo(event.createdAt)}
+      </span>
     </div>
   );
 }
@@ -1280,13 +1344,17 @@ const EVENT_LABEL: Record<VerificationEventKind, string> = {
   updated: 'Updated',
 };
 
+/** Timeline dot per event kind — a state indicator, so it borrows the same
+    semantic tokens as everywhere else rather than raw Tailwind swatches.
+    `override` gets the inverse fill (like a selected Chip) to read as "an
+    admin did this" without introducing another hue. */
 const EVENT_TONE: Record<VerificationEventKind, string> = {
-  submitted: 'bg-amber-400',
-  resubmitted: 'bg-amber-400',
-  approved: 'bg-emerald-500',
-  rejected: 'bg-red-500',
-  override: 'bg-brand-500',
-  updated: 'bg-ink-300',
+  submitted: 'bg-[var(--color-warn-500)]',
+  resubmitted: 'bg-[var(--color-warn-500)]',
+  approved: 'bg-[var(--color-accent-on)]',
+  rejected: 'bg-[var(--color-danger-500)]',
+  override: 'bg-[var(--color-surface-inverse)]',
+  updated: 'bg-[var(--color-line-strong)]',
 };
 
 function EventDot({ kind }: { kind: VerificationEventKind }) {
@@ -1319,8 +1387,8 @@ function Pagination({
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (pages <= 1) return null;
   return (
-    <div className="flex items-center justify-between text-sm text-ink-500">
-      <span>
+    <div className="flex items-center justify-between text-body-sm text-[var(--color-content-muted)]">
+      <span className="tabular">
         Page {page + 1} of {pages} · {total} total
       </span>
       <div className="flex gap-2">
@@ -1359,7 +1427,7 @@ function TabState({ query, children }: { query: { isLoading: boolean }; children
 function Empty({ text }: { text: string }) {
   return (
     <Card>
-      <CardBody className="py-12 text-center text-sm text-ink-500">{text}</CardBody>
+      <CardBody className="py-12 text-center text-body-sm text-[var(--color-content-muted)]">{text}</CardBody>
     </Card>
   );
 }
@@ -1368,12 +1436,12 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
   return (
     <Card>
       <CardBody className="flex items-center gap-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
           {icon}
         </span>
-        <div>
-          <p className="text-xs text-ink-500">{label}</p>
-          <p className="font-semibold text-ink-900">{value}</p>
+        <div className="min-w-0">
+          <p className="truncate text-caption text-[var(--color-content-muted)]">{label}</p>
+          <p className="tabular truncate font-semibold text-[var(--color-content)]">{value}</p>
         </div>
       </CardBody>
     </Card>
@@ -1395,16 +1463,16 @@ function FlagCard({ flag, reporter }: { flag: FlagType; reporter: string }) {
   return (
     <Card>
       <CardHeader className="flex items-center gap-2">
-        <span className="text-ink-400">
+        <span className="text-[var(--color-content-subtle)]">
           {flag.targetType === 'listing' ? <Car size={16} /> : <User size={16} />}
         </span>
-        <span className="flex-1 truncate font-medium text-ink-900">{flag.targetLabel}</span>
+        <span className="flex-1 truncate font-medium text-[var(--color-content)]">{flag.targetLabel}</span>
         <Badge tone="danger">{FLAG_REASON_LABEL[flag.reason]}</Badge>
         <Badge tone={meta.tone}>{meta.label}</Badge>
       </CardHeader>
       <CardBody className="space-y-3">
-        <p className="text-sm text-ink-700">{flag.detail}</p>
-        <p className="text-xs text-ink-400">
+        <p className="text-body-sm text-[var(--color-content-muted)]">{flag.detail}</p>
+        <p className="tabular text-caption text-[var(--color-content-subtle)]">
           Reported by {reporter} · {timeAgo(flag.createdAt)}
         </p>
         {open && (
@@ -1455,12 +1523,14 @@ function DisputeCard({
   return (
     <Card>
       <CardHeader className="flex items-center justify-between gap-2">
-        <span className="font-medium text-ink-900">{formatRwf(dispute.amountRwf)} claim</span>
+        <span className="tabular font-medium text-[var(--color-content)]">
+          {formatRwf(dispute.amountRwf)} claim
+        </span>
         <Badge tone={meta.tone}>{meta.label}</Badge>
       </CardHeader>
       <CardBody className="space-y-3">
-        <p className="text-sm text-ink-700">{dispute.reason}</p>
-        <p className="text-xs text-ink-400">
+        <p className="text-body-sm text-[var(--color-content-muted)]">{dispute.reason}</p>
+        <p className="tabular text-caption text-[var(--color-content-subtle)]">
           {raisedByName} vs {againstName} · booking {dispute.bookingId} · {timeAgo(dispute.createdAt)}
         </p>
         {actionable && (

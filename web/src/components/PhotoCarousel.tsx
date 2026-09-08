@@ -60,7 +60,7 @@ export function PhotoCarousel({
             <ChevronRight size={18} />
           </button>
 
-          <span className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-xs font-medium text-white">
+          <span className="tabular absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-caption font-medium text-white">
             {idx + 1} / {photos.length}
           </span>
 

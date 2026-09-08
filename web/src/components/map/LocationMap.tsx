@@ -22,7 +22,7 @@ export function LocationMap({
       center={[lat, lng]}
       zoom={zoom}
       scrollWheelZoom={false}
-      className={cn('h-48 w-full rounded-lg', className)}
+      className={cn('h-48 w-full rounded-[var(--radius-card)]', className)}
     >
       <TileLayer url={OSM_URL} attribution={OSM_ATTR} />
       <Marker position={[lat, lng]} />

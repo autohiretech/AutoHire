@@ -25,30 +25,35 @@ function CountryRow({ country: c, carCount, active, focused, onHover, onChoose }
       onMouseEnter={onHover}
       onClick={onChoose}
       className={cn(
-        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-        focused && 'bg-ink-50',
-        active && 'bg-brand-50',
+        'flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-left text-body-sm transition-colors',
+        focused && 'bg-[var(--color-surface-sunken)]',
       )}
     >
       <span className={cn('w-5 shrink-0 text-center text-base leading-none', !hasCars && 'opacity-40')}>
         {c.flag}
       </span>
+      {/* Selected state is the trailing check mark, not a colour fill —
+          fill+hue here would spend the page's one accent on a list row. */}
       <span
         className={cn(
           'flex-1 truncate font-medium',
-          active ? 'text-ink-900' : hasCars ? 'text-ink-800' : 'text-ink-400',
+          active
+            ? 'text-[var(--color-content)]'
+            : hasCars
+              ? 'text-[var(--color-content-muted)]'
+              : 'text-[var(--color-content-subtle)]',
         )}
       >
         {c.name}
       </span>
       {hasCars ? (
-        <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-brand-700">
+        <span className="tabular shrink-0 rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-content-muted)]">
           {carCount}
         </span>
       ) : (
-        <span className="shrink-0 text-[11px] text-ink-300">No cars yet</span>
+        <span className="shrink-0 text-[11px] text-[var(--color-content-subtle)]">No cars yet</span>
       )}
-      {active && <Check size={15} className="shrink-0 text-brand-600" />}
+      {active && <Check size={15} className="shrink-0 text-[var(--color-content)]" />}
     </button>
   );
 }
@@ -155,25 +160,38 @@ export function CountrySelector() {
         aria-haspopup="listbox"
         aria-expanded={open}
         className={cn(
-          'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-ink-600 transition-colors hover:bg-ink-100',
-          open && 'bg-ink-100',
+          // min-w-0 + shrink: this trigger sits next to the currency trigger
+          // and a hamburger in the mobile header — without them the row
+          // refuses to shrink below its content width and forces the page
+          // wider than the viewport (clipping the hamburger, and causing a
+          // horizontal scroll on every non-full-bleed route).
+          'flex min-w-0 shrink items-center gap-1.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-body-sm text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)]',
+          open && 'bg-[var(--color-surface-sunken)]',
         )}
       >
-        <MapPin size={15} className="hidden text-ink-400 sm:block" />
-        <span className="text-base leading-none">{country.flag}</span>
+        <MapPin size={15} className="hidden shrink-0 text-[var(--color-content-subtle)] sm:block" />
+        <span className="shrink-0 text-base leading-none">{country.flag}</span>
         <span className="hidden flex-col items-start leading-tight sm:flex">
-          <span className="text-[10px] uppercase tracking-wide text-ink-400">Country</span>
-          <span className="font-medium text-ink-800">{country.name}</span>
+          <span className="text-[10px] uppercase tracking-wide text-[var(--color-content-subtle)]">Country</span>
+          <span className="truncate font-medium text-[var(--color-content)]">{country.name}</span>
         </span>
-        <span className="font-medium text-ink-800 sm:hidden">{country.name}</span>
-        <ChevronDown size={14} className={cn('text-ink-400 transition-transform', open && 'rotate-180')} />
+        {/* Mobile: flag + short code only, not the full country name — the
+            name alone was wide enough (with the currency trigger and the
+            hamburger alongside it) to push the header past the viewport. */}
+        <span className="truncate max-w-[6rem] font-medium text-[var(--color-content)] sm:hidden">
+          {country.code}
+        </span>
+        <ChevronDown
+          size={14}
+          className={cn('shrink-0 text-[var(--color-content-subtle)] transition-transform', open && 'rotate-180')}
+        />
       </button>
 
       {open && (
-        <div className="animate-popover-in absolute right-0 z-40 mt-1.5 w-[19rem] origin-top-right overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-xl ring-1 ring-black/5">
-          <div className="border-b border-ink-100 p-2.5">
-            <div className="flex items-center gap-2 rounded-lg border border-ink-200 bg-ink-50 px-2.5 py-2 transition-colors focus-within:border-brand-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-100">
-              <Search size={15} className="shrink-0 text-ink-400" />
+        <div className="animate-popover-in absolute right-0 z-40 mt-1.5 w-[19rem] origin-top-right overflow-hidden rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+          <div className="border-b border-[var(--color-line)] p-2.5">
+            <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-2.5 py-2 transition-colors focus-within:border-[var(--color-accent-on)] focus-within:bg-[var(--color-surface-raised)]">
+              <Search size={15} className="shrink-0 text-[var(--color-content-subtle)]" />
               <input
                 ref={searchRef}
                 value={query}
@@ -183,7 +201,7 @@ export function CountrySelector() {
                 }}
                 onKeyDown={onSearchKeyDown}
                 placeholder="Search countries…"
-                className="w-full bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-400"
+                className="w-full bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)]"
               />
               {query && (
                 <button
@@ -193,7 +211,7 @@ export function CountrySelector() {
                     setActiveIndex(0);
                     searchRef.current?.focus();
                   }}
-                  className="shrink-0 rounded-full p-0.5 text-ink-400 hover:bg-ink-200 hover:text-ink-600"
+                  className="shrink-0 rounded-[var(--radius-pill)] p-0.5 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-content-muted)]"
                   aria-label="Clear search"
                 >
                   <X size={13} />
@@ -204,14 +222,14 @@ export function CountrySelector() {
 
           <div ref={listRef} role="listbox" className="max-h-80 overflow-y-auto p-1.5">
             {filtered.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-ink-400">
+              <p className="px-3 py-6 text-center text-body-sm text-[var(--color-content-subtle)]">
                 No countries match &ldquo;{query}&rdquo;
               </p>
             ) : (
               <>
                 {available.length > 0 && (
                   <>
-                    <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                    <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-content-subtle)]">
                       Cars available · {available.length}
                     </p>
                     <div className="space-y-0.5">
@@ -233,8 +251,8 @@ export function CountrySelector() {
                   <>
                     <p
                       className={cn(
-                        'px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-300',
-                        available.length > 0 && 'mt-1.5 border-t border-ink-100 pt-2.5',
+                        'px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-content-subtle)]',
+                        available.length > 0 && 'mt-1.5 border-t border-[var(--color-line)] pt-2.5',
                       )}
                     >
                       Not available yet · {unavailable.length}

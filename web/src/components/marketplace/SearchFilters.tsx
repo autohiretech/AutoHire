@@ -24,7 +24,14 @@ export const PRICE_FILTER: { label: string; patch: ListingFilters } = {
 
 export type PanelId = 'type' | 'price' | 'more' | null;
 
-/** A Getaround-style filter pill that opens a small dropdown panel below it. */
+/**
+ * A Getaround-style filter pill that opens a small dropdown panel below it.
+ *
+ * Note: as of the redesign, `SearchResultsPage` uses `ui/Chip` (fill+weight
+ * selection) for its filter row instead of this pill and the local `Chip`
+ * below — `FilterPill` and `Chip` are currently unused, kept on-token in case
+ * a page reaches for a dropdown-style filter again.
+ */
 export function FilterPill({
   label,
   active,
@@ -45,10 +52,10 @@ export function FilterPill({
         onClick={onToggle}
         aria-expanded={open}
         className={cn(
-          'flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium shadow-sm transition-all',
+          'flex items-center gap-1.5 rounded-[var(--radius-pill)] border px-3.5 py-1.5 text-body-sm font-medium transition-all',
           active || open
-            ? 'border-brand-500 bg-brand-50 text-brand-700'
-            : 'border-ink-200 bg-white text-ink-700 hover:border-ink-300 hover:shadow',
+            ? 'border-[var(--color-line-strong)] bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
+            : 'border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
         )}
       >
         {label}
@@ -57,7 +64,7 @@ export function FilterPill({
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={onToggle} />
-          <div className="absolute left-0 top-full z-40 mt-2 rounded-xl border border-ink-100 bg-white shadow-xl ring-1 ring-black/[0.03]">
+          <div className="animate-popover-in absolute left-0 top-full z-40 mt-2 rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
             {children}
           </div>
         </>
@@ -81,10 +88,10 @@ export function Chip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
+        'shrink-0 rounded-[var(--radius-pill)] border px-3.5 py-1.5 text-body-sm font-medium transition-colors',
         active
-          ? 'border-brand-500 bg-brand-50 text-brand-700'
-          : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300 hover:bg-ink-50',
+          ? 'border-[var(--color-line-strong)] bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
+          : 'border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
       )}
     >
       {children}

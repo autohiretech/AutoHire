@@ -312,7 +312,7 @@ export function CarDetailPage() {
             <span>{listing.year}</span>
             <span aria-hidden="true">·</span>
             {listing.ratingCount ? (
-              <span className="inline-flex items-center gap-1 font-medium text-[var(--color-content)]">
+              <span className="tabular inline-flex items-center gap-1 font-medium text-[var(--color-content)]">
                 <Star size={14} className="fill-[var(--color-content)]" /> {listing.ratingAvg?.toFixed(2)}
                 <span className="font-normal text-[var(--color-content-muted)]">
                   ({listing.ratingCount} review{listing.ratingCount === 1 ? '' : 's'})
@@ -531,10 +531,10 @@ export function CarDetailPage() {
           <div className="border-t border-[var(--color-line)] py-5">
             <h2 className="flex items-center gap-2 text-h3 text-[var(--color-content)]">
               {listing.ratingCount ? (
-                <>
+                <span className="tabular flex items-center gap-2">
                   <Star size={18} className="fill-[var(--color-content)]" />
                   {listing.ratingAvg?.toFixed(2)} · {reviews.length} review{reviews.length === 1 ? '' : 's'}
-                </>
+                </span>
               ) : (
                 'Reviews'
               )}
@@ -1090,7 +1090,7 @@ function Lightbox({
   }, [photos.length]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/90 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
       <button
         type="button"
         onClick={onClose}
@@ -1132,7 +1132,7 @@ function Lightbox({
           <ChevronRight size={26} />
         </button>
       )}
-      <span className="absolute bottom-4 text-body-sm text-white/80">
+      <span className="tabular absolute bottom-4 text-body-sm text-white/80">
         {i + 1} / {photos.length}
       </span>
     </div>

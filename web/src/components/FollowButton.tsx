@@ -3,7 +3,6 @@ import { UserPlus, UserCheck } from 'lucide-react';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { Button, toast } from '@/components/ui';
-import { cn } from '@/lib/cn';
 
 /**
  * Follow/unfollow — one-way, role-agnostic (migration 059). Unlike watching a
@@ -40,13 +39,15 @@ export function FollowButton({ profileId }: { profileId: string }) {
   const isFollowing = !!following;
 
   return (
+    // Not-following is the one accent button ("Follow"); already-following
+    // states the fact with the neutral outline variant rather than a second
+    // hue — the toggle is fill/weight, not colour.
     <Button
       type="button"
       variant={isFollowing ? 'outline' : 'primary'}
       size="sm"
       disabled={isLoading || toggle.isPending}
       onClick={() => toggle.mutate(!isFollowing)}
-      className={cn(isFollowing && 'border-brand-300 text-brand-700')}
     >
       {isFollowing ? <UserCheck size={15} /> : <UserPlus size={15} />}
       {isFollowing ? 'Following' : 'Follow'}

@@ -153,6 +153,42 @@
 }
 
 /*
+  ── Phone type scale ─────────────────────────────────────────────────────
+  Below Tailwind's `sm` (40rem) every step of the scale drops one notch. The
+  desktop sizes follow Uber's "go big" rule, and on a 390px phone that rule
+  overshoots: a 32px h1 is a third of the width, and 16px body wraps a car's
+  name onto a third line. Line-heights stay on the 4px grid. Nothing goes
+  below 13px body / 11px caption — smaller than that is where legibility
+  drops faster than the space saved.
+
+  The utilities reference these variables rather than baking the values in,
+  so redefining them here re-sizes every `text-*` in the app at once — no
+  component needs a `sm:` prefix to take part.
+*/
+@media (width < 40rem) {
+  :root {
+    --text-display: 2rem;
+    --text-display--line-height: 2.5rem;
+    --text-h1: 1.625rem;
+    --text-h1--line-height: 2rem;
+    --text-h2: 1.3125rem;
+    --text-h2--line-height: 1.75rem;
+    --text-h3: 1.125rem;
+    --text-h3--line-height: 1.5rem;
+    --text-h4: 1rem;
+    --text-h4--line-height: 1.5rem;
+    --text-body-lg: 1rem;
+    --text-body-lg--line-height: 1.5rem;
+    --text-body: 0.9375rem;
+    --text-body--line-height: 1.375rem;
+    --text-body-sm: 0.8125rem;
+    --text-body-sm--line-height: 1.125rem;
+    --text-caption: 0.6875rem;
+    --text-caption--line-height: 1rem;
+  }
+}
+
+/*
   ── Dark theme ───────────────────────────────────────────────────────────
   Only the semantic tokens are redefined; every component built on them
   follows automatically. Two things this is careful about:

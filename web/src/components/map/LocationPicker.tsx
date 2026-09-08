@@ -179,39 +179,43 @@ export function LocationPicker({
           </Button>
         </div>
         {open && (
-          <div className="absolute z-[1100] mt-1 max-h-72 w-full overflow-auto rounded-lg border border-ink-200 bg-white shadow-lg">
+          <div className="animate-popover-in absolute z-[1100] mt-1 max-h-72 w-full overflow-auto rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={useCurrentLocation}
               disabled={locating}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50 disabled:opacity-60"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-body-sm hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
             >
-              <Navigation className="h-4 w-4 shrink-0 text-brand-600" />
+              <Navigation className="h-4 w-4 shrink-0 text-[var(--color-accent-on)]" />
               {locating ? 'Finding you…' : 'Use my current location'}
             </button>
-            {searching && <div className="border-t border-ink-100 px-3 py-2 text-xs text-ink-400">Searching…</div>}
+            {searching && (
+              <div className="border-t border-[var(--color-line)] px-3 py-2 text-caption text-[var(--color-content-subtle)]">
+                Searching…
+              </div>
+            )}
             {suggestions.map((s, i) => (
               <button
                 key={`${s.lat},${s.lng},${i}`}
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(s)}
-                className="flex w-full items-start gap-2 border-t border-ink-100 px-3 py-2 text-left text-sm hover:bg-ink-50"
+                className="flex w-full items-start gap-2 border-t border-[var(--color-line)] px-3 py-2 text-left text-body-sm hover:bg-[var(--color-surface-sunken)]"
               >
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-content-subtle)]" />
                 <span>{s.label}</span>
               </button>
             ))}
             {!searching && query.trim().length >= 3 && suggestions.length === 0 && (
-              <div className="border-t border-ink-100 px-3 py-2 text-xs text-ink-400">
+              <div className="border-t border-[var(--color-line)] px-3 py-2 text-caption text-[var(--color-content-subtle)]">
                 No place found — try a different search, or click the map.
               </div>
             )}
           </div>
         )}
       </div>
-      <MapContainer center={[center.lat, center.lng]} zoom={13} className="h-56 w-full rounded-lg">
+      <MapContainer center={[center.lat, center.lng]} zoom={13} className="h-56 w-full rounded-[var(--radius-card)]">
         {satellite ? (
           <TileLayer url={SATELLITE_URL} attribution={SATELLITE_ATTR} maxNativeZoom={19} />
         ) : (
@@ -233,8 +237,8 @@ export function LocationPicker({
         )}
         {value && <Recenter pos={value} />}
       </MapContainer>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <p className="text-xs text-ink-400">
+      {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
+      <p className="text-caption text-[var(--color-content-subtle)]">
         {value
           ? `Pin set at ${value.lat.toFixed(5)}, ${value.lng.toFixed(5)} — drag it to fine-tune.`
           : 'Search, pick your current location, or click the map to drop the pickup pin.'}

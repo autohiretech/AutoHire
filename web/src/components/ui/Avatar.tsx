@@ -8,9 +8,9 @@ export interface AvatarProps {
 }
 
 const sizes = {
-  sm: 'h-8 w-8 text-xs',
-  md: 'h-10 w-10 text-sm',
-  lg: 'h-14 w-14 text-base',
+  sm: 'h-8 w-8 text-caption',
+  md: 'h-10 w-10 text-body-sm',
+  lg: 'h-14 w-14 text-body',
 };
 
 function initials(name: string): string {
@@ -29,14 +29,14 @@ export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
       <img
         src={src}
         alt={name}
-        className={cn('rounded-full object-cover', sizes[size], className)}
+        className={cn('rounded-[var(--radius-pill)] object-cover', sizes[size], className)}
       />
     );
   }
   return (
     <div
       className={cn(
-        'flex items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-700',
+        'flex items-center justify-center rounded-[var(--radius-pill)] bg-brand-100 font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300',
         sizes[size],
         className,
       )}

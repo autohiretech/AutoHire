@@ -48,16 +48,16 @@ export function RightRail() {
   ];
 
   return (
-    <div className="fixed right-3 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-1 rounded-2xl border border-ink-100 bg-white/95 p-1.5 shadow-lg backdrop-blur min-[1660px]:flex">
+    <div className="fixed right-3 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-1 rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]/95 p-1.5 shadow-[var(--shadow-float)] backdrop-blur min-[1660px]:flex">
       {items.map(({ to, onClick, label, icon: Icon, badge }) => {
         const className =
-          'flex w-16 flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[11px] font-medium text-ink-600 transition-colors hover:bg-brand-50 hover:text-brand-700';
+          'flex w-16 flex-col items-center gap-1 rounded-[var(--radius-control)] px-2 py-2.5 text-[11px] font-medium text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content)]';
         const inner = (
           <>
             <span className="relative">
               <Icon size={20} />
               {badge && badge > 0 ? (
-                <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white">
+                <span className="tabular absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] px-1 text-[10px] font-semibold text-[var(--color-accent-contrast)]">
                   {badge > 99 ? '99+' : badge}
                 </span>
               ) : null}

@@ -44,43 +44,43 @@ export function RequesterModal({
           <Spinner size={22} />
         </div>
       ) : !p ? (
-        <p className="text-sm text-ink-500">Couldn't load this profile.</p>
+        <p className="text-body-sm text-[var(--color-content-muted)]">Couldn't load this profile.</p>
       ) : (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <Avatar name={p.fullName} src={p.avatarUrl} size="lg" />
             <div className="min-w-0">
-              <p className="font-semibold text-ink-900">{p.fullName}</p>
+              <p className="font-semibold text-[var(--color-content)]">{p.fullName}</p>
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
                 <Badge tone={VERIF_TONE[p.verification] ?? 'neutral'}>
                   <ShieldCheck size={12} /> {p.verification}
                 </Badge>
                 {p.ratingCount ? (
-                  <span className="inline-flex items-center gap-1 text-sm text-ink-500">
+                  <span className="inline-flex items-center gap-1 text-body-sm text-[var(--color-content-muted)]">
                     <Star size={13} className="fill-[var(--color-accent-on)] text-[var(--color-accent-on)]" />
                     {p.ratingAvg?.toFixed(1)} ({p.ratingCount})
                   </span>
                 ) : (
-                  <span className="text-sm text-ink-400">No ratings yet</span>
+                  <span className="text-body-sm text-[var(--color-content-subtle)]">No ratings yet</span>
                 )}
               </div>
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 gap-3 text-sm">
+          <dl className="grid grid-cols-2 gap-3 text-body-sm">
             <div>
-              <dt className="text-xs text-ink-500">Phone</dt>
-              <dd className="font-medium text-ink-900">{p.phone || 'Not set'}</dd>
+              <dt className="text-caption text-[var(--color-content-muted)]">Phone</dt>
+              <dd className="font-medium text-[var(--color-content)]">{p.phone || 'Not set'}</dd>
             </div>
             <div>
-              <dt className="text-xs text-ink-500">Joined</dt>
-              <dd className="font-medium text-ink-900">{p.joinedAt ? formatDate(p.joinedAt) : '—'}</dd>
+              <dt className="text-caption text-[var(--color-content-muted)]">Joined</dt>
+              <dd className="font-medium text-[var(--color-content)]">{p.joinedAt ? formatDate(p.joinedAt) : '—'}</dd>
             </div>
           </dl>
 
-          <div className="rounded-lg border border-ink-200 px-3 py-2.5 text-sm">
-            <p className="font-medium text-ink-700">Identity verification</p>
-            <p className="mt-0.5 text-ink-500">
+          <div className="rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5 text-body-sm">
+            <p className="font-medium text-[var(--color-content)]">Identity verification</p>
+            <p className="mt-0.5 text-[var(--color-content-muted)]">
               {p.verification === 'verified'
                 ? 'AutoHire has verified this renter’s identity documents.'
                 : p.verification === 'pending'
@@ -91,7 +91,7 @@ export function RequesterModal({
             </p>
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-ink-100 pt-3">
+          <div className="flex justify-end gap-2 border-t border-[var(--color-line)] pt-3">
             <Button variant="outline" onClick={() => onDecide('decline')} disabled={deciding}>
               Decline
             </Button>

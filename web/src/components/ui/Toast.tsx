@@ -25,10 +25,14 @@ export const toast = {
   info: (message: string) => emit('info', message),
 };
 
-const META: Record<ToastKind, { icon: typeof Info; ring: string; text: string }> = {
-  success: { icon: CheckCircle2, ring: 'border-emerald-200', text: 'text-emerald-600' },
-  error: { icon: AlertCircle, ring: 'border-red-200', text: 'text-red-600' },
-  info: { icon: Info, ring: 'border-ink-200', text: 'text-ink-500' },
+// Tone mapping: success -> brand tint (positive and brand share a hue here),
+// error -> danger, info -> info. Each pairs a `-tint` background with the
+// matching `-500` text/icon colour — never the accent, which stays reserved
+// for actionable controls elsewhere on screen.
+const META: Record<ToastKind, { icon: typeof Info; bg: string; text: string }> = {
+  success: { icon: CheckCircle2, bg: 'bg-brand-50 dark:bg-brand-900/30', text: 'text-brand-700 dark:text-brand-300' },
+  error: { icon: AlertCircle, bg: 'bg-[var(--color-danger-tint)]', text: 'text-[var(--color-danger-500)]' },
+  info: { icon: Info, bg: 'bg-[var(--color-info-tint)]', text: 'text-[var(--color-info-500)]' },
 };
 
 export function Toaster() {
@@ -58,16 +62,16 @@ export function Toaster() {
             key={t.id}
             role="status"
             className={cn(
-              'pointer-events-auto flex w-full max-w-sm items-start gap-2.5 rounded-xl border bg-white px-3.5 py-3 shadow-lg',
-              meta.ring,
+              'animate-popover-in pointer-events-auto flex w-full max-w-sm items-start gap-2.5 rounded-[var(--radius-sheet)] px-3.5 py-3 shadow-[var(--shadow-float)]',
+              meta.bg,
             )}
           >
             <Icon size={18} className={cn('mt-0.5 shrink-0', meta.text)} />
-            <p className="flex-1 text-sm text-ink-800">{t.message}</p>
+            <p className={cn('flex-1 text-body-sm', meta.text)}>{t.message}</p>
             <button
               type="button"
               onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}
-              className="shrink-0 rounded-md p-0.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+              className={cn('shrink-0 rounded-[var(--radius-control)] p-0.5 opacity-70 hover:opacity-100', meta.text)}
               aria-label="Dismiss"
             >
               <X size={15} />

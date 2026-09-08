@@ -56,34 +56,31 @@ export function AddToBoardButton({ listingId }: { listingId: string }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        title="Pin to a board"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-50"
-      >
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)} title="Pin to a board">
         <LayoutGrid size={16} />
         <span className="hidden sm:inline">Add to board</span>
-      </button>
+      </Button>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Add to board">
         <div className="flex flex-col gap-3">
           {boardsQuery.isLoading ? (
-            <p className="text-sm text-ink-500">Loading your boards…</p>
+            <p className="text-body-sm text-[var(--color-content-muted)]">Loading your boards…</p>
           ) : (boardsQuery.data ?? []).length === 0 ? (
-            <p className="text-sm text-ink-500">You don't have a board yet — create one below.</p>
+            <p className="text-body-sm text-[var(--color-content-muted)]">
+              You don't have a board yet — create one below.
+            </p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]">
               {(boardsQuery.data ?? []).map((b) => (
                 <button
                   key={b.id}
                   type="button"
                   onClick={() => add.mutate(b.id)}
                   disabled={add.isPending}
-                  className="flex items-center justify-between rounded-lg border border-ink-200 px-3 py-2.5 text-left text-sm hover:bg-ink-50 disabled:opacity-50"
+                  className="flex w-full items-center justify-between border-t border-[var(--color-line)] px-4 py-3.5 text-left text-body-sm transition-colors first:border-t-0 hover:bg-[var(--color-surface-sunken)] disabled:opacity-50"
                 >
-                  <span className="font-medium text-ink-800">{b.title}</span>
-                  <span className="text-ink-400">
+                  <span className="font-medium text-[var(--color-content)]">{b.title}</span>
+                  <span className="tabular text-[var(--color-content-muted)]">
                     {b.itemCount} {b.itemCount === 1 ? 'car' : 'cars'}
                   </span>
                 </button>
@@ -96,7 +93,7 @@ export function AddToBoardButton({ listingId }: { listingId: string }) {
               e.preventDefault();
               if (newTitle.trim()) createAndAdd.mutate();
             }}
-            className="flex items-center gap-2 border-t border-ink-100 pt-3"
+            className="flex items-center gap-2 border-t border-[var(--color-line)] pt-3"
           >
             <Input
               value={newTitle}

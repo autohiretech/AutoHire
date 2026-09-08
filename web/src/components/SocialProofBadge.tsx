@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Users } from 'lucide-react';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { Avatar } from '@/components/ui';
+import { Avatar, Notice } from '@/components/ui';
 
 /** "Sarah" / "Sarah and Dave" / "Sarah, Dave, and 3 others". */
 function namesLine(names: string[]): string {
@@ -21,6 +21,10 @@ function namesLine(names: string[]): string {
  * this exact car — never a claim the renter can't independently verify by
  * looking at who they follow.
  *
+ * Uses `Notice`'s `brand` tone: this is the one legitimate place a full
+ * surface carries the accent colour, because it's a state card (a positive,
+ * rare signal) rather than an ordinary content container.
+ *
  * Renders nothing rather than an empty state: a car with no social proof
  * should look like every other car, not like it's missing something.
  */
@@ -38,17 +42,23 @@ export function SocialProofBadge({ listingId }: { listingId: string }) {
   const names = renters.map((r) => r.fullName);
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
+    <Notice tone="brand" className="items-center">
       <div className="flex -space-x-2">
         {renters.slice(0, 4).map((r) => (
-          <Avatar key={r.id} name={r.fullName} src={r.avatarUrl} size="sm" className="ring-2 ring-brand-50" />
+          <Avatar
+            key={r.id}
+            name={r.fullName}
+            src={r.avatarUrl}
+            size="sm"
+            className="ring-2 ring-brand-50 dark:ring-brand-900/30"
+          />
         ))}
       </div>
-      <p className="text-sm text-brand-800">
+      <p>
         <Users size={14} className="mr-1 inline -mt-0.5" />
         <span className="font-medium">Trusted by your circle</span> — {namesLine(names)}{' '}
         {renters.length === 1 ? 'rented' : 'have rented'} this exact car.
       </p>
-    </div>
+    </Notice>
   );
 }

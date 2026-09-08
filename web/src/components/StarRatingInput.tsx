@@ -27,7 +27,7 @@ export function StarRatingInput({
             size={26}
             className={cn(
               'transition-colors',
-              n <= active ? 'fill-[var(--color-accent-on)] text-[var(--color-accent-on)]' : 'text-ink-300',
+              n <= active ? 'fill-[var(--color-accent-on)] text-[var(--color-accent-on)]' : 'text-[var(--color-line-strong)]',
             )}
           />
         </button>

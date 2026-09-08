@@ -361,7 +361,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
         <div className="flex items-center gap-4">
           <div className="relative">
             <Avatar name={displayName} src={profile.avatarUrl} size="lg" />
-            <label className="absolute -right-1 -bottom-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] text-[var(--color-content-muted)] shadow-sm hover:bg-[var(--color-surface-sunken)]">
+            <label className="absolute -right-1 -bottom-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] text-[var(--color-content-muted)] shadow-[var(--shadow-float)] hover:bg-[var(--color-surface-sunken)]">
               <Camera size={14} />
               <input
                 type="file"

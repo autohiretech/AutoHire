@@ -30,7 +30,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Modal open={open} onClose={onClose} title={title} className="max-w-md">
-      {body && <div className="text-sm text-ink-600">{body}</div>}
+      {body && <div className="text-body-sm text-[var(--color-content-muted)]">{body}</div>}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose} disabled={busy}>
           {cancelLabel}

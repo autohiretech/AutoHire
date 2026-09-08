@@ -17,6 +17,21 @@
       rel="stylesheet"
     />
     <title>AutoHire — Rent a car in Rwanda</title>
+    <!-- Theme stamp. The token layer in index.css follows the OS by default
+         and honours an explicit data-theme="light|dark" on <html> over it.
+         This runs before any CSS paints so there is no flash of the wrong
+         theme. A `?theme=` query wins for one load (previews, screenshots);
+         otherwise a saved preference applies; otherwise nothing is stamped
+         and the OS decides. -->
+    <script>
+      (function () {
+        try {
+          var q = new URLSearchParams(location.search).get('theme');
+          var t = q === 'light' || q === 'dark' ? q : localStorage.getItem('autohire-theme');
+          if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -102,13 +102,13 @@ export function DateRangeCalendar({
   const todayIso = iso(new Date());
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-white p-4 shadow-sm sm:p-5">
+    <div className="rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 sm:p-5">
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
           onClick={() => canGoBack && setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
           disabled={!canGoBack}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 text-ink-700 transition-colors hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-pill)] border border-[var(--color-line)] text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)] disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Previous month"
         >
           <ChevronLeft size={18} />
@@ -116,7 +116,7 @@ export function DateRangeCalendar({
         <button
           type="button"
           onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 text-ink-700 transition-colors hover:bg-ink-100"
+          className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-pill)] border border-[var(--color-line)] text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)]"
           aria-label="Next month"
         >
           <ChevronRight size={18} />
@@ -129,10 +129,10 @@ export function DateRangeCalendar({
           const cells = monthCells(month.getFullYear(), month.getMonth());
           return (
             <div key={m} className={cn(m > 0 && 'hidden sm:block')}>
-              <p className="mb-2.5 text-center text-sm font-semibold text-ink-900">
+              <p className="mb-2.5 text-center text-body-sm font-semibold text-[var(--color-content)]">
                 {MONTH_NAMES[month.getMonth()]} {month.getFullYear()}
               </p>
-              <div className="grid grid-cols-7 border-b border-ink-100 pb-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+              <div className="grid grid-cols-7 border-b border-[var(--color-line)] pb-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-[var(--color-content-muted)]">
                 {DAY_LABELS.map((d, i) => (
                   <span key={i} className="py-1">
                     {d}
@@ -157,16 +157,25 @@ export function DateRangeCalendar({
                         onClick={() => pick(day)}
                         title={disabled ? 'Not available' : undefined}
                         className={cn(
-                          'relative flex h-9 w-9 items-center justify-center text-sm font-medium transition-colors sm:h-10 sm:w-10',
-                          !inRange && 'rounded-full',
-                          disabled && 'cursor-not-allowed bg-ink-100 text-ink-400 line-through',
+                          'tabular relative flex h-9 w-9 items-center justify-center text-body-sm font-medium transition-colors sm:h-10 sm:w-10',
+                          !inRange && 'rounded-[var(--radius-pill)]',
+                          disabled &&
+                            'cursor-not-allowed bg-[var(--color-surface-sunken)] text-[var(--color-content-subtle)] line-through',
+                          // Between the two endpoints: a sunken well, not a
+                          // tint of the accent — the accent is spent on the
+                          // two edges that were actually clicked.
                           !disabled &&
                             !selectedEdge &&
                             !inRange &&
-                            'text-ink-800 hover:bg-brand-50 hover:text-brand-700',
-                          inRange && 'bg-brand-50 text-brand-700',
-                          selectedEdge && 'bg-brand-600 font-semibold text-white shadow-sm',
-                          isToday && !selectedEdge && 'ring-1 ring-inset ring-brand-400',
+                            'text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]',
+                          inRange && 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]',
+                          // Selected endpoints invert to the solid surface —
+                          // fill+weight, not hue, matching Chip's selected state.
+                          selectedEdge &&
+                            'bg-[var(--color-surface-inverse)] font-semibold text-[var(--color-content-inverse)]',
+                          // Today is a ring, never a fill — a fill here would
+                          // read as a second selection alongside the range.
+                          isToday && !selectedEdge && 'ring-1 ring-inset ring-[var(--color-accent-on)]',
                         )}
                       >
                         {Number(day.slice(8))}
@@ -180,15 +189,18 @@ export function DateRangeCalendar({
         })}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-ink-100 pt-3 text-xs text-ink-500">
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--color-line)] pt-3 text-caption text-[var(--color-content-muted)]">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-brand-600" /> {single ? 'Selected' : 'Selected dates'}
+          <span className="h-2.5 w-2.5 rounded-[var(--radius-pill)] bg-[var(--color-surface-inverse)]" />{' '}
+          {single ? 'Selected' : 'Selected dates'}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full ring-1 ring-inset ring-brand-400" /> Today
+          <span className="h-2.5 w-2.5 rounded-[var(--radius-pill)] ring-1 ring-inset ring-[var(--color-accent-on)]" />{' '}
+          Today
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-ink-100 ring-1 ring-inset ring-ink-300" /> Unavailable
+          <span className="h-2.5 w-2.5 rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] ring-1 ring-inset ring-[var(--color-line-strong)]" />{' '}
+          Unavailable
         </span>
       </div>
     </div>

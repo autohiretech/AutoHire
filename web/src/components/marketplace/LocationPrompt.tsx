@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MapPin, X } from 'lucide-react';
 import { useCountry } from '@/lib/country';
-import { toast } from '@/components/ui';
+import { toast, Notice, Button } from '@/components/ui';
 
 const DISMISS_KEY = 'autohire.locationPrompted';
 
@@ -70,29 +70,47 @@ export function LocationPrompt() {
   if (!show) return null;
 
   return (
-    <div className="border-b border-brand-100 bg-brand-50">
-      <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-2.5 text-sm">
-        <MapPin size={16} className="shrink-0 text-brand-600" />
-        <p className="flex-1 text-ink-700">
-          Share your location so we show cars near you with prices in your currency. You're
-          browsing <span className="font-medium text-ink-900">{country.name}</span> now.
-        </p>
-        <button
-          type="button"
-          onClick={detect}
-          disabled={busy}
-          className="shrink-0 rounded-full bg-brand-600 px-3.5 py-1.5 font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-70"
+    // Info tone (Notice), not a green-tinted bar — this is a prompt/
+    // opportunity, not the page's action, so "Use my location" is an
+    // `outline` button rather than the accent. Edge-to-edge and squared off
+    // (no card radius) since this sits as a full-width strip under the
+    // header, not a floating card.
+    //
+    // Stacked on mobile: at 390px a row squeezed the copy into a ~110px
+    // column that wrapped to seven lines. Below `sm:` it's text, then the
+    // button full-width, then the dismiss X on its own trailing row.
+    <div className="border-b border-[var(--color-line)]">
+      <div className="mx-auto max-w-[1500px] px-4 py-2.5">
+        <Notice
+          tone="info"
+          className="items-start rounded-none p-0 sm:items-center"
         >
-          {busy ? 'Detecting…' : 'Use my location'}
-        </button>
-        <button
-          type="button"
-          onClick={done}
-          aria-label="Dismiss"
-          className="shrink-0 rounded-full p-1.5 text-ink-400 transition-colors hover:bg-brand-100 hover:text-ink-700"
-        >
-          <X size={16} />
-        </button>
+          <MapPin size={16} className="mt-0.5 shrink-0 text-[var(--color-info-500)] sm:mt-0" />
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <p className="flex-1 text-[var(--color-content-muted)]">
+              Share your location so we show cars near you with prices in your currency. You're
+              browsing <span className="font-medium text-[var(--color-content)]">{country.name}</span> now.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={detect}
+              disabled={busy}
+              className="w-full sm:w-auto"
+            >
+              {busy ? 'Detecting…' : 'Use my location'}
+            </Button>
+          </div>
+          <button
+            type="button"
+            onClick={done}
+            aria-label="Dismiss"
+            className="shrink-0 self-start rounded-[var(--radius-pill)] p-1.5 text-[var(--color-content-subtle)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content)] sm:self-center"
+          >
+            <X size={16} />
+          </button>
+        </Notice>
       </div>
     </div>
   );

@@ -41,8 +41,11 @@ export function BoardDetailPage() {
   if (!board) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-ink-900">Board not found</p>
-        <Link to="/circles" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+        <p className="font-medium text-[var(--color-content)]">Board not found</p>
+        <Link
+          to="/circles"
+          className="mt-3 inline-block text-body-sm text-[var(--color-accent-on)] hover:underline"
+        >
           Back to circles
         </Link>
       </div>
@@ -55,14 +58,14 @@ export function BoardDetailPage() {
     <section className="mx-auto max-w-5xl px-4 py-6">
       <Link
         to={board.circleId ? `/circles/${board.circleId}` : '/circles'}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-800"
+        className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-ink-900">{board.title}</h1>
-        <p className="mt-1 text-sm text-ink-500">
+        <h1 className="text-h2 text-[var(--color-content)]">{board.title}</h1>
+        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           {items.length} {items.length === 1 ? 'car' : 'cars'} pinned
         </p>
       </div>
@@ -74,12 +77,13 @@ export function BoardDetailPage() {
       ) : items.length === 0 ? (
         <Card>
           <CardBody className="flex flex-col items-center gap-3 py-16 text-center">
-            <LayoutGrid size={32} className="text-ink-300" />
+            <LayoutGrid size={32} className="text-[var(--color-content-subtle)]" />
             <div>
-              <p className="font-medium text-ink-900">Nothing pinned yet</p>
-              <p className="mt-1 text-sm text-ink-500">
-                Open a car and use <span className="font-medium text-ink-700">Add to board</span> to
-                bring it here.
+              <p className="font-medium text-[var(--color-content)]">Nothing pinned yet</p>
+              <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
+                Open a car and use{' '}
+                <span className="font-medium text-[var(--color-content)]">Add to board</span> to bring
+                it here.
               </p>
             </div>
           </CardBody>
@@ -90,11 +94,16 @@ export function BoardDetailPage() {
             <div key={item.listing.id} className="flex flex-col gap-2">
               <ListingCard listing={item.listing} />
               <div className="flex items-center justify-between gap-2 px-1">
-                <div className="flex min-w-0 items-center gap-1.5 text-xs text-ink-500">
-                  <Avatar name={item.addedBy.fullName} src={item.addedBy.avatarUrl} size="sm" className="h-5 w-5" />
+                <div className="flex min-w-0 items-center gap-1.5 text-caption text-[var(--color-content-muted)]">
+                  <Avatar
+                    name={item.addedBy.fullName}
+                    src={item.addedBy.avatarUrl}
+                    size="sm"
+                    className="h-5 w-5"
+                  />
                   <span className="truncate">{item.addedBy.fullName.split(' ')[0]}</span>
                   {item.targetStart && (
-                    <span className="flex items-center gap-1 text-ink-400">
+                    <span className="tabular flex items-center gap-1 text-[var(--color-content-subtle)]">
                       <Calendar size={12} /> {formatDate(item.targetStart)}
                     </span>
                   )}
@@ -103,12 +112,14 @@ export function BoardDetailPage() {
                   type="button"
                   onClick={() => remove.mutate(item.listing.id)}
                   disabled={remove.isPending}
-                  className="shrink-0 text-sm font-medium text-ink-500 hover:text-ink-800 disabled:opacity-50"
+                  className="shrink-0 text-body-sm font-medium text-[var(--color-content-muted)] hover:text-[var(--color-content)] disabled:opacity-50"
                 >
                   Remove
                 </button>
               </div>
-              {item.note && <p className="px-1 text-sm text-ink-600">"{item.note}"</p>}
+              {item.note && (
+                <p className="px-1 text-body-sm text-[var(--color-content-muted)]">"{item.note}"</p>
+              )}
             </div>
           ))}
         </div>

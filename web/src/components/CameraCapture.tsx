@@ -84,15 +84,15 @@ export function CameraCapture({
     <Modal open={open} onClose={onClose} title="Take a photo">
       <div className="space-y-3">
         {error ? (
-          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div className="flex items-start gap-2 rounded-[var(--radius-control)] bg-[var(--color-danger-tint)] p-3 text-body-sm text-[var(--color-danger-500)]">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
         ) : (
-          <div className="relative aspect-video overflow-hidden rounded-lg bg-ink-900">
+          <div className="relative aspect-video overflow-hidden rounded-[var(--radius-control)] bg-black">
             <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
             {!ready && (
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
+              <div className="absolute inset-0 flex items-center justify-center text-body-sm text-white/70">
                 Starting camera…
               </div>
             )}

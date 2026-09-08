@@ -36,8 +36,10 @@ export function FeedPage() {
   return (
     <section className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-ink-900">Feed</h1>
-        <p className="mt-1 text-sm text-ink-500">Trips people you follow or share a circle with actually took.</p>
+        <h1 className="text-h2 text-[var(--color-content)]">Feed</h1>
+        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
+          Trips people you follow or share a circle with actually took.
+        </p>
       </div>
 
       {feedQuery.isLoading ? (
@@ -47,10 +49,10 @@ export function FeedPage() {
       ) : items.length === 0 ? (
         <Card>
           <CardBody className="flex flex-col items-center gap-3 py-16 text-center">
-            <Rss size={32} className="text-ink-300" />
+            <Rss size={32} className="text-[var(--color-content-subtle)]" />
             <div>
-              <p className="font-medium text-ink-900">Nothing here yet</p>
-              <p className="mt-1 text-sm text-ink-500">
+              <p className="font-medium text-[var(--color-content)]">Nothing here yet</p>
+              <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
                 Follow a host or join a circle, and their trips will show up here.
               </p>
             </div>
@@ -81,20 +83,20 @@ function TripPostCard({ post }: { post: Extract<FeedItem, { kind: 'trip' }> }) {
         <div className="flex items-center gap-3">
           <Avatar name={post.author.fullName} src={post.author.avatarUrl} size="md" />
           <div className="min-w-0">
-            <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-ink-900">
+            <p className="flex flex-wrap items-center gap-1.5 text-body-sm font-semibold text-[var(--color-content)]">
               {post.author.fullName}
               {post.isDemo && <Badge tone="neutral">Sample</Badge>}
             </p>
-            <p className="flex items-center gap-1 text-xs text-ink-400">
+            <p className="flex items-center gap-1 text-caption text-[var(--color-content-subtle)]">
               {formatDate(post.createdAt)}
               <span>·</span>
               <VisIcon size={11} />
               {post.city && <span>· {post.city}</span>}
             </p>
             {post.authorPreferredCategories && post.authorPreferredCategories.length > 0 && (
-              <p className="mt-0.5 text-xs text-ink-500">
+              <p className="mt-0.5 text-caption text-[var(--color-content-muted)]">
                 Usually books:{' '}
-                <span className="font-medium text-ink-700">
+                <span className="font-medium text-[var(--color-content)]">
                   {post.authorPreferredCategories.map((c) => CATEGORY_LABEL[c] ?? c).join(' · ')}
                 </span>
               </p>
@@ -102,13 +104,18 @@ function TripPostCard({ post }: { post: Extract<FeedItem, { kind: 'trip' }> }) {
           </div>
         </div>
 
-        {post.body && <p className="text-sm text-ink-700">{post.body}</p>}
+        {post.body && <p className="text-body-sm text-[var(--color-content)]">{post.body}</p>}
 
         {/* The experience — this is the card's hero image, not a car shot. */}
         {post.photos.length > 0 && (
           <div className={post.photos.length > 1 ? 'grid grid-cols-2 gap-1.5' : ''}>
             {post.photos.slice(0, 4).map((url, i) => (
-              <Img key={i} src={url} alt="" className="h-48 w-full rounded-lg object-cover" />
+              <Img
+                key={i}
+                src={url}
+                alt=""
+                className="h-48 w-full rounded-[var(--radius-card)] object-cover"
+              />
             ))}
           </div>
         )}
@@ -118,7 +125,7 @@ function TripPostCard({ post }: { post: Extract<FeedItem, { kind: 'trip' }> }) {
         {post.listing && (
           <Link
             to={`/cars/${post.listing.id}`}
-            className="flex items-center gap-1.5 text-xs font-medium text-ink-500 hover:text-brand-700"
+            className="flex items-center gap-1.5 text-caption font-medium text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
           >
             <Car size={13} /> {post.listing.title}
             <ChevronRight size={13} />
@@ -129,32 +136,39 @@ function TripPostCard({ post }: { post: Extract<FeedItem, { kind: 'trip' }> }) {
   );
 }
 
-/** No visibility icon, no "verified" styling — this is a host talking, not a checked trip. */
+/** No visibility icon, no "verified" styling — this is a host talking, not a
+    checked trip. Told apart from a trip post with a plain "Update" badge and
+    a megaphone glyph, not a full-card tint — that tint is reserved for a
+    state (a warning, a failure), and a broadcast isn't one. */
 function BroadcastCard({ broadcast }: { broadcast: Extract<FeedItem, { kind: 'broadcast' }> }) {
   return (
-    <Card className="border-[var(--color-warn-500)]/25 bg-[var(--color-warn-tint)]">
+    <Card>
       <CardBody className="space-y-3">
         <div className="flex items-center gap-2.5">
           <Avatar name={broadcast.host.fullName} src={broadcast.host.avatarUrl} size="sm" />
-          <div>
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-ink-900">
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1.5 text-body-sm font-semibold text-[var(--color-content)]">
               {broadcast.host.businessName ?? broadcast.host.fullName}
-              <Megaphone size={13} className="text-[var(--color-warn-500)]" />
             </p>
-            <p className="text-xs text-ink-400">{formatDate(broadcast.createdAt)}</p>
+            <p className="text-caption text-[var(--color-content-subtle)]">
+              {formatDate(broadcast.createdAt)}
+            </p>
           </div>
+          <Badge tone="neutral">
+            <Megaphone size={11} /> Update
+          </Badge>
         </div>
 
-        <p className="text-sm text-ink-700">{broadcast.body}</p>
+        <p className="text-body-sm text-[var(--color-content)]">{broadcast.body}</p>
 
         {broadcast.listing && (
-          <div className="flex items-center gap-3 rounded-lg border border-ink-200 bg-white p-2">
+          <div className="flex items-center gap-3 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] p-2">
             <Img
               src={broadcast.listing.photos[0]}
               alt={broadcast.listing.title}
-              className="h-14 w-20 shrink-0 rounded-md object-cover"
+              className="h-14 w-20 shrink-0 rounded-[var(--radius-control)] object-cover"
             />
-            <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink-800">
+            <p className="min-w-0 flex-1 truncate text-body-sm font-medium text-[var(--color-content)]">
               {broadcast.listing.title}
             </p>
             <Link to={`/cars/${broadcast.listing.id}`} className="shrink-0">

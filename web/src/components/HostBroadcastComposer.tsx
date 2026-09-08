@@ -32,8 +32,8 @@ export function HostBroadcastComposer() {
   return (
     <Card className="mt-5">
       <CardHeader>
-        <h2 className="flex items-center gap-1.5 font-semibold text-ink-900">
-          <Megaphone size={16} className="text-[var(--color-warn-500)]" /> Post an update
+        <h2 className="flex items-center gap-1.5 font-semibold text-[var(--color-content)]">
+          <Megaphone size={16} className="text-[var(--color-content-muted)]" /> Post an update
         </h2>
       </CardHeader>
       <CardBody>
@@ -49,7 +49,7 @@ export function HostBroadcastComposer() {
             onChange={(e) => setBody(e.target.value)}
             rows={2}
             placeholder="New car added, a seasonal discount, anything your followers should know…"
-            className="w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+            className="w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3 py-2 text-body-sm text-[var(--color-content)] placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] focus:outline-none"
           />
           <div className="flex flex-wrap items-center gap-2">
             <Select

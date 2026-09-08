@@ -180,7 +180,7 @@ export function HomePage() {
           the category chips and the first rail without scrolling past a giant
           panel. The photo is the top-rated car in this market, so the colour
           comes from real inventory rather than a tinted green panel. */}
-      <section className="relative overflow-hidden bg-[var(--color-surface-inverse)]">
+      <section className="relative overflow-hidden overflow-x-clip bg-[var(--color-surface-inverse)]">
         {heroPhoto && (
           <Img
             src={heroPhoto}
@@ -228,7 +228,7 @@ export function HomePage() {
           <div className="relative mt-4 w-full max-w-2xl">
             <div
               aria-hidden
-              className="animate-ai-glow absolute -inset-1.5 rounded-full bg-gradient-to-r from-brand-400 via-emerald-400 to-brand-500 opacity-40 blur-lg"
+              className="animate-ai-glow absolute -inset-1.5 rounded-full bg-gradient-to-r from-brand-400 via-brand-200 to-brand-500 opacity-40 blur-lg"
             />
             <button
               type="button"
@@ -246,7 +246,7 @@ export function HomePage() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-            <Badge tone="brand">
+            <Badge tone="overlay">
               <Leaf size={12} /> 90% electric, hybrid &amp; ecological
             </Badge>
             <span className="flex items-center gap-1 text-caption text-white/80">

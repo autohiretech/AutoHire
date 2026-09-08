@@ -33,7 +33,7 @@ function priceIcon(label: string, active: boolean): L.DivIcon {
     className: '',
     html: `<div class="${
       cn(
-        'whitespace-nowrap rounded-[var(--radius-pill)] border px-2.5 py-1 text-xs font-semibold shadow-md transition-colors',
+        'whitespace-nowrap rounded-[var(--radius-pill)] border px-2.5 py-1 text-caption font-semibold shadow-[var(--shadow-float)] transition-colors',
         active
           ? 'border-[var(--color-accent-on)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]'
           : 'border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] text-[var(--color-content)] hover:border-[var(--color-accent-on)]',
@@ -62,7 +62,7 @@ function photoIcon(photoUrl: string): L.DivIcon {
   const resolved = resolvePhoto(photoUrl);
   return L.divIcon({
     className: '',
-    html: `<div style="width:${width}px;height:${height}px" class="overflow-hidden rounded-[var(--radius-card)] border-[3px] border-[var(--color-accent-on)] bg-[var(--color-surface-raised)] shadow-lg ring-2 ring-[var(--color-surface-raised)]"><img src="${resolved}" class="h-full w-full object-cover" /></div>`,
+    html: `<div style="width:${width}px;height:${height}px" class="overflow-hidden rounded-[var(--radius-card)] border-[3px] border-[var(--color-accent-on)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)] ring-2 ring-[var(--color-surface-raised)]"><img src="${resolved}" class="h-full w-full object-cover" /></div>`,
     iconSize: [width, height],
     iconAnchor: [width / 2, height / 2],
   });
@@ -75,7 +75,7 @@ function clusterIcon(count: number): L.DivIcon {
   const size = count < 10 ? 34 : count < 100 ? 40 : 46;
   return L.divIcon({
     className: '',
-    html: `<div class="flex items-center justify-center rounded-full border-2 border-[var(--color-surface-raised)] bg-[var(--color-accent-on)] font-bold text-[var(--color-accent-contrast)] shadow-lg" style="width:${size}px;height:${size}px;font-size:${count < 100 ? 13 : 11}px">${count}</div>`,
+    html: `<div class="flex items-center justify-center rounded-[var(--radius-pill)] border-2 border-[var(--color-surface-raised)] bg-[var(--color-accent-on)] font-bold text-[var(--color-accent-contrast)] shadow-[var(--shadow-float)]" style="width:${size}px;height:${size}px;font-size:${count < 100 ? 13 : 11}px">${count}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -248,9 +248,9 @@ function ClusteredMarkers({
             direction="top"
             offset={[0, -24]}
             opacity={1}
-            className="!rounded-xl !border-0 !bg-transparent !p-0 !shadow-none"
+            className="![border-radius:var(--radius-card)] !border-0 !bg-transparent !p-0 !shadow-none"
           >
-            <div className="w-48 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-lg">
+            <div className="w-48 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
               <Img
                 src={listing.photos[0]}
                 alt={listing.title}

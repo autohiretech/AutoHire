@@ -24,7 +24,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div
-        className="absolute inset-0 bg-ink-900/50"
+        className="animate-overlay-in absolute inset-0 bg-black/50"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -32,16 +32,16 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-10 w-full max-w-lg rounded-t-2xl bg-white shadow-xl sm:rounded-2xl',
+          'animate-sheet-in relative z-10 w-full max-w-lg rounded-t-[var(--radius-sheet)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-sheet)] sm:animate-popover-in sm:rounded-[var(--radius-sheet)] sm:shadow-[var(--shadow-float)]',
           className,
         )}
       >
         {title && (
-          <div className="flex items-center justify-between border-b border-ink-100 px-5 py-3.5">
-            <h2 className="text-base font-semibold text-ink-900">{title}</h2>
+          <div className="flex items-center justify-between border-b border-[var(--color-line)] px-5 py-3.5">
+            <h2 className="text-h4 text-[var(--color-content)]">{title}</h2>
             <button
               onClick={onClose}
-              className="rounded-md p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+              className="rounded-[var(--radius-control)] p-1 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content)]"
               aria-label="Close"
             >
               <X size={18} />
