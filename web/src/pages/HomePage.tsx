@@ -230,7 +230,17 @@ export function HomePage() {
           the category chips and the first rail without scrolling past a giant
           panel. The photo is the top-rated car in this market, so the colour
           comes from real inventory rather than a tinted green panel. */}
-      <section className="relative overflow-hidden overflow-x-clip bg-[var(--color-surface-inverse)]">
+      {/* Clips sideways only. `overflow-hidden` here was cutting the search
+          bar's own popovers off at the hero's bottom edge — the location
+          suggestions and the date calendar are taller than the band they
+          drop out of, so the renter saw a panel guillotined mid-list with
+          the actual results below the cut. `overflow-x: clip` keeps the
+          no-sideways-scroll guarantee on phones without that cost:
+          unlike `hidden`, it does not force the other axis into a
+          clipping box, so `overflow-y: visible` is genuinely honoured.
+          The photo below needs no vertical clipping of its own — it is
+          `absolute inset-0`, already bounded by this section's box. */}
+      <section className="relative overflow-x-clip overflow-y-visible bg-[var(--color-surface-inverse)]">
         {heroPhoto && (
           <Img
             src={heroPhoto}

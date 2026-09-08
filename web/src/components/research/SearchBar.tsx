@@ -1,8 +1,25 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { ChevronDown, Globe, MapPin, Navigation, Search, Sparkles } from 'lucide-react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
+import {
+  BedDouble,
+  Building2,
+  ChevronDown,
+  Clock,
+  Globe,
+  MapPin,
+  Navigation,
+  Plane,
+  Search,
+  Sparkles,
+  TrainFront,
+} from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Button, Spinner } from '@/components/ui';
-import { useAddressSuggestions, reverseGeocode, type AddressSuggestion } from '@/lib/geocoding';
+import {
+  useAddressSuggestions,
+  reverseGeocode,
+  type AddressSuggestion,
+  type PlaceKind,
+} from '@/lib/geocoding';
 import { useMyLocation } from '@/lib/useMyLocation';
 import { useCountry } from '@/lib/country';
 import { matchKnownCity } from '@/lib/cities';
@@ -124,6 +141,85 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
  * (there is no reverse-geocoded place name for that case in this app). */
 function shortLocationLabel(label: string): string {
   return label.startsWith('Current location') ? 'your location' : label.split(',')[0].trim();
+}
+
+const KIND_ICONS: Record<PlaceKind, typeof MapPin> = {
+  airport: Plane,
+  hotel: BedDouble,
+  transit: TrainFront,
+  city: Building2,
+  place: MapPin,
+};
+
+/** "Add dates" is the label this bar wants, but on a phone the From/Until
+ * segments are ~70px of text width and it truncates to "Add d…". The caption
+ * directly above already says which end of the range this is, so the narrow
+ * form drops the verb rather than clipping the noun. Two spans, because CSS
+ * can swap visibility per container width and cannot swap text. */
+function EmptyDateLabel() {
+  return (
+    <>
+      <span className="@md:hidden">Dates</span>
+      <span className="hidden @md:inline">Add dates</span>
+    </>
+  );
+}
+
+/**
+ * One row of the location picker.
+ *
+ * The icon sits in a filled circular badge rather than floating naked beside
+ * the text: at eight rows the badges form a single scannable column down the
+ * left edge, which is what makes a list this long readable at a glance
+ * instead of a wall of similar strings. It uses the same `surface-inverse`
+ * fill every selected Chip and secondary Button in this app uses, so it
+ * costs no new colour.
+ *
+ * Two lines, not one clamped to two: a Nominatim `display_name` is a full
+ * comma-separated address, and clamping it buries the part that identifies
+ * the place ("Kigali International Airport") in the middle of the part that
+ * merely locates it. Split at the first comma and the name leads.
+ */
+function PickerRow({
+  icon: Icon,
+  title,
+  subtitle,
+  onClick,
+  disabled,
+}: {
+  icon: typeof MapPin;
+  title: ReactNode;
+  subtitle?: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-3 rounded-[var(--radius-control)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]">
+        <Icon size={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-body-sm font-medium text-[var(--color-content)]">{title}</span>
+        {subtitle && (
+          <span className="block truncate text-caption text-[var(--color-content-subtle)]">{subtitle}</span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+/** "Kigali International Airport, KK 147 Street, Kanombe, …" reads as a name
+ * plus where it is — so lead with the name and demote the rest. */
+function splitAddress(label: string): { name: string; context?: string } {
+  const i = label.indexOf(',');
+  if (i === -1) return { name: label };
+  return { name: label.slice(0, i).trim(), context: label.slice(i + 1).trim() };
 }
 
 function TimeSelect({
@@ -436,9 +532,25 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
           </button>
         </div>
       ) : (
-      <div className="flex flex-col divide-y divide-[var(--color-line)] overflow-visible rounded-[var(--radius-sheet)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)] @md:flex-row @md:items-stretch @md:divide-y-0 @md:divide-x @md:rounded-[var(--radius-pill)]">
+      /* One row, every width — the same Where / From / Until / go layout on a
+         phone as on a desktop, not a separate stacked mobile variant.
+         Stacked four deep this bar ate 281px of a 459px hero at 390px, which
+         is most of what a renter sees before scrolling; as one row it costs
+         about a fifth of that. Everything that makes a single row fit on a
+         narrow screen is a width concession, never a structural one: each
+         segment is `min-w-0` so its text truncates instead of forcing the row
+         wider than the screen, padding tightens, and the two extras that need
+         room they don't have on a phone — the inline time selects and the
+         locate button — wait for a container wide enough to hold them. Both
+         remain reachable: "Current location" is the first row of the picker,
+         and pickup time never filtered anything (there is no time-of-day
+         field to filter on). */
+      <div className="flex flex-nowrap items-stretch overflow-visible rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
         {/* Where */}
-        <div ref={locationBoxRef} className="relative flex min-w-0 flex-1 flex-col gap-0.5 px-4 py-2 @md:py-1.5">
+        <div
+          ref={locationBoxRef}
+          className="relative flex min-w-0 flex-1 flex-col gap-0.5 border-r border-[var(--color-line)] px-3 py-1.5 @md:px-4"
+        >
           <span className="text-caption font-semibold text-[var(--color-content-muted)]">Where</span>
           <div className="flex items-center gap-2">
             <input
@@ -446,17 +558,17 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               onChange={(e) => onLocationTextChange(e.target.value)}
               onFocus={() => setSuggestOpen(true)}
               onKeyDown={(e) => e.key === 'Escape' && setSuggestOpen(false)}
-              placeholder="Airport, hotel, address, city"
+              placeholder="City, airport, address"
               aria-label="Pickup location"
               disabled={disabled}
-              className="min-w-0 flex-1 bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
+              className="min-w-0 flex-1 truncate bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
             />
             <button
               type="button"
               onClick={useCurrentLocationClick}
               disabled={disabled || busyLocating}
               aria-label="Use my current location"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-pill)] text-[var(--color-accent-on)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
+              className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-pill)] text-[var(--color-accent-on)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60 @md:flex"
             >
               {busyLocating ? <Spinner size={14} /> : <Navigation size={15} />}
             </button>
@@ -468,65 +580,56 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
             // a wide screen reads as an unfinished sliver next to the rest of
             // the hero — a proper panel, like Turo's own, needs real width of
             // its own rather than borrowing whatever one field happens to be.
-            <div className="absolute left-0 top-[calc(100%+6px)] z-[1100] max-h-72 w-full animate-popover-in overflow-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)] @md:w-[380px]">
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
+            <div className="absolute left-0 top-[calc(100%+8px)] z-[1100] max-h-[min(70vh,26rem)] w-full animate-popover-in overflow-y-auto overscroll-contain rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-float)] @md:w-[420px]">
+              <PickerRow
+                icon={Navigation}
+                title={busyLocating ? 'Finding you…' : 'Current location'}
                 onClick={useCurrentLocationClick}
                 disabled={disabled || busyLocating}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-body-sm text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
-              >
-                <Navigation className="h-4 w-4 shrink-0 text-[var(--color-accent-on)]" />
-                {busyLocating ? 'Finding you…' : 'Current location'}
-              </button>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
+              />
+              <PickerRow
+                icon={Globe}
+                title="Anywhere"
+                subtitle="Browse all cars"
                 onClick={pickAnywhere}
-                className="flex w-full items-center gap-2 border-t border-[var(--color-line)] px-3 py-2 text-left text-body-sm text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]"
-              >
-                <Globe className="h-4 w-4 shrink-0 text-[var(--color-content-subtle)]" />
-                Anywhere — Browse all cars
-              </button>
+              />
 
-              {showRecents &&
-                recents.map((r, i) => (
-                  <button
-                    key={`${r.label}-${i}`}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => pickRecent(r)}
-                    className="flex w-full items-start gap-2 border-t border-[var(--color-line)] px-3 py-2 text-left text-body-sm text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]"
-                  >
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-content-subtle)]" />
-                    <span className="min-w-0 flex-1">
-                      <span className="line-clamp-1">{r.label}</span>
-                      {r.dateLabel && (
-                        <span className="block text-caption text-[var(--color-content-subtle)]">{r.dateLabel}</span>
-                      )}
-                    </span>
-                  </button>
-                ))}
+              {showRecents && (
+                <>
+                  {/* A hairline between the two standing actions and the
+                      renter's own history — the only divider in the panel,
+                      because it's the only place the rows stop meaning the
+                      same kind of thing. */}
+                  <div className="my-1.5 border-t border-[var(--color-line)]" />
+                  {recents.map((r, i) => (
+                    <PickerRow
+                      key={`${r.label}-${i}`}
+                      icon={Clock}
+                      title={splitAddress(r.label).name}
+                      subtitle={r.dateLabel ?? splitAddress(r.label).context}
+                      onClick={() => pickRecent(r)}
+                    />
+                  ))}
+                </>
+              )}
 
               {searching && (
-                <div className="border-t border-[var(--color-line)] px-3 py-2 text-caption text-[var(--color-content-subtle)]">
-                  Searching…
-                </div>
+                <p className="px-2.5 py-2 text-caption text-[var(--color-content-subtle)]">Searching…</p>
               )}
-              {suggestions.map((s, i) => (
-                <button
-                  key={`${s.lat},${s.lng},${i}`}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => pickSuggestion(s)}
-                  className="flex w-full items-start gap-2 border-t border-[var(--color-line)] px-3 py-2 text-left text-body-sm text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]"
-                >
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-content-subtle)]" />
-                  <span className="line-clamp-2">{s.label}</span>
-                </button>
-              ))}
+              {suggestions.map((s, i) => {
+                const { name, context } = splitAddress(s.label);
+                return (
+                  <PickerRow
+                    key={`${s.lat},${s.lng},${i}`}
+                    icon={KIND_ICONS[s.kind]}
+                    title={name}
+                    subtitle={context}
+                    onClick={() => pickSuggestion(s)}
+                  />
+                );
+              })}
               {suggestions.length > 0 && (
-                <p className="border-t border-[var(--color-line)] px-3 py-1.5 text-caption text-[var(--color-content-subtle)]">
+                <p className="px-2.5 pt-2 pb-1 text-center text-caption text-[var(--color-content-subtle)]">
                   Powered by OpenStreetMap
                 </p>
               )}
@@ -537,9 +640,9 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
         {/* From + Until — two triggers, one shared calendar popover */}
         <div
           ref={datesBoxRef}
-          className="relative flex min-w-0 flex-col divide-y divide-[var(--color-line)] @md:flex-[1.6] @md:flex-row @md:divide-y-0 @md:divide-x"
+          className="relative flex min-w-0 flex-[1.1] flex-row divide-x divide-[var(--color-line)] @md:flex-[1.6]"
         >
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-4 py-2 @md:py-1.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 @md:px-4">
             <span className="text-caption font-semibold text-[var(--color-content-muted)]">From</span>
             <div className="flex items-center gap-1.5">
               <button
@@ -547,24 +650,28 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
                 onClick={() => setDatesOpen((v) => !v)}
                 disabled={disabled}
                 className={cn(
-                  'shrink-0 whitespace-nowrap text-body-sm font-medium',
+                  // Truncates on a phone, where the row genuinely has no room; holds its
+                  // full width once the time select appears beside it, since that
+                  // select is `shrink-0` and would otherwise push the whole
+                  // shortfall onto this label — "Add dates" clipped to "Add …".
+                  'min-w-0 truncate text-left text-body-sm font-medium @xl:min-w-max',
                   fromLabel ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
                 )}
               >
-                {fromLabel ?? 'Add dates'}
+                {fromLabel ?? <EmptyDateLabel />}
               </button>
               {/* The pickup-time select is a nice-to-have that only earns
                   its width once there's real room for it — in the /ai
                   dock's own narrower dock it would otherwise squeeze "Add
                   dates" itself down to nothing. */}
-              <span className="flex items-center gap-1.5 @md:hidden @xl:flex">
+              <span className="hidden items-center gap-1.5 @xl:flex">
                 <span className="h-3.5 w-px shrink-0 bg-[var(--color-line)]" />
                 <TimeSelect value={pickupTime} onChange={setPickupTime} placeholder="Add time" disabled={disabled} />
               </span>
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-4 py-2 @md:py-1.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 @md:px-4">
             <span className="text-caption font-semibold text-[var(--color-content-muted)]">Until</span>
             <div className="flex items-center gap-1.5">
               <button
@@ -572,13 +679,17 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
                 onClick={() => setDatesOpen((v) => !v)}
                 disabled={disabled}
                 className={cn(
-                  'shrink-0 whitespace-nowrap text-body-sm font-medium',
+                  // Truncates on a phone, where the row genuinely has no room; holds its
+                  // full width once the time select appears beside it, since that
+                  // select is `shrink-0` and would otherwise push the whole
+                  // shortfall onto this label — "Add dates" clipped to "Add …".
+                  'min-w-0 truncate text-left text-body-sm font-medium @xl:min-w-max',
                   untilLabel ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
                 )}
               >
-                {untilLabel ?? 'Add dates'}
+                {untilLabel ?? <EmptyDateLabel />}
               </button>
-              <span className="flex items-center gap-1.5 @md:hidden @xl:flex">
+              <span className="hidden items-center gap-1.5 @xl:flex">
                 <span className="h-3.5 w-px shrink-0 bg-[var(--color-line)]" />
                 <TimeSelect value={returnTime} onChange={setReturnTime} placeholder="Add time" disabled={disabled} />
               </span>
@@ -586,13 +697,18 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
           </div>
 
           {datesOpen && (
-            <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[1100] animate-popover-in @md:left-auto @md:right-0 @md:w-[340px]">
+            <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[1100] animate-popover-in @md:left-auto @md:right-0 @md:w-[620px]">
+              {/* Two months on a wide screen, one on a phone — DateRangeCalendar
+                  already drops the second below `sm` itself. A rental range
+                  routinely crosses a month boundary, and with one month
+                  visible that means picking a start, paging forward, then
+                  picking an end with the start no longer on screen. */}
               <DateRangeCalendar
                 value={dateRange}
                 onChange={onDatesChange}
                 minDate={todayIso()}
                 isUnavailable={() => false}
-                months={1}
+                months={2}
               />
               <div className="mt-2 flex justify-end gap-2">
                 {(dateRange.start || dateRange.end) && (

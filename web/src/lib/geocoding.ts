@@ -1,9 +1,35 @@
 import { useEffect, useState } from 'react';
 
+/** What kind of place a suggestion is, so the picker can show a meaningful
+ * icon per row instead of the same pin eight times. Derived from Nominatim's
+ * own `class`/`type`/`addresstype` fields — real data the API already
+ * returns (verified against the live service: an airport comes back
+ * `class=aeroway type=aerodrome`, a hotel `class=tourism type=hotel`, a city
+ * `addresstype=city`), never a guess made from the display string. */
+export type PlaceKind = 'airport' | 'hotel' | 'transit' | 'city' | 'place';
+
 export interface AddressSuggestion {
   lat: number;
   lng: number;
   label: string;
+  kind: PlaceKind;
+}
+
+const TRANSIT_TYPES = new Set(['station', 'halt', 'bus_station', 'bus_stop', 'terminal']);
+const LODGING_TYPES = new Set(['hotel', 'motel', 'guest_house', 'hostel', 'apartment', 'chalet']);
+const CITY_TYPES = new Set(['city', 'town', 'village', 'suburb', 'municipality', 'administrative']);
+
+/** `place` is the honest fallback: it means "somewhere real that Nominatim
+ * found", which is all we actually know when the class/type don't match a
+ * category we have an icon for. */
+function placeKindOf(cls?: string, type?: string, addressType?: string): PlaceKind {
+  if (cls === 'aeroway' || type === 'aerodrome' || addressType === 'aeroway') return 'airport';
+  if (cls === 'tourism' && type && LODGING_TYPES.has(type)) return 'hotel';
+  if (cls === 'railway' || (type && TRANSIT_TYPES.has(type))) return 'transit';
+  if ((addressType && CITY_TYPES.has(addressType)) || (cls === 'place' && type && CITY_TYPES.has(type))) {
+    return 'city';
+  }
+  return 'place';
 }
 
 /** Live, debounced address suggestions from Nominatim (OpenStreetMap's free
@@ -30,8 +56,22 @@ export function useAddressSuggestions(query: string) {
           `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`,
           { headers: { 'Accept-Language': 'en' }, signal: controller.signal },
         );
-        const hits = (await res.json()) as { lat: string; lon: string; display_name: string }[];
-        setSuggestions(hits.map((h) => ({ lat: Number(h.lat), lng: Number(h.lon), label: h.display_name })));
+        const hits = (await res.json()) as {
+          lat: string;
+          lon: string;
+          display_name: string;
+          class?: string;
+          type?: string;
+          addresstype?: string;
+        }[];
+        setSuggestions(
+          hits.map((h) => ({
+            lat: Number(h.lat),
+            lng: Number(h.lon),
+            label: h.display_name,
+            kind: placeKindOf(h.class, h.type, h.addresstype),
+          })),
+        );
       } catch (err) {
         if ((err as Error).name !== 'AbortError') setSuggestions([]);
       } finally {
