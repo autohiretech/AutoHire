@@ -693,8 +693,10 @@ function FleetSkeleton() {
             <li key={i} className="flex items-center gap-3 border-t border-[var(--color-line)] p-3 first:border-t-0">
               <Skeleton className="h-14 w-20 shrink-0" />
               <div className="min-w-0 flex-1 space-y-1.5">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
+                <div className="flex items-center justify-between gap-2">
+                  <Skeleton className="h-4 w-2/5" />
+                  <Skeleton className="h-4 w-14 shrink-0" />
+                </div>
                 <Skeleton className="h-5 w-20 rounded-[var(--radius-pill)]" />
               </div>
             </li>
@@ -815,28 +817,41 @@ function CarListRow({
           alt={listing.title}
           className="h-14 w-20 shrink-0 rounded-[var(--radius-control)] object-cover"
         />
+        {/* Name and price anchor opposite ends of the row — the two things a
+            host is scanning a fleet list for — rather than the price sitting
+            buried in a small caption under the title where it read as one
+            more meta detail instead of the number that matters. */}
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-[var(--color-content)]">{listing.title}</p>
-          <p className="tabular truncate text-caption text-[var(--color-content-muted)]">
-            {listingPriceLabel(listing)}{activity ? ` · ${activity}` : ''}
-          </p>
-          <span className="mt-1 inline-flex flex-wrap gap-1">
-            <Badge tone={status.tone}>{status.label}</Badge>
-            {overdue && (
-              <Badge tone="danger">
-                <AlertTriangle size={11} /> Overdue
-              </Badge>
+          <div className="flex items-start justify-between gap-2">
+            <p className="min-w-0 flex-1 truncate font-medium text-[var(--color-content)]">
+              {listing.title}
+            </p>
+            <p className="tabular shrink-0 font-semibold text-[var(--color-content)]">
+              {listingPriceLabel(listing)}
+            </p>
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span className="flex min-w-0 flex-wrap items-center gap-1">
+              <Badge tone={status.tone}>{status.label}</Badge>
+              {overdue && (
+                <Badge tone="danger">
+                  <AlertTriangle size={11} /> Overdue
+                </Badge>
+              )}
+              {activity && (
+                <span className="truncate text-caption text-[var(--color-content-muted)]">{activity}</span>
+              )}
+            </span>
+            {open > 0 && (
+              <span
+                className="tabular flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent-on)] px-1.5 text-caption font-semibold text-[var(--color-accent-contrast)]"
+                title={`${open} active booking${open === 1 ? '' : 's'} (not completed)`}
+              >
+                {open}
+              </span>
             )}
-          </span>
+          </div>
         </div>
-        {open > 0 && (
-          <span
-            className="tabular flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--color-accent-on)] px-1.5 text-caption font-semibold text-[var(--color-accent-contrast)]"
-            title={`${open} active booking${open === 1 ? '' : 's'} (not completed)`}
-          >
-            {open}
-          </span>
-        )}
       </button>
     </li>
   );
