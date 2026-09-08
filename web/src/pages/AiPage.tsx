@@ -5,15 +5,29 @@ import { Search } from 'lucide-react';
 import type { ListingFilters } from '@/lib/types';
 import { client } from '@/lib/client';
 import { useCountry } from '@/lib/country';
+import { useAppMode } from '@/lib/appMode';
 import { ResultsMap } from '@/components/map/ResultsMap';
 import { Sheet, type SheetDetent } from '@/components/ui';
 import { ListingRowSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { ResearchField } from '@/components/research/ResearchField';
+import { HostAiPage } from '@/pages/HostAiPage';
 import { AI_FILTERS_KEY, loadAiFilters } from '@/lib/aiFilters';
 
 /**
- * AiPage — the AI's own screen (`/ai`), full-bleed like /search but built
+ * `/ai` splits on `mode` before anything else runs — a host has no use for
+ * the renter build's car-search query, map or filters state, so it gets its
+ * own page (`HostAiPage`) rather than this component's hooks running for a
+ * fleet they'll never see. `RenterAiPage` below is exactly what this file
+ * used to be end to end.
+ */
+export function AiPage() {
+  const { mode } = useAppMode();
+  return mode === 'host' ? <HostAiPage /> : <RenterAiPage />;
+}
+
+/**
+ * RenterAiPage — the renter's `/ai`, full-bleed like /search but built
  * entirely around ResearchField instead of manual filter chips. The map
  * fills the whole page in both layouts; a mobile bottom sheet and a desktop
  * floating panel are just two different ways of showing the same result
@@ -27,7 +41,7 @@ import { AI_FILTERS_KEY, loadAiFilters } from '@/lib/aiFilters';
  * query underneath, which is the point: whichever touched it last wins, and
  * dropping an understanding-chip here is exactly unclicking a filter there.
  */
-export function AiPage() {
+function RenterAiPage() {
   const { country, currency } = useCountry();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
