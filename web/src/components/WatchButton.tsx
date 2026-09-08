@@ -110,12 +110,15 @@ export function WatchButton({
       className={cn(
         'inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border px-3 py-2 text-body-sm font-medium transition-colors disabled:opacity-60',
         watched
-          ? 'border-brand-300 bg-brand-50 text-brand-700'
+          ? 'border-[var(--color-accent-on)]/40 bg-[var(--color-accent-on)]/10 text-[var(--color-accent-on)]'
           : 'border-[var(--color-line-strong)] text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
         className,
       )}
     >
-      <Star size={16} className={watched ? 'fill-brand-500 text-brand-500' : ''} />
+      <Star
+        size={16}
+        className={watched ? 'fill-[var(--color-accent-on)] text-[var(--color-accent-on)]' : ''}
+      />
       <span className="hidden sm:inline">{watched ? 'Watching' : 'Watch'}</span>
     </button>
   );
