@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { AdminPage } from '@/pages/AdminPage';
 import { HomePage } from '@/pages/HomePage';
 import { SearchResultsPage } from '@/pages/SearchResultsPage';
+import { AiPage } from '@/pages/AiPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { CarDetailPage } from '@/pages/CarDetailPage';
 import { HostProfilePage } from '@/pages/HostProfilePage';
@@ -43,6 +44,19 @@ export default function App() {
         {/* Public browse — no account needed */}
         <Route index element={<HomePage />} />
         <Route path="search" element={<SearchResultsPage />} />
+        {/* The AI's own screen — full-bleed, one field, no manual chips.
+            Wrapped in RequireAuth (not just left public like /search)
+            because ai-agent calls act as the signed-in renter — booking,
+            messaging a host, watchlisting — so there's no useful signed-out
+            mode for it the way there is for plain browsing. */}
+        <Route
+          path="ai"
+          element={
+            <RequireAuth>
+              <AiPage />
+            </RequireAuth>
+          }
+        />
         <Route path="cars/:id" element={<CarDetailPage />} />
         <Route path="hosts" element={<HostsPage />} />
         <Route path="hosts/:id" element={<HostProfilePage />} />

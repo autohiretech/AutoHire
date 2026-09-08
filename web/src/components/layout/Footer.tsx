@@ -10,7 +10,7 @@ const LINK_COLUMNS: { heading: string; links: { to: string; label: string }[] }[
       { to: '/', label: 'Browse cars' },
       // Wording matches the homepage "Ask AI" bar exactly (HomePage.tsx) —
       // positioned as research, not an assistant/chat product.
-      { to: '/search?bot=1', label: 'Research with AI' },
+      { to: '/ai', label: 'Research with AI' },
       { to: '/cars/new', label: 'List your car' },
     ],
   },

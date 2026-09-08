@@ -191,6 +191,20 @@
 }
 
 /*
+  ── Shared layout constants ──────────────────────────────────────────────
+  The bar's real height, measured from its own content (padding + icon pill +
+  label), and the *only* place that number is allowed to live. Two other
+  spots need to reserve exactly this much space — `AppLayout`'s scroll
+  padding and a full-bleed screen's own bottom offset — and a literal 68px
+  copied into each one is how it drifted 10px from the bar's actual 58px,
+  leaving a strip of bare page background above it. `BottomTabBar` sets its
+  own height from this variable too, so all three move together.
+*/
+:root {
+  --tab-bar-height: 58px;
+}
+
+/*
   ── Dark theme ───────────────────────────────────────────────────────────
   Only the semantic tokens are redefined; every component built on them
   follows automatically. Two things this is careful about:
@@ -402,10 +416,16 @@ body {
   background-color: var(--color-surface);
   color: var(--color-content);
   font-family: var(--font-sans);
-  /* Unstyled text follows the body token, so it takes part in the phone
-     scale above instead of sitting at the browser's 16px regardless. */
+  /* Unstyled text follows the body token's size, so it takes part in the
+     phone scale above instead of sitting at the browser's 16px regardless.
+     Line-height is deliberately NOT taken from the same token: that pairs a
+     size with a specific pixel leading meant for full paragraphs, and
+     anything that sets only a font-size — a map popup, a dropdown row, an
+     icon label — inherits it too, so a 12px caption got a 24px line box
+     around it. Tailwind's own unitless 1.5 scales with whatever size is
+     actually set and was never the bug. */
   font-size: var(--text-body);
-  line-height: var(--text-body--line-height);
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 

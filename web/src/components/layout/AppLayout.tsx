@@ -11,7 +11,6 @@ import { NotificationsProvider } from '@/components/NotificationsProvider';
 import { LocationPrompt } from '@/components/marketplace/LocationPrompt';
 import { ScrollMemory } from '@/components/ScrollMemory';
 import { AiAssistantProvider } from '@/lib/aiAssistantContext';
-import { AiAssistant } from '@/components/assistant/AiAssistant';
 import { useAuth } from '@/lib/auth';
 
 export function AppLayout() {
@@ -46,15 +45,6 @@ export function AppLayout() {
     pathname.startsWith('/messages/') ||
     pathname === '/search' ||
     pathname === '/ai';
-
-  // The assistant's whole toolset (book, message a host, watchlist a car) is
-  // a renter's own actions on a listing — meaningless on a host's own
-  // /dashboard, where the signed-in account is managing its cars, not
-  // renting one. The home page has its own "AI mode" entry point as the sole
-  // entry point there — the floating bubble would just be a second, redundant
-  // one on the one page that already has a dedicated way in. Every other
-  // page keeps the floating assistant.
-  const hideAssistant = pathname === '/dashboard' || pathname === '/';
 
   return (
     <NotificationsProvider>
@@ -94,7 +84,7 @@ export function AppLayout() {
             className={cn(
               'flex-1',
               fullBleed && 'min-h-0 overflow-hidden',
-              user && 'pb-[calc(68px+env(safe-area-inset-bottom))] md:pb-0',
+              user && 'pb-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom))] md:pb-0',
             )}
           >
             <Outlet />
@@ -102,11 +92,6 @@ export function AppLayout() {
           {!fullBleed && <Footer />}
           <BottomTabBar />
           <RightRail />
-          {/* Mounted once here, not per-page — this is what makes the
-              assistant (and its conversation) survive navigating between
-              pages instead of resetting on every route. Hidden on
-              /dashboard and / (see hideAssistant above). */}
-          {!hideAssistant && <AiAssistant />}
         </div>
       </AiAssistantProvider>
     </NotificationsProvider>

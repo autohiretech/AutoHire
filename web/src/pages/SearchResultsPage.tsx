@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MapPin, Navigation, Search } from 'lucide-react';
 import type { ListingFilters } from '@/lib/types';
@@ -13,7 +13,6 @@ import { ListingRowSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
-import { useAiAssistantActions, useAiAssistantSource } from '@/lib/aiAssistantContext';
 import { MORE_FILTERS, PRICE_FILTER } from '@/components/marketplace/SearchFilters';
 import { useAddressSuggestions, type AddressSuggestion } from '@/lib/geocoding';
 
@@ -26,25 +25,25 @@ const TOGGLE_BOTTOM_CLASS: Record<SheetDetent, string> = {
 };
 
 /**
- * Search results page. Desktop keeps Getaround's own layout: a slim filter
- * chip row, a narrow result list, and a map that takes most of the page. On
+ * Search results page — plain, manual browse: a slim filter chip row, a
+ * narrow result list, and a map that takes most of the page on desktop; on
  * mobile the map is the whole screen and the list lives in a bottom sheet
- * over it — in Kigali "where is this car relative to me" is the question, and
- * a `hidden lg:block` map answered it for nobody on a phone. The Gemini bot
- * is an addition on top of this, not a replacement for it: a floating
- * bubble that writes into the same filter state these chips use, so
- * whichever one touched it last drives the same list + map underneath.
+ * over it, since in Kigali "where is this car relative to me" is the
+ * question a `hidden lg:block` map answered for nobody on a phone. No AI
+ * here — that's its own screen (`/ai`), built around the same `ListingFilters`
+ * shape but with its own field, session, and result view. Landing here with
+ * `state.filters` (AiPage's "Show in browse" chip sets this) seeds the chips
+ * below with whatever the AI had already understood.
  */
 export function SearchResultsPage() {
   const [params, setParams] = useSearchParams();
   const { country } = useCountry();
+  const location = useLocation();
+  const handoffFilters = (location.state as { filters?: ListingFilters } | null)?.filters;
   const q = params.get('q') ?? '';
   const [text, setText] = useState(q);
-  const [extra, setExtra] = useState<ListingFilters>({});
+  const [extra, setExtra] = useState<ListingFilters>(() => handoffFilters ?? {});
   const [activeId, setActiveId] = useState<string | null>(null);
-  // Cars the assistant's last filter turn actually matched — highlighted on
-  // the map/list so a chat reply isn't the only place they show up.
-  const [highlightIds, setHighlightIds] = useState<string[]>([]);
   // A place picked from the pickup bar's live suggestions — pans the map
   // there (see ResultsMap's focusPoint) even when it doesn't resolve to one
   // of the app's known cities below.
@@ -59,8 +58,16 @@ export function SearchResultsPage() {
   // (list dominant) — dragging the sheet's own handle still reaches `full`.
   const [sheetDetent, setSheetDetent] = useState<SheetDetent>('peek');
 
-  // Filters are per-market, so drop them when the query or the market changes.
+  // Filters are per-market, so drop them when the query or the market
+  // changes — but not on the very first render, which would otherwise wipe
+  // out `handoffFilters` (AiPage's "Show in browse" chip) before it ever
+  // painted.
+  const mountedRef = useRef(false);
   useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
     setText(q);
     setExtra({});
     setFocusPoint(null);
@@ -74,23 +81,6 @@ export function SearchResultsPage() {
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, []);
-
-  // Arriving via Home's "Ask AI" bar (?bot=1&ask=...) means the AI's answer
-  // is what should drive this page's first paint — not the plain, unfiltered
-  // "every car in the market" catalogue this page would otherwise show while
-  // that request is still in flight. That flash read as the traditional
-  // search "jumping in" ahead of the AI. `aiPending` holds the real list/map
-  // back until either the AI actually sets filters (below) or a bounded
-  // timeout passes (so a purely conversational reply, with no filter call,
-  // doesn't leave the page stuck waiting forever).
-  const [aiPending, setAiPending] = useState(
-    () => params.get('bot') === '1' && !!params.get('ask'),
-  );
-  useEffect(() => {
-    if (!aiPending) return;
-    const t = setTimeout(() => setAiPending(false), 12000);
-    return () => clearTimeout(t);
-  }, [aiPending]);
 
   const base = useMemo<ListingFilters>(() => interpretQuery(q), [q]);
   const filters = useMemo<ListingFilters>(() => {
@@ -106,33 +96,6 @@ export function SearchResultsPage() {
     queryFn: () => client.listListings(filters),
   });
   const results = listings ?? [];
-
-  // Publishes the current result set to the global AI assistant (mounted in
-  // AppLayout) — this is what lets "book the second one" resolve, and what
-  // makes a filter change from the assistant update this page's own list +
-  // map in place instead of falling back to a /search navigation.
-  useAiAssistantSource(results, {
-    loading: isLoading,
-    filters,
-    onFilters: (f, clear) => {
-      setAiPending(false);
-      setExtra((prev) => {
-        const next = { ...prev, ...f };
-        // A field merely absent from `f` means "unchanged" — only listed in
-        // `clear` does it actually get removed. Without this, a renter
-        // saying "not an suv" could never undo an earlier category filter:
-        // the old value would just keep winning the merge every turn.
-        for (const key of clear ?? []) delete next[key];
-        return next;
-      });
-    },
-    onHighlight: setHighlightIds,
-  });
-  // Actions-only, deliberately — subscribing to the combined context here
-  // would re-render this page on every contextListings/highlight change this
-  // very page causes via useAiAssistantSource above, which is the same
-  // feedback shape that caused CarDetailPage's infinite loop.
-  const { selectForBooking } = useAiAssistantActions();
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -205,9 +168,18 @@ export function SearchResultsPage() {
       key: l.id,
       listing: l,
       layout: 'row' as const,
-      isActive: l.id === activeId || highlightIds.includes(l.id),
+      isActive: l.id === activeId,
       onHover: (hovering: boolean) => setActiveId(hovering ? l.id : null),
     };
+  }
+
+  // A marker tap selects the same way hovering its row does, and (on mobile,
+  // where the sheet may be peeked down to just the map) opens the sheet to
+  // `half` so the selected row is actually visible rather than merely active
+  // behind a collapsed sheet.
+  function onMarkerSelect(l: (typeof results)[number]) {
+    setActiveId(l.id);
+    setSheetDetent((d) => (d === 'peek' ? 'half' : d));
   }
 
   return (
@@ -333,13 +305,8 @@ export function SearchResultsPage() {
           map becomes the full-bleed base layer with the list living in a
           bottom sheet over it — a tab that hides one or the other answers
           only half of "where is this car relative to me" at a time. */}
-      <div className="relative min-h-0 flex-1" aria-busy={isLoading || aiPending || undefined}>
-        {aiPending && (
-          <p className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-[var(--radius-pill)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-3 py-1.5 text-body-sm text-[var(--color-content-muted)] shadow-[var(--shadow-lift)]">
-            Asking the assistant…
-          </p>
-        )}
-        {isLoading || aiPending ? (
+      <div className="relative min-h-0 flex-1" aria-busy={isLoading || undefined}>
+        {isLoading ? (
           <>
             {/* ── Mobile (<lg) ──────────────────────────────────────────── */}
             <div className="absolute inset-0 flex flex-col gap-3 overflow-y-auto px-4 pb-4 pt-3 lg:hidden">
@@ -377,8 +344,7 @@ export function SearchResultsPage() {
                   listings={results}
                   activeId={activeId}
                   onHover={setActiveId}
-                  highlightIds={highlightIds}
-                  onSelect={selectForBooking}
+                  onSelect={onMarkerSelect}
                   focusPoint={focusPoint}
                 />
               </div>
@@ -452,8 +418,7 @@ export function SearchResultsPage() {
                   listings={results}
                   activeId={activeId}
                   onHover={setActiveId}
-                  highlightIds={highlightIds}
-                  onSelect={selectForBooking}
+                  onSelect={onMarkerSelect}
                   focusPoint={focusPoint}
                 />
               </div>

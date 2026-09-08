@@ -86,6 +86,7 @@ export function HomePage() {
   const [topRanked, setTopRanked] = useState(savedBrowse.topRanked ?? false);
   const [page, setPage] = useState(savedBrowse.page ?? 0);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const [heroAsk, setHeroAsk] = useState('');
   const navigate = useNavigate();
   const { mode } = useAppMode();
   const { country } = useCountry();
@@ -219,32 +220,39 @@ export function HomePage() {
             Find your next ride in {country.name}
           </h1>
 
-          {/* Styled to read as a research/ask bar, not a CTA button — car
+          {/* A real ask, typed here — not a click-through to an empty panel.
+              Styled as a research/ask bar rather than a CTA button: car
               shopping is a research task, not a booking, and a solid filled
-              pill invited "click to book" rather than "ask me something".
-              Still no typing here: it's one click target, and the assistant
-              asks whatever it needs once the panel is open. A soft pulsing
-              glow behind the (input-shaped) bar keeps it reading as the
-              "alive", AI-driven entry point rather than a plain field. */}
-          <div className="relative mt-4 w-full max-w-2xl">
+              pill invited "click to book" rather than "ask me something". A
+              soft pulsing glow behind it keeps it reading as the "alive",
+              AI-driven entry point rather than a plain field. Submitting
+              hands the raw text to /ai, which runs it as the first turn. */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const text = heroAsk.trim();
+              navigate(text ? `/ai?ask=${encodeURIComponent(text)}` : '/ai');
+            }}
+            className="relative mt-4 w-full max-w-2xl"
+          >
             <div
               aria-hidden
               className="animate-ai-glow absolute -inset-1.5 rounded-full bg-gradient-to-r from-brand-400 via-brand-200 to-brand-500 opacity-40 blur-lg"
             />
-            <button
-              type="button"
-              onClick={() => navigate('/search?bot=1')}
-              className="relative flex w-full items-center gap-3 rounded-full border-2 border-brand-200 bg-[var(--color-surface-raised)] px-5 py-3.5 text-left shadow-[var(--shadow-float)] transition hover:border-brand-400"
-            >
+            <div className="relative flex w-full items-center gap-3 rounded-full border-2 border-brand-200 bg-[var(--color-surface-raised)] px-5 py-3.5 shadow-[var(--shadow-float)] transition focus-within:border-brand-400">
               <Sparkles size={18} className="shrink-0 animate-pulse text-brand-500" />
-              <span className="flex-1 truncate text-body text-[var(--color-content-subtle)]">
-                Research your next car with AI&hellip;
-              </span>
+              <input
+                value={heroAsk}
+                onChange={(e) => setHeroAsk(e.target.value)}
+                placeholder="Research your next car with AI…"
+                aria-label="Ask the AI assistant"
+                className="min-w-0 flex-1 bg-transparent text-body text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)]"
+              />
               <Badge tone="brand" className="hidden shrink-0 sm:inline-flex">
                 Ask AI
               </Badge>
-            </button>
-          </div>
+            </div>
+          </form>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <Badge tone="overlay">

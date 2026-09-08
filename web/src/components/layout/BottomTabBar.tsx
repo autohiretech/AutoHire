@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Car,
   KeyRound,
@@ -10,6 +11,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { client } from '@/lib/client';
 import { useAppMode, type AppMode } from '@/lib/appMode';
 import { useAuth } from '@/lib/auth';
 
@@ -53,10 +55,19 @@ const TABS_BY_MODE: Record<AppMode, { to: string; label: string; icon: typeof Ca
     ],
   };
 
-export function BottomTabBar({ unread = 0 }: { unread?: number }) {
+export function BottomTabBar() {
   const { mode } = useAppMode();
   const { user } = useAuth();
   const { pathname } = useLocation();
+
+  // Same query Header's desktop nav reads (shared cache key, so this doesn't
+  // double the request) — the bar needs its own copy because it renders
+  // independently of Header's Messages icon, which is desktop-only now.
+  const { data: unread = 0 } = useQuery({
+    queryKey: ['unreadMessages'],
+    queryFn: () => client.getUnreadMessageCount(),
+    enabled: !!user,
+  });
 
   // A signed-out visitor has nothing to put in three of the four tabs, and a
   // bar of disabled stubs is worse than no bar — they browse with the header
@@ -71,7 +82,10 @@ export function BottomTabBar({ unread = 0 }: { unread?: number }) {
       className={cn(
         'fixed inset-x-0 bottom-0 z-40 md:hidden',
         'border-t border-[var(--color-line)] bg-[var(--color-surface-raised)]',
-        // Keeps the bar clear of the iOS home indicator / Android gesture pill.
+        // Content sizes itself to `--tab-bar-height` (58px) from its own
+        // padding — not set explicitly here, so the safe-area padding below
+        // adds to that instead of squeezing it under a fixed box height.
+        // `AppLayout` reserves the same 58px plus this same inset.
         'pb-[env(safe-area-inset-bottom)]',
       )}
     >
