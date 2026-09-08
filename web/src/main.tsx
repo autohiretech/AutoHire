@@ -10,6 +10,17 @@ import { AuthProvider } from './lib/auth';
 import { Toaster } from './components/ui';
 import './index.css';
 
+// Dev-mode registration fights Vite's own module server (stale-asset
+// caching, HMR confusion) for no benefit — installability only matters for
+// the deployed build, so this only runs there.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Installability degrades gracefully without it — no user-facing error.
+    });
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

@@ -9,6 +9,7 @@ import { RightRail } from './RightRail';
 import { BottomTabBar } from './BottomTabBar';
 import { NotificationsProvider } from '@/components/NotificationsProvider';
 import { LocationPrompt } from '@/components/marketplace/LocationPrompt';
+import { PwaInstallPrompt } from '@/components/PwaInstallPrompt';
 import { ScrollMemory } from '@/components/ScrollMemory';
 import { AiAssistantProvider } from '@/lib/aiAssistantContext';
 import { useAuth } from '@/lib/auth';
@@ -54,6 +55,9 @@ export function AppLayout() {
       <AiAssistantProvider>
         <div className={cn('flex flex-col', fullBleed ? 'h-full overflow-hidden' : 'min-h-full')}>
           <ScrollMemory />
+          {/* Portal-rendered (see Modal), so its place in this tree is just
+              "mounted once per app," not tied to fullBleed or page layout. */}
+          <PwaInstallPrompt />
           {/* Eco commitment banner — AutoHire's fleet is overwhelmingly clean-energy.
               This used to be a full-width solid brand-green bar above the
               header, which put the accent at the very top of every screen

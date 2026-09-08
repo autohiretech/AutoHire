@@ -3,7 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- iOS ignores the manifest entirely — these are the only way to get a
+         standalone (no Safari chrome) launch and a themed status bar there. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="AutoHire" />
     <!-- Tints the phone's own browser chrome to match the app shell, so the
          status bar doesn't sit as a white band above a dark page (or vice
          versa). Two tags, one per scheme — there is no token indirection here
