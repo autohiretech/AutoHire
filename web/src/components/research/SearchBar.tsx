@@ -66,6 +66,12 @@ export interface SearchBarProps {
   initialValue?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Drop the Search/Ask AI toggle and stay in AI mode. For `/ai`, which is
+   * the agent's own room — landing there on the structured Where/From/Until
+   * bar, with "Ask AI" as something you still have to opt into, contradicts
+   * the whole point of having navigated to the AI page. Home's hero keeps
+   * the toggle: there, Search is the default and AI is the opt-in. */
+  aiOnly?: boolean;
   className?: string;
 }
 
@@ -284,6 +290,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     initialValue = '',
     placeholder = 'Anything else? SUV, under 150k, automatic…',
     disabled = false,
+    aiOnly = false,
     className,
   },
   ref,
@@ -298,7 +305,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   // whatever's already applied — a city/date match from 'search' stays live
   // and reaches the agent as `context.filters`, just no longer restated as
   // prose once excluded below, same as before this toggle existed.
-  const [mode, setMode] = useState<'search' | 'ai'>('search');
+  const [mode, setMode] = useState<'search' | 'ai'>(aiOnly ? 'ai' : 'search');
   const [locationText, setLocationText] = useState('');
   const [locationPoint, setLocationPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -475,7 +482,13 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
           fill-and-weight language every selected Chip in this app uses, so
           "which mode am I in" reads the same way "which filter is on" does
           everywhere else. */}
-      <div className="flex items-center gap-1 self-start rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] p-1">
+      <div
+        className={cn(
+          'flex items-center gap-1 self-start rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] p-1',
+          // On /ai there is nothing to toggle to — see `aiOnly`.
+          aiOnly && 'hidden',
+        )}
+      >
         <button
           type="button"
           onClick={() => setMode('search')}

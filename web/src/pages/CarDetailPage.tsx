@@ -284,7 +284,7 @@ export function CarDetailPage() {
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-5 pb-28 lg:pb-8">
+    <section className="mx-auto max-w-7xl px-4 py-5 pb-[calc(7rem+var(--tab-bar-height))] md:pb-28 lg:pb-8">
       <button
         type="button"
         onClick={backToBrowse}
@@ -842,7 +842,7 @@ export function CarDetailPage() {
           it's reachable without scrolling back up to the (hidden-on-mobile)
           sidebar card. */}
       {canRent && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-line)] bg-[var(--color-surface-raised)]/95 px-4 py-3 shadow-[var(--shadow-float)] backdrop-blur lg:hidden">
+        <div className="fixed inset-x-0 bottom-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom))] z-20 border-t border-[var(--color-line)] bg-[var(--color-surface-raised)]/95 px-4 py-3 shadow-[var(--shadow-float)] backdrop-blur md:bottom-0 lg:hidden">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
             <div className="min-w-0">
               {datesChosen ? (
@@ -1078,7 +1078,7 @@ function Lightbox({
  */
 function CarDetailSkeleton() {
   return (
-    <section className="mx-auto max-w-7xl px-4 py-5 pb-28 lg:pb-8" aria-busy="true" aria-label="Loading">
+    <section className="mx-auto max-w-7xl px-4 py-5 pb-[calc(7rem+var(--tab-bar-height))] md:pb-28 lg:pb-8" aria-busy="true" aria-label="Loading">
       {/* Gallery — hero + two stacked tiles on desktop, one block on mobile */}
       <div className="mt-4">
         <div className="sm:hidden">

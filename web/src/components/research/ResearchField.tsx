@@ -423,6 +423,7 @@ export function ResearchField({
         }
         placeholder="Describe the car you need…"
         disabled={busy}
+        aiOnly
       />
 
       {/* Reserved-height slot so the field never jumps when a line/chips
