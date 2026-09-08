@@ -549,7 +549,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
         {/* Where */}
         <div
           ref={locationBoxRef}
-          className="relative flex min-w-0 flex-1 flex-col gap-0.5 border-r border-[var(--color-line)] px-3 py-1.5 @md:px-4"
+          className="relative flex min-w-0 flex-[1.4] flex-col gap-0.5 border-r border-[var(--color-line)] px-3 py-1.5 @md:flex-1 @md:px-4"
         >
           <span className="text-caption font-semibold text-[var(--color-content-muted)]">Where</span>
           <div className="flex items-center gap-2">
@@ -558,7 +558,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               onChange={(e) => onLocationTextChange(e.target.value)}
               onFocus={() => setSuggestOpen(true)}
               onKeyDown={(e) => e.key === 'Escape' && setSuggestOpen(false)}
-              placeholder="City, airport, address"
+              placeholder="City or airport"
               aria-label="Pickup location"
               disabled={disabled}
               className="min-w-0 flex-1 truncate bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
@@ -568,7 +568,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               onClick={useCurrentLocationClick}
               disabled={disabled || busyLocating}
               aria-label="Use my current location"
-              className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-pill)] text-[var(--color-accent-on)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60 @md:flex"
+              // Visible at every width. Hiding it on phones to buy room for
+              // the one-row bar was the wrong trade: "find cars near me" is
+              // the single most likely thing a renter on a phone wants, and
+              // it is the one control that can't be reached any other way
+              // without first opening the picker. The Where placeholder
+              // truncates a little sooner instead — the "Where" caption
+              // above it already says what the field is for.
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-pill)] text-[var(--color-accent-on)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
             >
               {busyLocating ? <Spinner size={14} /> : <Navigation size={15} />}
             </button>
