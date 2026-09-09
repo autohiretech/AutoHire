@@ -329,6 +329,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
 
   const locationBoxRef = useRef<HTMLDivElement>(null);
   const datesBoxRef = useRef<HTMLDivElement>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
   const freeTextRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({ focus: () => freeTextRef.current?.focus() }));
@@ -336,7 +337,12 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
       if (locationBoxRef.current && !locationBoxRef.current.contains(e.target as Node)) setSuggestOpen(false);
-      if (datesBoxRef.current && !datesBoxRef.current.contains(e.target as Node)) setDatesOpen(false);
+      // Both the trigger segment and the panel count as "inside" — the
+      // panel is a sibling of the segment now, not a descendant, so checking
+      // only the segment would close the calendar on the first day clicked.
+      const inTrigger = datesBoxRef.current?.contains(e.target as Node);
+      const inPanel = calendarRef.current?.contains(e.target as Node);
+      if (!inTrigger && !inPanel) setDatesOpen(false);
     }
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
@@ -561,7 +567,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
          remain reachable: "Current location" is the first row of the picker,
          and pickup time never filtered anything (there is no time-of-day
          field to filter on). */
-      <div className="flex flex-nowrap items-stretch overflow-visible rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+      <div className="relative flex flex-nowrap items-stretch overflow-visible rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
         {/* Where */}
         <div
           ref={locationBoxRef}
@@ -719,33 +725,44 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
             </div>
           </div>
 
-          {datesOpen && (
-            <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[1100] animate-popover-in @md:left-auto @md:right-0 @md:w-[620px]">
-              {/* Two months on a wide screen, one on a phone — DateRangeCalendar
-                  already drops the second below `sm` itself. A rental range
-                  routinely crosses a month boundary, and with one month
-                  visible that means picking a start, paging forward, then
-                  picking an end with the start no longer on screen. */}
-              <DateRangeCalendar
-                value={dateRange}
-                onChange={onDatesChange}
-                minDate={todayIso()}
-                isUnavailable={() => false}
-                months={2}
-              />
-              <div className="mt-2 flex justify-end gap-2">
-                {(dateRange.start || dateRange.end) && (
-                  <Button type="button" variant="ghost" size="sm" onClick={clearDates}>
-                    Clear
-                  </Button>
-                )}
-                <Button type="button" variant="outline" size="sm" onClick={() => setDatesOpen(false)}>
-                  Done
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Anchored to the whole bar, not to the From/Until segment.
+            Those two segments share about half of a 390px bar — roughly
+            190px — and a 7-column month grid crushed into that width
+            collapses the day numbers into each other ("202 12 22 32 42 526").
+            The calendar has nothing to do with the width of the control that
+            opens it, so it spans the bar on a phone and only becomes a
+            right-aligned two-month panel once there is room. */}
+        {datesOpen && (
+          <div
+            ref={calendarRef}
+            className="absolute inset-x-0 top-[calc(100%+8px)] z-[1100] animate-popover-in @md:left-auto @md:right-0 @md:w-[620px]"
+          >
+            {/* Two months on a wide screen, one on a phone —
+                DateRangeCalendar already drops the second below `sm` itself.
+                A rental range routinely crosses a month boundary, and with
+                one month visible that means picking a start, paging forward,
+                then picking an end with the start no longer on screen. */}
+            <DateRangeCalendar
+              value={dateRange}
+              onChange={onDatesChange}
+              minDate={todayIso()}
+              isUnavailable={() => false}
+              months={2}
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              {(dateRange.start || dateRange.end) && (
+                <Button type="button" variant="ghost" size="sm" onClick={clearDates}>
+                  {t('common.clear')}
+                </Button>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={() => setDatesOpen(false)}>
+                {t('common.done')}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Round search button */}
         <div className="flex items-center justify-center p-1.5 @md:pl-1">
