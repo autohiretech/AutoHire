@@ -119,7 +119,8 @@ export interface Seller {
    */
   country: string | null;
   payout_currency: string | null;
-  payout_provider: PayoutProvider | null;
+  /** PayHold's own enum column — three values, never a disabled rail. */
+  payout_provider: PayoutRail | null;
   masked_destination: string | null;
   kyc_status: 'pending' | 'verified' | 'restricted' | 'rejected' | 'review_required';
   /**
@@ -139,16 +140,40 @@ export interface Seller {
   active: boolean;
 }
 
-/** The rail a destination is tokenized against — provider and method together. */
-export type PayoutProvider =
-  | 'flutterwave_momo'
-  | 'flutterwave_bank'
-  | 'stripe_connect'
-  | 'paypal'
-  | 'venmo'
-  | 'cash_app_pay'
-  | 'alipay'
-  | 'wechat_pay';
+/**
+ * The rail a destination is tokenized against — provider and method together.
+ *
+ * **These three are the whole of PayHold's `payout_provider` Postgres enum**
+ * (`20260805000001_schema.sql`). Nothing else can ever be stored against a
+ * destination, so nothing else can ever come back on a `Seller` or a
+ * `SellerDestination`, and nothing here may ever send one.
+ */
+export type PayoutRail = 'flutterwave_momo' | 'flutterwave_bank' | 'stripe_connect';
+
+/**
+ * §29.3's declared-and-disabled rails — PayPal, Venmo, Cash App Pay, Alipay,
+ * WeChat Pay. They exist as `payout_routes` rows so a host who picks one gets a
+ * specific sentence instead of "unknown destination type", and those rows carry
+ * **no `provider`**, which a check constraint turns into "cannot be enabled".
+ * There is no live payout adapter behind any of the five and no signed
+ * agreement behind the one class that exists (PayPal), so a destination on one
+ * of them cannot be created, cannot be routed, and cannot be paid.
+ *
+ * They used to sit in `PayoutProvider` beside the three real rails, and
+ * `payoutProviderFor` mapped a host's choice straight onto them — a host who
+ * picked PayPal got a destination registered against a rail with nothing behind
+ * it, and their first payout sat at `blocked` forever. `payoutProviderFor`
+ * answers `null` for all five now.
+ *
+ * The names survive only because `methodForProvider` in
+ * `payhold-register-seller` keys a `Partial<Record<PayoutProvider, string>>` on
+ * them. **Nothing in AutoHire may produce one**, and no PayHold row can carry
+ * one — which is why every field that holds what PayHold actually said is typed
+ * `PayoutRail`, not this.
+ */
+export type DisabledPayoutRail = 'paypal' | 'venmo' | 'cash_app_pay' | 'alipay' | 'wechat_pay';
+
+export type PayoutProvider = PayoutRail | DisabledPayoutRail;
 
 /** Ledger money, in the currency the buyer was charged. */
 export interface WalletBalance {
@@ -182,7 +207,7 @@ export interface SellerDestination {
   label: string | null;
   country: string;
   payout_currency: string;
-  payout_provider: PayoutProvider;
+  payout_provider: PayoutRail;
   masked_destination: string;
   is_primary: boolean;
   is_backup: boolean;
@@ -474,6 +499,13 @@ export interface CreateSellerInput {
    * refused rather than silently dropped, same as on PayHold's side.
    */
   country?: string;
+  /**
+   * Only ever one of the three `PayoutRail` values in practice — the wider type
+   * is here because `payhold-register-seller` threads it through a local
+   * signature typed `PayoutProvider`. `payoutProviderFor` is what makes that
+   * true: it answers `null` for every disabled rail, so a caller that checks
+   * for null (they all do) cannot reach this field with one.
+   */
   payoutProvider?: PayoutProvider;
   /**
    * The raw MoMo number or bank account. PayHold tokenizes it with the provider
@@ -623,6 +655,7 @@ export function sellerDestinations(id: string): Promise<{ destinations: SellerDe
 }
 
 export interface AddDestinationInput {
+  /** See `CreateSellerInput.payoutProvider` — a `PayoutRail` in practice. */
   payoutProvider: PayoutProvider;
   /** Raw MoMo number, account number or wallet handle. Tokenized and dropped. */
   destination: string;
@@ -886,12 +919,65 @@ export interface PayoutCountryRoute {
  * list — every other caller of this asks the same question without paying for
  * an answer it will not render.
  */
-export function payoutRouteFor(
+export async function payoutRouteFor(
   country: string,
   opts?: { banks?: boolean },
 ): Promise<PayoutCountryRoute> {
   const query = `payout_country=${encodeURIComponent(country)}${opts?.banks ? '&banks=1' : ''}`;
-  return call(`/payment-options?${query}`, { method: 'GET' });
+  const route = await call<PayoutCountryRoute>(`/payment-options?${query}`, { method: 'GET' });
+  warnOnRouteDrift(country, route);
+  return route;
+}
+
+/**
+ * Say out loud when `FLUTTERWAVE_PAYOUT_KIND` and PayHold disagree.
+ *
+ * The table below `payoutProviderFor` is a hardcoded copy of PayHold's routing,
+ * kept only because that function has to answer synchronously on the
+ * registration path. A copy drifts — this one already did, silently, and
+ * Burkinabè hosts could not set up payouts for as long as nobody noticed.
+ *
+ * This is the cheap half of the fix. Every call to `payoutRouteFor` already
+ * holds both answers at once: PayHold's live route for a country, and what the
+ * table would have said about the same country. Comparing them costs nothing
+ * and turns the next drift into a log line on the very first host who opens the
+ * payout screen in the affected market, instead of a support ticket months
+ * later — or nothing at all, which is what happened last time.
+ *
+ * **It only ever logs.** PayHold's answer is returned untouched either way: it
+ * is the authority, the table is the copy, and a shared helper on the money
+ * path that could throw would turn a bookkeeping disagreement into an outage.
+ * A drifted country is one whose `FLUTTERWAVE_PAYOUT_KIND` row should be
+ * corrected against PayHold's generated `countries.ts`.
+ */
+function warnOnRouteDrift(country: string, route: PayoutCountryRoute): void {
+  try {
+    const code = country.toUpperCase();
+    // A deliberately closed corridor is not drift. `payment_markets` is an
+    // overlay an operator sets with a reason, it changes without the registry
+    // changing, and `payoutAvailability` already renders it as "not open yet" —
+    // warning about it every time would bury the one message worth reading.
+    if (route.payout?.blocked) return;
+
+    // What PayHold just said, in this table's own terms.
+    const live: 'momo' | 'bank' | null = route.payout?.provider === 'flutterwave'
+      ? route.payout.kind === 'momo' ? 'momo' : 'bank'
+      : null;
+    const local = FLUTTERWAVE_PAYOUT_KIND[code] ?? null;
+    if (live === local) return;
+
+    console.warn(
+      `[payhold] payout-route drift for ${code}: PayHold routes it as ` +
+        `${live ?? 'not a Flutterwave payout corridor'} (provider=` +
+        `${route.payout?.provider ?? 'none'}, kind=${route.payout?.kind ?? 'none'}), while ` +
+        `FLUTTERWAVE_PAYOUT_KIND in _shared/payhold.ts says ` +
+        `${local ?? 'not a Flutterwave payout corridor'}. ` +
+        `payoutProviderFor() is therefore refusing or mis-routing destinations ` +
+        `in ${code} — correct the table against PayHold's generated countries.ts.`,
+    );
+  } catch {
+    // A diagnostic must never be able to fail a payout-route lookup.
+  }
 }
 
 /**
@@ -1039,27 +1125,6 @@ export function fromMinorUnits(amount: number, currency: string): number {
   return ZERO_DECIMAL.has(currency.toUpperCase()) ? amount : amount / 100;
 }
 
-/**
- * Which PayHold rail a host's payout destination is tokenized against, or
- * `null` when no rail actually reaches this method in this country.
- *
- * Mobile money is Flutterwave's, everywhere it exists. A bank account goes to
- * Flutterwave inside its African corridors and to Stripe Connect outside them,
- * which is the same split `payoutProviderFor` makes in the web app.
- *
- * `card` used to fall through to `stripe_connect` unconditionally, including
- * inside the African corridors — where Stripe cannot reach a recipient at
- * all (African payouts always ride Flutterwave, per docs/payhold.md) and
- * Flutterwave has no card payout of its own. Offering it there was already
- * fixed on the web app's method picker (`payoutMethodsFromRoute` in
- * `web/src/lib/payments.ts`, driven by PayHold's own per-country route
- * instead of a static guess), but this function is the one place every
- * registration and every destination change actually goes through, so it is
- * the backstop against a stale client, a direct API call, or the picker's own
- * next bug reaching PayHold with the same dead-end combination. `null` here
- * is what lets the caller refuse before tokenizing anything, instead of
- * creating a destination that will sit at `blocked` forever.
- */
 /** Every destination type a host can pick in the app. */
 export type PayoutMethod =
   | 'momo'
@@ -1071,22 +1136,97 @@ export type PayoutMethod =
   | 'alipay'
   | 'wechat_pay';
 
+/**
+ * Flutterwave's payout corridors, and which kind of destination each reaches.
+ *
+ * **This is a copy of somebody else's data and it should not be one.** The
+ * authority is PayHold's generated `_shared/countries.ts` — `flutterwavePayout`
+ * for membership, `momo` for the kind, which is exactly how PayHold's own
+ * `payoutRoute` decides it (`rails.ts`: `kind: hasWallet ? 'momo' : 'bank'`,
+ * where `hasWallet` is a mobile-money rail that can pay out, i.e. `momo &&
+ * flutterwavePayout`). `payoutRouteFor` below asks PayHold that question live
+ * and is the answer every screen should be reading.
+ *
+ * It survives here because **`payoutProviderFor` is synchronous and sits on the
+ * registration path**: `payhold-register-seller` calls it to decide whether to
+ * tokenize a destination at all, before any network call, and every caller
+ * treats its `null` as "refuse now". Making it async to fetch a route would put
+ * a live PayHold round trip — and PayHold being briefly unreachable — between a
+ * host and the ability to add a payout method, on a code path whose whole job
+ * is to fail closed. So the table stays, and the drift it invites is made
+ * *loud* instead: `payoutRouteFor` compares PayHold's live answer against this
+ * table on every call and logs when they disagree. See `warnOnRouteDrift`.
+ *
+ * The last drift was silent and cost real hosts: this set was missing **BF**
+ * (Burkina Faso), so a host there was routed to `stripe_connect` for a bank
+ * account, PayHold's `assertRailOnRoute` refused the rail, and they could not
+ * set up payouts at all — with nothing on the screen able to tell them why.
+ *
+ * Re-derive against PayHold's generated `_shared/countries.ts` with:
+ *   COUNTRIES.filter(c => c.flutterwavePayout)
+ *            .map(c => [c.code, c.momo ? 'momo' : 'bank'])
+ */
+const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
+  // West Africa
+  BF: 'momo',
+  CI: 'momo',
+  GH: 'momo',
+  NG: 'bank', // No mobile money on Flutterwave in Nigeria — bank transfer only.
+  SN: 'momo',
+  // Central Africa
+  CM: 'momo',
+  // East Africa
+  ET: 'bank', // A transfer guide and no collection channel at all; bank only.
+  KE: 'momo',
+  RW: 'momo',
+  TZ: 'momo',
+  UG: 'momo',
+  // Southern Africa
+  ZA: 'bank',
+  ZM: 'momo',
+};
+
+/**
+ * Which PayHold rail a host's payout destination is tokenized against, or
+ * `null` when no rail actually reaches this method in this country.
+ *
+ * `null` is what lets the caller refuse before tokenizing anything, instead of
+ * creating a destination that will sit at `blocked` forever. This function is
+ * the one place every registration and every destination change goes through,
+ * so it is the backstop against a stale client, a direct API call, or the
+ * method picker's own next bug reaching PayHold with a dead-end combination.
+ *
+ * Three cases answer `null`, and each of them used to answer something:
+ *
+ *   • **Mobile money outside a Flutterwave momo corridor.** This returned
+ *     `flutterwave_momo` for every country on earth. A US host picking MoMo got
+ *     a destination registered against a rail that does not exist there, and so
+ *     did a host in Nigeria, Ethiopia or South Africa — Flutterwave pays those
+ *     three by bank transfer and has no wallet to send to.
+ *
+ *   • **Card inside a Flutterwave corridor.** Stripe cannot reach a recipient
+ *     there at all (African payouts always ride Flutterwave, per
+ *     docs/payhold.md) and Flutterwave has no card payout of its own.
+ *
+ *   • **All five wallets.** PayPal, Venmo, Cash App, Alipay and WeChat Pay are
+ *     §29.3's declared-and-disabled rails: no `provider` on the route row, no
+ *     live adapter, and not in PayHold's `payout_provider` enum at all — see
+ *     `DisabledPayoutRail`. This used to map each one onto its own name and
+ *     hand PayHold a value its own database cannot store. There is no PayPal
+ *     integration to fall back to and inventing one is not a rounding error, so
+ *     the honest answer is that these are not ways to get paid.
+ *
+ * The caller turns `null` into `unsupported_payout_method` with a sentence
+ * naming the method, which is a host being told something true and actionable
+ * rather than a rail error from two systems away.
+ */
 export function payoutProviderFor(
   method: PayoutMethod,
   countryCode: string,
-): PayoutProvider | null {
-  const african = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CM', 'CI', 'SN', 'ZM', 'ET']);
-  const isAfrican = african.has(countryCode.toUpperCase());
-  if (method === 'momo') return 'flutterwave_momo';
-  if (method === 'bank') return isAfrican ? 'flutterwave_bank' : 'stripe_connect';
-  if (method === 'card') return isAfrican ? null : 'stripe_connect';
-  // The wallets are their own rails on PayHold, not a flavour of card. Mapping
-  // them onto `stripe_connect` would demand an `acct_…` for a destination that
-  // is an email address.
-  if (method === 'paypal') return 'paypal';
-  if (method === 'venmo') return 'venmo';
-  if (method === 'cash_app') return 'cash_app_pay';
-  if (method === 'alipay') return 'alipay';
-  if (method === 'wechat_pay') return 'wechat_pay';
-  return 'stripe_connect';
+): PayoutRail | null {
+  const kind = FLUTTERWAVE_PAYOUT_KIND[countryCode.toUpperCase()];
+  if (method === 'momo') return kind === 'momo' ? 'flutterwave_momo' : null;
+  if (method === 'bank') return kind ? 'flutterwave_bank' : 'stripe_connect';
+  if (method === 'card') return kind ? null : 'stripe_connect';
+  return null;
 }

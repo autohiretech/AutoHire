@@ -14,6 +14,14 @@ export const PAYOUT_METHOD_ICON: Record<PayoutMethodType, typeof Smartphone> = {
   card: CreditCard,
   // The wallets share an icon on purpose: they are the same shape of thing —
   // an account held with a provider — and the label already names which.
+  //
+  // **Nothing offers any of the five as a payout method any more.** They are
+  // §29.3's declared-and-disabled rails: no provider on the route row, no live
+  // adapter, and absent from PayHold's `payout_provider` enum, so a destination
+  // on one cannot be stored let alone paid. They survive here and in
+  // `PAYOUT_METHOD_META` only because `PayoutMethodType` in `@autohire/shared`
+  // still declares them and these are total records over it — see
+  // `payoutMethodsFor`. Deleting them is a change to that shared type.
   paypal: Wallet,
   venmo: Wallet,
   cash_app: Wallet,
@@ -61,12 +69,72 @@ export const PAYMENTS_EXTERNAL = import.meta.env.VITE_PAYMENTS_EXTERNAL === 'tru
 export const PAYMENTS_PAYHOLD = import.meta.env.VITE_PAYMENTS_PAYHOLD === 'true';
 
 
-/** Markets Flutterwave settles locally (MoMo + bank). Extend as you add markets. */
-const FLUTTERWAVE_COUNTRIES = new Set(['RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CI']);
+/**
+ * Flutterwave's payout corridors, and which kind of destination each reaches.
+ *
+ * **This is a copy of PayHold's data and it should not be one.** PayHold is the
+ * authority on where money can go: `payoutMethodsFromRoute` below reads its
+ * live per-country route and is what every screen actually renders from. This
+ * table exists only for `payoutMethodsFor`, the last-resort fallback for when
+ * PayHold cannot be reached at all — see the argument on that function.
+ *
+ * A copy drifts, and this one did. It held eight codes and was missing **BF,
+ * CM, SN, ZM and ET**, so hosts in Burkina Faso, Cameroon, Senegal, Zambia and
+ * Ethiopia were told their market was unsupported when PayHold pays all five.
+ * The same drift in the Edge Function's own copy
+ * (`supabase/functions/_shared/payhold.ts`) was worse: it routed a Burkinabè
+ * bank account to `stripe_connect`, PayHold's `assertRailOnRoute` refused the
+ * rail, and the host could not set up payouts at all.
+ *
+ * Membership is PayHold's `flutterwavePayout`; the kind is its `momo` flag,
+ * which is exactly how PayHold's own `payoutRoute` decides it — Flutterwave
+ * pays Nigeria, Ethiopia and South Africa by bank transfer and has no wallet to
+ * send to there. Both come from PayHold's generated `_shared/countries.ts`.
+ * When this and a live route disagree, `payoutAvailability` says so out loud
+ * rather than quietly preferring one; see `warnOnMethodDrift`.
+ */
+const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
+  BF: 'momo',
+  CI: 'momo',
+  CM: 'momo',
+  ET: 'bank',
+  GH: 'momo',
+  KE: 'momo',
+  NG: 'bank',
+  RW: 'momo',
+  SN: 'momo',
+  TZ: 'momo',
+  UG: 'momo',
+  ZA: 'bank',
+  ZM: 'momo',
+};
 
-/** Is this an African market whose money lands as a local currency (MoMo/bank)? */
+/**
+ * The markets Flutterwave *collects* in locally, which is a different fact.
+ *
+ * PayHold's registry keeps `flutterwaveLocal` and `flutterwavePayout` as two
+ * flags from two provider pages, and they disagree: Egypt and Malawi collect
+ * but cannot pay out, Ethiopia pays out with no collection channel at all,
+ * Zambia has mobile money out and no local card acquiring in. One constant used
+ * to answer both questions here, which is part of why nobody could tell which
+ * fact was stale.
+ */
+const FLUTTERWAVE_COLLECT_COUNTRIES = new Set([
+  'BF', 'CI', 'CM', 'EG', 'GH', 'KE', 'MW', 'NG', 'RW', 'SN', 'TZ', 'UG', 'ZA',
+]);
+
+/**
+ * Is this an African market whose money lands as a local currency (MoMo/bank)?
+ *
+ * Both ends, deliberately. The one caller that matters is `providerForBooking`,
+ * and on the legacy non-PayHold rail a single provider carries a whole booking
+ * — collection, hold and payout — so a market that can only do one half of that
+ * is not one of these. Egypt and Malawi collect and cannot pay out; Ethiopia
+ * and Zambia are the reverse.
+ */
 export function isAfricanMarket(countryCode: string): boolean {
-  return FLUTTERWAVE_COUNTRIES.has(countryCode);
+  const code = countryCode.toUpperCase();
+  return FLUTTERWAVE_COLLECT_COUNTRIES.has(code) && code in FLUTTERWAVE_PAYOUT_KIND;
 }
 
 /**
@@ -90,19 +158,45 @@ export function payoutProviderFor(method: PayoutMethodType, countryCode: string)
 }
 
 /**
- * The payout methods offered in a given market, most local first.
+ * The payout methods offered in a given market, most local first — **and only
+ * when PayHold could not be reached.**
  *
- * Card is offered everywhere PayHold can pay at all — it is the one destination
- * type with no geography to it, and a host who holds a debit card should not be
- * refused because their country also has Mobile Money. The market-specific
- * rails simply lead: MoMo in the Flutterwave corridors, the domestic wallets in
- * the US and China.
+ * `payoutAvailability` prefers `payoutMethodsFromRoute` in every other case,
+ * because PayHold's own route is the only thing that actually knows. This is
+ * the answer given while that is loading or unreachable, and the reason it
+ * still exists is that a blank payout screen is worse than an approximate one.
+ *
+ * It is now the same approximation `payoutMethodsFromRoute` would make, rather
+ * than a different and more generous one. What it used to offer instead:
+ *
+ *   • **PayPal, Venmo and Cash App to every US host, Alipay and WeChat Pay to
+ *     every Chinese one, PayPal to everybody else.** All five are §29.3's
+ *     declared-and-disabled rails on PayHold: their `payout_routes` rows carry
+ *     no provider, which a check constraint turns into "cannot be enabled", and
+ *     PayHold's `payout_provider` enum has only three values — none of them
+ *     these. There is no PayPal payout integration on either side of this and
+ *     there is not going to be one by accident, so a host who picked one saved
+ *     a destination that could never be paid.
+ *
+ *   • **Card inside Flutterwave's corridors.** Stripe cannot reach a recipient
+ *     there and Flutterwave has no card payout at all — the same dead end
+ *     `payoutMethodsFromRoute` was written to close, left open here.
+ *
+ *   • **MoMo in Nigeria and South Africa**, where Flutterwave pays by bank
+ *     transfer and there is no wallet to send to.
+ *
+ * Outside the Flutterwave corridors this stays optimistic — `['bank', 'card']`,
+ * Stripe Connect's pair — rather than enumerating Stripe's forty-odd payout
+ * countries into a third copy of somebody else's list. That guess is wrong for
+ * a host in a market PayHold cannot pay, and it is wrong for exactly as long as
+ * PayHold is unreachable: `payoutAvailability` reads `can_payout` and answers
+ * `unavailable` the moment it can hear back.
  */
 export function payoutMethodsFor(countryCode: string): PayoutMethodType[] {
-  if (FLUTTERWAVE_COUNTRIES.has(countryCode)) return ['momo', 'bank', 'card'];
-  if (countryCode === 'US') return ['bank', 'card', 'paypal', 'venmo', 'cash_app'];
-  if (countryCode === 'CN') return ['alipay', 'wechat_pay', 'bank', 'card'];
-  return ['bank', 'card', 'paypal'];
+  const kind = FLUTTERWAVE_PAYOUT_KIND[countryCode.toUpperCase()];
+  if (kind === 'momo') return ['momo', 'bank'];
+  if (kind === 'bank') return ['bank'];
+  return ['bank', 'card'];
 }
 
 /** One country's capabilities as PayHold reports them (`payhold-payment-options`). */
@@ -314,9 +408,63 @@ export function payoutAvailability(
   // itself blocked would be new — every route PayHold can name maps to at
   // least one method today — so that case is treated as `unsupported` rather
   // than silently offering nothing.
+  if (route) warnOnMethodDrift(countryCode, route);
+
   const methods = route ? payoutMethodsFromRoute(route) : payoutMethodsFor(countryCode);
   if (methods.length === 0) return { state: 'unsupported' };
   return { state: 'ok', methods };
+}
+
+/** Countries already reported, so one host's screen logs each drift once. */
+const driftReported = new Set<string>();
+
+/**
+ * Say out loud when `FLUTTERWAVE_PAYOUT_KIND` and PayHold disagree.
+ *
+ * `payoutMethodsFor` is a hardcoded copy of PayHold's routing, and the only
+ * honest thing to say about a copy is that it will drift. This one did, for
+ * five countries, and nothing anywhere said so — the first sign was hosts in
+ * those markets being told they could not be paid.
+ *
+ * So the copy is kept (there is no synchronous way to ask PayHold, and a blank
+ * payout screen is worse than an approximate one) and the drift is made
+ * *visible* instead. Every render of the payout screen already holds both
+ * answers at once: PayHold's live route, and what the fallback would have said
+ * about the same country. Comparing them is free, and it turns the next drift
+ * into a console warning on the first host who opens the screen in the affected
+ * market rather than into silence.
+ *
+ * **It only logs, and it never changes what is returned.** The live route wins
+ * regardless — it is the authority and the table is the copy. A warning here
+ * means `FLUTTERWAVE_PAYOUT_KIND` (here and its twin in
+ * `supabase/functions/_shared/payhold.ts`) needs correcting against PayHold's
+ * generated `countries.ts`.
+ */
+function warnOnMethodDrift(
+  countryCode: string,
+  route: NonNullable<PayoutCountryRoute['payout']>,
+): void {
+  // A deliberately closed corridor is not drift: `payment_markets` is an
+  // overlay an operator sets with a reason, it moves without the registry
+  // moving, and the branch above already renders it as "not open yet".
+  if (route.blocked) return;
+
+  const code = countryCode.toUpperCase();
+  if (driftReported.has(code)) return;
+
+  const live = payoutMethodsFromRoute(route);
+  const fallback = payoutMethodsFor(code);
+  if (live.join() === fallback.join()) return;
+
+  driftReported.add(code);
+  console.warn(
+    `[payments] payout-method drift for ${code}: PayHold routes it as ` +
+      `${route.provider ?? 'no provider'}/${route.kind ?? 'no kind'} → [${live.join(', ')}], ` +
+      `while the offline fallback says [${fallback.join(', ')}]. ` +
+      `Correct FLUTTERWAVE_PAYOUT_KIND (here and in supabase/functions/` +
+      `_shared/payhold.ts) against PayHold's generated countries.ts — until ` +
+      `then, a host here gets the wrong methods whenever PayHold is unreachable.`,
+  );
 }
 
 export const PAYOUT_METHOD_META: Record<
@@ -341,6 +489,9 @@ export const PAYOUT_METHOD_META: Record<
     field: 'Card number',
     placeholder: '4242 4242 4242 4242',
   },
+  // Unreachable: no payout rail exists behind these five. See the note on
+  // `PAYOUT_METHOD_ICON` — they are here to keep this record total, not to be
+  // offered to anyone.
   paypal: {
     label: 'PayPal',
     blurb: 'Paid to your PayPal balance, usually within a day.',
@@ -385,7 +536,14 @@ export function paymentMethodsFor(countryCode: string, known?: PayoutCountry | n
   if (known && !known.can_collect) return [];
   if (isAfricanMarket(countryCode)) return ['card', 'momo', 'bank'];
   if (countryCode === 'CN') return ['alipay', 'wechat_pay', 'card'];
-  // Venmo and Cash App are payout-only rails on PayHold, so they are not here.
+  // Venmo and Cash App are not here because neither is a way a renter pays us.
+  //
+  // The wallets that ARE here are a collection-side question and PayHold's own
+  // to answer (`collectionOptionsFor` → `CollectionOptions.methods`), which is
+  // why they are left alone. Worth knowing while reading them: on the PAYOUT
+  // side these same brands are dead ends — see `payoutMethodsFor` — and PayPal
+  // collection is built-but-disabled on PayHold today, so this fallback is
+  // probably optimistic here too.
   return ['card', 'paypal', 'bank'];
 }
 
