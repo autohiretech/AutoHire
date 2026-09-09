@@ -4,11 +4,23 @@ import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
 import { cn } from '@/lib/cn';
 
 /**
- * Renders a money amount in the shopper's selected display currency (from the
- * header currency selector — independent of the market/country they're
- * browsing), converting from the listing's native currency via live FX rates.
- * When the two differ we prefix "≈" (it's an estimate — the car is charged in
- * its home currency) and optionally show the native price beneath.
+ * Renders a money amount in the shopper's selected display currency.
+ *
+ * Three different currencies exist in this app and conflating them is how a
+ * payment UI misleads someone, so to be explicit about which one this is:
+ *
+ *   1. The listing's own currency (`Listing.priceCurrency`) — what the host
+ *      prices in and is owed. `amount`/`currency` here.
+ *   2. The DISPLAY currency (header selector) — this component. Converted via
+ *      live FX purely so a visitor can read the price in something familiar.
+ *      It changes no charge, anywhere.
+ *   3. The PRESENTMENT currency — what the renter is actually charged, picked
+ *      at checkout (`PayholdPayment`'s "Pay in" select, which defaults to the
+ *      listing's own currency, NOT to this one).
+ *
+ * So a figure rendered here is never what someone will be billed unless (1),
+ * (2) and (3) happen to coincide. When display differs from native we prefix
+ * "≈" and explain the rest on hover — see `explain` below.
  */
 export function Price({
   amount,
@@ -32,11 +44,32 @@ export function Price({
   const shown = converted ?? amount;
   const shownCurrency: string = converted === null ? currency : display;
   const isEstimate = shownCurrency !== currency;
+  // Asked for a different currency but no rate exists, so this is the car's
+  // own price while the header still says otherwise. Rare — 166 currencies
+  // have rates — but it resolves silently, and a price that quietly ignores
+  // the currency you picked is worth one sentence of explanation on hover.
+  const unconverted = converted === null && display !== currency;
+
+  // `showNative` is off in most places, so the ≈ figure is often the ONLY
+  // price on screen and nothing names the currency the car is actually
+  // priced in. The symbol says "approximate" without saying approximate to
+  // what. This does not change any layout — it just means the answer is
+  // available to anyone who looks, and to screen readers via the same text.
+  const explain = isEstimate
+    ? `Estimate, converted for display. This car is priced in ${currency}: ${formatMoney(amount, currency)}. You choose the currency you pay in at checkout.`
+    : unconverted
+      ? `No live ${display} rate, so this shows the car's own price in ${currency}.`
+      : undefined;
 
   return (
-    <span className={cn('tabular', className)}>
+    <span className={cn('tabular', className)} title={explain}>
       <span className={cn(isEstimate && 'text-[var(--color-content)]')}>
-        {isEstimate && <span className="text-[var(--color-content-subtle)]">≈ </span>}
+        {isEstimate && (
+          <span className="text-[var(--color-content-subtle)]" aria-hidden="true">
+            ≈{' '}
+          </span>
+        )}
+        {isEstimate && <span className="sr-only">Approximately </span>}
         {formatMoney(shown, shownCurrency)}
       </span>
       {showNative && isEstimate && (

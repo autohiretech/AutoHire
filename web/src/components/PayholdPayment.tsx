@@ -7,7 +7,7 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry } from '@/lib/country';
 import { presentmentCurrenciesFor } from '@/lib/payments';
 import { CheckoutModal } from '@/components/CheckoutModal';
-import { Button, Label, Notice, Select } from '@/components/ui';
+import { Button, Label, Notice, Select, Skeleton } from '@/components/ui';
 
 /**
  * Opening checkout. Nothing else.
@@ -127,6 +127,14 @@ export function PayholdPayment({
       presentmentCurrenciesFor(payerCountry, payoutCountries?.countries, collectOptions),
     [payerCountry, payoutCountries, collectOptions],
   );
+  // react-query v5 reports a *disabled* query as `isPending` forever — it has
+  // no data and never will until it is enabled — so `optionsPending` alone
+  // cannot distinguish "waiting for PayHold" from "never asked, because we
+  // don't know the renter's country". Gating the Pay button on the raw flag
+  // would strand anyone with no country set behind a spinner that resolves
+  // never.
+  const optionsLoading = !!payerCountry && optionsPending;
+
   const [payInCurrency, setPayInCurrency] = useState('');
   useEffect(() => {
     // The car's own currency when this renter's market can be charged in it —
@@ -184,11 +192,29 @@ export function PayholdPayment({
         </Notice>
       )}
 
+      {/* Reserves the currency card's own space while PayHold is still
+          answering. Without it the card appeared *above* the Pay button once
+          the answer landed, shoving the button down the page mid-aim — and
+          the renter had already been able to press it (see the button's
+          `disabled` below for why that mattered). A skeleton the shape of
+          the real card means nothing moves when it arrives. */}
+      {optionsLoading && (
+        <div
+          className="mb-4 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3"
+          aria-busy="true"
+          aria-label="Loading payment currencies"
+        >
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="mt-1.5 h-11 w-full" />
+          <Skeleton className="mt-1.5 h-3.5 w-3/4" />
+        </div>
+      )}
+
       {/* Which currency the renter is charged in — not which cars are shown,
           that's the header's country selector, and not where they pay from,
           which stays their account country. Changing it affects this one
           payment only; the host is still owed the car's own currency. */}
-      {payerCountry && !optionsPending && currencies.length > 1 && (
+      {payerCountry && !optionsLoading && currencies.length > 1 && (
         <div className="mb-4 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3">
           <Label htmlFor="pay-in-currency" className="flex items-center gap-1.5 text-[var(--color-content-muted)]">
             <Landmark size={14} className="text-[var(--color-content-subtle)]" /> Pay in
@@ -218,8 +244,29 @@ export function PayholdPayment({
       {/* The choice lives in a modal so the booking summary stays put behind
           it — a renter deciding how to pay should still see what they are
           paying for. This is the one accent action in this flow. */}
-      <Button className="w-full" size="lg" disabled={disabled || busy} onClick={pay}>
-        {busy ? 'Opening…' : `Pay ${label}`}
+      {/* `optionsPending` belongs in here, and its absence was a money bug
+          rather than a cosmetic one. A deal is priced once at creation and
+          never re-priced. While PayHold is still answering, `currencies` is
+          empty, so the picker above has not rendered, `payInCurrency` is
+          still '' and `chargeCurrency` collapses to the listing's own
+          currency — which means `pay()` sends no `presentmentCurrency` at
+          all and PayHold picks for the renter. Press Pay a moment early and
+          you get a snapshot deal in a currency you were never shown and
+          cannot now change. The choice has to exist before the button that
+          commits it does. */}
+      <Button
+        className="w-full"
+        size="lg"
+        disabled={disabled || busy || optionsLoading || !payerCountry}
+        onClick={pay}
+      >
+        {busy
+          ? 'Opening…'
+          : optionsLoading
+            ? 'Checking payment options…'
+            : !payerCountry
+              ? 'Set your country to pay'
+              : `Pay ${label}`}
       </Button>
       {error && (
         <Notice tone="danger" className="mt-3">

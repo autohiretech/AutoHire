@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   Smartphone,
 } from 'lucide-react';
-import { Button, Input, Label, Modal, Notice } from '@/components/ui';
+import { Button, Input, Label, Modal, Notice, Skeleton } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
 import { getStripeFor } from '@/lib/stripe';
 import { formatMoneyMinor } from '@/lib/currency';
@@ -1477,10 +1477,28 @@ export function CheckoutModal({
                 })}
               </div>
             ) : methods === null ? (
-              <p className="flex items-center justify-center gap-2 py-6 text-body-sm text-[var(--color-content-muted)]">
-                <Loader2 size={14} className="animate-spin" />
-                Loading your payment options…
-              </p>
+              /* Shaped like the method list it becomes, not a single centred
+                 line. A one-line spinner meant the modal was ~40px tall while
+                 loading and several hundred once the methods landed, so it
+                 lurched open under the reader — and on desktop the Pay button
+                 arrived under a cursor that had been resting on empty space.
+                 Three rows because that is the common case here (card, mobile
+                 money, bank); a fourth appearing is a smaller jump than
+                 starting from nothing. */
+              <div className="space-y-2.5" aria-busy="true" aria-label="Loading your payment options">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 rounded-[var(--radius-card)] border border-[var(--color-line)] p-3"
+                  >
+                    <Skeleton className="h-9 w-9 shrink-0 rounded-[var(--radius-control)]" />
+                    <div className="min-w-0 flex-1">
+                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="mt-1.5 h-3 w-44" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="py-4 text-center">
                 <p className="font-medium text-[var(--color-content)]">

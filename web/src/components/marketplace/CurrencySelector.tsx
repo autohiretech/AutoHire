@@ -143,6 +143,19 @@ export function CurrencySelector() {
             </div>
           </div>
 
+          {/* Said here because this is the moment someone forms the belief.
+              "Prices in USD" is easy to read as "I will pay in USD", and
+              nothing in this panel corrected that — you picked a currency and
+              every price on the site changed, which looks exactly like a
+              billing setting. It isn't one: the charge currency is chosen at
+              checkout and defaults to the car's own (PayholdPayment's "Pay
+              in" select). Wording deliberately echoes that screen's
+              "Charged in …" vocabulary so the two read as one system. */}
+          <p className="border-b border-[var(--color-line)] px-3 py-2 text-caption text-[var(--color-content-muted)]">
+            Changes how prices are shown here only. You choose the currency you&rsquo;re charged in at
+            checkout.
+          </p>
+
           <div ref={listRef} role="listbox" className="max-h-80 overflow-y-auto p-1.5">
             {filtered.length === 0 ? (
               <p className="px-3 py-6 text-center text-body-sm text-[var(--color-content-subtle)]">

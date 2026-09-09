@@ -80,7 +80,17 @@ export function BookingPage() {
   const queryClient = useQueryClient();
   const canRent = useCanRent();
   const isCompany = useIsBusinessHost();
-  const { data: me } = useCurrentUser();
+  // `isLoading` matters as much as the data here. Every gate below this point
+  // — canRent, isCompany, and the verification check — reads the same profile,
+  // and each one defaults OPEN while it is in flight: `useCanRent` returns
+  // true for a missing profile (lib/account.ts), and the verification guard is
+  // `me && …`, so it simply does not fire yet. Rendering the checkout during
+  // that window put a live Pay button in front of hosts, company accounts and
+  // unverified renters for as long as the profile took to arrive, then yanked
+  // it away. The server and PayHold both refuse those payments, so nothing
+  // could actually be charged — but being offered a button that is about to
+  // vanish is exactly the "click without anything" this page was reported for.
+  const { data: me, isLoading: meLoading } = useCurrentUser();
 
   const picked = location.state as
     | { startDate?: string; endDate?: string; pickupTime?: string; estimatedHours?: number }
@@ -107,7 +117,12 @@ export function BookingPage() {
     queryKey: ['listing', id],
     queryFn: () => client.getListing(id),
   });
-  const { data: host } = useQuery({
+  // Deliberately not part of the page's loading gate: the host's name is not
+  // something a renter needs before they can pay, and blocking the whole
+  // checkout on a second round trip would be a worse trade. It reserves its
+  // own space instead, so arriving late does not shove the price block down
+  // the summary while someone is reading the total.
+  const { data: host, isLoading: hostLoading } = useQuery({
     queryKey: ['host', listing?.hostId],
     queryFn: () => client.getHost(listing!.hostId),
     enabled: !!listing,
@@ -158,7 +173,10 @@ export function BookingPage() {
     );
   }
 
-  if (isLoading) {
+  // Wait for the car AND for who is asking. Splitting these let the page paint
+  // a complete, interactive checkout against a profile that had not landed —
+  // see the gates below, all of which are permissive until it does.
+  if (isLoading || meLoading) {
     return <BookingSkeleton />;
   }
 
@@ -565,7 +583,12 @@ export function BookingPage() {
                 </div>
               </div>
 
-              {host && (
+              {hostLoading ? (
+                <div className="flex items-center gap-2.5 border-t border-[var(--color-line)] pt-3.5">
+                  <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+                  <Skeleton className="h-4 w-40" />
+                </div>
+              ) : host ? (
                 <div className="flex items-center gap-2.5 border-t border-[var(--color-line)] pt-3.5">
                   <Avatar name={host.businessName || host.fullName} src={host.avatarUrl} size="sm" />
                   <div className="min-w-0">
@@ -574,7 +597,7 @@ export function BookingPage() {
                     </p>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               <div className="flex items-start justify-between border-t border-[var(--color-line)] pt-3.5">
                 <div>
