@@ -89,12 +89,16 @@ export function Sheet({
 
       {header && <div className="shrink-0 px-4 pb-2">{header}</div>}
 
-      {/* Only scrollable once there is room to scroll — at `peek` an
-          overflowing body would let the list be scrolled behind the handle. */}
+      {/* At `peek` the sheet is a summary bar, so the body is hidden outright
+          rather than clipped. `peek` is 88px and the handle plus header eat
+          ~56px of it, which left a ~32px window showing the top third of the
+          first listing card — a card sliced through its own photo reads as a
+          rendering fault, not as "there is more below". Hidden, `peek` shows
+          exactly what it means to: the count, and a handle to pull. */}
       <div
         className={cn(
           'min-h-0 flex-1',
-          detent === 'peek' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain',
+          detent === 'peek' ? 'hidden' : 'overflow-y-auto overscroll-contain',
         )}
       >
         {children}

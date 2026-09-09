@@ -104,7 +104,7 @@ export function Header() {
           <span>AutoHire</span>
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -112,7 +112,7 @@ export function Header() {
               end={item.end}
               className={({ isActive }) =>
                 cn(
-                  'rounded-[var(--radius-control)] px-3 py-2 text-body-sm font-semibold transition-colors',
+                  'rounded-[var(--radius-control)] px-3 py-2 text-body-sm font-semibold whitespace-nowrap transition-colors',
                   isActive
                     ? 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]'
                     : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]',
@@ -138,7 +138,7 @@ export function Header() {
               <Link
                 to="/ai"
                 state={{ from: pathname }}
-                className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] px-3 py-1.5 text-body-sm font-semibold text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] md:inline-flex"
+                className="hidden shrink-0 items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] px-3 py-1.5 text-body-sm font-semibold whitespace-nowrap text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] lg:inline-flex"
               >
                 <Sparkles size={15} className="text-[var(--color-accent-on)]" /> Ask AI
               </Link>
@@ -239,7 +239,7 @@ export function Header() {
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="ml-1 rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] md:hidden"
+            className="ml-1 rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] lg:hidden"
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={menuOpen}
             aria-controls="mobile-nav"
@@ -251,7 +251,7 @@ export function Header() {
 
       {/* Mobile nav panel */}
       {menuOpen && (
-        <nav id="mobile-nav" className="border-t border-[var(--color-line)] bg-[var(--color-surface-raised)] px-4 py-2 md:hidden">
+        <nav id="mobile-nav" className="border-t border-[var(--color-line)] bg-[var(--color-surface-raised)] px-4 py-2 lg:hidden">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
