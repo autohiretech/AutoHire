@@ -441,6 +441,24 @@ export function refundDeal(id: string, reason: string, amount?: number): Promise
   });
 }
 
+/**
+ * Withdraw a deal that never took money — the renter closed the payment sheet.
+ *
+ * Allowed only from `created`, `checkout_started` and `payment_failed`;
+ * PayHold refuses `payment_pending` (a mobile-money push may still be
+ * approved on the renter's phone) and anything funded or later, which must be
+ * refunded rather than cancelled. Idempotent: cancelling an already-cancelled
+ * deal returns it and writes nothing, so a double-tap on the close button is
+ * safe. PayHold keeps the row as `canceled` with an audit entry — nothing is
+ * deleted there; removing the local booking is the caller's half.
+ */
+export function cancelDeal(id: string, reason: string): Promise<Deal> {
+  return call<Deal>(`/deals/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+    body: { reason },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Sellers
 // ---------------------------------------------------------------------------

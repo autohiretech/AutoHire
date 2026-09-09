@@ -1396,6 +1396,61 @@ export const supabaseClient = {
     return mapRow<Booking>(row);
   },
   /**
+   * Withdraw a deal the renter never paid — they closed the payment sheet.
+   *
+   * Not `cancelBooking`, which is the post-money refund path. Nothing has
+   * been charged here, so there is no refund and no webhook to wait on:
+   * PayHold moves the deal to `canceled` and the local booking row goes with
+   * it, so an abandoned checkout stops appearing in the renter's trips as a
+   * trip they never started.
+   *
+   * `cancelled: false` with `code: 'payment_in_flight'` is not a failure — a
+   * mobile-money push is already on its way and the booking must survive to
+   * receive it.
+   */
+  async cancelPayholdDeal(
+    dealId: string,
+  ): Promise<{ cancelled: boolean; removed: boolean; code?: string; error?: string }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-cancel-deal', {
+      body: { dealId },
+    });
+    // A refusal comes back as a non-2xx, which supabase-js reports as `error`
+    // — but the body still carries the reason, and "a payment is in flight"
+    // is something the renter needs to read rather than a thrown exception.
+    // `fnError` recovers the message; `code` has to be read separately,
+    // because it is the field that distinguishes a refusal a caller must act
+    // on (`payment_in_flight` — the booking has to survive) from one it can
+    // ignore, and losing it would flatten the two into the same string.
+    if (error) {
+      const detail = await fnError(error);
+      let code: string | undefined;
+      const res = (error as { context?: Response }).context;
+      if (res && typeof res.clone === 'function') {
+        try {
+          const body = await res.clone().text();
+          const parsed = body ? (JSON.parse(body) as { code?: unknown }) : null;
+          if (typeof parsed?.code === 'string') code = parsed.code;
+        } catch {
+          // Unreadable body — the message from `fnError` still stands.
+        }
+      }
+      return { cancelled: false, removed: false, code, error: detail.message };
+    }
+    const payload = data as {
+      cancelled?: boolean;
+      removed?: boolean;
+      code?: string;
+      error?: string;
+    };
+    return {
+      cancelled: !!payload?.cancelled,
+      removed: !!payload?.removed,
+      code: payload?.code,
+      error: payload?.error,
+    };
+  },
+
+  /**
    * Cancel a booking and refund it (host: confirmed/pickup; renter:
    * requested/confirmed). Under PayHold, refunding is not instant: this sends
    * the refund to PayHold and the booking's own state moves to `cancelled`

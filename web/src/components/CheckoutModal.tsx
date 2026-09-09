@@ -1098,12 +1098,40 @@ export function CheckoutModal({
   const busy = stage === 'starting' || stage === 'validating';
   const midPayment = stage === 'acting' || stage === 'validating';
 
+  /**
+   * Closing the sheet withdraws the deal behind it.
+   *
+   * It used to only unmount the modal, which left the deal PayHold had
+   * already created sitting at `created`/`checkout_started` forever — the
+   * source of PayHold's orphaned "Not paid yet" rows — and left a booking in
+   * the renter's trips for a trip they never started.
+   *
+   * The local row is deleted only because PayHold said the deal is cancelled,
+   * never ahead of it: local state is a consequence of PayHold's, not a guess
+   * at it. The one refusal that is not an error is a mobile-money push
+   * already on its way — the renter may still approve it on their phone, so
+   * the sheet closes but the booking stays to receive it. `midPayment` never
+   * reaches here; the modal is not dismissable then at all.
+   */
+  const closeAndCancel = useCallback(() => {
+    if (dealId && stage !== 'paid') {
+      // Deliberately not awaited. The renter asked to close, so the sheet
+      // closes now; the withdrawal is bookkeeping between us and PayHold, and
+      // the endpoint is idempotent if they somehow trigger it twice.
+      void client.cancelPayholdDeal(dealId).catch(() => {
+        // A failed withdrawal leaves an unpaid deal PayHold will expire on its
+        // own. Nothing the renter can act on, so nothing is shown.
+      });
+    }
+    onClose();
+  }, [dealId, stage, onClose]);
+
   return (
     <Modal
       open={open}
       // Not dismissable mid-payment: the provider is mid-charge behind this and
       // closing would lose the renter's place in it.
-      onClose={midPayment ? () => {} : onClose}
+      onClose={midPayment ? () => {} : closeAndCancel}
       title={title}
       className={action?.type === 'redirect' ? 'max-w-xl' : undefined}
     >
