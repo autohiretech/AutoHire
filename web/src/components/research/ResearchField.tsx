@@ -124,6 +124,31 @@ export interface ResearchFieldProps {
    * strip it from the URL so a refresh doesn't repeat it. */
   initialAsk?: string | null;
   onConsumedInitialAsk?: () => void;
+  /**
+   * The conversation, for a caller that wants to keep one — what the renter
+   * asked and what the agent said back, in order.
+   *
+   * Only those two. The `step` summaries ("Searching…") and the `Thinking…`
+   * placeholder stay on this component's own single line, because they are
+   * status rather than conversation: appending them would turn a transcript
+   * into a log, and the renter would have to read past the machinery to find
+   * the answer. Sentinel chips never arrive here either — `__clear_filters__`
+   * and "Closest to me" are intercepted before `send`, so nothing internal
+   * leaks into a history the renter is reading.
+   *
+   * Optional, and the field is unchanged without it: `HostAiPage` renders
+   * this same component with no transcript at all.
+   */
+  onMessage?: (message: { role: 'user' | 'ai'; text: string; tone?: 'error' }) => void;
+  /** Whether a turn is in flight, so a caller rendering the transcript can
+   * show its own waiting state. Reported rather than inferred from the
+   * messages: a turn that only sets filters and offers chips says nothing at
+   * all, and a caller guessing "still busy until an answer arrives" would
+   * wait on one that is never coming. */
+  onBusyChange?: (busy: boolean) => void;
+  /** "Start over" was pressed — the session is gone, so a caller holding a
+   * transcript should drop it too. */
+  onReset?: () => void;
   className?: string;
 }
 
@@ -132,8 +157,13 @@ export interface ResearchFieldProps {
  * rows of chips — the agent's own quick replies, and the renter's
  * accumulated understanding (derived straight from `filters`, so removing a
  * chip here is exactly the same action as unclicking a filter on /search).
- * Never renders a turn history — only the current line is ever shown, and it
- * is replaced, not appended to, on every turn.
+ * Never renders a turn history itself — only the current line is ever shown,
+ * and it is replaced, not appended to, on every turn.
+ *
+ * A caller that wants the history keeps it: `onMessage` reports the renter's
+ * question and the agent's answer as they happen, and `AiPage` renders them
+ * over the map. That split is deliberate — the line is status and belongs to
+ * the field, the conversation is content and belongs to the page.
  */
 /** The renter's saved Account location as an agent-context coordinate, or
  * null when they never set one. */
@@ -156,6 +186,9 @@ export function ResearchField({
   fromListingId,
   initialAsk,
   onConsumedInitialAsk,
+  onMessage,
+  onBusyChange,
+  onReset,
   className,
 }: ResearchFieldProps) {
   const navigate = useNavigate();
@@ -188,6 +221,13 @@ export function ResearchField({
   const gotChipsRef = useRef(false);
   const hadErrorRef = useRef(false);
   const awaitingNudgeRef = useRef(false);
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+    // `onBusyChange` is intentionally not a dependency — a caller passing an
+    // inline arrow would otherwise re-fire this on every one of its renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
 
   // Persist the conversation (not the filters — AiPage owns those) so a
   // navigate to /cars/:id and back finds the same line/chips/session rather
@@ -283,6 +323,10 @@ export function ResearchField({
     setConfirm(null);
     setChips([]);
     setLine({ text: 'Thinking…', tone: 'status' });
+    // Into the transcript before the request goes out, so the renter's own
+    // words are on screen while the turn is still running rather than
+    // appearing retroactively once it answers.
+    onMessage?.({ role: 'user', text: message });
     lastMessageRef.current = message;
     gotLineRef.current = false;
     gotChipsRef.current = false;
@@ -318,6 +362,7 @@ export function ResearchField({
           case 'say':
             gotLineRef.current = true;
             setLine({ text: evt.text, tone: 'question' });
+            onMessage?.({ role: 'ai', text: evt.text });
             break;
           case 'chips':
             gotChipsRef.current = true;
@@ -333,6 +378,7 @@ export function ResearchField({
             gotLineRef.current = true;
             hadErrorRef.current = true;
             setLine({ text: evt.message, tone: 'error' });
+            onMessage?.({ role: 'ai', text: evt.message, tone: 'error' });
             break;
         }
       },
@@ -425,6 +471,12 @@ export function ResearchField({
     setChips([]);
     setConfirm(null);
     setLine(null);
+    // A caller keeping the transcript clears it here and nowhere else. "Start
+    // over" is the only control in this UI that means *forget the
+    // conversation*, so it is the only thing that should empty it — leaving a
+    // history on screen after the session behind it was thrown away would
+    // show the renter turns the agent can no longer remember.
+    onReset?.();
     try {
       sessionStorage.removeItem(CONVO_KEY);
     } catch {

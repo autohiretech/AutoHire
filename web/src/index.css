@@ -356,13 +356,31 @@
 .animate-ai-glow {
   animation: ai-glow 2.6s ease-in-out infinite;
 }
+
+/* A chat bubble arriving: rises further than `popover-in` and takes longer,
+   because this one is meant to be *watched*. An answer landing beside a map
+   that just moved should read as a reply, not as a repaint. */
+@keyframes chat-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-chat-in {
+  animation: chat-in 0.22s var(--ease-pop);
+}
 @media (prefers-reduced-motion: reduce) {
   .animate-drawer-in,
   .animate-overlay-in,
   .animate-popover-in,
   .animate-sheet-in,
   .animate-ai-sheen,
-  .animate-ai-glow {
+  .animate-ai-glow,
+  .animate-chat-in {
     animation: none;
   }
 }

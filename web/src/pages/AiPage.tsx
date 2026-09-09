@@ -12,9 +12,10 @@ import { ListingRowSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { ResearchField } from '@/components/research/ResearchField';
 import { ResultsRail } from '@/components/research/ResultsRail';
+import { AiChat, type ChatMessage } from '@/components/AiChat';
 import { HostAiPage } from '@/pages/HostAiPage';
 import { AI_FILTERS_KEY, loadAiFilters } from '@/lib/aiFilters';
-import { loadHomeLocation } from '@/lib/homeLocation';
+import { loadHomeLocation, subscribeHomeLocation } from '@/lib/homeLocation';
 
 /**
  * `/ai` splits on `mode` before anything else runs — a host has no use for
@@ -48,6 +49,22 @@ const RAIL_MAX = 30;
 function nearMe(): Pick<ListingFilters, 'nearLat' | 'nearLng'> {
   const home = loadHomeLocation();
   return home ? { nearLat: home.lat, nearLng: home.lng } : {};
+}
+
+/** The transcript's own key. Per-tab and separate from ResearchField's
+ * `autohire-ai-convo` for the same reason the two are separate pieces of
+ * state: that stores the one live line the field is showing, this stores the
+ * conversation the page is rendering, and a reload should restore both
+ * without either owning the other. */
+const CHAT_KEY = 'autohire-ai-chat';
+
+function loadChat(): ChatMessage[] {
+  try {
+    const raw = sessionStorage.getItem(CHAT_KEY);
+    return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function AiPage() {
@@ -99,6 +116,47 @@ function RenterAiPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [highlightIds, setHighlightIds] = useState<string[]>([]);
   const [sheetDetent, setSheetDetent] = useState<SheetDetent>('peek');
+
+  // A location fix acquired anywhere else — the prompt under the header,
+  // Account → Your location — reaching this page without a reload.
+  //
+  // `nearMe()` above runs once, at mount, off whatever was already stored. So
+  // a renter who opened /ai first and granted permission afterwards had their
+  // coordinate saved and their map still ranked by rating: the fix existed,
+  // and the only thing standing between it and the query was that nothing
+  // re-read it. `subscribeHomeLocation` fires on this tab precisely so a page
+  // already open can pick it up.
+  //
+  // The precedence is the seed's, re-checked at the instant the fix lands
+  // rather than assumed from mount: a city the renter has since named, or a
+  // coordinate that came with a hand-off, is a place they asked about, and
+  // re-ranking that around where they happen to be standing answers a
+  // different question than the one on screen. This only ever fills a gap.
+  useEffect(
+    () =>
+      subscribeHomeLocation((home) => {
+        if (!home) return;
+        setFilters((prev) =>
+          prev.city || prev.nearLat != null
+            ? prev
+            : { ...prev, nearLat: home.lat, nearLng: home.lng },
+        );
+      }),
+    [],
+  );
+
+  // The conversation, which the field reports and this page renders. See
+  // AiChat: the field keeps its single status line, the answers accumulate
+  // here so they survive the next turn starting.
+  const [messages, setMessages] = useState<ChatMessage[]>(loadChat);
+  const [aiBusy, setAiBusy] = useState(false);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CHAT_KEY, JSON.stringify(messages));
+    } catch {
+      // Private mode / quota — the conversation still holds for this view.
+    }
+  }, [messages]);
 
   // `?ask=` runs once, then is stripped so a refresh doesn't repeat it — the
   // same hand-off HomePage's hero field uses.
@@ -246,6 +304,17 @@ function RenterAiPage() {
       initialAsk={initialAskRef.current}
       onConsumedInitialAsk={() => setAiPending(false)}
       onCountryMatch={(code) => setCountry(code)}
+      onMessage={(m) =>
+        setMessages((prev) => [
+          ...prev,
+          // `crypto.randomUUID` needs a secure context and this runs on one,
+          // but a plain counter fallback keeps a keyed list stable rather
+          // than throwing on an http:// dev host.
+          { ...m, id: globalThis.crypto?.randomUUID?.() ?? `m${prev.length}-${Date.now()}` },
+        ])
+      }
+      onBusyChange={setAiBusy}
+      onReset={() => setMessages([])}
     />
   );
 
@@ -263,6 +332,18 @@ function RenterAiPage() {
           onSelect={onMarkerSelect}
           focusPoint={null}
         />
+      </div>
+
+      {/* The conversation, over the map.
+          On a phone it hangs from the top: the field dock, the rail and the
+          sheet all stack upward from the bottom, and adding a fourth thing to
+          that stack would mean measuring the other three. The map is behind
+          it either way, and the top edge is otherwise empty.
+          On desktop it takes the bottom-left — the field is top-centre and the
+          results panel is top-right, so this is the corner nothing else wants,
+          and it reads as the assistant talking beside its own results. */}
+      <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex max-h-[38svh] flex-col lg:inset-x-auto lg:bottom-4 lg:left-4 lg:top-auto lg:max-h-[46vh] lg:w-[380px]">
+        <AiChat messages={messages} busy={aiBusy} className="max-h-full" />
       </div>
 
       {/* Mobile results sheet. Its containing block is this page's own
