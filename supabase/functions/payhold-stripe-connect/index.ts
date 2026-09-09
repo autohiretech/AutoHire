@@ -144,6 +144,40 @@ Deno.serve(async (req: Request) => {
     return json({ error: `${req.method} not supported.` }, 405);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
-    return json({ error: e instanceof Error ? e.message : String(e) }, status);
+    const message = e instanceof Error ? e.message : String(e);
+
+    // A platform-configuration failure is not the host's error, and until now
+    // it was handed to them verbatim. Stripe refuses account creation with
+    // "You can only create new accounts if you've signed up for Connect, which
+    // you can do at https://dashboard.stripe.com/connect" when Connect is not
+    // enabled on PayHold's own Stripe account — so a car owner in the US, who
+    // has no relationship with that account and cannot see that dashboard, was
+    // told to go configure it. It also names an internal dependency the host
+    // has no reason to know exists.
+    //
+    // The distinction that matters: nothing the host does — retrying, a
+    // different bank, a different card — changes this, so an error inviting
+    // them to try again would be a lie. What IS true is that their money is
+    // safe and accruing, which is the thing they actually want to know.
+    // Operators get the real cause in the logs, where it can be acted on.
+    if (/signed up for Connect|Connect.*not (enabled|activated)|platform.*not.*onboard/i.test(message)) {
+      console.error(
+        'stripe connect onboarding refused — Connect is not enabled on the platform Stripe account. ' +
+          'Enable it at https://dashboard.stripe.com/connect; no host can complete Stripe payout ' +
+          `setup in any of the 44 Stripe countries until then. Upstream: ${message}`,
+      );
+      return json(
+        {
+          error:
+            "Payouts in your country aren't switched on yet — this is on us, not " +
+            'something you can fix. Your earnings keep building up in the meantime ' +
+            "and nothing is lost; we'll let you know the moment it's ready.",
+          code: 'payouts_not_enabled',
+        },
+        503,
+      );
+    }
+
+    return json({ error: message }, status);
   }
 });
