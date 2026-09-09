@@ -22,6 +22,7 @@ import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { formatMoney, formatMoneyMinor } from '@/lib/currency';
 import { formatDate } from '@/lib/format';
+import { PAYOUT_METHOD_ICON } from '@/lib/payments';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
   Badge,
@@ -199,6 +200,13 @@ export function EarningsPage() {
   // is PayHold's own answer to "which one is live"; falling back to the
   // first row only covers a seller synced from before that flag existed.
   const primary = destinations.find((d) => d.isPrimary) ?? destinations[0] ?? null;
+  // The destination row itself carries no method — only PayHold's own
+  // `payout_provider` ('flutterwave_momo' / 'flutterwave_bank' /
+  // 'stripe_connect'), which isn't the vocabulary the rest of this app
+  // renders in. `payoutMethod` is that vocabulary, already on the profile,
+  // and already the thing this exact request wrote — `payhold-register-seller`
+  // sets `payout_method` and adds/promotes the destination in the same call.
+  const PayoutMethodIcon = (me?.payoutMethod && PAYOUT_METHOD_ICON[me.payoutMethod]) || Banknote;
   const primaryReady =
     !!primary?.verifiedAt &&
     (!primary.securityHoldUntil || new Date(primary.securityHoldUntil) <= new Date());
@@ -468,7 +476,14 @@ export function EarningsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5">
                   <div className="flex items-center gap-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
-                      <Banknote size={16} />
+                      {/* A card reads as a card, a wallet as a wallet — not
+                          the same banknote icon regardless of method. This
+                          renders whatever `me.payoutMethod` actually is;
+                          it's kept in step with the primary destination by
+                          payhold-register-seller writing both together on
+                          every save, so the two never describe different
+                          methods. */}
+                      <PayoutMethodIcon size={16} />
                     </span>
                     <div>
                       <p className="text-body-sm font-medium text-[var(--color-content)]">

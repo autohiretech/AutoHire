@@ -7,15 +7,10 @@ import {
   Check,
   CheckCircle2,
   Clock,
-  CreditCard,
-  Landmark,
   Lock,
   MapPin,
-  QrCode,
   ShieldCheck,
-  Smartphone,
   Trash2,
-  Wallet,
 } from 'lucide-react';
 import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
@@ -25,6 +20,7 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
   PAYMENTS_LIVE,
   PAYMENTS_PAYHOLD,
+  PAYOUT_METHOD_ICON,
   PAYOUT_METHOD_META,
   maskDestination,
   payoutAvailability,
@@ -52,19 +48,6 @@ import {
   Skeleton,
   toast,
 } from '@/components/ui';
-
-const METHOD_ICON: Record<PayoutMethodType, typeof Smartphone> = {
-  momo: Smartphone,
-  bank: Landmark,
-  card: CreditCard,
-  // The wallets share an icon on purpose: they are the same shape of thing —
-  // an account held with a provider — and the label already names which.
-  paypal: Wallet,
-  venmo: Wallet,
-  cash_app: Wallet,
-  alipay: QrCode,
-  wechat_pay: QrCode,
-};
 
 const PROVIDER_NAME: Record<PayoutProvider, string> = {
   flutterwave: 'Flutterwave',
@@ -597,7 +580,7 @@ export function PayoutSetupPage() {
           <div className="grid gap-3 sm:grid-cols-3">
             {methods.map((m) => {
               const isSel = selected === m;
-              const Icon = METHOD_ICON[m];
+              const Icon = PAYOUT_METHOD_ICON[m];
               return (
                 <button
                   key={m}

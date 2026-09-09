@@ -1,4 +1,25 @@
+import { CreditCard, Landmark, QrCode, Smartphone, Wallet } from 'lucide-react';
 import type { PaymentMethodType, PayoutMethodType, PayoutProvider } from '@autohire/shared';
+
+/**
+ * One icon per payout method — shared so a card never quietly renders as a
+ * bank account or vice versa. Two screens used to keep their own copy of
+ * this; a destination row on the Earnings screen always showed a generic
+ * banknote regardless of the actual method, because nothing there decided
+ * per method at all.
+ */
+export const PAYOUT_METHOD_ICON: Record<PayoutMethodType, typeof Smartphone> = {
+  momo: Smartphone,
+  bank: Landmark,
+  card: CreditCard,
+  // The wallets share an icon on purpose: they are the same shape of thing —
+  // an account held with a provider — and the label already names which.
+  paypal: Wallet,
+  venmo: Wallet,
+  cash_app: Wallet,
+  alipay: QrCode,
+  wechat_pay: QrCode,
+};
 
 /**
  * Payment orchestration — the user picks a method they understand (mobile money,
