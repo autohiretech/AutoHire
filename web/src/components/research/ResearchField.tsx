@@ -11,7 +11,7 @@ import { streamAgentTurn, type AgentAction, type AgentChip } from '@/lib/aiAgent
 import { useMyLocation, type Coordinates } from '@/lib/useMyLocation';
 import { Chip, ChipRow, toast } from '@/components/ui';
 import { SearchBar, type SearchBarHandle } from '@/components/research/SearchBar';
-import { loadHomeLocation } from '@/lib/homeLocation';
+import { loadHomeLocation, saveHomeLocation } from '@/lib/homeLocation';
 
 const CONVO_KEY = 'autohire-ai-convo';
 
@@ -35,11 +35,18 @@ const EMPTY_CONVO: StoredConvo = { sessionId: null, line: null, chips: [], confi
 
 /** Sentinel `AgentChip.send` value, same trick as `__clear_filters__` below:
  * a chip label the nudge effect offers, but tapping it never reaches the
- * model — "closest first" needs the renter's own coordinate, which the
- * agent has no way to know (no lat/lng anywhere in its tool schema or
- * request context, by design), so this has to be resolved and applied
- * entirely on the client, the same principle already applied to city-match
- * and date-range filtering (see SearchBar's onCityMatch/onDateRangeChange). */
+ * model.
+ *
+ * Not because the agent couldn't do it — it can now: `context.location`
+ * carries the renter's coordinate and its filter tool takes a `nearMe` flag
+ * that turns into the same `nearLat`/`nearLng` this function sets. But that
+ * is a streamed round trip, and a model deciding whether to set a flag, to
+ * answer a tap on a button that says exactly one thing. The coordinate is
+ * already in this component; applying it here is instant and cannot be
+ * declined. Same principle as city-match and date-range filtering, which
+ * also skip the model when the answer is already known (see SearchBar's
+ * onCityMatch/onDateRangeChange). Nothing here is hidden from the agent —
+ * the resulting filters go back to it as `context.filters` next turn. */
 const CLOSEST_TO_ME_SEND = '__closest_to_me__';
 
 /** Per-tab only (sessionStorage, not localStorage) — deliberately: this is
@@ -223,7 +230,19 @@ export function ResearchField({
     } else if (count > 8) {
       setChips([
         { label: 'Cheapest first', send: 'Sort these results by price, cheapest first.' },
-        { label: 'Closest to me', send: CLOSEST_TO_ME_SEND },
+        // Offered only while the results are NOT already ranked by distance.
+        // A coordinate now arrives on its own — the moment the bar resolves
+        // one, and on mount from the renter's saved location (see AiPage's
+        // `nearMe`) — so this chip stopped being the only route to proximity
+        // and became, in those cases, a button that re-applies the exact
+        // coordinate already in effect and visibly does nothing. It is still
+        // the only route for a renter who has saved no location and hasn't
+        // touched the "Where" box, which is why it stays rather than going.
+        // `== null`, not falsy: latitude 0 is the equator, which crosses
+        // real markets here.
+        ...(filters.nearLat == null || filters.nearLng == null
+          ? [{ label: 'Closest to me', send: CLOSEST_TO_ME_SEND }]
+          : []),
         { label: 'Highest rated', send: 'Sort these results by rating, highest first.' },
       ]);
     } else if (count >= 1 && count <= 3) {
@@ -325,19 +344,30 @@ export function ResearchField({
   }
 
   /**
-   * Deterministic, zero-agent-round-trip "Closest to me" — the model has no
-   * lat/lng anywhere in its tool schema or request context (by design, see
-   * `CLOSEST_TO_ME_SEND`'s comment), so this applies `nearLat`/`nearLng`
+   * Deterministic, zero-agent-round-trip "Closest to me" — see
+   * `CLOSEST_TO_ME_SEND` for why a tap on this doesn't go to the model even
+   * though the model could now serve it. Applies `nearLat`/`nearLng`
    * directly through the same `onFilters` callback city/dates already use.
-   * Reuses a coordinate SearchBar already resolved if there is one; otherwise
-   * triggers a fresh `useMyLocation()` request, the same hook and behavior
-   * SearchBar's own "use my location" button already uses for denial/failure.
+   * Reuses a coordinate this session already resolved, then the renter's
+   * saved location, and only asks the browser for a fresh fix when neither
+   * exists — the same precedence the agent's own `context.location` uses
+   * above, and one fewer permission prompt for a coordinate we already have.
+   * A fresh request goes through `useMyLocation()`, the same hook and
+   * denial/failure behaviour SearchBar's "use my location" button uses.
+   *
+   * A city already applied is not cleared here. It used to need to be, and
+   * this function was the one path that forgot; the rule now lives in the
+   * `onFilters` reducer itself (see AiPage), where a coordinate arriving
+   * without a city of its own displaces a stale one no matter which of these
+   * paths sent it. Restating it at the call site would put the invariant
+   * back in two places, which is how it came to be missing from one.
    */
   function closestToMe() {
     setChips([]);
-    if (lastLocationRef.current) {
-      const { lat, lng } = lastLocationRef.current;
-      onFilters({ nearLat: lat, nearLng: lng });
+    const known = lastLocationRef.current ?? savedHomeLocation();
+    if (known) {
+      lastLocationRef.current = { lat: known.lat, lng: known.lng };
+      onFilters({ nearLat: known.lat, nearLng: known.lng });
       setLine(null);
       return;
     }
@@ -346,6 +376,12 @@ export function ResearchField({
       (p) => {
         lastLocationRef.current = p;
         onFilters({ nearLat: p.lat, nearLng: p.lng });
+        // Kept, so the next visit ranks by distance without prompting again
+        // — the same store and the same raw first label SearchBar writes on
+        // its own GPS fix. Without this, the one path that actually costs
+        // the renter a permission dialog was also the one that threw the
+        // answer away the moment they navigated.
+        saveHomeLocation({ lat: p.lat, lng: p.lng, label: 'Current location' });
         setLine(null);
       },
       () => {
@@ -429,6 +465,14 @@ export function ResearchField({
           void send(input.message);
         }}
         onCityMatch={(city) => (city ? onFilters({ city }) : onRemoveFilter('city'))}
+        // The exact coordinate, applied the moment the bar resolves one —
+        // "Closest to me" below is then just the button for asking again
+        // later, not the only way to ever get a distance-ranked result.
+        onPointMatch={(point) => {
+          lastLocationRef.current = point;
+          if (point) onFilters({ nearLat: point.lat, nearLng: point.lng });
+          else onFilters({}, ['nearLat', 'nearLng']);
+        }}
         onCountryMatch={onCountryMatch}
         onDateRangeChange={(r) =>
           r.start && r.end

@@ -50,6 +50,21 @@ const CITY_MATCHES = [...ALL_CITIES].sort((a, b) => b.length - a.length);
 const FILLER_WORDS_RE =
   /\b(a|an|the|i|me|my|we|us|need|needs|needed|want|wants|wanted|looking|look|for|with|without|in|at|near|around|please|some|any|to|is|are|of|and|or|car|cars|vehicle|vehicles|rent|renting|rental|hire|hiring|book|booking)\b/gi;
 
+/**
+ * A geocoded address rather than free text. Every label that reaches the
+ * pickup box from outside the renter's own typing is a Nominatim
+ * `display_name` — "Gasabo District, City of Kigali, Rwanda" from "use my
+ * current location", or the same shape from the suggestions dropdown — and
+ * those are always comma-separated. A renter typing into "Where do you want
+ * to pick up?" does not use commas, so the comma is the honest signal here;
+ * no attempt is made to recognize the world's administrative vocabulary
+ * ("district", "province", "governorate", …), which would be a list that is
+ * wrong in some market on the day it's written.
+ */
+function looksLikeAddress(query: string): boolean {
+  return query.includes(',');
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -62,7 +77,10 @@ function escapeRegExp(s: string): string {
  * so it still narrows results via keyword search instead of being silently
  * dropped once *any* structured filter is recognized.
  */
-export function interpretQuery(query: string): ListingFilters {
+export function interpretQuery(
+  query: string,
+  opts: { resolvedPlace?: boolean } = {},
+): ListingFilters {
   const q = query.toLowerCase();
   const filters: ListingFilters = {};
   let remaining = q;
@@ -121,7 +139,38 @@ export function interpretQuery(query: string): ListingFilters {
   }
 
   remaining = remaining.replace(FILLER_WORDS_RE, ' ').replace(/\s+/g, ' ').trim();
-  if (remaining) filters.query = remaining;
+  // An address is *all* place. Once the city is out of it what's left is
+  // administrative context — "gasabo district", "rwanda" — never a make or a
+  // model, and `filters.query` is an AND of keywords where every word has to
+  // hit title/make/model/city/location. Feeding an address into it is why
+  // searching from where you're standing returned "No cars match" in a city
+  // holding 68 of them: "gasabo" alone matched one listing, and the stray ","
+  // token matched nothing at all, so the AND could only ever be empty.
+  //
+  // There are two ways to know the box holds a place. `resolvedPlace` is the
+  // exact one — the caller had a coordinate that arrived *with* this text, so
+  // the text is a geocoded label by construction, not by resemblance. The
+  // comma is the fallback for when no coordinate came along, and on its own it
+  // was too greedy: it also swallowed "toyota, automatic", which is a comma
+  // and a car, and quietly returned every automatic in the country. Requiring
+  // a city we recognise alongside it is what separates "Gasabo District, City
+  // of Kigali, Rwanda" from "toyota, automatic" without inventing a
+  // dictionary of administrative words that is wrong in some market on the
+  // day it is written.
+  //
+  // "toyota, kigali" is the case still caught by the fallback, and it fails
+  // toward the city rather than toward nothing — every Kigali car instead of
+  // zero. That is the right direction to be wrong in, and a coordinate makes
+  // it moot, since `resolvedPlace` then answers the question exactly.
+  const isPlace = opts.resolvedPlace || (looksLikeAddress(query) && !!filters.city);
+  // A remainder with no letter or digit in it — the lone "," left by "prado,
+  // 7 seats" once both halves are understood — is not a keyword and must not
+  // travel as one. Both keyword implementations drop such a token, but the
+  // SQL one only does so as of migration 076, and until that is applied the
+  // live RPC still turns it into a match-nothing sentinel and returns zero
+  // rows. Not emitting it is what makes this correct on today's database as
+  // well as tomorrow's, rather than correct only once a migration lands.
+  if (remaining && !isPlace && /[\p{L}\p{N}]/u.test(remaining)) filters.query = remaining;
 
   return filters;
 }

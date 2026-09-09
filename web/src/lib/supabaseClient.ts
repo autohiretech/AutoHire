@@ -97,17 +97,25 @@ function mapRows<T>(rows: Record<string, unknown>[] | null): T[] {
  * required to type an exact title/make/model to get a match.
  */
 function keywordsOf(query: string | undefined): string[] {
-  return (query ?? '').trim().split(/\s+/).filter(Boolean);
-}
-
-/** One keyword, matched case-insensitively across every field worth searching. */
-function keywordConditions(word: string): string {
   // Commas and parens are PostgREST's own filter-syntax delimiters, and `%`/`*`
   // are ilike/PostgREST wildcards — strip them so a stray character in the
-  // search box can't break the query or widen the match unexpectedly.
-  const safe = word.replace(/[%*,()]/g, '');
-  if (!safe) return 'id.eq.__no_match__';
-  const t = `%${safe}%`;
+  // search box can't break the query or widen the match unexpectedly. A word
+  // that was *nothing but* those characters is then dropped rather than kept
+  // as an unmatchable empty one: words here are ANDed, so a lone "," left over
+  // from an address ("Gasabo District, City of Kigali") used to force the whole
+  // search to zero rows single-handedly. Punctuation that carries no search
+  // meaning should carry no search effect either — mirrored in SQL by
+  // `search_available_listings` (migration 076).
+  return (query ?? '')
+    .split(/\s+/)
+    .map((w) => w.replace(/[%*,()]/g, ''))
+    .filter(Boolean);
+}
+
+/** One keyword, matched case-insensitively across every field worth searching.
+ * Always a word `keywordsOf` already sanitised and found non-empty. */
+function keywordConditions(word: string): string {
+  const t = `%${word}%`;
   return `title.ilike.${t},make.ilike.${t},model.ilike.${t},city.ilike.${t},location.ilike.${t}`;
 }
 

@@ -14,6 +14,7 @@ import { ResearchField } from '@/components/research/ResearchField';
 import { ResultsRail } from '@/components/research/ResultsRail';
 import { HostAiPage } from '@/pages/HostAiPage';
 import { AI_FILTERS_KEY, loadAiFilters } from '@/lib/aiFilters';
+import { loadHomeLocation } from '@/lib/homeLocation';
 
 /**
  * `/ai` splits on `mode` before anything else runs — a host has no use for
@@ -41,6 +42,14 @@ const SHEET_HEIGHT: Record<SheetDetent, string> = {
  * and "List" opens the full set. */
 const RAIL_MAX = 30;
 
+/** The renter's saved coordinate as distance-ranking filters, or nothing at
+ * all when they never set one — never a stand-in city, and never a fresh
+ * geolocation prompt fired just from opening a page. */
+function nearMe(): Pick<ListingFilters, 'nearLat' | 'nearLng'> {
+  const home = loadHomeLocation();
+  return home ? { nearLat: home.lat, nearLng: home.lng } : {};
+}
+
 export function AiPage() {
   const { mode } = useAppMode();
   return mode === 'host' ? <HostAiPage /> : <RenterAiPage />;
@@ -66,10 +75,27 @@ function RenterAiPage() {
   const location = useLocation();
   const [params, setParams] = useSearchParams();
 
-  const [filters, setFilters] = useState<ListingFilters>(() => ({
-    ...loadAiFilters(),
-    country: loadAiFilters().country ?? country.code,
-  }));
+  const [filters, setFilters] = useState<ListingFilters>(() => {
+    const stored = loadAiFilters();
+    return {
+      ...stored,
+      country: stored.country ?? country.code,
+      // "Cars around me" without a fresh GPS prompt. The renter's saved
+      // coordinate (Account → Your location, or the banner under the header)
+      // already reached the *agent* as `context.location`, but nothing was
+      // putting it into the query — so the model could say "here's what's
+      // near you" over a list still ordered by rating. `nearLat`/`nearLng`
+      // is migration 075's haversine order-by and excludes nothing, so this
+      // can only change what's at the top.
+      //
+      // Only when the stored filters name no place of their own. A carried
+      // city or a coordinate that arrived with the hand-off is somewhere the
+      // renter asked about, and ranking *that* by distance from home would
+      // sort a search for Musanze by how far each car is from Kigali. Same
+      // precedence /search applies in its own `startPoint`.
+      ...(stored.city || stored.nearLat != null ? {} : nearMe()),
+    };
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [highlightIds, setHighlightIds] = useState<string[]>([]);
   const [sheetDetent, setSheetDetent] = useState<SheetDetent>('peek');
@@ -126,6 +152,33 @@ function RenterAiPage() {
     }
     setFilters((prev) => {
       const next = { ...prev, ...patch };
+      // Where the renter is beats the name of the city they are in — and
+      // that has to be a property of this state, not of one call path.
+      //
+      // A patch that brings a coordinate is a fresh answer to "where", so a
+      // city already sitting in `prev` is stale relative to it and goes.
+      // `city` is a hard `.eq()` — a boundary — and ANDing it with a
+      // distance sort silently deletes the very cars the coordinate was
+      // asked for: the ones a few minutes away over a district line. The
+      // coordinate excludes nothing and only ranks (migration 075), so it
+      // takes the city's place rather than sitting beside it.
+      //
+      // A city arriving in the patch itself is the opposite case and stands:
+      // that is the renter naming somewhere ("cars in Musanze"), not
+      // something inferred from where they happen to be standing, and the
+      // coordinate is then just the order they are listed in.
+      //
+      // This lived in the callers before, and one of them didn't have it.
+      // `onPointMatch` was safe only because SearchBar happens to fire
+      // `onCityMatch(undefined)` immediately before it; "Closest to me"
+      // bypasses SearchBar entirely and inherited none of that, so a city
+      // matched moments earlier out of typed text or a picked recent — both
+      // legitimately city-only at the time, neither carrying a coordinate —
+      // survived the tap and boundaried away the nearest cars.
+      //
+      // `== null`, not falsy: latitude 0 is the equator, which runs through
+      // real markets in this catalogue.
+      if (patch.nearLat != null && patch.nearLng != null && patch.city == null) delete next.city;
       // A field set in this same patch wins over a clear of that field.
       // The model does sometimes send both — asked for cars in Rusizi it
       // returned `filters: {city:'Rusizi'}` alongside `clear: ['city']` —

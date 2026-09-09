@@ -102,6 +102,36 @@ class SupabaseTokenLedger implements TokenLedger {
   }
 }
 
+/**
+ * The one place "we know where the renter is" is decided — everything
+ * downstream (the prompt paragraph, `nearMe` on apply_filters/list_listings,
+ * the haversine sort in migration 075) branches on whether this returns a
+ * point. So the bar is a coordinate that can actually be somewhere, not just
+ * a value that happens to be typed `number`:
+ *
+ *   - `== null` is deliberately NOT what's checked, because 0 is a real
+ *     latitude and a real longitude — the equator runs through Uganda and
+ *     Kenya, and the prime meridian through Ghana. Falsy-testing a coordinate
+ *     is how a renter standing on one gets told we don't know where they are.
+ *   - `Number.isFinite` is not belt-and-braces: `JSON.parse('{"lat":1e999}')`
+ *     yields `Infinity`, which is `typeof 'number'`, survives every range
+ *     check written as a comparison, and reaches Postgres as an `acos`
+ *     argument that returns NULL — silently scrambling the distance order
+ *     instead of failing.
+ *   - Out-of-range values are dropped rather than clamped. A clamped 500°
+ *     is a confident answer about a place nobody is; `undefined` makes the
+ *     agent say it doesn't know, which is the truth.
+ */
+function userLocationOf(
+  location: { lat?: number; lng?: number; label?: string } | undefined,
+): { lat: number; lng: number; label?: string } | undefined {
+  const { lat, lng, label } = location ?? {};
+  if (typeof lat !== 'number' || typeof lng !== 'number') return undefined;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return undefined;
+  return { lat, lng, label };
+}
+
 /** How many past turns of a session are replayed to the model. Turns are
  * user/assistant rows, so this is roughly five exchanges — enough for
  * "cheaper than that" or "the second one" to resolve, without every request
@@ -296,10 +326,7 @@ Deno.serve({ port: Number(Deno.env.get('PORT') ?? '8000') }, async (req: Request
     visibleListingIds: context.visibleListingIds,
     route: context.route,
     filters: context.filters,
-    userLocation:
-      typeof context.location?.lat === 'number' && typeof context.location?.lng === 'number'
-        ? { lat: context.location.lat, lng: context.location.lng, label: context.location.label }
-        : undefined,
+    userLocation: userLocationOf(context.location),
   };
   const systemPrompt = buildSystemPrompt({ route: context.route, country, currency: context.currency, role, filters: context.filters, visibleListingIds: context.visibleListingIds, userLocation: ctx.userLocation });
   const tokenLedger = new SupabaseTokenLedger(supabase, sessionId);

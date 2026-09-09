@@ -24,6 +24,27 @@ export interface HomeLocation {
 
 const KEY = 'autohire.home-location';
 
+/**
+ * Fired on this tab whenever the saved location changes, so a page already on
+ * screen picks it up without a reload. The browser's own `storage` event is
+ * not a substitute: it fires in *other* tabs, never the one that wrote. This
+ * matters because both writers are things the renter does mid-visit — the
+ * "Use my location" banner under the header, and Account → Your location —
+ * and "find cars around me" that only takes effect on the *next* visit is not
+ * what either of them appears to promise.
+ */
+const CHANGED = 'autohire:home-location';
+
+/** Subscribe to saved-location changes. Returns its own unsubscribe, so a
+ * caller can hand it straight back from `useEffect`. */
+export function subscribeHomeLocation(
+  onChange: (loc: HomeLocation | null) => void,
+): () => void {
+  const handler = () => onChange(loadHomeLocation());
+  window.addEventListener(CHANGED, handler);
+  return () => window.removeEventListener(CHANGED, handler);
+}
+
 export function loadHomeLocation(): HomeLocation | null {
   try {
     const raw = localStorage.getItem(KEY);
@@ -39,6 +60,10 @@ export function saveHomeLocation(loc: HomeLocation): void {
   } catch {
     // Private mode / quota — the setting just doesn't persist past this tab.
   }
+  // Announced even when the write above failed: the coordinate is still good
+  // for this session, and a renter in a private window should still get cars
+  // around them — they just won't get them again tomorrow.
+  window.dispatchEvent(new CustomEvent(CHANGED));
 }
 
 export function clearHomeLocation(): void {
@@ -47,4 +72,5 @@ export function clearHomeLocation(): void {
   } catch {
     // Nothing to clean up if storage isn't available in the first place.
   }
+  window.dispatchEvent(new CustomEvent(CHANGED));
 }

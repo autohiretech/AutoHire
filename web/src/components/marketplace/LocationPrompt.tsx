@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MapPin, X } from 'lucide-react';
 import { useCountry } from '@/lib/country';
+import { saveHomeLocation } from '@/lib/homeLocation';
 import { toast, Notice, Button } from '@/components/ui';
 
 const DISMISS_KEY = 'autohire.locationPrompted';
@@ -11,6 +12,13 @@ const DISMISS_KEY = 'autohire.locationPrompted';
  * declining just leaves the manual header country selector in charge. Shows once
  * (choice persists in localStorage). Uses the browser Geolocation API + a free,
  * keyless reverse-geocode to map coordinates → country.
+ *
+ * The coordinate itself is kept, not just the country it resolves to. The copy
+ * below says "cars near you", and until this saved it, the banner delivered a
+ * market and a currency — a whole country is not "near you". `saveHomeLocation`
+ * is what Home's grid seeds `nearLat`/`nearLng` from, so accepting here is what
+ * turns "Recommended" into cars actually ranked by distance from the renter,
+ * for this visit and every one after it.
  */
 export function LocationPrompt() {
   const { country, setCountry, countries, setCurrency } = useCountry();
@@ -40,12 +48,29 @@ export function LocationPrompt() {
           const data = await res.json();
           const code = String(data.countryCode ?? '').toUpperCase();
           const match = countries.find((c) => c.code === code);
+
+          // Saved before the market check below, and regardless of how that
+          // goes: the renter's coordinate is true whether or not we happen to
+          // operate where they're standing, and it costs nothing to already
+          // have it the day we do. The label is whatever this lookup resolved
+          // — never a name inferred from a coordinate table.
+          const label = [data.locality, data.city, data.principalSubdivision, data.countryName]
+            .map((part: unknown) => String(part ?? '').trim())
+            .filter((part, i, all) => part && all.indexOf(part) === i)
+            .slice(0, 2)
+            .join(', ');
+          saveHomeLocation({
+            lat: latitude,
+            lng: longitude,
+            label: label || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+          });
+
           if (match) {
             setCountry(match.code);
             // Geolocation is as strong a signal of "their currency" as it gets —
             // matches the promise in the banner's own copy above.
             setCurrency(match.currency);
-            toast.success(`Showing cars in ${match.name}, prices in ${match.currency}.`);
+            toast.success(`Showing cars near you in ${match.name}, prices in ${match.currency}.`);
           } else {
             toast.info(
               `We don't operate in ${data.countryName ?? 'your area'} yet — pick a country to browse.`,

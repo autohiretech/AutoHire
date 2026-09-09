@@ -14,8 +14,9 @@ import { ListingCard } from '@/components/ListingCard';
 import { useCountry } from '@/lib/country';
 import { citiesFor, countryOfCity } from '@/lib/cities';
 import { MORE_FILTERS, PRICE_FILTER } from '@/components/marketplace/SearchFilters';
-import { useAddressSuggestions, type AddressSuggestion } from '@/lib/geocoding';
+import { useAddressSuggestions, reverseGeocode, type AddressSuggestion } from '@/lib/geocoding';
 import { useMyLocation } from '@/lib/useMyLocation';
+import { loadHomeLocation, saveHomeLocation } from '@/lib/homeLocation';
 
 // Floating "map/list" toggle sits a fixed gap above the sheet's current
 // height, so it never overlaps the sheet no matter which detent it's in.
@@ -42,13 +43,37 @@ export function SearchResultsPage() {
   const location = useLocation();
   const handoffFilters = (location.state as { filters?: ListingFilters } | null)?.filters;
   const q = params.get('q') ?? '';
+  // The coordinate behind `q`, when whoever sent us here had one — Home's
+  // search bar passes it for a picked suggestion or a GPS fix. Both or
+  // neither: a half-pair is no more usable than none, and `Number(null)` is
+  // 0, which is a real point in the Atlantic rather than an obvious absence.
+  const urlPoint = useMemo(() => {
+    const lat = Number(params.get('lat'));
+    const lng = Number(params.get('lng'));
+    if (!params.has('lat') || !params.has('lng')) return null;
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }, [params]);
+  // Where this page starts out looking. The URL wins; failing that, an empty
+  // query means "results" can only mean "what's around me", so the renter's
+  // saved location (Account → Your location, or the banner under the header)
+  // stands in for a point nobody typed. A query names somewhere specific and
+  // takes precedence — ranking a search for Musanze by distance from home
+  // would also leave the map pointed at the wrong town.
+  const startPoint = useMemo(() => {
+    if (urlPoint) return urlPoint;
+    if (q) return null;
+    const home = loadHomeLocation();
+    return home ? { lat: home.lat, lng: home.lng } : null;
+  }, [urlPoint, q]);
   const [text, setText] = useState(q);
   const [extra, setExtra] = useState<ListingFilters>(() => handoffFilters ?? {});
   const [activeId, setActiveId] = useState<string | null>(null);
-  // A place picked from the pickup bar's live suggestions — pans the map
-  // there (see ResultsMap's focusPoint) even when it doesn't resolve to one
-  // of the app's known cities below.
-  const [focusPoint, setFocusPoint] = useState<{ lat: number; lng: number } | null>(null);
+  // Where the renter actually is, or the place they picked — from the URL, a
+  // suggestion, or this page's own "use my current location". It pans the map
+  // (see ResultsMap's focusPoint) *and* ranks the results by distance from it
+  // (`nearLat`/`nearLng` below), which together are what "near me" means; a
+  // neighbourhood that resolves to no known city still gets both.
+  const [focusPoint, setFocusPoint] = useState<{ lat: number; lng: number } | null>(startPoint);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const suggestBoxRef = useRef<HTMLDivElement>(null);
   const { suggestions, searching: suggestSearching } = useAddressSuggestions(text);
@@ -71,8 +96,8 @@ export function SearchResultsPage() {
     }
     setText(q);
     setExtra({});
-    setFocusPoint(null);
-  }, [q, country.code]);
+    setFocusPoint(startPoint);
+  }, [q, startPoint, country.code]);
 
   // Click-away closes the suggestions dropdown.
   useEffect(() => {
@@ -83,25 +108,66 @@ export function SearchResultsPage() {
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, []);
 
-  const base = useMemo<ListingFilters>(() => interpretQuery(q), [q]);
+  // A coordinate in the URL means `q` is the label that coordinate resolved
+  // to — Home's bar and this page's own submit only ever send the two
+  // together — so the text is a place, exactly, and not by looking like one.
+  const base = useMemo<ListingFilters>(
+    () => interpretQuery(q, { resolvedPlace: urlPoint != null }),
+    [q, urlPoint],
+  );
   const filters = useMemo<ListingFilters>(() => {
     const merged = { ...base, ...extra };
     // `extra.country` only ever comes from the AI naming a country with no
     // specific city ("one in China") — city-derived and the header default
     // still win in the usual cases where nothing set it explicitly.
-    return { ...merged, country: merged.country ?? countryOfCity(merged.city) ?? country.code };
-  }, [base, extra, country.code]);
+    return {
+      ...merged,
+      country: merged.country ?? countryOfCity(merged.city) ?? country.code,
+      // A sort, not a filter (migration 075): a car with no coordinates of
+      // its own still shows up, just last. So this can never be the reason a
+      // search comes back empty — it only decides what's at the top.
+      ...(focusPoint ? { nearLat: focusPoint.lat, nearLng: focusPoint.lng } : {}),
+    };
+  }, [base, extra, country.code, focusPoint]);
+
+  // Where you are beats the name of the city you're in. `city` is a hard
+  // `.eq()` on the city column — a boundary — so pairing it with a coordinate
+  // quietly throws away the cars closest to you the moment you're standing
+  // near the edge of one, while keeping cars half an hour further in. The
+  // coordinate excludes nothing and ranks everything, so it takes over.
+  //
+  // A city the renter picked from the chip row is a different thing entirely:
+  // that's a choice, not something we inferred from their coordinates, and it
+  // stays. Only the city parsed out of the location text gives way.
+  const scopedFilters = useMemo<ListingFilters>(() => {
+    // `== null`, not falsy: latitude 0 is the equator, which runs through
+    // Uganda and Kenya — real markets, not a missing coordinate.
+    if (filters.nearLat == null || filters.nearLng == null || extra.city) return filters;
+    const next = { ...filters };
+    delete next.city;
+    return next;
+  }, [filters, extra.city]);
 
   const { data: listings, isLoading } = useQuery({
-    queryKey: ['search', filters],
-    queryFn: () => client.listListings(filters),
+    queryKey: ['search', scopedFilters],
+    queryFn: () => client.listListings(scopedFilters),
   });
   const results = listings ?? [];
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const t = text.trim();
-    setParams(t ? { q: t } : {});
+    // The coordinate stays with the text it belongs to. Submitting used to
+    // drop it, which quietly downgraded "cars near where I'm standing" to
+    // "cars anywhere in the city whose name happens to appear in this label"
+    // — and left the map to guess where to look.
+    const next = new URLSearchParams();
+    if (t) next.set('q', t);
+    if (t && focusPoint) {
+      next.set('lat', String(focusPoint.lat));
+      next.set('lng', String(focusPoint.lng));
+    }
+    setParams(next);
     setSuggestOpen(false);
   }
 
@@ -114,20 +180,43 @@ export function SearchResultsPage() {
     setText(s.label);
     setSuggestOpen(false);
     setFocusPoint({ lat: s.lat, lng: s.lng });
-    const matchedCity = citiesFor(country.code).find((c) => s.label.toLowerCase().includes(c.toLowerCase()));
+    // Nominatim gave us the place's real coordinates, so there is nothing to
+    // gain by also matching a city name out of its label — and something to
+    // lose (see `scopedFilters`). Any city chip that was on is cleared: the
+    // renter just named somewhere more specific than a city.
     setExtra((prev) => {
       const next = { ...prev };
-      if (matchedCity) next.city = matchedCity;
-      else delete next.city;
+      delete next.city;
       return next;
     });
   }
 
+  // Same two steps as the home page's bar: show the raw fix the instant GPS
+  // returns it, then replace it with a real place name once the reverse
+  // geocode lands — nobody should have to read their own latitude. The
+  // results follow immediately either way, without a submit: the point sorts
+  // them by distance, and the resolved city narrows them, exactly as picking
+  // a suggestion already does.
   function useCurrentLocation() {
-    locate((p) => {
+    locate(async (p) => {
       setText(`Current location (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`);
       setFocusPoint(p);
       setSuggestOpen(false);
+
+      // Any city chip is cleared for the same reason as in `pickSuggestion`:
+      // the renter's own coordinate is the more specific answer to "where".
+      setExtra((prev) => {
+        const next = { ...prev };
+        delete next.city;
+        return next;
+      });
+      // Remembered, so the next visit ranks by distance without asking again.
+      saveHomeLocation({ lat: p.lat, lng: p.lng, label: 'Current location' });
+
+      const resolved = await reverseGeocode(p.lat, p.lng);
+      if (!resolved) return; // Lookup failed — the raw fix stands, and still sorts.
+      setText(resolved.label);
+      saveHomeLocation({ lat: p.lat, lng: p.lng, label: resolved.label });
     });
   }
 
@@ -191,6 +280,12 @@ export function SearchResultsPage() {
                 onChange={(e) => {
                   setText(e.target.value);
                   setSuggestOpen(true);
+                  // The coordinate belonged to the text that was here before.
+                  // Keeping it while the renter types something else is what
+                  // would let a stale lat/lng ride along on submit and tell
+                  // `interpretQuery` that "toyota" is a place — same rule
+                  // SearchBar's own `onLocationTextChange` already follows.
+                  setFocusPoint(null);
                 }}
                 onFocus={() => setSuggestOpen(true)}
                 onKeyDown={(e) => {

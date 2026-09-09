@@ -57,8 +57,16 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   if (ctx.userLocation) {
     lines.push(
       `You know where the renter is${ctx.userLocation.label ? `: ${ctx.userLocation.label}` : ''}. ` +
-        'For "near me" / "closest" / "around here", set `nearMe: true` on apply_filters — results are then ' +
-        'ordered by real distance from them. Never substitute a city name for this.',
+        'For "near me" / "closest" / "around here", set `nearMe: true` — on apply_filters, and on ' +
+        'list_listings when you look them up — and results are ordered by real distance from them. ' +
+        // The label above is a geocoded address, so it contains a district
+        // and a city the model can see and will reach for. Both tools now
+        // drop a `city` sent with `nearMe` and say so in their result, so
+        // this line is the explanation, not the mechanism: where they are
+        // standing is a point, and the city they are standing in is a
+        // boundary that cuts off the cars just outside it.
+        'Never substitute a city name for this, and never send one alongside it — not even the city in ' +
+        'the label above. Their exact position replaces the city, it does not narrow inside it.',
     );
   } else {
     lines.push(
@@ -70,16 +78,32 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     lines.push(`They're currently looking at ${ctx.route} in the app.`);
   }
   if (ctx.filters && Object.keys(ctx.filters).length > 0) {
+    // `ctx.filters` is the client's own filter state, verbatim — and since
+    // migration 075 that state carries the renter's raw `nearLat`/`nearLng`,
+    // which the browse page sets directly without the agent involved. Dumped
+    // through JSON.stringify it would hand the model the very coordinate
+    // `apply_filters` is built to keep it from ever seeing (see the `nearMe`
+    // boolean there): numbers it could echo back at the renter, or worse,
+    // start inventing for a place it has decided is close by. So the pair is
+    // replaced by what it means. The model still needs to know the ranking is
+    // on, because apply_filters replaces the whole filter set — omit `nearMe`
+    // on the next call and "cheaper than that" silently un-sorts the results.
+    const { nearLat, nearLng, ...named } = ctx.filters as Record<string, unknown>;
+    const ranked = typeof nearLat === 'number' && typeof nearLng === 'number';
+    const active = ranked ? { ...named, rankedByDistanceFromRenter: true } : named;
     lines.push(
-      `Filters already active on their results: ${JSON.stringify(ctx.filters)}. These are sticky, and that ` +
+      `Filters already active on their results: ${JSON.stringify(active)}. ` +
+        (ranked
+          ? '`rankedByDistanceFromRenter` is "near me", already on: send `nearMe: true` again on your next ' +
+            'apply_filters to keep it, and no `city` while it is on. '
+          : '') +
+        'These are sticky, and that ' +
         'cuts both ways: a filter the renter never asked for will silently narrow every later answer. If ' +
         'their request is broader than what is active — "cars in Rusizi" while a fuel or category filter is ' +
-        'on — clear what they did not ask for rather than quietly keeping it. Never describe results using a ' +
-        'constraint they did not state ("here are the electric cars in Rusizi" when they asked for cars in ' +
-        'Rusizi is wrong, even if a stale electric filter is on). And never put the same field in both ' +
-        '`filters` and `clear` in one call — set it or clear it, not both. A genuinely new request ' +
-        "(different vehicle type, different city, dropping a price cap) needs those fields cleared explicitly " +
-        "via apply_filters' clear array — omitting a field only means you're not changing it.",
+        'on — leave what they did not ask for out rather than quietly keeping it. Never describe results ' +
+        'using a constraint they did not state ("here are the electric cars in Rusizi" when they asked for ' +
+        'cars in Rusizi is wrong, even if a stale electric filter is on). apply_filters replaces the whole ' +
+        'set, so dropping a constraint is just not sending it — there is no separate clear step to get wrong.',
     );
   }
   if (ctx.visibleListingIds && ctx.visibleListingIds.length > 0) {

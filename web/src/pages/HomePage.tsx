@@ -17,7 +17,7 @@ import {
 import type { Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
 import { mergeAiFilters } from '@/lib/aiFilters';
-import { loadHomeLocation } from '@/lib/homeLocation';
+import { loadHomeLocation, subscribeHomeLocation } from '@/lib/homeLocation';
 import { useT } from '@/lib/i18n';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
@@ -193,6 +193,33 @@ export function HomePage() {
     return () => io.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // The location banner under the header (and Account → Your location) can
+  // set a coordinate while this page is already on screen. Reading it once in
+  // `useState` above only ever covered the *next* visit — so a renter who
+  // tapped "Use my location" got their country and their currency, and a grid
+  // still ordered by rating, until they came back. This applies it where they
+  // are, when they ask.
+  useEffect(
+    () =>
+      subscribeHomeLocation((home) =>
+        setFilters((prev) => {
+          const next = { ...prev };
+          if (home) {
+            next.nearLat = home.lat;
+            next.nearLng = home.lng;
+            // Same reason as `onPointMatch` below: a coordinate answers
+            // "where" more precisely than a city, so it replaces one.
+            delete next.city;
+          } else {
+            delete next.nearLat;
+            delete next.nearLng;
+          }
+          return next;
+        }),
+      ),
+    [],
+  );
+
   function setFilter<K extends keyof ListingFilters>(key: K, value: ListingFilters[K]) {
     setFilters((prev) => {
       const next = { ...prev };
@@ -293,15 +320,26 @@ export function HomePage() {
             <div className="relative">
               <SearchBar
                 onSubmit={(input) => {
-                  // A city match or a date range picked here already filters
-                  // this page's own grid (below) live — carry the same two
-                  // into /ai's stored filters so they're there the instant it
-                  // mounts, instead of the renter's pick vanishing the moment
-                  // they land on a page with its own, separately-empty state.
+                  // A city match, a date range, or a resolved coordinate
+                  // picked here already filters this page's own grid (below)
+                  // live — carry them into /ai's stored filters so they're
+                  // there the instant it mounts, instead of the renter's pick
+                  // vanishing the moment they land on a page with its own,
+                  // separately-empty state.
+                  //
+                  // The coordinate is the one that used to be dropped here,
+                  // and it was the worst one to lose: /ai would mount knowing
+                  // only the *city* the renter was in, having been handed —
+                  // and then having discarded — exactly where in it they were
+                  // standing. Both travel now; Home has already applied the
+                  // rule that a resolved point clears a derived city, so
+                  // whatever survives here is what the renter meant.
                   mergeAiFilters({
                     city: filters.city,
                     startDate: filters.startDate,
                     endDate: filters.endDate,
+                    nearLat: filters.nearLat,
+                    nearLng: filters.nearLng,
                   });
                   navigate(input.message ? `/ai?ask=${encodeURIComponent(input.message)}` : '/ai');
                 }}
@@ -312,12 +350,45 @@ export function HomePage() {
                 // "show me the results page", not "move down the page a bit".
                 // With nothing typed there is nothing to send them to, so it
                 // falls back to the grid they already have.
-                onSearch={({ query }) =>
-                  query
-                    ? navigate(`/search?q=${encodeURIComponent(query)}`)
-                    : resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                }
+                //
+                // The coordinate rides along in the URL when there is one, so
+                // /search opens centred on where the renter actually is and
+                // ranked by distance from it (`nearLat`/`nearLng`, migration
+                // 075). Sending only the address label meant /search had to
+                // reverse-engineer the place out of a string — which is how
+                // "Gasabo District, City of Kigali, Rwanda" ended up as
+                // keywords no listing could match.
+                onSearch={({ query, point }) => {
+                  if (!query) {
+                    resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    return;
+                  }
+                  const next = new URLSearchParams({ q: query });
+                  if (point) {
+                    next.set('lat', String(point.lat));
+                    next.set('lng', String(point.lng));
+                  }
+                  navigate(`/search?${next.toString()}`);
+                }}
                 onCityMatch={(city) => setFilter('city', city)}
+                // A resolved coordinate replaces the city rather than joining
+                // it: `city` is a hard `.eq()`, so keeping both would drop the
+                // nearest cars whenever the renter is near a city boundary,
+                // while `nearLat`/`nearLng` only ranks (migration 075).
+                onPointMatch={(point) =>
+                  setFilters((prev) => {
+                    const next = { ...prev };
+                    if (point) {
+                      next.nearLat = point.lat;
+                      next.nearLng = point.lng;
+                      delete next.city;
+                    } else {
+                      delete next.nearLat;
+                      delete next.nearLng;
+                    }
+                    return next;
+                  })
+                }
                 onCountryMatch={(code) => setCountry(code)}
                 onDateRangeChange={(r) =>
                   setFilters((prev) => {

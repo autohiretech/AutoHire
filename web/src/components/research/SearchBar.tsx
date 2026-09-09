@@ -23,6 +23,7 @@ import {
 import { useMyLocation } from '@/lib/useMyLocation';
 import { useCountry } from '@/lib/country';
 import { matchKnownCity } from '@/lib/cities';
+import { saveHomeLocation } from '@/lib/homeLocation';
 import { useT } from '@/lib/i18n';
 import { DateRangeCalendar, type DateRange } from '@/components/marketplace/DateRangeCalendar';
 
@@ -52,6 +53,19 @@ export interface SearchBarProps {
    * real, immediate `ListingFilters.city` filtering with no agent round
    * trip. `undefined` means "no match" / "cleared", not "leave as-is". */
   onCityMatch?: (city: string | undefined) => void;
+  /** Fires with the *coordinate* behind "Where" whenever there is a real one
+   * — a picked suggestion, or the GPS fix behind "use my current location" —
+   * and with `null` when there isn't (typed freehand, a recent, "anywhere").
+   *
+   * A coordinate is strictly better than the city name we can scrape out of
+   * its label, so when one exists this bar reports it *instead of* a city:
+   * `onCityMatch(undefined)` fires alongside. "Kigali" is a hard `.eq()` on
+   * the city column, which is a boundary — stand near the edge of one and it
+   * throws away the cars closest to you while keeping ones half an hour
+   * further in. The coordinate is where the renter actually is, and it ranks
+   * by real distance (`nearLat`/`nearLng`, migration 075) without excluding
+   * anything. */
+  onPointMatch?: (point: { lat: number; lng: number } | null) => void;
   /** Fires on every From/Until change, immediately — same "no submit
    * needed" treatment as `onCityMatch`, now that `ListingFilters.startDate`/
    * `endDate` are a real, availability-aware filter
@@ -71,8 +85,20 @@ export interface SearchBarProps {
    * whatever they typed. Filtering already happened live as they typed, so
    * this is not "run the search" — it is "take me to the results", and the
    * page decides where those are. Without it the button was inert: it closed
-   * an open date picker and returned, which reads as broken. */
-  onSearch?: (input: { query: string; dateRange: DateRange }) => void;
+   * an open date picker and returned, which reads as broken.
+   *
+   * `point` is the coordinate behind `query` when there is one — a picked
+   * suggestion, or the GPS fix behind "use my current location" — and it is
+   * the half that actually answers "near me". Its label is a place *name*,
+   * which the results page can only string-match back into a city; the
+   * coordinate is what `nearLat`/`nearLng` need for migration 075's distance
+   * sort, so dropping it here left "search from where I am" with nothing but
+   * an address to grep. `null` when the renter typed a place freehand. */
+  onSearch?: (input: {
+    query: string;
+    dateRange: DateRange;
+    point: { lat: number; lng: number } | null;
+  }) => void;
   /** Drop the Search/Ask AI toggle and stay in AI mode. For `/ai`, which is
    * the agent's own room — landing there on the structured Where/From/Until
    * bar, with "Ask AI" as something you still have to opt into, contradicts
@@ -349,6 +375,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   {
     onSubmit,
     onCityMatch,
+    onPointMatch,
     onDateRangeChange,
     onCountryMatch,
     onSearch,
@@ -411,24 +438,32 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, []);
 
+  // Typed freehand: no coordinate exists, so the city name matched out of the
+  // text is the best "where" available and stays in charge.
   function onLocationTextChange(value: string) {
     setLocationText(value);
     setLocationPoint(null);
     setSuggestOpen(true);
+    onPointMatch?.(null);
     onCityMatch?.(matchKnownCity(value, country.code));
   }
 
+  // A suggestion carries real coordinates from Nominatim, so the point wins
+  // and the city its label happens to mention is dropped — see `onPointMatch`.
   function pickSuggestion(s: AddressSuggestion) {
     setLocationText(s.label);
     setLocationPoint({ lat: s.lat, lng: s.lng });
     setSuggestOpen(false);
-    onCityMatch?.(matchKnownCity(s.label, country.code));
+    onCityMatch?.(undefined);
+    onPointMatch?.({ lat: s.lat, lng: s.lng });
   }
 
+  // Recents keep only the label they were saved under, never a coordinate.
   function pickRecent(r: RecentSearch) {
     setLocationText(r.label);
     setLocationPoint(null);
     setSuggestOpen(false);
+    onPointMatch?.(null);
     onCityMatch?.(matchKnownCity(r.label, country.code));
   }
 
@@ -440,15 +475,24 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
       setLocationText(`Current location (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`);
       setLocationPoint(p);
       setSuggestOpen(false);
+      // The fix itself is the filter, from this moment on — the reverse
+      // geocode below is only ever going to improve the *label*.
       onCityMatch?.(undefined);
+      onPointMatch?.(p);
+      // Remembered so the next visit ranks by distance without asking again;
+      // this is the same store Account → Your location writes.
+      saveHomeLocation({ lat: p.lat, lng: p.lng, label: 'Current location' });
 
       setResolvingPlace(true);
       try {
         const resolved = await reverseGeocode(p.lat, p.lng);
         if (!resolved) return; // network/lookup failure — the raw fix stands.
         setLocationText(resolved.label);
-        const matched = matchKnownCity(resolved.place, resolved.countryCode ?? country.code);
-        onCityMatch?.(matched);
+        saveHomeLocation({ lat: p.lat, lng: p.lng, label: resolved.label });
+        // Still no `onCityMatch` here: knowing the renter is in Kigali is no
+        // reason to stop knowing *where* in Kigali. The market, though, is a
+        // genuinely different question — a renter physically in another
+        // country is browsing the wrong catalogue, not merely sorted oddly.
         if (resolved.countryCode && resolved.countryCode !== country.code) {
           onCountryMatch?.(resolved.countryCode);
         }
@@ -463,6 +507,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     setLocationPoint(null);
     setSuggestOpen(false);
     onCityMatch?.(undefined);
+    onPointMatch?.(null);
   }
 
   function onDatesChange(r: DateRange) {
@@ -491,7 +536,12 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   function composeMessage(): string {
     const bits: string[] = [];
     const loc = locationText.trim();
-    const matchedCity = matchKnownCity(loc, country.code);
+    // A city name is only "already a live filter" when it's the thing we
+    // actually applied. With a coordinate in hand we deliberately apply the
+    // point instead (see `onPointMatch`), so the place has to reach the agent
+    // as prose — otherwise it would fall through the gap between a city
+    // filter that was never set and prose that assumed it had been.
+    const matchedCity = locationPoint ? undefined : matchKnownCity(loc, country.code);
     if (loc && !matchedCity) {
       bits.push(
         locationPoint
@@ -522,7 +572,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
         saveRecent(entry);
         setRecents(loadRecents());
       }
-      onSearch?.({ query: locationText.trim(), dateRange });
+      onSearch?.({ query: locationText.trim(), dateRange, point: locationPoint });
       return;
     }
     const message = composeMessage();

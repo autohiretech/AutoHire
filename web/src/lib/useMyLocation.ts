@@ -12,10 +12,12 @@ export interface Coordinates {
  * `SearchResultsPage`'s original inline `useCurrentLocation` so both share
  * one implementation instead of drifting.
  *
- * There is no reverse-geocoding in this codebase — the caller only ever gets
- * a raw `{lat, lng}` back and is responsible for however it wants to label
- * that (the existing UX everywhere is a plain
- * `Current location (${lat.toFixed(5)}, ${lng.toFixed(5)})` string).
+ * This hook is the GPS fix and nothing else — the caller gets a raw
+ * `{lat, lng}` back and decides how to label it. Both callers show the plain
+ * `Current location (${lat.toFixed(5)}, ${lng.toFixed(5)})` string right away
+ * and then swap in a real place name from `reverseGeocode` (`@/lib/geocoding`)
+ * once that second round trip lands, so the label is never what the renter is
+ * left reading.
  */
 export function useMyLocation() {
   const [locating, setLocating] = useState(false);
