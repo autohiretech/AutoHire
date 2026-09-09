@@ -11,6 +11,7 @@ import { MapListToggle, Sheet, type SheetDetent } from '@/components/ui';
 import { ListingRowSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { ResearchField } from '@/components/research/ResearchField';
+import { ResultsRail } from '@/components/research/ResultsRail';
 import { HostAiPage } from '@/pages/HostAiPage';
 import { AI_FILTERS_KEY, loadAiFilters } from '@/lib/aiFilters';
 
@@ -25,10 +26,20 @@ import { AI_FILTERS_KEY, loadAiFilters } from '@/lib/aiFilters';
  * map/list toggle can sit just above whichever height the sheet currently
  * is; if those change, this changes with them. */
 const SHEET_HEIGHT: Record<SheetDetent, string> = {
-  peek: '88px',
+  // `peek` is the rail's height, not the Sheet's — at that detent the rail
+  // stands in for the sheet, and this is only ever used to park the
+  // map/list toggle just above whatever is currently down there.
+  peek: '78px',
   half: '55svh',
   full: '92svh',
 };
+
+/** How many cars the collapsed rail holds. A filter can match hundreds —
+ * 308 in the case that prompted this — and every card in the rail is a real
+ * DOM node with a real image, on a phone, over a live map. Nobody swipes
+ * three hundred cards sideways; the ones worth seeing are at the front,
+ * and "List" opens the full set. */
+const RAIL_MAX = 30;
 
 export function AiPage() {
   const { mode } = useAppMode();
@@ -216,11 +227,34 @@ function RenterAiPage() {
           toggle, the zoom controls and the markers were all dead on a phone
           while the sheet sat at `peek` showing nothing there. Only the sheet
           itself should take pointer events. */}
+      {/* Collapsed state on a phone: a swipeable rail instead of a sheet.
+          The complaint this answers is that the car list was too big and
+          buried the map — and collapsing the sheet solved that by hiding the
+          results altogether, which is not much better on a page whose whole
+          job is "here are cars, and here is where they are". The rail keeps
+          both: the map holds the full screen behind it, the cars stay one
+          swipe away, and pulling the list up is still there for scanning
+          properly. */}
+      {sheetDetent === 'peek' && results.length > 0 && !isLoading && !aiPending && (
+        <div
+          className="absolute inset-x-0 z-20 transition-[bottom] duration-200 lg:hidden"
+          style={{ bottom: `calc(${dockHeight}px + 12px)` }}
+        >
+          <ResultsRail
+            listings={results.slice(0, RAIL_MAX)}
+            activeId={activeId}
+            onHover={setActiveId}
+            onSelect={(l) => setActiveId(l.id)}
+          />
+        </div>
+      )}
+
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-20 transition-[bottom] duration-200 lg:hidden"
         style={{ bottom: `calc(${dockHeight}px + 12px)` }}
       >
         <div className="pointer-events-none relative h-full">
+          {sheetDetent !== 'peek' && (
           <Sheet
             className="pointer-events-auto"
             detent={sheetDetent}
@@ -253,6 +287,7 @@ function RenterAiPage() {
               </div>
             )}
           </Sheet>
+          )}
         </div>
       </div>
 
