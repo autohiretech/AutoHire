@@ -112,6 +112,33 @@ export function PayoutSetupPage() {
   const queryClient = useQueryClient();
   const { data: me, isLoading } = useCurrentUser();
 
+  /**
+   * The live answer, not the profile's own frozen copy of it.
+   *
+   * `profiles.payout_status` is written once, at the moment a destination is
+   * saved, against whatever PayHold said in that instant. Nothing writes it
+   * again — a destination verified afterward (someone clicking Verify in
+   * PayHold's dashboard, a security hold expiring, the tenant turning on
+   * auto-verify) never reaches AutoHire on its own, because
+   * `verify_seller_destination` writes an audit row, not a webhook. So a host
+   * who had just been checked read "Verifying" forever, on the one screen
+   * whose whole job is telling them whether they can be paid.
+   *
+   * `payhold-seller` reconciles the column against live capabilities on every
+   * call now, so simply asking here both answers this page correctly and
+   * fixes the column for every other screen reading it afterward.
+   */
+  const { data: liveSeller } = useQuery({
+    queryKey: ['payholdSeller'],
+    queryFn: () => client.payholdSeller(),
+    enabled: PAYMENTS_PAYHOLD && !!me?.payoutLabel,
+    // Short-lived, deliberately: this page exists to answer "can I be paid
+    // yet", and a host who just came back from verifying in PayHold's own
+    // dashboard should not have to wait out a long cache to hear yes.
+    staleTime: 15_000,
+    retry: false,
+  });
+
   // The host's OWN country decides which methods they can use and which rail
   // they land on — not the header selector, which only filters the catalogue
   // and lives in localStorage. Guessing from that put hosts on the wrong rail
@@ -226,7 +253,11 @@ export function PayoutSetupPage() {
   // once a country is already on file.
   const [changingCountry, setChangingCountry] = useState(false);
 
-  const active = me?.payoutStatus === 'active';
+  // The live check wins when it answered; the profile's own copy is the
+  // fallback while it loads or if PayHold could not be reached just now —
+  // never a reason to flash "Verifying" over a host who a moment ago read
+  // "Active".
+  const active = (liveSeller?.payout?.status ?? me?.payoutStatus) === 'active';
 
   /**
    * A method is on file — which is not the same as being payable.
@@ -241,6 +272,7 @@ export function PayoutSetupPage() {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['currentUser'] });
     queryClient.invalidateQueries({ queryKey: ['ownerHost'] });
+    queryClient.invalidateQueries({ queryKey: ['payholdSeller'] });
   };
 
   const connect = useMutation({

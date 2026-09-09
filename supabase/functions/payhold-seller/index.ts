@@ -27,7 +27,7 @@
 // Secrets:  PAYHOLD_* (see _shared/payhold.ts), ALLOWED_ORIGIN
 // Deploy:   supabase functions deploy payhold-seller
 
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   payholdConfigured,
   sellerCapabilities,
@@ -45,6 +45,49 @@ function json(body: unknown, status: number): Response {
     status,
     headers: { ...cors, 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * Keep `profiles.payout_status` honest against what PayHold actually says.
+ *
+ * The column is written only twice: `payout_status: 'pending'` the moment a
+ * destination is saved, and `payout_status: 'active'` in the same request IF
+ * `sellerCapabilities` already says yes at that instant. Nothing writes it
+ * again after that. A destination verified later — someone clicking Verify
+ * in PayHold's dashboard, the tenant's `seller_auto_verify` flipping on, the
+ * §5.1 security hold simply expiring — moves PayHold's own answer to
+ * `can_receive_payouts: true` without any request from AutoHire, and nothing
+ * was listening: PayHold's `verify_seller_destination` writes an audit row,
+ * not a webhook. So a host who verified minutes ago still read "Verifying —
+ * being checked" indefinitely, on every screen that trusted the column
+ * instead of asking again.
+ *
+ * This is the asking again. Called wherever this function already has a
+ * fresh `can_receive_payouts` in hand, so it costs nothing extra to check —
+ * only a write when the two disagree. Reconciled in both directions:
+ * PayHold revoking capability (a chargeback, a destination un-verified) must
+ * un-stick a host from a stale "Active" exactly as much as the reverse.
+ *
+ * Never touches `'none'` — a host with no destination on file has nothing
+ * here to reconcile, and caps is never asked for one (`sellerId` gates every
+ * call site above this).
+ */
+async function reconcilePayoutStatus(
+  admin: SupabaseClient,
+  uid: string,
+  currentStatus: string | null,
+  canReceivePayouts: boolean,
+): Promise<string | null> {
+  if (currentStatus === 'none' || currentStatus === null) return currentStatus;
+  const derived = canReceivePayouts ? 'active' : 'pending';
+  if (derived === currentStatus) return currentStatus;
+  const { error } = await admin.from('profiles').update({ payout_status: derived }).eq('id', uid);
+  // A failed write is not this request's problem to surface — the caller
+  // already has a correct answer to show for RIGHT NOW; the column catches
+  // up next time anything asks. Returning the derived value either way means
+  // the response this host is looking at is never the one that's wrong.
+  if (error) console.error('reconcilePayoutStatus: write failed', { uid, error: error.message });
+  return derived;
 }
 
 /** PayHold speaks snake_case; `PayoutDestination` in the app is camelCase. */
@@ -169,6 +212,7 @@ Deno.serve(async (req: Request) => {
 
     if (sub === 'capabilities') {
       const caps = await sellerCapabilities(sellerId);
+      await reconcilePayoutStatus(admin, subjectId, profile.payout_status, caps.can_receive_payouts);
       return json(
         {
           sellerId,
@@ -197,6 +241,14 @@ Deno.serve(async (req: Request) => {
       sellerDestinations(sellerId).catch(() => null),
     ]);
 
+    // Only when `caps` actually answered. A timeout or an unreachable PayHold
+    // is not evidence of anything — reconciling against `false` in that case
+    // would read a network hiccup as a revoked destination and demote an
+    // active host to "Verifying" for no reason connected to their payout.
+    const reconciledStatus = caps
+      ? await reconcilePayoutStatus(admin, subjectId, profile.payout_status, caps.can_receive_payouts)
+      : profile.payout_status;
+
     return json(
       {
         sellerId,
@@ -207,12 +259,14 @@ Deno.serve(async (req: Request) => {
           country: profile.country,
         },
         // What AutoHire wrote down at registration — a mask and a label, never
-        // the destination itself. PayHold holds the token.
+        // the destination itself. PayHold holds the token. `status` is the
+        // just-reconciled value, not the row read at the top of this request,
+        // so this response is never the stale one.
         payout: {
           method: profile.payout_method,
           maskedDestination: profile.payout_destination,
           label: profile.payout_label,
-          status: profile.payout_status,
+          status: reconciledStatus,
         },
         canReceivePayouts: caps?.can_receive_payouts ?? false,
         kycStatus: caps?.kyc_status ?? 'unknown',
