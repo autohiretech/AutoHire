@@ -597,9 +597,21 @@ function ListingRail({
       {subtitle && (
         <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">{subtitle}</p>
       )}
+      {/* `relative` is load-bearing — it is what stops the whole page scrolling
+          sideways, and it is not obvious enough to survive a tidy-up unmarked.
+          `overflow-x-auto` only clips a descendant whose containing block is
+          inside this element. The `sr-only` spans in the cards are
+          `position: absolute` with nothing positioned between them and
+          `<body>`, so their containing block was the body and this scroller
+          never clipped them: twenty-one of them sat at their unclipped
+          position, ~2000px off to the right, and the document grew to reach
+          them. The page scrolled into a screen and a half of empty space and
+          the rails themselves looked perfectly normal, which is why this took
+          measuring rather than reading. Making the rail the containing block
+          brings them back inside the clip. */}
       {isLoading ? (
         <div
-          className="-mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="relative -mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           aria-busy="true"
           aria-label="Loading cars"
         >
@@ -615,7 +627,7 @@ function ListingRail({
           ))}
         </div>
       ) : (
-        <div className="-mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="relative -mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(listings ?? []).slice(0, 12).map((listing) => (
             <div key={listing.id} className="w-[75%] shrink-0 sm:w-72 md:w-80">
               <ListingCard listing={listing} />
