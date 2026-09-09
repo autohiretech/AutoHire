@@ -20,7 +20,7 @@ export const startBookingTool: ToolDef<
     listingId: string;
     startDate: string;
     endDate: string;
-    pickupTime: string;
+    pickupTime?: string;
     rentalType: 'daily' | 'hourly';
     estimatedHours?: number;
   },
@@ -28,19 +28,25 @@ export const startBookingTool: ToolDef<
 > = {
   name: 'start_booking',
   description:
-    'Start booking a specific car — call once the car, dates, pickup time, and (for an hourly car) the ' +
-    'estimated hours are all known. Opens a PayHold checkout link; nothing is charged until the user pays there.',
+    'Start booking a specific car — call once the car, the dates, and (for an hourly car) the estimated ' +
+    'hours are known. Pickup time is optional: do NOT ask for one, and do not hold up a booking waiting for ' +
+    'it — pass it only if the renter actually named a time. Opens a PayHold checkout link; nothing is ' +
+    'charged until the user pays there.',
   input_schema: {
     type: 'object',
     properties: {
       listingId: { type: 'string' },
       startDate: { type: 'string', description: 'ISO date.' },
       endDate: { type: 'string', description: 'ISO date, after startDate.' },
-      pickupTime: { type: 'string', description: '24-hour HH:mm.' },
+      pickupTime: { type: 'string', description: 'Optional. 24-hour HH:mm, only if the renter named a time.' },
       rentalType: { type: 'string', enum: ['daily', 'hourly'] },
       estimatedHours: { type: 'number', description: 'Required when rentalType is hourly.' },
     },
-    required: ['listingId', 'startDate', 'endDate', 'pickupTime', 'rentalType'],
+    // `pickupTime` is deliberately NOT required: `Booking.pickupTime` is
+    // `string | null` in the app's own shared types, so a booking without one
+    // is valid. Having it here made the agent stop and ask "what time?" on
+    // every booking — demanding something the product never required.
+    required: ['listingId', 'startDate', 'endDate', 'rentalType'],
   },
   scope: 'renter',
   effect: 'money',

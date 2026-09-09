@@ -67,12 +67,12 @@ export interface SearchBarProps {
   initialValue?: string;
   placeholder?: string;
   disabled?: boolean;
-  /** Fired when the renter presses the search button in Search mode.
-   * Filtering already happened live as they typed, so this is not "run the
-   * search" — it is "take me to the results". Without it the button was
-   * inert: it closed an open date picker and returned, which reads as a
-   * broken primary control on a page whose results are further down. */
-  onSearch?: () => void;
+  /** Fired when the renter presses the search button in Search mode, with
+   * whatever they typed. Filtering already happened live as they typed, so
+   * this is not "run the search" — it is "take me to the results", and the
+   * page decides where those are. Without it the button was inert: it closed
+   * an open date picker and returned, which reads as broken. */
+  onSearch?: (input: { query: string; dateRange: DateRange }) => void;
   /** Drop the Search/Ask AI toggle and stay in AI mode. For `/ai`, which is
    * the agent's own room — landing there on the structured Where/From/Until
    * bar, with "Ask AI" as something you still have to opt into, contradicts
@@ -138,11 +138,14 @@ function formatTimeLabel(hhmm: string): string {
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
   return `${h12}:${m} ${period}`;
 }
-/** 48 half-hour slots, "9:00 AM" style — the app has no existing time-picker
- * to reuse, and a plain native `<input type="time">` renders a different
- * widget per browser/OS; a `<select>` of fixed increments looks the same
- * everywhere and matches how a rental pickup/return time is actually chosen
- * (nobody needs the minute). */
+/** 48 half-hour slots, "9:00 AM" style — nobody picking up a rental needs
+ * the minute.
+ *
+ * These render in the app's own popover rather than a native `<select>`.
+ * A select's option list is drawn by the OS: it ignores the theme entirely,
+ * so on a dark page it dropped a bright white system list over the hero and
+ * looked like it belonged to a different app. The chrome is ours now; the
+ * fixed increments are unchanged. */
 const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
   const h24 = Math.floor(i / 2);
   const m = i % 2 === 0 ? '00' : '30';
@@ -247,23 +250,76 @@ function TimeSelect({
   placeholder: string;
   disabled?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const label = value ? formatTimeLabel(value) : placeholder;
+
   return (
-    <div className="relative inline-flex shrink-0 items-center">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+    <div ref={boxRef} className="relative inline-flex shrink-0 items-center">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
         disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         aria-label={placeholder}
-        className="w-[92px] appearance-none bg-transparent py-0.5 pr-4 text-body-sm text-[var(--color-content)] outline-none disabled:opacity-50"
+        className={cn(
+          'inline-flex w-[92px] items-center justify-between gap-1 rounded-[var(--radius-control)] py-1 text-left text-body-sm outline-none disabled:opacity-50',
+          value ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
+        )}
       >
-        <option value="">{placeholder}</option>
-        {TIME_OPTIONS.map((t) => (
-          <option key={t.value} value={t.value}>
-            {t.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={12} className="pointer-events-none absolute right-0 text-[var(--color-content-subtle)]" />
+        <span className="truncate">{label}</span>
+        <ChevronDown size={12} className={cn('shrink-0 text-[var(--color-content-subtle)] transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="animate-popover-in absolute right-0 top-[calc(100%+6px)] z-[1200] max-h-64 w-36 overflow-y-auto overscroll-contain rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1 shadow-[var(--shadow-float)]"
+        >
+          <button
+            type="button"
+            role="option"
+            aria-selected={!value}
+            onClick={() => { onChange(''); setOpen(false); }}
+            className="flex w-full items-center rounded-[var(--radius-control)] px-2.5 py-2 text-left text-body-sm text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)]"
+          >
+            {placeholder}
+          </button>
+          {TIME_OPTIONS.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              role="option"
+              aria-selected={t.value === value}
+              onClick={() => { onChange(t.value); setOpen(false); }}
+              className={cn(
+                'flex w-full items-center rounded-[var(--radius-control)] px-2.5 py-2 text-left text-body-sm hover:bg-[var(--color-surface-sunken)]',
+                t.value === value
+                  ? 'bg-[var(--color-surface-inverse)] font-semibold text-[var(--color-content-inverse)]'
+                  : 'text-[var(--color-content)]',
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -466,7 +522,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
         saveRecent(entry);
         setRecents(loadRecents());
       }
-      onSearch?.();
+      onSearch?.({ query: locationText.trim(), dateRange });
       return;
     }
     const message = composeMessage();

@@ -305,10 +305,18 @@ export function HomePage() {
                   });
                   navigate(input.message ? `/ai?ask=${encodeURIComponent(input.message)}` : '/ai');
                 }}
-                // The button's job on this page: take them to the results,
-                // which are further down the page and already filtered by
-                // whatever they typed.
-                onSearch={() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                // Search mode goes to /search — the manual results page,
+                // which is the one with the map — mirroring how Ask AI mode
+                // goes to /ai. Scrolling to the grid below was not enough:
+                // the grid has no map, and "search" on a marketplace means
+                // "show me the results page", not "move down the page a bit".
+                // With nothing typed there is nothing to send them to, so it
+                // falls back to the grid they already have.
+                onSearch={({ query }) =>
+                  query
+                    ? navigate(`/search?q=${encodeURIComponent(query)}`)
+                    : resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
                 onCityMatch={(city) => setFilter('city', city)}
                 onCountryMatch={(code) => setCountry(code)}
                 onDateRangeChange={(r) =>
