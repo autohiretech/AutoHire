@@ -7,7 +7,7 @@ import { client } from '@/lib/client';
 import { useCountry } from '@/lib/country';
 import { useAppMode } from '@/lib/appMode';
 import { ResultsMap } from '@/components/map/ResultsMap';
-import { Sheet, type SheetDetent } from '@/components/ui';
+import { MapListToggle, Sheet, type SheetDetent } from '@/components/ui';
 import { ListingRowSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
 import { ResearchField } from '@/components/research/ResearchField';
@@ -21,6 +21,15 @@ import { AI_FILTERS_KEY, loadAiFilters } from '@/lib/aiFilters';
  * fleet they'll never see. `RenterAiPage` below is exactly what this file
  * used to be end to end.
  */
+/** Mirrors Sheet.tsx's own `detentClass` heights. Kept here so the floating
+ * map/list toggle can sit just above whichever height the sheet currently
+ * is; if those change, this changes with them. */
+const SHEET_HEIGHT: Record<SheetDetent, string> = {
+  peek: '88px',
+  half: '55svh',
+  full: '92svh',
+};
+
 export function AiPage() {
   const { mode } = useAppMode();
   return mode === 'host' ? <HostAiPage /> : <RenterAiPage />;
@@ -181,12 +190,39 @@ function RenterAiPage() {
           TOGGLE_BOTTOM_CLASS there). So this only needs to clear the field
           dock itself, tracked live via `dockHeight` — not the tab bar again,
           which would double-count the offset and leave a dead gap. */}
+      {/* Collapse the results to see the map. The sheet could always be
+          dragged down by its handle, but a handle is not a discoverable
+          control — the list covered the map and there was no visible way to
+          say "show me the map". /search has had this pill for exactly this
+          reason; /ai simply never got one.
+
+          It rides above the sheet's current height, and on this page that
+          height also sits above the field dock, so the offset is the dock
+          plus the sheet rather than /search's fixed constants. */}
       <div
-        className="absolute inset-x-0 top-0 z-20 transition-[bottom] duration-200 lg:hidden"
+        className="absolute left-1/2 z-30 -translate-x-1/2 transition-[bottom] duration-200 lg:hidden"
+        style={{ bottom: `calc(${dockHeight}px + 12px + ${SHEET_HEIGHT[sheetDetent]} + 12px)` }}
+      >
+        <MapListToggle
+          showing={sheetDetent === 'peek' ? 'map' : 'list'}
+          onToggle={() => setSheetDetent((d) => (d === 'peek' ? 'half' : 'peek'))}
+        />
+      </div>
+
+      {/* `pointer-events-none` on the two wrappers, `auto` on the sheet.
+          This container spans from the top of the page down to the dock so
+          the sheet inside it can be bottom-anchored, but it is transparent
+          and was still swallowing every tap over the map — the Satellite
+          toggle, the zoom controls and the markers were all dead on a phone
+          while the sheet sat at `peek` showing nothing there. Only the sheet
+          itself should take pointer events. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-20 transition-[bottom] duration-200 lg:hidden"
         style={{ bottom: `calc(${dockHeight}px + 12px)` }}
       >
-        <div className="relative h-full">
+        <div className="pointer-events-none relative h-full">
           <Sheet
+            className="pointer-events-auto"
             detent={sheetDetent}
             onDetentChange={setSheetDetent}
             header={

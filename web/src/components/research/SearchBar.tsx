@@ -571,7 +571,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
         {/* Where */}
         <div
           ref={locationBoxRef}
-          className="relative flex min-w-0 flex-[1.4] flex-col gap-0.5 border-r border-[var(--color-line)] px-3 py-1.5 @md:flex-1 @md:px-4"
+          className="relative flex min-w-0 flex-[1.4] flex-col border-r border-[var(--color-line)] px-3 py-1 @md:flex-1 @md:px-4"
         >
           <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.where')}</span>
           <div className="flex items-center gap-2">
@@ -583,7 +583,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               placeholder={t('search.wherePlaceholder')}
               aria-label="Pickup location"
               disabled={disabled}
-              className="min-w-0 flex-1 truncate bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
+              className="min-w-0 flex-1 truncate bg-transparent py-2.5 text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
             />
             <button
               type="button"
@@ -671,7 +671,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
           ref={datesBoxRef}
           className="relative flex min-w-0 flex-[1.1] flex-row divide-x divide-[var(--color-line)] @md:flex-[1.6]"
         >
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 @md:px-4">
+          <div className="flex min-w-0 flex-1 flex-col px-3 py-1 @md:px-4">
             <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.from')}</span>
             <div className="flex items-center gap-1.5">
               <button
@@ -683,7 +683,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
                   // full width once the time select appears beside it, since that
                   // select is `shrink-0` and would otherwise push the whole
                   // shortfall onto this label — "Add dates" clipped to "Add …".
-                  'min-w-0 truncate text-left text-body-sm font-medium @xl:min-w-max',
+                  'min-w-0 flex-1 truncate py-2.5 text-left text-body-sm font-medium @xl:min-w-max',
                   fromLabel ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
                 )}
               >
@@ -700,7 +700,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 @md:px-4">
+          <div className="flex min-w-0 flex-1 flex-col px-3 py-1 @md:px-4">
             <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.until')}</span>
             <div className="flex items-center gap-1.5">
               <button
@@ -712,7 +712,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
                   // full width once the time select appears beside it, since that
                   // select is `shrink-0` and would otherwise push the whole
                   // shortfall onto this label — "Add dates" clipped to "Add …".
-                  'min-w-0 truncate text-left text-body-sm font-medium @xl:min-w-max',
+                  'min-w-0 flex-1 truncate py-2.5 text-left text-body-sm font-medium @xl:min-w-max',
                   untilLabel ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
                 )}
               >
