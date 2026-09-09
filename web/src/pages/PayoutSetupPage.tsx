@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Banknote,
+  Check,
   CheckCircle2,
   Clock,
   CreditCard,
@@ -30,6 +31,13 @@ import {
   payoutLabel,
   payoutProviderFor,
 } from '@/lib/payments';
+import {
+  BrandMark,
+  CARD_BRANDS,
+  detectCardScheme,
+  detectMomoNetwork,
+  walletBrand,
+} from '@/lib/paymentBrands';
 import {
   Badge,
   Button,
@@ -131,6 +139,15 @@ export function PayoutSetupPage() {
   // found out when a payout failed weeks later.
   const [network, setNetwork] = useState('');
   const [bankCode, setBankCode] = useState('');
+  /**
+   * Has the host picked a wallet themselves?
+   *
+   * The number's prefix fills this field in for them, which is the whole
+   * convenience — but the moment they tap a tile, the next keystroke must not
+   * overwrite the choice they just made. So detection writes only into an
+   * untouched field, and touching it is permanent for that method.
+   */
+  const [networkTouched, setNetworkTouched] = useState(false);
 
   // The bulk list above only says whether `payoutCountry` can be paid at all;
   // this is what actually decides which methods to offer inside it — see
@@ -161,6 +178,27 @@ export function PayoutSetupPage() {
     staleTime: 60 * 60 * 1000,
     retry: false,
   });
+
+  /**
+   * Read the wallet out of the number as it is typed.
+   *
+   * Kept up here with the other hooks rather than beside the field it fills,
+   * because it must run before this component's loading return — and stated
+   * as an effect rather than derived state because the host owns `network`
+   * the moment they touch it, and derived state cannot be overridden.
+   *
+   * `detectMomoNetwork` already filters against PayHold's list, so this
+   * cannot select something the country does not offer.
+   */
+  useEffect(() => {
+    if (!PAYMENTS_PAYHOLD || selected !== 'momo' || networkTouched) return;
+    const offered = payoutRoute?.networks ?? [];
+    const found = detectMomoNetwork(dest, payoutCountry, offered);
+    // Only ever fills a blank or replaces a previous detection — never clears
+    // a value, so backspacing to an ambiguous prefix leaves the last good
+    // guess standing rather than emptying the field under the host.
+    if (found && found !== network) setNetwork(found);
+  }, [dest, selected, networkTouched, payoutRoute, payoutCountry, network]);
 
   const availability = payoutAvailability(
     payoutCountry,
@@ -242,6 +280,7 @@ export function PayoutSetupPage() {
       setDest('');
       setNetwork('');
       setBankCode('');
+      setNetworkTouched(false);
 
       // PayHold decides whether this host can actually be paid, and says why
       // not. Telling them now beats a payout that sits stuck weeks later with
@@ -346,6 +385,13 @@ export function PayoutSetupPage() {
   const networks = payoutRoute?.networks ?? [];
   const banks = bankRoute?.banks ?? null;
   const needsNetwork = PAYMENTS_PAYHOLD && selected === 'momo';
+
+  // What the number says the wallet is, filtered against PayHold's own list
+  // for this country — see `detectMomoNetwork`. A convenience, never a
+  // decision: the effect below only fills a blank the host has not touched.
+  const detectedNetwork =
+    needsNetwork && !networkTouched ? detectMomoNetwork(dest, payoutCountry, networks) : null;
+  const cardScheme = selected === 'card' ? detectCardScheme(dest) : null;
   const needsBankCode =
     PAYMENTS_PAYHOLD && selected === 'bank' && payoutRoute?.payout?.provider === 'flutterwave';
   const canSave =
@@ -529,6 +575,9 @@ export function PayoutSetupPage() {
                     setDest('');
                     setNetwork('');
                     setBankCode('');
+                    // A different method is a fresh question, so detection
+                    // gets to answer it again.
+                    setNetworkTouched(false);
                   }}
                   aria-pressed={isSel}
                   className={cn(
@@ -611,25 +660,66 @@ export function PayoutSetupPage() {
                   <div>
                     <Label htmlFor="payout-network">Mobile money network</Label>
                     {networks.length > 0 ? (
-                      <Select
-                        id="payout-network"
-                        value={network}
-                        onChange={(e) => setNetwork(e.target.value)}
-                      >
-                        <option value="" disabled>
-                          Select your network
-                        </option>
-                        {networks.map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </Select>
+                      <>
+                        {/* Tiles rather than a dropdown: a host recognises
+                            their wallet by its colour before they read the
+                            word, and this is the one field where picking the
+                            wrong option is silently unpayable rather than
+                            merely wrong. The list is still PayHold's — every
+                            tile comes from `networks`, and a wallet with no
+                            branding here renders in neutral colours under its
+                            own name rather than being dropped. */}
+                        <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {networks.map((n) => {
+                            const brand = walletBrand(n);
+                            const isSel = network === n;
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                id={n === networks[0] ? 'payout-network' : undefined}
+                                onClick={() => {
+                                  setNetwork(n);
+                                  // They have answered the question, so stop
+                                  // answering it for them — otherwise the next
+                                  // keystroke would overwrite the choice they
+                                  // just made with the prefix's opinion.
+                                  setNetworkTouched(true);
+                                }}
+                                aria-pressed={isSel}
+                                className={cn(
+                                  'flex items-center gap-2 rounded-[var(--radius-control)] border p-2.5 text-left transition-colors',
+                                  isSel
+                                    ? 'border-[var(--color-accent-on)] bg-[var(--color-surface-sunken)]'
+                                    : 'border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] hover:bg-[var(--color-surface-sunken)]',
+                                )}
+                              >
+                                <BrandMark brand={brand} size="sm" />
+                                <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-[var(--color-content)]">
+                                  {brand.label}
+                                </span>
+                                {isSel && (
+                                  <Check size={14} className="shrink-0 text-[var(--color-accent-on)]" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {detectedNetwork && !networkTouched && (
+                          <p className="mt-1.5 flex items-center gap-1 text-caption text-[var(--color-content-muted)]">
+                            <Check size={12} className="text-[var(--color-accent-on)]" />
+                            Picked from your number — change it if that's not right.
+                          </p>
+                        )}
+                      </>
                     ) : (
                       <Input
                         id="payout-network"
                         value={network}
-                        onChange={(e) => setNetwork(e.target.value)}
+                        onChange={(e) => {
+                          setNetwork(e.target.value);
+                          setNetworkTouched(true);
+                        }}
                         placeholder="MTN"
                       />
                     )}
@@ -680,13 +770,26 @@ export function PayoutSetupPage() {
 
                 <div>
                   <Label htmlFor="payout-dest">{meta.field}</Label>
-                  <Input
-                    id="payout-dest"
-                    value={dest}
-                    onChange={(e) => setDest(e.target.value)}
-                    placeholder={meta.placeholder}
-                    inputMode={selected === 'bank' || selected === 'card' ? 'numeric' : 'tel'}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="payout-dest"
+                      value={dest}
+                      onChange={(e) => setDest(e.target.value)}
+                      placeholder={meta.placeholder}
+                      inputMode={selected === 'bank' || selected === 'card' ? 'numeric' : 'tel'}
+                      className={cn(cardScheme && 'pr-16')}
+                    />
+                    {/* The scheme, read off the number's own opening digits.
+                        Shown rather than asked: a card says what it is, so
+                        making somebody pick Visa from a list while holding a
+                        card with VISA printed on it is a question with a
+                        visible answer. */}
+                    {cardScheme && (
+                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                        <BrandMark brand={CARD_BRANDS[cardScheme]} size="sm" />
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {routedProvider && (
                   <p className="flex items-center gap-1.5 text-caption text-[var(--color-content-muted)]">
