@@ -49,6 +49,7 @@ import {
 import { PayholdPayment } from '@/components/PayholdPayment';
 import { Img } from '@/components/Img';
 import { Avatar, Badge, Button, Card, CardBody, Input, Label, Notice, Select, Skeleton } from '@/components/ui';
+import { useT } from '@/lib/i18n';
 
 type Method = 'card' | 'momo';
 
@@ -73,6 +74,7 @@ function addDays(iso: string, n: number): string {
  * data client and routes to the new trip.
  */
 export function BookingPage() {
+  const t = useT();
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const backToBrowse = useBackToBrowse();
@@ -183,13 +185,13 @@ export function BookingPage() {
   if (!listing) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-[var(--color-content)]">Listing not found</p>
+        <p className="font-medium text-[var(--color-content)]">{t('car.listingNotFound')}</p>
         <button
           type="button"
           onClick={backToBrowse}
           className="mt-3 inline-block text-body-sm text-brand-600 hover:underline"
         >
-          Back to browse
+          {t('car.backToBrowse')}
         </button>
       </div>
     );
@@ -202,23 +204,23 @@ export function BookingPage() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
         <p className="font-medium text-[var(--color-content)]">
-          {isCompany ? "Company accounts can't rent" : "Host accounts can't rent"}
+          {isCompany ? t('booking.companyCantRent') : t('booking.hostCantRent')}
         </p>
         <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           {isCompany ? (
-            'Companies host only — you can view any car, but booking is off for this account.'
+            t('booking.companyHostOnly')
           ) : (
             <>
-              You're on a host account. To rent a car, switch back to renting from your{' '}
+              {t('booking.hostAccountBefore')}
               <Link to="/account" className="text-brand-600 hover:underline">
-                profile
+                {t('account.profile').toLowerCase()}
               </Link>
-              .
+              {t('booking.hostAccountAfter')}
             </>
           )}
         </p>
         <Link to={`/cars/${id}`} className="mt-3 inline-block text-body-sm text-brand-600 hover:underline">
-          Back to the car
+          {t('booking.backToCar')}
         </Link>
       </div>
     );
@@ -234,23 +236,23 @@ export function BookingPage() {
           <ShieldCheck size={22} />
         </span>
         <p className="mt-4 font-semibold text-[var(--color-content)]">
-          {underReview ? 'Verification in review' : 'Verify your identity to rent'}
+          {underReview ? t('booking.verificationInReview') : t('booking.verifyToRentTitle')}
         </p>
         <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
           {underReview
-            ? "We're checking your details. You can book as soon as your identity is approved."
+            ? t('booking.verificationInReviewBody')
             : me.verification === 'rejected'
-              ? 'Your verification was declined. Please resubmit your documents to rent.'
-              : 'For everyone’s safety, renters complete a quick one-time identity check before their first booking.'}
+              ? t('booking.verificationRejectedBody')
+              : t('booking.verificationNeededBody')}
         </p>
         <Link to="/verification" className="mt-5 inline-block">
           <Button size="lg">
-            <ShieldCheck size={16} /> {underReview ? 'View status' : 'Verify now'}
+            <ShieldCheck size={16} /> {underReview ? t('booking.viewStatus') : t('booking.verifyNow')}
           </Button>
         </Link>
         <div>
           <Link to={`/cars/${id}`} className="mt-3 inline-block text-body-sm text-brand-600 hover:underline">
-            Back to the car
+            {t('booking.backToCar')}
           </Link>
         </div>
       </div>
@@ -333,15 +335,15 @@ export function BookingPage() {
       <button
         type="button"
         onClick={() => navigate(`/cars/${id}`)}
-        aria-label="Back"
+        aria-label={t('common.back')}
         className="mb-5 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-content-muted)] transition hover:bg-[var(--color-surface-sunken)]"
       >
         <ArrowLeft size={18} />
       </button>
 
-      <h1 className="text-h1 text-[var(--color-content)]">Confirm and pay</h1>
+      <h1 className="text-h1 text-[var(--color-content)]">{t('booking.confirmAndPay')}</h1>
       <p className="mt-1.5 max-w-xl text-body-sm text-[var(--color-content-muted)]">
-        Check the car and the dates, then pay. Nothing reaches the host until the trip is over.
+        {t('booking.confirmAndPaySubtitle')}
       </p>
 
       <div className="mt-7 grid grid-cols-1 gap-7 lg:grid-cols-[1fr_minmax(0,400px)] lg:gap-9">
@@ -351,16 +353,16 @@ export function BookingPage() {
             <CardBody className="space-y-4 p-5 sm:p-6">
               <div>
                 <h2 className="text-h3 text-[var(--color-content)]">
-                  When are you picking it up?
+                  {t('booking.whenPickingUp')}
                 </h2>
                 <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
                   {isHourly
-                    ? 'A late return past your estimate is settled against the actual time used.'
-                    : `Coming back more than 2 hours after ${formatDate(endDate)} at this time bills ${money(lateReturnRate)} for each extra hour, collected by the host rather than charged to your card.`}
+                    ? t('booking.lateReturnHourly')
+                    : t('booking.lateReturnDaily', { date: formatDate(endDate), amount: money(lateReturnRate) })}
                 </p>
               </div>
               <div>
-                <Label htmlFor="pickup-time">Pickup time</Label>
+                <Label htmlFor="pickup-time">{t('car.pickupTimeLabel')}</Label>
                 <Input
                   id="pickup-time"
                   type="time"
@@ -370,7 +372,7 @@ export function BookingPage() {
               </div>
               {PAYMENTS_PAYHOLD && isHourly && (
                 <div>
-                  <Label htmlFor="estimated-hours">How many hours?</Label>
+                  <Label htmlFor="estimated-hours">{t('booking.howManyHours')}</Label>
                   <Input
                     id="estimated-hours"
                     type="number"
@@ -381,8 +383,8 @@ export function BookingPage() {
                   />
                   <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
                     {checkoutOpen
-                      ? 'Locked for this checkout — the amount you were quoted was priced against it.'
-                      : `You pay the estimated ${money(estimatedTotal)} now. Extra time beyond it is settled automatically after your trip, based on actual pickup-to-return time.`}
+                      ? t('booking.lockedForCheckout')
+                      : t('booking.payEstimatedNow', { amount: money(estimatedTotal) })}
                   </p>
                 </div>
               )}
@@ -392,19 +394,19 @@ export function BookingPage() {
           <Card>
             <CardBody className="p-5 sm:p-6">
               <h2 className="text-h3 text-[var(--color-content)]">
-                How do you want to pay?
+                {t('booking.howToPay')}
               </h2>
               <p className="mb-4 mt-1 text-body-sm text-[var(--color-content-muted)]">
                 {pickerless
-                  ? 'Choose your method on the next step — you stay right here on AutoHire.'
+                  ? t('booking.choosePayOnNextStep')
                   : 'Pick a method below and enter your details.'}
               </p>
 
               {!datesValid && (
                 <Notice tone="danger" className="mb-4">
-                  These dates aren't available.{' '}
+                  {t('booking.datesNotAvailable')}{' '}
                   <Link to={`/cars/${id}`} className="font-medium underline">
-                    Choose different dates
+                    {t('booking.chooseDifferentDates')}
                   </Link>
                   .
                 </Notice>
@@ -491,7 +493,7 @@ export function BookingPage() {
               {pickerless && (
                 <div className="mt-5 border-t border-[var(--color-line)] pt-4">
                   <p className="text-caption font-semibold uppercase tracking-wider text-[var(--color-content-subtle)]">
-                    Cards accepted
+                    {t('payment.cardsAccepted')}
                   </p>
                   <AcceptedCards className="mt-2.5" />
                 </div>
@@ -522,28 +524,28 @@ export function BookingPage() {
             <CardBody className="p-5 sm:p-6">
               <h2 className="flex items-center gap-2 text-body font-semibold text-[var(--color-content)]">
                 <ShieldCheck size={18} className="text-brand-600" />
-                Your payment is protected
+                {t('booking.yourPaymentProtected')}
               </h2>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <SafetyPoint
                   icon={<Lock size={16} />}
-                  title="Encrypted, and never stored here"
-                  body="Your card details travel over an encrypted connection straight to our payment provider. AutoHire never keeps your card number."
+                  title={t('booking.encryptedTitle')}
+                  body={t('booking.encryptedBody')}
                 />
                 <SafetyPoint
                   icon={<Wallet size={16} />}
-                  title="Held, not handed over"
-                  body="We hold the full amount from the moment you book. The host is paid only after you both confirm the car came back."
+                  title={t('booking.heldTitle')}
+                  body={t('booking.heldBody')}
                 />
                 <SafetyPoint
                   icon={<CalendarCheck size={16} />}
-                  title="Free cancellation"
-                  body={`Cancel before ${formatDate(startDate)} and the full ${money(total)} comes back to you, automatically.`}
+                  title={t('booking.freeCancellationTitle')}
+                  body={t('booking.freeCancellationBody', { date: formatDate(startDate), amount: money(total) })}
                 />
                 <SafetyPoint
                   icon={<BadgeCheck size={16} />}
-                  title="Verified people only"
-                  body="Every renter passes an identity check before they can book, and hosts are reviewed after each trip."
+                  title={t('booking.verifiedPeopleTitle')}
+                  body={t('booking.verifiedPeopleBody')}
                 />
               </div>
             </CardBody>
@@ -563,7 +565,7 @@ export function BookingPage() {
               />
               {superhost && (
                 <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-[var(--color-surface-raised)]/95 px-2.5 py-1 text-caption font-semibold text-[var(--color-content)] shadow-[var(--shadow-float)] backdrop-blur">
-                  <Award size={13} className="text-brand-600" /> Top-rated host
+                  <Award size={13} className="text-brand-600" /> {t('booking.topRatedHostBadge')}
                 </span>
               )}
             </div>
@@ -580,14 +582,20 @@ export function BookingPage() {
                     <span className="inline-flex items-center gap-1 font-medium text-[var(--color-content)]">
                       <Star size={13} className="fill-[var(--color-content)] text-[var(--color-content)]" />
                       {listing.ratingAvg?.toFixed(2)}
-                      <span className="font-normal text-[var(--color-content-muted)]">({listing.ratingCount} trips)</span>
+                      <span className="font-normal text-[var(--color-content-muted)]">
+                        (
+                        {listing.ratingCount === 1
+                          ? t('car.tripCount')
+                          : t('car.tripsCount', { count: listing.ratingCount })}
+                        )
+                      </span>
                     </span>
                   ) : (
-                    <span>New listing</span>
+                    <span>{t('car.newListing')}</span>
                   )}
                 </p>
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  <SpecChip icon={<Users size={12} />} label={`${listing.seats} seats`} />
+                  <SpecChip icon={<Users size={12} />} label={t('car.seats', { count: listing.seats })} />
                   <SpecChip icon={<Cog size={12} />} label={listing.transmission} />
                   <SpecChip icon={<Fuel size={12} />} label={listing.fuel} />
                   <SpecChip icon={<Calendar size={12} />} label={`${listing.year}`} />
@@ -604,7 +612,7 @@ export function BookingPage() {
                   <Avatar name={host.businessName || host.fullName} src={host.avatarUrl} size="sm" />
                   <div className="min-w-0">
                     <p className="truncate text-body-sm font-medium text-[var(--color-content)]">
-                      Hosted by {host.businessName || host.fullName}
+                      {t('car.hostedBy', { name: host.businessName || host.fullName })}
                     </p>
                   </div>
                 </div>
@@ -612,26 +620,30 @@ export function BookingPage() {
 
               <div className="flex items-start justify-between border-t border-[var(--color-line)] pt-3.5">
                 <div>
-                  <p className="text-body-sm font-semibold text-[var(--color-content)]">Your trip</p>
+                  <p className="text-body-sm font-semibold text-[var(--color-content)]">{t('booking.yourTrip')}</p>
                   <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
                     {formatDate(startDate)} – {formatDate(endDate)} at {pickupTime}
                   </p>
                   <p className="text-body-sm text-[var(--color-content-muted)]">
                     {isHourly
-                      ? `~${estimatedHours} hour${estimatedHours === 1 ? '' : 's'} · billed on actual time used`
-                      : `${days} day${days === 1 ? '' : 's'} · free cancellation until ${formatDate(startDate)}`}
+                      ? estimatedHours === 1
+                        ? t('booking.hourlyBilledOnUseOne')
+                        : t('booking.hourlyBilledOnUse', { hours: estimatedHours })
+                      : days === 1
+                        ? t('booking.dayFreeCancellation', { date: formatDate(startDate) })
+                        : t('booking.daysFreeCancellation', { count: days, date: formatDate(startDate) })}
                   </p>
                 </div>
                 <Link
                   to={`/cars/${id}`}
                   className="shrink-0 text-body-sm font-medium text-brand-600 hover:underline"
                 >
-                  Change
+                  {t('booking.change')}
                 </Link>
               </div>
 
               <div className="border-t border-[var(--color-line)] pt-3.5">
-                <p className="text-body-sm font-semibold text-[var(--color-content)]">Price details</p>
+                <p className="text-body-sm font-semibold text-[var(--color-content)]">{t('booking.priceDetails')}</p>
                 <div className="mt-2 space-y-1.5 text-body-sm">
                   {isHourly ? (
                     <div className="flex justify-between text-[var(--color-content-muted)]">
@@ -650,25 +662,24 @@ export function BookingPage() {
                     </div>
                   )}
                   <div className="flex justify-between text-[var(--color-content-muted)]">
-                    <span>Service fee</span>
+                    <span>{t('car.serviceFeeLabel')}</span>
                     <span className="tabular">{money(serviceFee)}</span>
                   </div>
                   <div className="flex items-baseline justify-between border-t border-[var(--color-line)] pt-2.5 font-bold text-[var(--color-content)]">
-                    <span className="text-body">{isHourly ? 'Due now' : 'Total'}</span>
+                    <span className="text-body">{isHourly ? t('car.dueNowLabel') : t('car.totalLabel')}</span>
                     <span className="text-h4 tabular">{money(total)}</span>
                   </div>
                   {isHourly && (
                     <p className="text-body-sm text-[var(--color-content-muted)]">
-                      The rest is settled after your trip, based on actual pickup-to-return time.
+                      {t('booking.settledAfterTrip')}
                     </p>
                   )}
                 </div>
                 <Notice tone="brand" className="mt-3.5 leading-relaxed">
                   <ShieldCheck size={16} className="mt-0.5 shrink-0" />
                   <span>
-                    <span className="font-semibold">Payment held securely.</span> Your payment is held from
-                    the moment you book and only released to the host once you both confirm the car came
-                    back — so your money is protected for the whole trip, not just until pickup.
+                    <span className="font-semibold">{t('booking.paymentHeldSecurelyTitle')}</span>{' '}
+                    {t('booking.paymentHeldSecurelyBody')}
                   </span>
                 </Notice>
               </div>
@@ -687,15 +698,16 @@ export function BookingPage() {
  * plus sticky order-summary shape as the real page.
  */
 function BookingSkeleton() {
+  const t = useT();
   return (
-    <section className="mx-auto max-w-5xl px-4 py-8 sm:py-9" aria-busy="true" aria-label="Loading">
+    <section className="mx-auto max-w-5xl px-4 py-8 sm:py-9" aria-busy="true" aria-label={t('common.loading')}>
       <div className="mb-5 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-content-muted)]">
         <ArrowLeft size={18} />
       </div>
 
-      <h1 className="text-h1 text-[var(--color-content)]">Confirm and pay</h1>
+      <h1 className="text-h1 text-[var(--color-content)]">{t('booking.confirmAndPay')}</h1>
       <p className="mt-1.5 max-w-xl text-body-sm text-[var(--color-content-muted)]">
-        Check the car and the dates, then pay. Nothing reaches the host until the trip is over.
+        {t('booking.confirmAndPaySubtitle')}
       </p>
 
       <div className="mt-7 grid grid-cols-1 gap-7 lg:grid-cols-[1fr_minmax(0,400px)] lg:gap-9">

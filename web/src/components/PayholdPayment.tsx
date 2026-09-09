@@ -8,6 +8,7 @@ import { useCountry } from '@/lib/country';
 import { presentmentCurrenciesFor } from '@/lib/payments';
 import { CheckoutModal } from '@/components/CheckoutModal';
 import { Button, Label, Notice, Select, Skeleton } from '@/components/ui';
+import { useT } from '@/lib/i18n';
 
 /**
  * Opening checkout. Nothing else.
@@ -67,6 +68,7 @@ export function PayholdPayment({
    */
   onCheckoutOpenChange?: (open: boolean) => void;
 }) {
+  const t = useT();
   const { data: me } = useCurrentUser();
   // Only for the flag and the country name beside each code — the list of
   // codes itself comes from PayHold below, not from here.
@@ -181,7 +183,7 @@ export function PayholdPayment({
       setDealId(newDealId);
       setOpen(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the payment.');
+      setError(e instanceof Error ? e.message : t('payhold.couldNotStart'));
     } finally {
       setBusy(false);
     }
@@ -191,11 +193,11 @@ export function PayholdPayment({
     <>
       {!payerCountry && (
         <Notice tone="warn" className="mb-4 flex-col items-start">
-          <p className="font-medium">Tell us where you're paying from</p>
+          <p className="font-medium">{t('payhold.tellUsCountry')}</p>
           <p className="mt-0.5">
-            Payment options differ by country — mobile money isn't offered everywhere.{' '}
+            {t('payhold.countryDiffersBody')}{' '}
             <Link to="/account" className="font-medium underline">
-              Set your country
+              {t('payhold.setYourCountry')}
             </Link>
           </p>
         </Notice>
@@ -211,7 +213,7 @@ export function PayholdPayment({
         <div
           className="mb-4 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3"
           aria-busy="true"
-          aria-label="Loading payment currencies"
+          aria-label={t('payhold.loadingCurrencies')}
         >
           <Skeleton className="h-4 w-16" />
           <Skeleton className="mt-1.5 h-11 w-full" />
@@ -226,7 +228,7 @@ export function PayholdPayment({
       {payerCountry && !optionsLoading && currencies.length > 1 && (
         <div className="mb-4 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3">
           <Label htmlFor="pay-in-currency" className="flex items-center gap-1.5 text-[var(--color-content-muted)]">
-            <Landmark size={14} className="text-[var(--color-content-subtle)]" /> Pay in
+            <Landmark size={14} className="text-[var(--color-content-subtle)]" /> {t('payhold.payIn')}
           </Label>
           <Select
             id="pay-in-currency"
@@ -244,8 +246,8 @@ export function PayholdPayment({
           </Select>
           <p className="mt-1.5 text-caption text-[var(--color-content-muted)]">
             {chargeCurrency === listingCurrency
-              ? `Charged in ${chargeCurrency} — the price you see, with nothing converted.`
-              : `Charged in ${chargeCurrency}. PayHold converts from ${listingCurrency} and carries the exchange rate.`}
+              ? t('payhold.chargedSameCurrency', { currency: chargeCurrency })
+              : t('payhold.chargedConverted', { currency: chargeCurrency, listingCurrency })}
           </p>
         </div>
       )}
@@ -270,12 +272,12 @@ export function PayholdPayment({
         onClick={pay}
       >
         {busy
-          ? 'Opening…'
+          ? t('car.opening')
           : optionsLoading
-            ? 'Checking payment options…'
+            ? t('payhold.checkingOptions')
             : !payerCountry
-              ? 'Set your country to pay'
-              : `Pay ${label}`}
+              ? t('payhold.setCountryToPay')
+              : t('payhold.pay', { amount: label })}
       </Button>
       {error && (
         <Notice tone="danger" className="mt-3">
@@ -284,8 +286,7 @@ export function PayholdPayment({
       )}
       <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-body-sm text-[var(--color-content-muted)]">
         <Lock size={13} className="shrink-0 text-[var(--color-content-subtle)]" />
-        Your money is held until the trip is done — the host is paid after you both confirm the
-        car came back.
+        {t('payhold.moneyHeldUntilDone')}
       </p>
 
       <CheckoutModal

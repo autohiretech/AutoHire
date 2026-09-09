@@ -57,6 +57,7 @@ import { LocationLinks } from '@/components/map/LocationLinks';
 import { useAiAssistantSource } from '@/lib/aiAssistantContext';
 import { RequesterModal, VERIF_TONE } from '@/components/RequesterModal';
 import { DateRangeCalendar, type DateRange } from '@/components/marketplace/DateRangeCalendar';
+import { useT } from '@/lib/i18n';
 
 /** Best-effort icon for a free-text feature; falls back to a check. */
 function featureIcon(feature: string): LucideIcon {
@@ -67,12 +68,12 @@ function featureIcon(feature: string): LucideIcon {
 }
 
 /** Human "X months/years hosting" from a join date. */
-function hostingDuration(joinedAt: string): string {
+function hostingDuration(joinedAt: string, t: ReturnType<typeof useT>): string {
   const months = Math.max(0, Math.round((Date.now() - new Date(joinedAt).getTime()) / (30 * 86_400_000)));
-  if (months < 1) return 'New host';
-  if (months < 12) return `${months} month${months === 1 ? '' : 's'} hosting`;
+  if (months < 1) return t('car.newHost');
+  if (months < 12) return months === 1 ? t('car.monthHosting') : t('car.monthsHosting', { count: months });
   const years = Math.floor(months / 12);
-  return `${years} year${years === 1 ? '' : 's'} hosting`;
+  return years === 1 ? t('car.yearHosting') : t('car.yearsHosting', { count: years });
 }
 
 /**
@@ -93,6 +94,7 @@ function hourlyReturnDate(pickupDate: string, hours: number): string {
 }
 
 export function CarDetailPage() {
+  const t = useT();
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const backToBrowse = useBackToBrowse();
@@ -168,13 +170,13 @@ export function CarDetailPage() {
   if (!listing) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="font-medium text-[var(--color-content)]">Listing not found</p>
+        <p className="font-medium text-[var(--color-content)]">{t('car.listingNotFound')}</p>
         <button
           type="button"
           onClick={backToBrowse}
           className="mt-3 inline-block text-body-sm text-brand-600 hover:underline"
         >
-          Back to browse
+          {t('car.backToBrowse')}
         </button>
       </div>
     );
@@ -230,10 +232,10 @@ export function CarDetailPage() {
   const needsVerification = canRent && !!me && me.verification !== 'verified';
   const verifNotice = needsVerification
     ? me!.verification === 'pending'
-      ? "Your identity is under review — you can rent once it's approved."
+      ? t('car.verificationPending')
       : me!.verification === 'rejected'
-        ? 'Your verification was declined. Please resubmit to rent.'
-        : 'Verify your identity to rent — a quick one-time check.'
+        ? t('car.verificationRejected')
+        : t('car.verificationNeeded')
     : null;
 
   const goToCalendar = () => calendarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -254,12 +256,12 @@ export function CarDetailPage() {
   };
 
   const reserveLabel = needsVerification
-    ? 'Verify to rent'
+    ? t('car.verifyToRent')
     : datesChosen
       ? instant
-        ? 'Reserve'
-        : 'Request to book'
-      : 'Choose dates';
+        ? t('car.reserve')
+        : t('car.requestToBook')
+      : t('car.chooseDates');
 
   const subtitle = [`${listing.year} ${listing.make}`, listing.model].filter(Boolean).join(' ');
 
@@ -267,8 +269,8 @@ export function CarDetailPage() {
   if (topRatedHost) {
     highlights.push({
       icon: Award,
-      title: `${host!.businessName ?? host!.fullName} is a top-rated host`,
-      body: 'Highly rated by recent renters for a smooth handover.',
+      title: t('car.topRatedHostName', { name: host!.businessName ?? host!.fullName }),
+      body: t('car.topRatedHostBody'),
     });
   }
 
@@ -290,7 +292,7 @@ export function CarDetailPage() {
         onClick={backToBrowse}
         className="mb-3 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
-        <ArrowLeft size={16} /> Back to browse
+        <ArrowLeft size={16} /> {t('car.backToBrowse')}
       </button>
 
       {/* Gallery grid — one large photo left, two stacked right on desktop, a
@@ -310,25 +312,27 @@ export function CarDetailPage() {
               <span className="tabular inline-flex items-center gap-1 font-medium text-[var(--color-content)]">
                 <Star size={14} className="fill-[var(--color-content)]" /> {listing.ratingAvg?.toFixed(2)}
                 <span className="font-normal text-[var(--color-content-muted)]">
-                  ({listing.ratingCount} review{listing.ratingCount === 1 ? '' : 's'})
+                  (
+                  {listing.ratingCount === 1
+                    ? t('car.reviewCount')
+                    : t('car.reviewsCount', { count: listing.ratingCount })}
+                  )
                 </span>
               </span>
             ) : (
-              <span>New listing</span>
+              <span>{t('car.newListing')}</span>
             )}
             {totalTrips > 0 && (
               <>
                 <span aria-hidden="true">·</span>
-                <span>
-                  {totalTrips} trip{totalTrips === 1 ? '' : 's'}
-                </span>
+                <span>{totalTrips === 1 ? t('car.tripCount') : t('car.tripsCount', { count: totalTrips })}</span>
               </>
             )}
             {topRatedHost && (
               <>
                 <span aria-hidden="true">·</span>
                 <Badge tone="brand">
-                  <Award size={11} /> Top host
+                  <Award size={11} /> {t('car.topHost')}
                 </Badge>
               </>
             )}
@@ -359,7 +363,7 @@ export function CarDetailPage() {
           <div className="flex items-start justify-between gap-4 pb-5">
             <div>
               <h2 className="text-h3 text-[var(--color-content)]">
-                Hosted by {host ? host.businessName ?? host.fullName : '…'}
+                {host ? t('car.hostedBy', { name: host.businessName ?? host.fullName }) : t('car.hostedBy', { name: '…' })}
               </h2>
             </div>
             {host && (
@@ -374,7 +378,7 @@ export function CarDetailPage() {
               model (host-owned cars, not a spec sheet), so the category takes
               its place as the fourth chip. */}
           <div className="flex flex-wrap gap-2 border-t border-[var(--color-line)] py-5">
-            <SpecChip icon={Users} label={`${listing.seats} seats`} />
+            <SpecChip icon={Users} label={t('car.seats', { count: listing.seats })} />
             <SpecChip icon={Fuel} label={listing.fuel} />
             <SpecChip icon={Cog} label={listing.transmission} />
             <SpecChip icon={Car} label={listing.category} />
@@ -399,7 +403,7 @@ export function CarDetailPage() {
           {listing.features.length > 0 && (
             <div className="border-t border-[var(--color-line)] py-5">
               <h2 className="mb-4 text-h3 text-[var(--color-content)]">
-                What this {isMachine(listing.category) ? 'machine' : 'car'} offers
+                {t(isMachine(listing.category) ? 'car.whatMachineOffers' : 'car.whatCarOffers')}
               </h2>
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {listing.features.map((f) => {
@@ -417,7 +421,7 @@ export function CarDetailPage() {
           {/* Pickup location */}
           {(listing.lat != null && listing.lng != null) || listing.locationUrl ? (
             <div className="border-t border-[var(--color-line)] py-5">
-              <h2 className="mb-3 text-h3 text-[var(--color-content)]">Where you'll pick it up</h2>
+              <h2 className="mb-3 text-h3 text-[var(--color-content)]">{t('car.pickupLocationTitle')}</h2>
               <p className="mb-3 flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">
                 <MapPin size={15} className="text-brand-600" /> {listing.location}
               </p>
@@ -433,7 +437,7 @@ export function CarDetailPage() {
           {/* Meet your host */}
           {host && (
             <div className="border-t border-[var(--color-line)] py-5">
-              <h2 className="mb-4 text-h3 text-[var(--color-content)]">Meet your host</h2>
+              <h2 className="mb-4 text-h3 text-[var(--color-content)]">{t('car.meetYourHost')}</h2>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-[260px_1fr]">
                 {/* Host profile card */}
                 <Card className="p-5">
@@ -444,10 +448,10 @@ export function CarDetailPage() {
                         {host.businessName ?? host.fullName}
                       </p>
                       <p className="flex items-center gap-1 text-caption text-[var(--color-content-muted)]">
-                        {host.ownerType === 'business' ? 'Business host' : 'Individual host'}
+                        {host.ownerType === 'business' ? t('car.businessHost') : t('car.individualHost')}
                         {host.verification === 'verified' && (
                           <span className="inline-flex items-center gap-0.5 text-brand-600">
-                            · <ShieldCheck size={12} /> Verified
+                            · <ShieldCheck size={12} /> {t('car.verified')}
                           </span>
                         )}
                       </p>
@@ -458,25 +462,25 @@ export function CarDetailPage() {
                       <p className="text-body-lg font-bold tabular text-[var(--color-content)]">
                         {host.ratingCount ?? 0}
                       </p>
-                      <p className="text-caption text-[var(--color-content-muted)]">Reviews</p>
+                      <p className="text-caption text-[var(--color-content-muted)]">{t('car.reviewsStat')}</p>
                     </div>
                     <div className="px-1">
                       <p className="inline-flex items-center gap-0.5 text-body-lg font-bold tabular text-[var(--color-content)]">
                         {host.ratingCount ? host.ratingAvg?.toFixed(2) : '—'}
                         <Star size={12} className="fill-[var(--color-content)]" />
                       </p>
-                      <p className="text-caption text-[var(--color-content-muted)]">Rating</p>
+                      <p className="text-caption text-[var(--color-content-muted)]">{t('car.ratingStat')}</p>
                     </div>
                     <div className="px-1">
                       <p className="text-body-lg font-bold tabular text-[var(--color-content)]">
                         {host.vehicleCount}
                       </p>
-                      <p className="text-caption text-[var(--color-content-muted)]">Listings</p>
+                      <p className="text-caption text-[var(--color-content-muted)]">{t('car.listingsStat')}</p>
                     </div>
                   </div>
                   <Link to={`/hosts/${host.id}`} className="mt-4 block">
                     <Button variant="outline" className="w-full">
-                      View profile &amp; all cars
+                      {t('car.viewProfileAllCars')}
                     </Button>
                   </Link>
                 </Card>
@@ -485,20 +489,20 @@ export function CarDetailPage() {
                 <div>
                   <p className="font-semibold text-[var(--color-content)]">
                     {topRatedHost
-                      ? `${host.businessName ?? host.fullName} is a top-rated host`
-                      : `Hosting with ${host.businessName ?? host.fullName}`}
+                      ? t('car.topRatedHostName', { name: host.businessName ?? host.fullName })
+                      : t('car.hostingWith', { name: host.businessName ?? host.fullName })}
                   </p>
                   <ul className="mt-3 space-y-2 text-body-sm text-[var(--color-content-muted)]">
                     <li className="flex items-center gap-2">
-                      <Award size={16} className="text-[var(--color-content-subtle)]" /> {hostingDuration(host.joinedAt)}
+                      <Award size={16} className="text-[var(--color-content-subtle)]" /> {hostingDuration(host.joinedAt, t)}
                     </li>
                     <li className="flex items-center gap-2">
                       <ShieldCheck size={16} className="text-[var(--color-content-subtle)]" />
-                      {host.verification === 'verified' ? 'Identity verified' : 'Identity on file'}
+                      {host.verification === 'verified' ? t('car.identityVerified') : t('car.identityOnFile')}
                     </li>
                     <li className="flex items-center gap-2">
-                      <Car size={16} className="text-[var(--color-content-subtle)]" /> {host.vehicleCount} car
-                      {host.vehicleCount === 1 ? '' : 's'} on AutoHire
+                      <Car size={16} className="text-[var(--color-content-subtle)]" />{' '}
+                      {host.vehicleCount === 1 ? t('car.carOnAutoHire') : t('car.carsOnAutoHire', { count: host.vehicleCount })}
                     </li>
                   </ul>
 
@@ -509,13 +513,13 @@ export function CarDetailPage() {
                       disabled={messaging}
                       onClick={messageHost}
                     >
-                      <MessageSquare size={16} /> {messaging ? 'Opening…' : 'Message host'}
+                      <MessageSquare size={16} /> {messaging ? t('car.opening') : t('car.messageHost')}
                     </Button>
                   )}
 
                   <p className="mt-4 flex items-start gap-2 border-t border-[var(--color-line)] pt-4 text-caption text-[var(--color-content-muted)]">
                     <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-600" />
-                    To help protect your payment, always message and pay through AutoHire — never off-platform.
+                    {t('car.payThroughPlatform')}
                   </p>
                 </div>
               </div>
@@ -528,10 +532,11 @@ export function CarDetailPage() {
               {listing.ratingCount ? (
                 <span className="tabular flex items-center gap-2">
                   <Star size={18} className="fill-[var(--color-content)]" />
-                  {listing.ratingAvg?.toFixed(2)} · {reviews.length} review{reviews.length === 1 ? '' : 's'}
+                  {listing.ratingAvg?.toFixed(2)} ·{' '}
+                  {reviews.length === 1 ? t('car.reviewCount') : t('car.reviewsCount', { count: reviews.length })}
                 </span>
               ) : (
-                'Reviews'
+                t('car.reviewsStat')
               )}
             </h2>
             {reviewsQuery.isLoading ? (
@@ -545,7 +550,7 @@ export function CarDetailPage() {
                 ))}
               </ul>
             ) : reviews.length === 0 ? (
-              <p className="mt-3 text-body-sm text-[var(--color-content-muted)]">No reviews yet.</p>
+              <p className="mt-3 text-body-sm text-[var(--color-content-muted)]">{t('car.noReviewsYet')}</p>
             ) : (
               <ul className="mt-5 grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-2">
                 {reviews.map((r) => (
@@ -566,17 +571,19 @@ export function CarDetailPage() {
               <>
                 <h2 className="text-h3 text-[var(--color-content)]">
                   {datesChosen
-                    ? `${estimatedHours} hour${estimatedHours === 1 ? '' : 's'} in ${listing.location}`
-                    : 'Choose your pickup'}
+                    ? estimatedHours === 1
+                      ? t('car.hourInLocation', { location: listing.location })
+                      : t('car.hoursInLocation', { hours: estimatedHours, location: listing.location })
+                    : t('car.choosePickup')}
                 </h2>
                 <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
                   {datesChosen
-                    ? `${formatDate(pickupDate!)} at ${pickupTime}`
-                    : 'Pick a day, a time and how long you need it — the full price updates as you go.'}
+                    ? t('car.dateAtTime', { date: formatDate(pickupDate!), time: pickupTime })
+                    : t('car.pickADayHint')}
                 </p>
                 {listing.status === 'maintenance' && maintUntil && (
                   <Notice tone="warn" className="mt-3">
-                    This car is in maintenance — available from {formatDate(maintUntil)}.
+                    {t('car.inMaintenance', { date: formatDate(maintUntil) })}
                   </Notice>
                 )}
                 <div className="mt-4">
@@ -591,7 +598,7 @@ export function CarDetailPage() {
                 </div>
                 <div className="mt-4 grid max-w-sm grid-cols-2 gap-3">
                   <div>
-                    <Label htmlFor="pickup-time-detail">Pickup time</Label>
+                    <Label htmlFor="pickup-time-detail">{t('car.pickupTimeLabel')}</Label>
                     <Input
                       id="pickup-time-detail"
                       type="time"
@@ -600,7 +607,7 @@ export function CarDetailPage() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="estimated-hours-detail">Hours</Label>
+                    <Label htmlFor="estimated-hours-detail">{t('car.hoursLabel')}</Label>
                     <Input
                       id="estimated-hours-detail"
                       type="number"
@@ -620,12 +627,11 @@ export function CarDetailPage() {
                       <span className="tabular">{money(estimatedTotal)}</span>
                     </div>
                     <div className="flex justify-between border-t border-[var(--color-line)] pt-2 font-semibold text-[var(--color-content)]">
-                      <span>Full price (estimated)</span>
+                      <span>{t('car.fullPriceEstimated')}</span>
                       <span className="tabular">{money(estimatedTotal)}</span>
                     </div>
                     <p className="pt-1 text-caption text-[var(--color-content-subtle)]">
-                      You pay {money(total)} now (50% deposit + service fee). The rest settles from
-                      actual pickup-to-return time once the trip is done.
+                      {t('car.payNowHint', { amount: money(total) })}
                     </p>
                   </div>
                 )}
@@ -633,16 +639,20 @@ export function CarDetailPage() {
             ) : (
               <>
                 <h2 className="text-h3 text-[var(--color-content)]">
-                  {datesChosen ? `${nights} night${nights === 1 ? '' : 's'} in ${listing.location}` : 'Choose your dates'}
+                  {datesChosen
+                    ? nights === 1
+                      ? t('car.nightInLocation', { location: listing.location })
+                      : t('car.nightsInLocation', { count: nights, location: listing.location })
+                    : t('car.chooseDates')}
                 </h2>
                 <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
                   {datesChosen
                     ? `${formatDate(range.start!)} – ${formatDate(range.end!)}`
-                    : 'Add your trip dates to see the total and reserve.'}
+                    : t('car.addDatesHint')}
                 </p>
                 {listing.status === 'maintenance' && maintUntil && (
                   <Notice tone="warn" className="mt-3">
-                    This car is in maintenance — available from {formatDate(maintUntil)}.
+                    {t('car.inMaintenance', { date: formatDate(maintUntil) })}
                   </Notice>
                 )}
                 <div className="mt-4">
@@ -659,7 +669,7 @@ export function CarDetailPage() {
                     onClick={() => setRange({ start: null, end: null })}
                     className="mt-3 text-body-sm font-medium text-brand-600 hover:underline"
                   >
-                    Clear dates
+                    {t('car.clearDates')}
                   </button>
                 )}
               </>
@@ -678,26 +688,28 @@ export function CarDetailPage() {
                   <Price amount={listingHeadlinePrice(listing).amount} currency={listing.priceCurrency} showNative />
                 </span>
                 <span className="text-body text-[var(--color-content-muted)]">
-                  / {listingHeadlinePrice(listing).unit}
+                  / {listingHeadlinePrice(listing).unit === 'day' ? t('car.unitDay') : t('car.unitHour')}
                 </span>
               </div>
               {listing.status === 'maintenance' && (
                 <Badge tone="warn">
-                  In maintenance
-                  {listing.maintenanceUntil ? ` · back ${formatDate(listing.maintenanceUntil)}` : ''}
+                  {t('car.inMaintenanceBadge')}
+                  {listing.maintenanceUntil
+                    ? ` ${t('car.backOn', { date: formatDate(listing.maintenanceUntil) })}`
+                    : ''}
                 </Badge>
               )}
               {!canRent ? (
                 <Notice tone="info">
                   {isCompany ? (
-                    'Company accounts host only — you can view this car but not book it.'
+                    t('car.companyViewOnly')
                   ) : (
                     <>
-                      You're viewing as a host — booking is off. Switch to renting in your{' '}
+                      {t('car.hostViewOnlyBefore')}
                       <Link to="/account" className="font-medium underline">
-                        profile
-                      </Link>{' '}
-                      to book.
+                        {t('account.profile').toLowerCase()}
+                      </Link>
+                      {t('car.hostViewOnlyAfter')}
                     </>
                   )}
                 </Notice>
@@ -711,12 +723,12 @@ export function CarDetailPage() {
                       className="w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] p-2.5 text-left text-body-sm hover:bg-[var(--color-surface-sunken)]"
                     >
                       <span className="block text-caption font-semibold uppercase tracking-wide text-[var(--color-content-muted)]">
-                        Pickup
+                        {t('car.pickupField')}
                       </span>
                       <span className="text-[var(--color-content)]">
                         {pickupDate
                           ? `${formatDate(pickupDate)} at ${pickupTime} · ${estimatedHours}h`
-                          : 'Add pickup details'}
+                          : t('car.addPickupDetails')}
                       </span>
                     </button>
                   ) : (
@@ -727,10 +739,10 @@ export function CarDetailPage() {
                         className="border-r border-[var(--color-line-strong)] p-2.5 text-left hover:bg-[var(--color-surface-sunken)]"
                       >
                         <span className="block text-caption font-semibold uppercase tracking-wide text-[var(--color-content-muted)]">
-                          Pick-up
+                          {t('car.pickUpField')}
                         </span>
                         <span className="text-[var(--color-content)]">
-                          {range.start ? formatDate(range.start) : 'Add date'}
+                          {range.start ? formatDate(range.start) : t('car.addDate')}
                         </span>
                       </button>
                       <button
@@ -739,10 +751,10 @@ export function CarDetailPage() {
                         className="p-2.5 text-left hover:bg-[var(--color-surface-sunken)]"
                       >
                         <span className="block text-caption font-semibold uppercase tracking-wide text-[var(--color-content-muted)]">
-                          Return
+                          {t('car.returnField')}
                         </span>
                         <span className="text-[var(--color-content)]">
-                          {range.end ? formatDate(range.end) : 'Add date'}
+                          {range.end ? formatDate(range.end) : t('car.addDate')}
                         </span>
                       </button>
                     </div>
@@ -764,7 +776,7 @@ export function CarDetailPage() {
                     </Notice>
                   ) : (
                     <p className="text-center text-caption text-[var(--color-content-subtle)]">
-                      You won't be charged yet
+                      {t('car.wontBeChargedYet')}
                     </p>
                   )}
 
@@ -778,11 +790,11 @@ export function CarDetailPage() {
                         <span className="tabular">{money(estimatedTotal)}</span>
                       </div>
                       <div className="flex justify-between text-[var(--color-content-muted)]">
-                        <span>Deposit (50%) + service fee</span>
+                        <span>{t('car.depositPlusFee')}</span>
                         <span className="tabular">{money(total)}</span>
                       </div>
                       <div className="flex justify-between border-t border-[var(--color-line)] pt-2 font-semibold text-[var(--color-content)]">
-                        <span>Due now</span>
+                        <span>{t('car.dueNowLabel')}</span>
                         <span className="tabular">{money(total)}</span>
                       </div>
                     </div>
@@ -796,11 +808,11 @@ export function CarDetailPage() {
                         <span className="tabular">{money(subtotal)}</span>
                       </div>
                       <div className="flex justify-between text-[var(--color-content-muted)]">
-                        <span>Service fee</span>
+                        <span>{t('car.serviceFeeLabel')}</span>
                         <span className="tabular">{money(serviceFee)}</span>
                       </div>
                       <div className="flex justify-between border-t border-[var(--color-line)] pt-2 font-semibold text-[var(--color-content)]">
-                        <span>Total</span>
+                        <span>{t('car.totalLabel')}</span>
                         <span className="tabular">{money(total)}</span>
                       </div>
                     </div>
@@ -809,19 +821,18 @@ export function CarDetailPage() {
                   {/* Cancellation policy + payment info — always below the
                       CTA, never competing with it. */}
                   <Notice tone="info" className="text-caption">
-                    Free cancellation any time before pickup — the full amount is refunded automatically.
+                    {t('car.freeCancellation')}
                   </Notice>
                   <Notice tone="info" className="text-caption">
                     <ShieldCheck size={14} className="mt-0.5 shrink-0" />
-                    Your payment is held securely and only released to the host after the trip is confirmed
-                    complete.
+                    {t('car.paymentHeldSecurely')}
                   </Notice>
                 </>
               )}
               {canMessage && (
                 <Button variant="outline" className="w-full" disabled={messaging} onClick={messageHost}>
                   <MessageSquare size={16} />
-                  {messaging ? 'Opening…' : 'Message host'}
+                  {messaging ? t('car.opening') : t('car.messageHost')}
                 </Button>
               )}
             </CardBody>
@@ -831,9 +842,9 @@ export function CarDetailPage() {
 
       {/* Continue browsing — jump back to the list without losing your place. */}
       <div className="mt-6 flex flex-col items-center gap-2 border-t border-[var(--color-line)] pt-5 text-center">
-        <p className="text-body-sm text-[var(--color-content-muted)]">Not the one? Keep looking.</p>
+        <p className="text-body-sm text-[var(--color-content-muted)]">{t('car.notTheOne')}</p>
         <Button variant="outline" pill onClick={backToBrowse}>
-          <ArrowLeft size={16} /> Continue browsing cars
+          <ArrowLeft size={16} /> {t('car.continueBrowsing')}
         </Button>
       </div>
 
@@ -852,8 +863,10 @@ export function CarDetailPage() {
                   </p>
                   <p className="text-caption text-[var(--color-content-muted)]">
                     {isHourlyListing
-                      ? `due now · ${estimatedHours}h estimated at ${money(estimatedTotal)}`
-                      : `total · ${nights} night${nights === 1 ? '' : 's'}`}
+                      ? t('car.dueNowEstimated', { hours: estimatedHours, amount: money(estimatedTotal) })
+                      : nights === 1
+                        ? t('car.totalNight')
+                        : t('car.totalNights', { count: nights })}
                   </p>
                 </>
               ) : (
@@ -862,7 +875,7 @@ export function CarDetailPage() {
                     <Price amount={listingHeadlinePrice(listing).amount} currency={listing.priceCurrency} />
                   </p>
                   <p className="text-caption text-[var(--color-content-muted)]">
-                    per {listingHeadlinePrice(listing).unit}
+                    {listingHeadlinePrice(listing).unit === 'day' ? t('car.perDay') : t('car.perHour')}
                   </p>
                 </>
               )}
@@ -898,6 +911,7 @@ function PhotoGallery({
   title: string;
   onOpen: (index: number) => void;
 }) {
+  const t = useT();
   if (photos.length === 0) return null;
 
   const [hero, ...rest] = photos;
@@ -953,7 +967,7 @@ function PhotoGallery({
             onClick={() => onOpen(0)}
             className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-[var(--color-surface-raised)]/95 px-3.5 py-2 text-body-sm font-semibold text-[var(--color-content)] shadow-[var(--shadow-float)] backdrop-blur transition-colors hover:bg-[var(--color-surface-raised)]"
           >
-            <Grid3x3 size={15} /> View all {photos.length} photos
+            <Grid3x3 size={15} /> {t('car.viewAllPhotos', { count: photos.length })}
           </button>
         )}
       </div>
@@ -963,6 +977,7 @@ function PhotoGallery({
 
 /** Share the listing via the Web Share sheet, falling back to copying the link. */
 function ShareButton({ title }: { title: string }) {
+  const t = useT();
   const share = async () => {
     const url = window.location.href;
     if (typeof navigator !== 'undefined' && navigator.share) {
@@ -975,9 +990,9 @@ function ShareButton({ title }: { title: string }) {
     }
     try {
       await navigator.clipboard.writeText(url);
-      toast.success('Link copied to clipboard');
+      toast.success(t('car.linkCopied'));
     } catch {
-      toast.error('Could not copy the link');
+      toast.error(t('car.linkCopyFailed'));
     }
   };
   return (
@@ -986,7 +1001,7 @@ function ShareButton({ title }: { title: string }) {
       onClick={share}
       className="inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] px-3 py-2 text-body-sm font-medium text-[var(--color-content-muted)] transition-colors hover:bg-[var(--color-surface-sunken)]"
     >
-      <Share2 size={16} /> <span className="hidden sm:inline">Share</span>
+      <Share2 size={16} /> <span className="hidden sm:inline">{t('car.share')}</span>
     </button>
   );
 }
@@ -1003,6 +1018,7 @@ function Lightbox({
   onClose: () => void;
   title: string;
 }) {
+  const t = useT();
   const [i, setI] = useState(index);
   const prev = () => setI((v) => (v - 1 + photos.length) % photos.length);
   const next = () => setI((v) => (v + 1) % photos.length);
@@ -1024,7 +1040,7 @@ function Lightbox({
         type="button"
         onClick={onClose}
         className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-        aria-label="Close"
+        aria-label={t('common.close')}
       >
         <X size={22} />
       </button>
@@ -1036,7 +1052,7 @@ function Lightbox({
             prev();
           }}
           className="absolute left-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-          aria-label="Previous"
+          aria-label={t('car.previousPhoto')}
         >
           <ChevronLeft size={26} />
         </button>
@@ -1056,7 +1072,7 @@ function Lightbox({
             next();
           }}
           className="absolute right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-          aria-label="Next"
+          aria-label={t('car.nextPhoto')}
         >
           <ChevronRight size={26} />
         </button>
@@ -1157,6 +1173,7 @@ function SpecChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
  * (profile + verification documents) before approving.
  */
 function OwnerRequests({ listingId }: { listingId: string }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
   const { data: bookings = [], isLoading } = useQuery({
@@ -1171,9 +1188,9 @@ function OwnerRequests({ listingId }: { listingId: string }) {
       queryClient.invalidateQueries({ queryKey: ['ownerBookings'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       setActiveBooking(null);
-      toast.success(action === 'approve' ? 'Request approved — the renter has been notified.' : 'Request declined.');
+      toast.success(action === 'approve' ? t('car.requestApproved') : t('car.requestDeclined'));
     },
-    onError: () => toast.error("Couldn't update the request. Please try again."),
+    onError: () => toast.error(t('car.requestUpdateFailed')),
   });
 
   if (isLoading) return null;
@@ -1181,16 +1198,14 @@ function OwnerRequests({ listingId }: { listingId: string }) {
   return (
     <div className="border-b border-[var(--color-line)] pb-6">
       <h2 className="text-h3 text-[var(--color-content)]">
-        Requests for this car
+        {t('car.requestsForThisCar')}
         {requests.length > 0 && <span className="text-[var(--color-content-subtle)]"> ({requests.length})</span>}
       </h2>
       {requests.length === 0 ? (
-        <p className="mt-2 text-body-sm text-[var(--color-content-muted)]">No pending requests right now.</p>
+        <p className="mt-2 text-body-sm text-[var(--color-content-muted)]">{t('car.noPendingRequests')}</p>
       ) : (
         <>
-          <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
-            See who's requesting and check their verification before you approve.
-          </p>
+          <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">{t('car.reviewRequestsHint')}</p>
           <div className="mt-4 space-y-3">
             {requests.map((b) => (
               <RequesterRow key={b.id} booking={b} onReview={() => setActiveBooking(b)} />
@@ -1212,6 +1227,7 @@ function OwnerRequests({ listingId }: { listingId: string }) {
 
 /** One requester preview row — name, verification, dates — with a review action. */
 function RequesterRow({ booking, onReview }: { booking: Booking; onReview: () => void }) {
+  const t = useT();
   const { data: p } = useQuery({
     queryKey: ['profile', booking.renterId],
     queryFn: () => client.getProfile(booking.renterId),
@@ -1219,10 +1235,10 @@ function RequesterRow({ booking, onReview }: { booking: Booking; onReview: () =>
   return (
     <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--color-line)] p-3 sm:flex-row sm:items-center">
       <div className="flex flex-1 items-center gap-3">
-        <Avatar name={p?.fullName ?? 'Renter'} src={p?.avatarUrl} size="md" />
+        <Avatar name={p?.fullName ?? t('car.renterFallback')} src={p?.avatarUrl} size="md" />
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 font-medium text-[var(--color-content)]">
-            {p?.fullName ?? 'Renter'}
+            {p?.fullName ?? t('car.renterFallback')}
             {p && (
               <Badge tone={VERIF_TONE[p.verification] ?? 'neutral'}>
                 <ShieldCheck size={11} /> {p.verification}
@@ -1236,7 +1252,7 @@ function RequesterRow({ booking, onReview }: { booking: Booking; onReview: () =>
         </div>
       </div>
       <Button variant="outline" size="sm" onClick={onReview}>
-        <UserRound size={15} /> Review &amp; decide
+        <UserRound size={15} /> {t('car.reviewAndDecide')}
       </Button>
     </div>
   );

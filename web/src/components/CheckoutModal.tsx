@@ -20,6 +20,7 @@ import { MethodMarks } from '@/components/PaymentBrands';
 import { getStripeFor } from '@/lib/stripe';
 import { formatMoneyMinor } from '@/lib/currency';
 import { client } from '@/lib/client';
+import { useT, type TranslationKey } from '@/lib/i18n';
 import type { PaymentMethodType } from '@autohire/shared';
 
 /**
@@ -176,6 +177,7 @@ function TransferRow({
   value: string;
   copy?: boolean;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   return (
@@ -186,7 +188,7 @@ function TransferRow({
         {copy && (
           <button
             type="button"
-            aria-label={`Copy ${label}`}
+            aria-label={t('checkout.copyLabel', { label })}
             className="text-[var(--color-content-subtle)] transition-colors hover:text-brand-600"
             onClick={() => {
               navigator.clipboard?.writeText(value);
@@ -203,12 +205,12 @@ function TransferRow({
 }
 
 /** The rail names its address fields tersely; a renter should not have to. */
-const AVS_LABEL: Record<string, string> = {
-  address: 'Street address',
-  city: 'City',
-  state: 'State or province',
-  zipcode: 'Postal code',
-  country: 'Country',
+const AVS_LABEL_KEY: Record<string, TranslationKey> = {
+  address: 'checkout.avsStreetAddress',
+  city: 'checkout.avsCity',
+  state: 'checkout.avsStateProvince',
+  zipcode: 'checkout.avsPostalCode',
+  country: 'checkout.avsCountry',
 };
 
 const AVS_AUTOCOMPLETE: Record<string, string> = {
@@ -301,6 +303,7 @@ function StripeFields({
   amountLabel: string;
   onDone: () => void;
 }) {
+  const t = useT();
   const stripe = useStripe();
   const elements = useElements();
   /**
@@ -329,12 +332,12 @@ function StripeFields({
    */
   useEffect(() => {
     if (fieldsReady || loadError) return;
-    const t = setTimeout(
-      () => setLoadError('The card form is taking too long to load.'),
+    const timer = setTimeout(
+      () => setLoadError(t('checkout.cardFormSlow')),
       12000,
     );
-    return () => clearTimeout(t);
-  }, [fieldsReady, loadError]);
+    return () => clearTimeout(timer);
+  }, [fieldsReady, loadError, t]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -361,7 +364,7 @@ function StripeFields({
     if (err) {
       // Card errors are the renter's to fix and safe to show; anything else is
       // Stripe's own wording, which is better than ours at explaining itself.
-      setError(err.message ?? 'That payment could not be completed.');
+      setError(err.message ?? t('checkout.paymentNotCompleted'));
       setBusy(false);
       return;
     }
@@ -392,20 +395,19 @@ function StripeFields({
           onReady={() => setFieldsReady(true)}
           onLoadError={(e) =>
             setLoadError(
-              e?.error?.message ??
-                'The card form could not load. An ad blocker or a network problem can stop it.',
+              e?.error?.message ?? t('checkout.cardFormLoadError'),
             )
           }
         />
       </div>
       {loadError && (
         <Notice tone="danger" className="mt-3">
-          {loadError} You can close this and choose another payment method.
+          {loadError} {t('checkout.cardFormLoadErrorSuffix')}
         </Notice>
       )}
       {error && <Notice tone="danger" className="mt-3">{error}</Notice>}
       <Button className="mt-4 w-full" size="lg" disabled={!stripe || !fieldsReady || busy} onClick={submit}>
-        {busy ? 'Confirming…' : !fieldsReady ? 'Loading card form…' : `Pay ${amountLabel}`}
+        {busy ? t('checkout.confirming') : !fieldsReady ? t('checkout.loadingCardForm') : t('checkout.pay', { amount: amountLabel })}
       </Button>
       {/* No currency line here for now, deliberately. It shipped as "Charged
           in {X}" sourced from `deal.currency`, and a live screenshot showed
@@ -421,7 +423,7 @@ function StripeFields({
           `presentment_amount`, since today it returns neither. */}
       <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-muted)]">
         <Lock size={12} className="text-brand-600" />
-        Your card is entered directly with our payment provider.
+        {t('checkout.cardEnteredDirectly')}
       </p>
     </div>
   );
@@ -449,6 +451,7 @@ function PayPalButtons({
   onApproved: (orderId: string) => void;
   onFailed: (message: string) => void;
 }) {
+  const t = useT();
   const host = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
 
@@ -495,7 +498,7 @@ function PayPalButtons({
           // A renter who closes the popup has not failed at anything, so this
           // says nothing and leaves the buttons where they are.
           onCancel: () => undefined,
-          onError: () => onFailedRef.current('PayPal could not complete that payment.'),
+          onError: () => onFailedRef.current(t('checkout.paypalFailed')),
         })
         .render(host.current);
     };
@@ -522,15 +525,15 @@ function PayPalButtons({
   if (state === 'failed') {
     return (
       <div className="py-4 text-center">
-        <p className="font-medium text-[var(--color-content)]">One more step</p>
+        <p className="font-medium text-[var(--color-content)]">{t('checkout.oneMoreStep')}</p>
         <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
-          We couldn't open PayPal here. This link approves the same payment.
+          {t('checkout.paypalCouldNotOpen')}
         </p>
         <Button
           className="mt-4 w-full"
           onClick={() => window.location.assign(action.approval_url)}
         >
-          Continue with PayPal
+          {t('checkout.continueWithPaypal')}
         </Button>
       </div>
     );
@@ -539,13 +542,13 @@ function PayPalButtons({
   return (
     <div className="py-2">
       <p className="mb-3 text-center text-body-sm text-[var(--color-content-muted)]">
-        Approve this booking in your PayPal account. You'll stay on this page.
+        {t('checkout.approvePaypalBody')}
       </p>
       <div ref={host} />
       {state === 'loading' && (
         <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
           <Loader2 size={12} className="animate-spin" />
-          Loading PayPal…
+          {t('checkout.loadingPaypal')}
         </p>
       )}
     </div>
@@ -579,6 +582,7 @@ function PayPalButtons({
  * `about:blank`, same-origin and readable. The throw is the success signal.
  */
 function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
+  const t = useT();
   const frame = useRef<HTMLIFrameElement | null>(null);
   // Confirmed empty — the frame itself never rendered the provider's page at
   // all. Safe to replace outright: there is nothing in it to lose.
@@ -603,8 +607,8 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
 
   // Nothing rendered after a beat means a blocker suppressed it entirely.
   useEffect(() => {
-    const t = setTimeout(check, 4000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(check, 4000);
+    return () => clearTimeout(timer);
   }, [check]);
 
   // The long-wait safety net. Twenty seconds is well past how long a frame
@@ -612,19 +616,19 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
   // interrupts someone still typing a card number — it only ever adds an
   // option next to the frame, never removes one.
   useEffect(() => {
-    const t = setTimeout(() => setStuck(true), 20_000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setStuck(true), 20_000);
+    return () => clearTimeout(timer);
   }, []);
 
   if (blocked) {
     return (
       <div className="py-4 text-center">
-        <p className="font-medium text-[var(--color-content)]">One more step</p>
+        <p className="font-medium text-[var(--color-content)]">{t('checkout.oneMoreStep')}</p>
         <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
-          Your bank needs its own page to finish this payment securely.
+          {t('checkout.bankNeedsOwnPage')}
         </p>
         <Button className="mt-4 w-full" onClick={() => window.location.assign(url)}>
-          Continue · {amountLabel}
+          {t('checkout.continueAmount', { amount: amountLabel })}
         </Button>
       </div>
     );
@@ -637,7 +641,7 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
           ref={frame}
           src={url}
           onLoad={check}
-          title="Payment"
+          title={t('checkout.paymentFrameTitle')}
           className="block w-full"
           // Tall enough for the provider's card form without its own scrollbar.
           // Their page centres its content, so a short frame shows a band of
@@ -651,17 +655,17 @@ function PayFrame({ url, amountLabel }: { url: string; amountLabel: string }) {
       </div>
       <p className="mt-2.5 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
         <Loader2 size={12} className="animate-spin" />
-        Waiting for your payment to clear…
+        {t('checkout.waitingForPayment')}
       </p>
       {stuck && (
         <p className="mt-2 text-center text-caption text-[var(--color-content-muted)]">
-          Taking a while?{' '}
+          {t('checkout.takingAWhile')}{' '}
           <button
             type="button"
             className="font-medium text-brand-600 underline"
             onClick={() => window.location.assign(url)}
           >
-            Continue on their own page instead
+            {t('checkout.continueOnTheirPage')}
           </button>
         </p>
       )}
@@ -728,6 +732,7 @@ export function CheckoutModal({
   /** Called once the booking behind `dealId` exists, so the caller can navigate. */
   onPaid?: (bookingId: string) => void;
 }) {
+  const t = useT();
   const [methods, setMethods] = useState<CheckoutMethod[] | null>(null);
   /**
    * What PayHold will actually charge — its `presentment_amount` /
@@ -955,7 +960,7 @@ export function CheckoutModal({
     // which meant the one condition nobody tests — a session that failed to
     // open — was also the one that undid the whole flow.
     if (!checkoutBase) {
-      setError('We could not start this payment. Nothing has been charged.');
+      setError(t('checkout.couldNotStartNothingCharged'));
       return;
     }
     setStage('starting');
@@ -977,10 +982,10 @@ export function CheckoutModal({
         next_action?: NextAction;
         error?: { message?: string };
       };
-      if (!res.ok) throw new Error(data?.error?.message ?? 'Could not start the payment.');
+      if (!res.ok) throw new Error(data?.error?.message ?? t('payhold.couldNotStart'));
       apply(data.next_action, data.payment_link);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the payment.');
+      setError(e instanceof Error ? e.message : t('payhold.couldNotStart'));
       setStage('choosing');
     }
   }
@@ -1025,11 +1030,11 @@ export function CheckoutModal({
         next_action?: NextAction;
         error?: { message?: string };
       };
-      if (!res.ok) throw new Error(data?.error?.message ?? 'That could not be verified.');
+      if (!res.ok) throw new Error(data?.error?.message ?? t('checkout.couldNotVerify'));
       apply(data.next_action, undefined);
       setPin('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'That could not be verified.');
+      setError(e instanceof Error ? e.message : t('checkout.couldNotVerify'));
       setStage('acting');
     }
   }
@@ -1056,10 +1061,10 @@ export function CheckoutModal({
         next_action?: NextAction;
         error?: { message?: string };
       };
-      if (!res.ok) throw new Error(data?.error?.message ?? 'That payment could not be completed.');
+      if (!res.ok) throw new Error(data?.error?.message ?? t('checkout.paymentNotCompleted'));
       apply(data.next_action, undefined);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'That payment could not be completed.');
+      setError(e instanceof Error ? e.message : t('checkout.paymentNotCompleted'));
       setStage('acting');
     }
   }
@@ -1078,10 +1083,10 @@ export function CheckoutModal({
         next_action?: NextAction;
         error?: { message?: string };
       };
-      if (!res.ok) throw new Error(data?.error?.message ?? 'That code was not accepted.');
+      if (!res.ok) throw new Error(data?.error?.message ?? t('checkout.codeNotAccepted'));
       apply(data.next_action, undefined);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'That code was not accepted.');
+      setError(e instanceof Error ? e.message : t('checkout.codeNotAccepted'));
       // Back to the same box with the message above it — a rejected code is a
       // retry, not the end of a payment.
       setStage('acting');
@@ -1090,10 +1095,10 @@ export function CheckoutModal({
 
   const title =
     stage === 'paid'
-      ? 'Payment received'
+      ? t('checkout.paymentReceived')
       : stage === 'acting' || stage === 'validating'
-        ? 'Complete your payment'
-        : 'How do you want to pay?';
+        ? t('checkout.completeYourPayment')
+        : t('checkout.howDoYouWantToPay');
 
   const busy = stage === 'starting' || stage === 'validating';
   const midPayment = stage === 'acting' || stage === 'validating';
@@ -1139,16 +1144,15 @@ export function CheckoutModal({
         {stage === 'paid' && (
           <div className="py-4 text-center">
             <CheckCircle2 size={30} className="mx-auto text-brand-600" />
-            <p className="mt-3 font-medium text-[var(--color-content)]">Your money is held safely</p>
+            <p className="mt-3 font-medium text-[var(--color-content)]">{t('checkout.moneyHeldSafely')}</p>
             <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
               {dealId && onPaid
-                ? "We're setting up your trip — taking you there as soon as it's ready."
-                : "We're setting up your trip — it'll appear in My trips in a moment."}
+                ? t('checkout.settingUpTripRedirect')
+                : t('checkout.settingUpTripNoRedirect')}
             </p>
             {dealId && onPaid && (
               <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
-                <Loader2 size={12} className="animate-spin" /> Opening your trip — this can take up to a
-                minute.
+                <Loader2 size={12} className="animate-spin" /> {t('checkout.openingTripTakesAMinute')}
               </p>
             )}
             <Button
@@ -1160,16 +1164,16 @@ export function CheckoutModal({
                 onClose();
               }}
             >
-              Done
+              {t('checkout.done')}
             </Button>
           </div>
         )}
 
         {stage === 'failed' && (
           <div className="py-4 text-center">
-            <p className="font-medium text-[var(--color-content)]">That payment didn't go through</p>
+            <p className="font-medium text-[var(--color-content)]">{t('checkout.paymentDidntGoThrough')}</p>
             <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
-              Nothing has been charged and the car is still available.
+              {t('checkout.nothingChargedCarAvailable')}
             </p>
             <Button
               className="mt-4 w-full"
@@ -1178,7 +1182,7 @@ export function CheckoutModal({
                 setStage('choosing');
               }}
             >
-              Try again
+              {t('checkout.tryAgain')}
             </Button>
           </div>
         )}
@@ -1192,18 +1196,18 @@ export function CheckoutModal({
             {selected?.method === 'mobile_money' ? (
               <>
                 <Smartphone size={28} className="mx-auto text-brand-600" />
-                <p className="mt-3 font-medium text-[var(--color-content)]">Check your phone</p>
+                <p className="mt-3 font-medium text-[var(--color-content)]">{t('checkout.checkYourPhone')}</p>
               </>
             ) : (
               <>
                 <Loader2 size={28} className="mx-auto animate-spin text-brand-600" />
-                <p className="mt-3 font-medium text-[var(--color-content)]">Confirming your payment</p>
+                <p className="mt-3 font-medium text-[var(--color-content)]">{t('checkout.confirmingYourPayment')}</p>
               </>
             )}
             <p className="mx-auto mt-1 max-w-xs text-body-sm text-[var(--color-content-muted)]">{action.message}</p>
             <p className="mt-4 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
               <Loader2 size={12} className="animate-spin" />
-              This updates on its own — don't close this window.
+              {t('checkout.updatesOnItsOwn')}
             </p>
           </div>
         )}
@@ -1212,11 +1216,11 @@ export function CheckoutModal({
           <div className="py-1">
             <div className="text-center">
               <ShieldCheck size={26} className="mx-auto text-brand-600" />
-              <p className="mt-2.5 font-medium text-[var(--color-content)]">Enter your code</p>
+              <p className="mt-2.5 font-medium text-[var(--color-content)]">{t('checkout.enterYourCode')}</p>
               <p className="mx-auto mt-1 max-w-xs text-body-sm text-[var(--color-content-muted)]">{action.message}</p>
             </div>
             <div className="mx-auto mt-4 max-w-xs">
-              <Label htmlFor="pay-otp">Verification code</Label>
+              <Label htmlFor="pay-otp">{t('checkout.verificationCode')}</Label>
               <Input
                 id="pay-otp"
                 value={otp}
@@ -1232,7 +1236,7 @@ export function CheckoutModal({
                 disabled={otp.trim().length < 4 || busy}
                 onClick={submitOtp}
               >
-                {busy ? 'Checking…' : 'Confirm payment'}
+                {busy ? t('checkout.checking') : t('checkout.confirmPayment')}
               </Button>
             </div>
           </div>
@@ -1250,31 +1254,29 @@ export function CheckoutModal({
           <div className="py-1">
             <div className="text-center">
               <Landmark size={26} className="mx-auto text-brand-600" />
-              <p className="mt-2.5 font-medium text-[var(--color-content)]">Transfer from your bank</p>
+              <p className="mt-2.5 font-medium text-[var(--color-content)]">{t('checkout.transferFromBank')}</p>
               <p className="mx-auto mt-1 max-w-sm text-body-sm text-[var(--color-content-muted)]">
-                Send exactly this amount to the account below. It's held for this booking
-                only.
+                {t('checkout.transferInstructionBody')}
               </p>
             </div>
 
             <div className="mt-4 divide-y divide-[var(--color-line)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)]">
-              <TransferRow label="Bank" value={action.bank} />
-              <TransferRow label="Account number" value={action.account} copy />
-              <TransferRow label="Amount" value={action.amount} copy />
-              <TransferRow label="Reference" value={action.reference} copy />
+              <TransferRow label={t('checkout.transferBankLabel')} value={action.bank} />
+              <TransferRow label={t('checkout.transferAccountLabel')} value={action.account} copy />
+              <TransferRow label={t('checkout.transferAmountLabel')} value={action.amount} copy />
+              <TransferRow label={t('checkout.transferReferenceLabel')} value={action.reference} copy />
             </div>
 
             {action.note && <p className="mt-2.5 text-caption text-[var(--color-content-muted)]">{action.note}</p>}
             {action.expires_at && (
               <p className="mt-2.5 text-center text-caption text-[var(--color-warn-500)]">
-                This account expires — complete the transfer soon, or start again for a fresh
-                one.
+                {t('checkout.transferExpiresWarning')}
               </p>
             )}
 
             <p className="mt-4 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
               <Loader2 size={12} className="animate-spin" />
-              We'll confirm as soon as it lands — don't close this window.
+              {t('checkout.confirmAsSoonAsLands')}
             </p>
           </div>
         )}
@@ -1283,11 +1285,11 @@ export function CheckoutModal({
           <div className="py-1">
             <div className="text-center">
               <ShieldCheck size={26} className="mx-auto text-brand-600" />
-              <p className="mt-2.5 font-medium text-[var(--color-content)]">Enter your card PIN</p>
+              <p className="mt-2.5 font-medium text-[var(--color-content)]">{t('checkout.enterCardPin')}</p>
               <p className="mx-auto mt-1 max-w-xs text-body-sm text-[var(--color-content-muted)]">{action.message}</p>
             </div>
             <div className="mx-auto mt-4 max-w-xs">
-              <Label htmlFor="card-pin">PIN</Label>
+              <Label htmlFor="card-pin">{t('checkout.pinLabel')}</Label>
               <Input
                 id="card-pin"
                 type="password"
@@ -1304,7 +1306,7 @@ export function CheckoutModal({
                 disabled={pin.length < 4 || busy}
                 onClick={() => authorize({ mode: 'pin', pin })}
               >
-                {busy ? 'Checking…' : 'Continue'}
+                {busy ? t('checkout.checking') : t('checkout.continue')}
               </Button>
             </div>
           </div>
@@ -1314,13 +1316,13 @@ export function CheckoutModal({
           <div className="py-1">
             <div className="text-center">
               <ShieldCheck size={26} className="mx-auto text-brand-600" />
-              <p className="mt-2.5 font-medium text-[var(--color-content)]">Confirm your billing address</p>
+              <p className="mt-2.5 font-medium text-[var(--color-content)]">{t('checkout.confirmBillingAddress')}</p>
               <p className="mx-auto mt-1 max-w-sm text-body-sm text-[var(--color-content-muted)]">{action.message}</p>
             </div>
             <div className="mx-auto mt-4 max-w-sm space-y-2.5">
               {action.fields.map((field) => (
                 <div key={field}>
-                  <Label htmlFor={`avs-${field}`}>{AVS_LABEL[field] ?? field}</Label>
+                  <Label htmlFor={`avs-${field}`}>{AVS_LABEL_KEY[field] ? t(AVS_LABEL_KEY[field]) : field}</Label>
                   <Input
                     id={`avs-${field}`}
                     value={avs[field] ?? ''}
@@ -1335,7 +1337,7 @@ export function CheckoutModal({
                 disabled={action.fields.some((f) => !(avs[f] ?? '').trim()) || busy}
                 onClick={() => authorize({ mode: 'avs_noauth', ...avs })}
               >
-                {busy ? 'Checking…' : 'Continue'}
+                {busy ? t('checkout.checking') : t('checkout.continue')}
               </Button>
             </div>
           </div>
@@ -1364,9 +1366,9 @@ export function CheckoutModal({
         {stage === 'validating' && action?.type === 'payment_element' && (
           <div className="py-6 text-center">
             <Loader2 size={26} className="mx-auto animate-spin text-brand-600" />
-            <p className="mt-3 font-medium text-[var(--color-content)]">Confirming your payment</p>
+            <p className="mt-3 font-medium text-[var(--color-content)]">{t('checkout.confirmingYourPayment')}</p>
             <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
-              This takes a few seconds — don't close this window.
+              {t('checkout.takesAFewSeconds')}
             </p>
           </div>
         )}
@@ -1387,18 +1389,17 @@ export function CheckoutModal({
                 deposit when PayHold is about to charge them in full. */}
             {deal?.currency && (selected?.amount ?? deal.amount) != null && (
               <Notice tone="brand" className="flex-col items-center text-center">
-                <p className="text-caption font-medium uppercase tracking-wide">You'll be charged</p>
+                <p className="text-caption font-medium uppercase tracking-wide">{t('checkout.youllBeCharged')}</p>
                 <p className="mt-0.5 text-h3 tabular text-[var(--color-content)]">
                   {formatMoneyMinor((selected?.amount ?? deal.amount)!, deal.currency)}
                 </p>
                 {selected && deal.amount != null && selected.amount !== deal.amount ? (
                   <p className="mt-2 rounded-[var(--radius-control)] bg-[var(--color-warn-tint)] px-2.5 py-1.5 text-caption font-medium text-[var(--color-warn-500)]">
-                    {selected.label} can't be charged again automatically, so this pays the
-                    full amount now instead of a deposit.
+                    {t('checkout.cantChargeAgain', { method: selected.label })}
                   </p>
                 ) : (
                   <p className="mt-1 text-caption text-[var(--color-content-muted)]">
-                    The exact amount and currency PayHold will charge you.
+                    {t('checkout.exactAmountNote')}
                   </p>
                 )}
               </Notice>
@@ -1478,7 +1479,7 @@ export function CheckoutModal({
                             </div>
                           )}
                           <div>
-                            <Label htmlFor="momo-phone">Mobile money number</Label>
+                            <Label htmlFor="momo-phone">{t('checkout.mobileMoneyNumber')}</Label>
                             <Input
                               id="momo-phone"
                               value={phone}
@@ -1487,8 +1488,7 @@ export function CheckoutModal({
                               inputMode="tel"
                             />
                             <p className="mt-1.5 text-caption text-[var(--color-content-muted)]">
-                              You'll get a prompt on this number. Nothing leaves your wallet
-                              until you approve it.
+                              {t('checkout.mobileMoneyHint')}
                             </p>
                           </div>
                         </div>
@@ -1497,15 +1497,14 @@ export function CheckoutModal({
                       {isChosen && m.method === 'card' && m.provider !== 'flutterwave' && (
                         <p className="flex items-start gap-1.5 border-t border-[var(--color-accent-on)]/20 px-3.5 pb-3.5 pt-3 text-caption text-[var(--color-content-muted)]">
                           <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
-                          Your card details come next, entered directly with our payment
-                          provider — they never pass through AutoHire.
+                          {t('checkout.cardComesNext')}
                         </p>
                       )}
 
                       {isChosen && m.method === 'card' && m.provider === 'flutterwave' && (
                         <div className="space-y-2.5 border-t border-[var(--color-accent-on)]/20 px-3.5 pb-3.5 pt-3">
                           <div>
-                            <Label htmlFor="card-number">Card number</Label>
+                            <Label htmlFor="card-number">{t('checkout.cardNumber')}</Label>
                             <Input
                               id="card-number"
                               value={card.number}
@@ -1520,7 +1519,7 @@ export function CheckoutModal({
                           </div>
                           <div className="flex gap-2.5">
                             <div className="flex-1">
-                              <Label htmlFor="card-expiry">Expiry</Label>
+                              <Label htmlFor="card-expiry">{t('checkout.expiry')}</Label>
                               <Input
                                 id="card-expiry"
                                 value={card.expiry}
@@ -1534,7 +1533,7 @@ export function CheckoutModal({
                               />
                             </div>
                             <div className="flex-1">
-                              <Label htmlFor="card-cvv">CVV</Label>
+                              <Label htmlFor="card-cvv">{t('checkout.cvv')}</Label>
                               <Input
                                 id="card-cvv"
                                 value={card.cvv}
@@ -1549,7 +1548,7 @@ export function CheckoutModal({
                             </div>
                           </div>
                           <div>
-                            <Label htmlFor="card-name">Name on card</Label>
+                            <Label htmlFor="card-name">{t('checkout.nameOnCard')}</Label>
                             <Input
                               id="card-name"
                               value={card.name}
@@ -1560,7 +1559,7 @@ export function CheckoutModal({
                           </div>
                           <p className="flex items-start gap-1.5 pt-0.5 text-caption text-[var(--color-content-muted)]">
                             <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
-                            Sent straight to our payment provider, encrypted. We never store it.
+                            {t('checkout.cardEncrypted')}
                           </p>
                         </div>
                       )}
@@ -1568,8 +1567,7 @@ export function CheckoutModal({
                       {isChosen && m.method !== 'mobile_money' && m.method !== 'card' && (
                         <p className="flex items-start gap-1.5 border-t border-[var(--color-accent-on)]/20 px-3.5 pb-3.5 pt-3 text-caption text-[var(--color-content-muted)]">
                           <Lock size={13} className="mt-0.5 shrink-0 text-brand-600" />
-                          You'll approve this on our payment provider's secure checkout — your
-                          details never pass through AutoHire.
+                          {t('checkout.approveOnProviderCheckout')}
                         </p>
                       )}
                     </div>
@@ -1585,7 +1583,7 @@ export function CheckoutModal({
                  Three rows because that is the common case here (card, mobile
                  money, bank); a fourth appearing is a smaller jump than
                  starting from nothing. */
-              <div className="space-y-2.5" aria-busy="true" aria-label="Loading your payment options">
+              <div className="space-y-2.5" aria-busy="true" aria-label={t('checkout.loadingPaymentOptions')}>
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
@@ -1602,11 +1600,10 @@ export function CheckoutModal({
             ) : (
               <div className="py-4 text-center">
                 <p className="font-medium text-[var(--color-content)]">
-                  We can't take a payment for this trip right now
+                  {t('checkout.cantTakePaymentNow')}
                 </p>
                 <p className="mx-auto mt-1 max-w-xs text-body-sm text-[var(--color-content-muted)]">
-                  Nothing has been charged and the car is still available. This is usually
-                  temporary — try again in a moment.
+                  {t('checkout.temporaryTryAgain')}
                 </p>
                 <Button
                   variant="outline"
@@ -1616,7 +1613,7 @@ export function CheckoutModal({
                     setAttempt((n) => n + 1);
                   }}
                 >
-                  Try again
+                  {t('checkout.tryAgain')}
                 </Button>
               </div>
             )}
@@ -1635,7 +1632,7 @@ export function CheckoutModal({
                 }
                 onClick={() => selected && start(selected)}
               >
-                {stage === 'starting' ? 'Starting…' : `Pay ${amountLabel}`}
+                {stage === 'starting' ? t('checkout.starting') : t('checkout.pay', { amount: amountLabel })}
               </Button>
             )}
           </>
