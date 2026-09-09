@@ -228,10 +228,16 @@ export type PayoutAvailability =
   /** Sanctioned. Neither direction, and not a corridor that will open. */
   | { state: 'restricted' }
   /**
-   * PayHold names a route for this country but `payoutMethodsFromRoute`
-   * cannot map it to a method — every route it knows about does map today
+   * PayHold names a route for this country, it is not blocked, and
+   * `payoutMethodsFromRoute` still cannot map it to a method — a rail/kind
+   * pair we have no case for. Every route PayHold returns today does map
    * (Flutterwave momo/bank, Stripe Connect), so this is a defensive fallback
-   * for a route PayHold might return in the future, not a live case.
+   * for a shape it might return in the future.
+   *
+   * **A blocked corridor is deliberately not this.** It used to land here,
+   * because a blocked route maps to no methods, and the screen then told the
+   * host their country was an unexplained fault. That is handled above now,
+   * and this state is back to meaning what its message says: unexpected.
    */
   | { state: 'unsupported' };
 
@@ -256,6 +262,28 @@ export function payoutAvailability(
 
   if (known.restricted) return { state: 'restricted' };
   if (!known.can_payout) return { state: 'unavailable', reason: known.closed_reason };
+
+  // A corridor PayHold has deliberately not opened is "not yet", not a fault.
+  //
+  // This branch has to come before the method mapping below, because
+  // `payoutMethodsFromRoute` answers `[]` for a blocked route and an empty
+  // list falls through to `unsupported` — which the screen renders in red as
+  // "We couldn't work out how payouts route in {country}. This is unexpected —
+  // try refreshing, and contact support." Every word of that is wrong here:
+  // it is expected, refreshing cannot change it, and support cannot help.
+  //
+  // It became wrong on 2026-09-09, when PayHold's `payment-options` started
+  // failing closed on corridors with no row in the routing table. `unsupported`
+  // was written as a defensive case for a route shape we could not map, and
+  // that day it silently became the answer for around forty-six countries.
+  //
+  // PayHold sends a sentence written for a person — "PayHold has no enabled
+  // payout route into Poland in PLN yet" — so the honest thing is to show it
+  // under the same "not open yet" heading a closed market gets, which also
+  // tells the host renters can still book and pay.
+  if (route?.blocked) {
+    return { state: 'unavailable', reason: route.reason || known.closed_reason };
+  }
 
   // PayHold says it can pay this country. `route` is the authority on which
   // methods actually work inside it — see `payoutMethodsFromRoute` — and
