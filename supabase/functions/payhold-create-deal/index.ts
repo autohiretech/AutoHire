@@ -326,6 +326,11 @@ Deno.serve(async (req: Request) => {
     // charged in and carries the FX itself.
     const currency = String(listing.price_currency ?? 'RWF').toUpperCase();
 
+    // Hourly bills late time at the flat rate; daily applies the penalty
+    // multiplier. Both are 0 when the listing carries no per-hour rate, which
+    // is every daily listing today — see where this is sent.
+    const overageMinor = toMinorUnits(isHourly ? pricePerHour : overageRate, currency);
+
     // The moment the ESTIMATE says the car should be back.
     //
     //   hourly — pickup plus the hours the renter asked for. Late past this
@@ -338,12 +343,21 @@ Deno.serve(async (req: Request) => {
     //            grace, rather than leaving it at the bare agreed time, is
     //            what keeps PayHold's automatic charge from firing earlier
     //            than a renter has ever been told to expect.
-    const hourlyExpectedCompleteAt = new Date(
-      new Date(`${startDate}T${pickupTime}:00Z`).getTime() + hours * 3_600_000,
-    ).toISOString();
-    const dailyExpectedCompleteAt = new Date(
-      new Date(`${endDate}T${pickupTime}:00Z`).getTime() + DAILY_OVERAGE_GRACE_HOURS * 3_600_000,
-    ).toISOString();
+    //
+    // Computed on the branch that is actually used, never both. `hours` is
+    // `Number(estimatedHours)`, and a daily booking has no estimatedHours to
+    // send — so the hourly expression is `NaN` for every daily booking, and
+    // `new Date(NaN).toISOString()` throws `RangeError: Invalid time value`.
+    // Evaluating it eagerly meant every daily checkout died with a 500 before
+    // PayHold was ever called.
+    const expectedCompleteAt = isHourly
+      ? new Date(
+          new Date(`${startDate}T${pickupTime}:00Z`).getTime() + hours * 3_600_000,
+        ).toISOString()
+      : new Date(
+          new Date(`${endDate}T${pickupTime}:00Z`).getTime() +
+            DAILY_OVERAGE_GRACE_HOURS * 3_600_000,
+        ).toISOString();
 
     const { deal, payment_link } = await createDeal({
       buyerRef: uid,
@@ -362,7 +376,7 @@ Deno.serve(async (req: Request) => {
       // whatever the renter's card was charged, and PayHold carries the FX
       // between the two.
       ...(presentment && presentment !== currency ? { presentmentCurrency: presentment } : {}),
-      expectedCompleteAt: isHourly ? hourlyExpectedCompleteAt : dailyExpectedCompleteAt,
+      expectedCompleteAt,
       // No split, for either rental type — the full estimate is charged up
       // front. Overage is conditional on going past it, so mobile money
       // stays offered here regardless: if it never happens, nothing needed a
@@ -376,15 +390,22 @@ Deno.serve(async (req: Request) => {
       // Hourly and daily still branch because their overage *rate* differs —
       // hourly has never charged a penalty multiplier, only daily does — not
       // because one of them auto-collects and the other doesn't.
-      ...(isHourly
-        ? {
-            overageRate: toMinorUnits(pricePerHour, currency),
-            overageUnitSeconds: 3600,
-          }
-        : {
-            overageRate: toMinorUnits(overageRate, currency),
-            overageUnitSeconds: 3600,
-          }),
+      //
+      // Sent only when there is a real rate to send. `overageRate` for a
+      // daily listing is `price_per_hour_rwf × overage_multiplier`, and a
+      // daily listing has no per-hour rate — every one of them computes 0,
+      // which PayHold rejects outright ("overage_rate and
+      // overage_unit_seconds must both be set together, as positive
+      // integers"), failing the whole booking. Both fields are therefore
+      // omitted rather than sent as 0.
+      //
+      // Omitting them is the truthful option, not merely the safe one: a
+      // rate does not exist for these listings, and inventing one from the
+      // daily price would bill renters a late fee no one ever quoted them.
+      // A deal with no `overage_rate` routes settlement down its
+      // pre-overage-wiring branch in payhold-settle-usage, which is exactly
+      // the behaviour daily bookings have always had.
+      ...(overageMinor > 0 ? { overageRate: overageMinor, overageUnitSeconds: 3600 } : {}),
       // Everything the webhook needs to build the trip. It reads these from the
       // deal, never from its own payload — see payhold-webhook.
       metadata: {
