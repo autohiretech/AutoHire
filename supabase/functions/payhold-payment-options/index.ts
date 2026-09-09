@@ -69,13 +69,22 @@ const cors = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
 };
 
+/**
+ * `cacheSeconds = 0` now says **no-store**, not "say nothing".
+ *
+ * Omitting `Cache-Control` does not mean "do not cache" — a browser is free to
+ * heuristically cache a 200 that says nothing, so the quiet default was a
+ * cache of unknown length on exactly the replies that must not have one (the
+ * stale-fallback paths below, and now the payout route). Saying it explicitly
+ * costs a header and removes the guesswork.
+ */
 function json(body: unknown, status: number, cacheSeconds = 0): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       ...cors,
       'Content-Type': 'application/json',
-      ...(cacheSeconds ? { 'Cache-Control': `private, max-age=${cacheSeconds}` } : {}),
+      'Cache-Control': cacheSeconds ? `private, max-age=${cacheSeconds}` : 'no-store',
     },
   });
 }
@@ -88,7 +97,33 @@ function json(body: unknown, status: number, cacheSeconds = 0): Response {
  * PayHold for the same 198 rows. An hour is short enough that a newly opened
  * corridor appears the same day and long enough that this is effectively free.
  */
+/**
+ * The bulk catalogue: which countries exist and what is possible in them. A
+ * list, read to render a list, and it changes when provider coverage changes
+ * — an hour old is fine.
+ */
 const TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Everything that gates a money decision, which is a different question.
+ *
+ * `?country=` (a host's payout route) and `?collect_country=` (what a renter
+ * can be charged in) are not catalogue reads: the first decides whether a
+ * payout form is even offered, and the answer to it is what stands between a
+ * host and tokenizing a destination nobody can pay. An hour of that is an hour
+ * in which PayHold can close a corridor and this screen keeps saying yes.
+ *
+ * That is not hypothetical — PayHold's `payment-options` began failing closed
+ * on corridors with no route row on 2026-09-09, and until that moment this
+ * endpoint had been answering `blocked: false` for ~46 countries whose payouts
+ * would all have been refused. A cache is exactly how such a fix fails to
+ * arrive.
+ *
+ * A minute still collapses the burst that matters — a host opening the payout
+ * screen and the form re-asking as they pick a method — without holding an
+ * answer long enough to act on after it stops being true.
+ */
+const ROUTE_TTL_MS = 60 * 1000;
 let cached: { at: number; value: PaymentOptions } | null = null;
 
 /**
@@ -147,17 +182,17 @@ Deno.serve(async (req: Request) => {
     if (collectCountry) {
       const key = collectCountry.toUpperCase();
       const entry = collectCache.get(key);
-      if (entry && Date.now() - entry.at < TTL_MS) {
-        return json({ ...entry.value, cached: true }, 200, 3600);
+      if (entry && Date.now() - entry.at < ROUTE_TTL_MS) {
+        return json({ ...entry.value, served_from: 'memory' }, 200, 0);
       }
       try {
         const options = await collectionOptionsFor(key);
         collectCache.set(key, { at: Date.now(), value: options });
-        return json({ ...options, cached: false }, 200, 3600);
+        return json({ ...options, served_from: 'payhold' }, 200, 0);
       } catch (e) {
         // A stale answer beats none: the alternative is a checkout that cannot
         // offer a currency at all because PayHold blinked.
-        if (entry) return json({ ...entry.value, cached: true, stale: true }, 200);
+        if (entry) return json({ ...entry.value, served_from: 'memory', stale: true }, 200);
         const message = e instanceof Error ? e.message : 'Could not reach PayHold.';
         return json({ error: message }, 502);
       }
@@ -168,33 +203,36 @@ Deno.serve(async (req: Request) => {
       const banks = params.get('banks') === '1' || params.get('banks') === 'true';
       const key = banks ? `${country.toUpperCase()}+banks` : country.toUpperCase();
       const entry = routeCache.get(key);
-      if (entry && Date.now() - entry.at < TTL_MS) {
-        return json({ ...entry.value, cached: true }, 200, 3600);
+      if (entry && Date.now() - entry.at < ROUTE_TTL_MS) {
+        return json({ ...entry.value, served_from: 'memory' }, 200, 0);
       }
       try {
         const route = await payoutRouteFor(country.toUpperCase(), { banks });
         routeCache.set(key, { at: Date.now(), value: route });
-        return json({ ...route, cached: false }, 200, 3600);
+        return json({ ...route, served_from: 'payhold' }, 200, 0);
       } catch (e) {
-        if (entry) return json({ ...entry.value, cached: true, stale: true }, 200);
+        if (entry) return json({ ...entry.value, served_from: 'memory', stale: true }, 200);
         const message = e instanceof Error ? e.message : 'Could not reach PayHold.';
         return json({ error: message }, 502);
       }
     }
 
+    // The bulk catalogue, and the one branch that keeps the hour: it renders a
+    // list of what is possible per country, nobody submits a form off it, and
+    // one copy serves every host.
     if (cached && Date.now() - cached.at < TTL_MS) {
-      return json({ ...cached.value, cached: true }, 200, 3600);
+      return json({ ...cached.value, served_from: 'memory' }, 200, 3600);
     }
 
     const options = await paymentOptions();
     cached = { at: Date.now(), value: options };
 
-    return json({ ...options, cached: false }, 200, 3600);
+    return json({ ...options, served_from: 'payhold' }, 200, 3600);
   } catch (e) {
     // A stale copy beats no answer: without this the payout screen has to fall
     // back to guessing, which is the behaviour this function exists to remove.
     if (cached) {
-      return json({ ...cached.value, cached: true, stale: true }, 200);
+      return json({ ...cached.value, served_from: 'memory', stale: true }, 200);
     }
     const message = e instanceof Error ? e.message : 'Could not reach PayHold.';
     return json({ error: message }, 502);
