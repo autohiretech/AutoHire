@@ -50,6 +50,28 @@ function json(body: unknown, status: number): Response {
 }
 
 /**
+ * PayHold speaks snake_case; `PayoutDestination` in the app is camelCase.
+ *
+ * One function so the zero-trips response and the normal one can never
+ * describe the same destination two different ways — which is exactly how
+ * zero-trips ended up hardcoding `destinations: []` in the first place: the
+ * two paths were free to drift because nothing forced them to agree.
+ */
+function mapDestinations(destinations: Awaited<ReturnType<typeof sellerDestinations>>['destinations']) {
+  return destinations.map((d) => ({
+    id: d.id,
+    label: d.label,
+    country: d.country,
+    payoutCurrency: d.payout_currency,
+    maskedDestination: d.masked_destination,
+    isPrimary: d.is_primary,
+    isBackup: d.is_backup,
+    verifiedAt: d.verified_at,
+    securityHoldUntil: d.security_hold_until,
+  }));
+}
+
+/**
  * Where a trip's money is, in one word a host can act on.
  *
  * Derived from the deal's status first and the payout's second, because until
@@ -177,7 +199,20 @@ Deno.serve(async (req: Request) => {
     const page = rows.slice(0, PAGE);
 
     if (page.length === 0) {
-      return json({ sellerId, trips: [], destinations: [], hasMore: false }, 200);
+      // Zero trips is not zero destinations. "Where you get paid" is a fact
+      // about the payout account, entirely independent of whether it has
+      // handled a single trip yet — a host who sets up payouts before their
+      // first booking is exactly this case, and this used to hardcode
+      // `destinations: []` for them regardless of what PayHold actually had
+      // on file. EarningsPage reads an empty array as "no primary
+      // destination" and shows "PayHold is still setting this up" — true for
+      // someone who never registered, false and misleading for someone
+      // fully verified who simply hasn't been booked yet.
+      const destList = await sellerDestinations(sellerId).catch(() => ({ destinations: [] }));
+      return json(
+        { sellerId, trips: [], destinations: mapDestinations(destList.destinations), hasMore: false },
+        200,
+      );
     }
 
     // Car titles in one query rather than one per row.
@@ -264,17 +299,7 @@ Deno.serve(async (req: Request) => {
         // Where the money can go. `verifiedAt` null or a live
         // `securityHoldUntil` means PayHold will refuse to send there, so the
         // screen must show why rather than offering it as a choice.
-        destinations: destList.destinations.map((d) => ({
-          id: d.id,
-          label: d.label,
-          country: d.country,
-          payoutCurrency: d.payout_currency,
-          maskedDestination: d.masked_destination,
-          isPrimary: d.is_primary,
-          isBackup: d.is_backup,
-          verifiedAt: d.verified_at,
-          securityHoldUntil: d.security_hold_until,
-        })),
+        destinations: mapDestinations(destList.destinations),
         hasMore,
         offset,
       },
