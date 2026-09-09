@@ -1,10 +1,25 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, Car, Inbox, MessageSquare, Plus, Wallet } from 'lucide-react';
 import { client } from '@/lib/client';
 import { formatMoney } from '@/lib/currency';
 import { HostAiField } from '@/components/research/HostAiField';
+import { AiChat, type ChatMessage } from '@/components/AiChat';
 import { Skeleton } from '@/components/ui';
+
+/** Per-tab, and its own key — the host's conversation is not the renter's,
+ * and a host who switches accounts should not inherit one. */
+const CHAT_KEY = 'autohire-host-ai-chat';
+
+function loadChat(): ChatMessage[] {
+  try {
+    const raw = sessionStorage.getItem(CHAT_KEY);
+    return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * `/ai` for a host. The renter build of this route is a map and a compound
@@ -33,6 +48,16 @@ export function HostAiPage() {
     queryKey: ['payholdWallet'],
     queryFn: () => client.payholdBalance(),
   });
+
+  const [messages, setMessages] = useState<ChatMessage[]>(loadChat);
+  const [aiBusy, setAiBusy] = useState(false);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CHAT_KEY, JSON.stringify(messages));
+    } catch {
+      // Private mode / quota — the conversation still holds for this view.
+    }
+  }, [messages]);
 
   const pending = (bookings ?? []).filter((b) => b.state === 'requested').length;
   const withdrawable = wallet?.withdrawable.filter((w) => w.availableAmount > 0) ?? [];
@@ -108,8 +133,27 @@ export function HostAiPage() {
         </Link>
       </div>
 
-      <div className="mt-auto pt-2">
-        <HostAiField />
+      {/* The conversation sits between the shortcuts and the field, which is
+          the empty half of this page and the only place it reads as a chat:
+          answers used to appear *under* the input, so a host's own question
+          was above the box and the reply below it. `mt-auto` is on this
+          wrapper rather than the field now, so with nothing asked yet the
+          field still sits at the bottom exactly as before — `AiChat` renders
+          nothing until there is something to show. */}
+      <div className="mt-auto flex min-h-0 flex-col justify-end pt-2">
+        <AiChat messages={messages} busy={aiBusy} className="max-h-[52vh]" />
+      </div>
+
+      <div className="pt-2">
+        <HostAiField
+          onMessage={(m) =>
+            setMessages((prev) => [
+              ...prev,
+              { ...m, id: globalThis.crypto?.randomUUID?.() ?? `m${prev.length}-${Date.now()}` },
+            ])
+          }
+          onBusyChange={setAiBusy}
+        />
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { parseInline, renderInline, visibleLength } from '@/lib/inlineMarkdown';
 
 /**
  * The agent's turn history, over the map.
@@ -102,39 +103,46 @@ function chime() {
  * conversation renders whole, or every reload would replay the whole history
  * like a cutscene nobody can skip.
  */
-function useTypewriter(text: string, enabled: boolean): string {
-  const [shown, setShown] = useState(enabled ? '' : text);
+function useTypewriter(total: number, enabled: boolean): number {
+  const [shown, setShown] = useState(enabled ? 0 : total);
 
   useEffect(() => {
     if (!enabled) {
-      setShown(text);
+      setShown(total);
       return;
     }
-    setShown('');
+    setShown(0);
     let i = 0;
     // Fast enough to never be the thing a renter is waiting on: a 120-word
     // answer lands in about two seconds.
-    const step = Math.max(1, Math.ceil(text.length / 90));
+    const step = Math.max(1, Math.ceil(total / 90));
     const id = window.setInterval(() => {
       i += step;
-      setShown(text.slice(0, i));
-      if (i >= text.length) window.clearInterval(id);
+      setShown(i);
+      if (i >= total) window.clearInterval(id);
     }, 22);
     return () => window.clearInterval(id);
-  }, [text, enabled]);
+  }, [total, enabled]);
 
   return shown;
 }
 
 function Bubble({ message, animate }: { message: ChatMessage; animate: boolean }) {
   const isUser = message.role === 'user';
-  const shown = useTypewriter(message.text, animate && !isUser);
+  // The renter's own words are shown exactly as typed — parsing them would
+  // mean a question containing an asterisk came back looking edited.
+  const segments = useMemo(
+    () => (isUser ? [{ text: message.text }] : parseInline(message.text)),
+    [message.text, isUser],
+  );
+  const total = useMemo(() => visibleLength(segments), [segments]);
+  const shown = useTypewriter(total, animate && !isUser);
 
   return (
     <div className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'animate-chat-in max-w-[85%] rounded-[var(--radius-card)] px-3 py-2 text-body-sm',
+          'animate-chat-in max-w-[85%] whitespace-pre-wrap rounded-[var(--radius-card)] px-3 py-2 text-body-sm',
           isUser
             ? 'bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]'
             : message.tone === 'error'
@@ -142,10 +150,10 @@ function Bubble({ message, animate }: { message: ChatMessage; animate: boolean }
               : 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]',
         )}
       >
-        {shown}
+        {renderInline(segments, animate && !isUser ? shown : undefined)}
         {/* A caret only while there is still text to come, so a finished
             answer doesn't sit there blinking as though it were still going. */}
-        {!isUser && animate && shown.length < message.text.length && (
+        {!isUser && animate && shown < total && (
           <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] animate-pulse bg-[var(--color-content-muted)]" />
         )}
       </div>

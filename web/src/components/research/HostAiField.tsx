@@ -4,6 +4,7 @@ import { Sparkles, ArrowRight } from 'lucide-react';
 import { streamAgentTurn, type AgentAction, type AgentChip } from '@/lib/aiAgent';
 import { Chip, ChipRow, Spinner, toast } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { parseInline, renderInline } from '@/lib/inlineMarkdown';
 
 const CONVO_KEY = 'autohire-host-ai-convo';
 
@@ -51,7 +52,26 @@ function loadConvo(): StoredConvo {
  * capability from the model; this component just doesn't offer the ones
  * that don't apply.
  */
-export function HostAiField({ className }: { className?: string }) {
+export function HostAiField({
+  onMessage,
+  onBusyChange,
+  className,
+}: {
+  /**
+   * The conversation, for a caller rendering a transcript. When this is
+   * given, an answer goes there **instead of** the line under the field —
+   * the same sentence in both places is duplication the host has to read
+   * twice, and the line is the wrong shape for it anyway: it is one
+   * unstyled paragraph pinned under the input, which is exactly how the
+   * model's `**owner**` ended up on screen as asterisks.
+   *
+   * The line keeps what it is good at — "Thinking…", step summaries — and
+   * a caller without a transcript still gets every answer there, unchanged.
+   */
+  onMessage?: (message: { role: 'user' | 'ai'; text: string; tone?: 'error' }) => void;
+  onBusyChange?: (busy: boolean) => void;
+  className?: string;
+}) {
   const navigate = useNavigate();
   const stored = useRef(loadConvo()).current;
 
@@ -65,6 +85,13 @@ export function HostAiField({ className }: { className?: string }) {
   const lastMessageRef = useRef<string | null>(stored.lastMessage);
   const inputRef = useRef<HTMLInputElement>(null);
   const gotLineRef = useRef(false);
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+    // Not a dependency — an inline arrow from the caller would re-fire this
+    // on every one of its renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
 
   useEffect(() => {
     const data: StoredConvo = { sessionId: sessionIdRef.current, line, chips, confirm, lastMessage: lastMessageRef.current };
@@ -101,6 +128,7 @@ export function HostAiField({ className }: { className?: string }) {
     setConfirm(null);
     setChips([]);
     setLine({ text: 'Thinking…', tone: 'status' });
+    onMessage?.({ role: 'user', text: message });
     lastMessageRef.current = message;
     gotLineRef.current = false;
 
@@ -125,7 +153,14 @@ export function HostAiField({ className }: { className?: string }) {
             break;
           case 'say':
             gotLineRef.current = true;
-            setLine({ text: evt.text, tone: 'question' });
+            if (onMessage) {
+              // The transcript is showing it; clearing the line stops the
+              // same answer appearing twice, once formatted and once raw.
+              onMessage({ role: 'ai', text: evt.text });
+              setLine(null);
+            } else {
+              setLine({ text: evt.text, tone: 'question' });
+            }
             break;
           case 'chips':
             setChips(evt.chips);
@@ -138,7 +173,12 @@ export function HostAiField({ className }: { className?: string }) {
             break;
           case 'error':
             gotLineRef.current = true;
-            setLine({ text: evt.message, tone: 'error' });
+            if (onMessage) {
+              onMessage({ role: 'ai', text: evt.message, tone: 'error' });
+              setLine(null);
+            } else {
+              setLine({ text: evt.message, tone: 'error' });
+            }
             break;
         }
       },
@@ -192,11 +232,13 @@ export function HostAiField({ className }: { className?: string }) {
       {line && (
         <p
           className={cn(
-            'px-4 text-body-sm',
+            'whitespace-pre-wrap px-4 text-body-sm',
             line.tone === 'error' ? 'text-[var(--color-danger-500)]' : 'text-[var(--color-content-muted)]',
           )}
         >
-          {line.text}
+          {/* Rendered, not printed — a caller with no transcript still gets
+              the model's answers here, and they carry its `**emphasis**`. */}
+          {renderInline(parseInline(line.text))}
         </p>
       )}
 
