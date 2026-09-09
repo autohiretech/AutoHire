@@ -295,17 +295,10 @@ const DEAD = ['payment_failed', 'expired', 'canceled'];
 function StripeFields({
   action,
   amountLabel,
-  chargeCurrency,
   onDone,
 }: {
   action: Extract<NextAction, { type: 'payment_element' }>;
   amountLabel: string;
-  /** PayHold's `presentment_currency` for this deal — the currency the card is
-   * actually charged in, which is not always the currency the car is priced
-   * in. Named here because this step is the last thing the renter sees before
-   * the money moves, and "Pay RF 80,428" alone does not say where RF came
-   * from or that it is the settled charge rather than a converted estimate. */
-  chargeCurrency?: string | null;
   onDone: () => void;
 }) {
   const stripe = useStripe();
@@ -318,6 +311,30 @@ function StripeFields({
    * so the button went live above an empty space where the card should be.
    */
   const [fieldsReady, setFieldsReady] = useState(false);
+  /**
+   * Stripe fires `onLoadError` INSTEAD of `onReady` when the element cannot
+   * mount — a blocked iframe, an ad blocker, a stalled network. Without this,
+   * `fieldsReady` stayed false forever and the renter sat on a permanently
+   * disabled button reading "Loading card form…", with no error and no way
+   * out: a dead end on a payment screen. Gating on a success callback means
+   * also handling the failure callback, or the gate becomes the trap.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  /**
+   * `onLoadError` covers a mount that fails. This covers one that never
+   * answers at all — a proxy that swallows the request, a tab throttled in
+   * the background. Either way the renter must not be left holding a
+   * disabled button with no explanation.
+   */
+  useEffect(() => {
+    if (fieldsReady || loadError) return;
+    const t = setTimeout(
+      () => setLoadError('The card form is taking too long to load.'),
+      12000,
+    );
+    return () => clearTimeout(t);
+  }, [fieldsReady, loadError]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -359,7 +376,7 @@ function StripeFields({
     <div>
       {/* The skeleton holds the card's place so the dialog does not open as a
           lone Pay button and then push it down when the fields arrive. */}
-      {!fieldsReady && (
+      {!fieldsReady && !loadError && (
         <div className="flex flex-col gap-3" aria-hidden="true">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
@@ -370,17 +387,38 @@ function StripeFields({
         </div>
       )}
       <div className={fieldsReady ? undefined : 'h-0 overflow-hidden'}>
-        <PaymentElement options={{ layout: 'tabs' }} onReady={() => setFieldsReady(true)} />
+        <PaymentElement
+          options={{ layout: 'tabs' }}
+          onReady={() => setFieldsReady(true)}
+          onLoadError={(e) =>
+            setLoadError(
+              e?.error?.message ??
+                'The card form could not load. An ad blocker or a network problem can stop it.',
+            )
+          }
+        />
       </div>
+      {loadError && (
+        <Notice tone="danger" className="mt-3">
+          {loadError} You can close this and choose another payment method.
+        </Notice>
+      )}
       {error && <Notice tone="danger" className="mt-3">{error}</Notice>}
       <Button className="mt-4 w-full" size="lg" disabled={!stripe || !fieldsReady || busy} onClick={submit}>
         {busy ? 'Confirming…' : !fieldsReady ? 'Loading card form…' : `Pay ${amountLabel}`}
       </Button>
-      {chargeCurrency && (
-        <p className="mt-2 text-center text-caption text-[var(--color-content-muted)]">
-          Charged in {chargeCurrency} — the currency this booking settles in.
-        </p>
-      )}
+      {/* No currency line here for now, deliberately. It shipped as "Charged
+          in {X}" sourced from `deal.currency`, and a live screenshot showed
+          it reading "Charged in USD" directly under a button reading "Pay RF
+          80,428" — naming a different currency from the amount beside it.
+          Two sessions reviewing this disagreed about whether `deal.currency`
+          is the presentment or the settlement currency, and the screenshot
+          says whichever it is, it is not the one the button is formatted in.
+          A currency label that contradicts the amount it sits under is worse
+          on a payment screen than no label, so it stays out until the number
+          and the name provably come from the same source — which needs
+          `payhold-create-deal` to return `presentment_currency` and
+          `presentment_amount`, since today it returns neither. */}
       <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-muted)]">
         <Lock size={12} className="text-brand-600" />
         Your card is entered directly with our payment provider.
@@ -1287,7 +1325,6 @@ export function CheckoutModal({
             <StripeFields
               action={action}
               amountLabel={amountLabel}
-              chargeCurrency={deal?.currency}
               // Stripe has taken the card; the deal has not moved yet. Handing
               // over to the poll rather than declaring success keeps the webhook
               // the only thing that can call a trip paid for.

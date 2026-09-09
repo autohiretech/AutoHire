@@ -1,4 +1,5 @@
 import type { Host, UserProfile } from '@autohire/shared';
+import { useAuth } from '@/lib/auth';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 
 /**
@@ -31,8 +32,19 @@ export function useIsHost(): boolean {
  * enforce the same rule server-side.
  */
 export function useCanRent(): boolean {
+  const { user } = useAuth();
   const { data } = useCurrentUser();
   const profile = data as (UserProfile & Partial<Host>) | undefined;
-  if (!profile) return true;
+  // A guest genuinely may rent — the flow sends them to sign in first — so
+  // "no session" is an answer, not an absence.
+  if (!user) return true;
+  // Signed in but the profile has not arrived: the answer is unknown, and an
+  // unknown permission must not read as granted. This used to return true for
+  // both cases together, which is why a host, a company account or an
+  // unverified renter got a live Pay button that vanished a moment later —
+  // every consumer of this hook inherited that, not just the booking page.
+  // Failing closed makes the wrong state "briefly missing something you may
+  // do" instead of "offered something you may not".
+  if (!profile) return false;
   return profile.role !== 'owner' && profile.ownerType !== 'business';
 }

@@ -145,7 +145,16 @@ export function PayholdPayment({
     // renter's own market currency, so defaulting off it would quietly charge
     // a Kigali renter in USD for a car priced in RWF.
     if (optionsPending || payInCurrency || !currencies.length) return;
-    setPayInCurrency(currencies.includes(listingCurrency) ? listingCurrency : 'USD');
+    // Never a hardcoded literal. `currencies` is what this renter's market
+    // can actually be charged in, and a payer whose market lists EUR and GBP
+    // but not USD would have had 'USD' sent as `presentmentCurrency` — which
+    // PayHold refuses outright as not in the allowed list, so the fallback
+    // turned a payable renter into a failed payment. Mirror the server's own
+    // order of preference, then fall back to whatever the market does offer.
+    const preferred = ['USD', 'EUR', 'GBP'].find((c) => currencies.includes(c));
+    setPayInCurrency(
+      currencies.includes(listingCurrency) ? listingCurrency : preferred ?? currencies[0],
+    );
   }, [currencies, listingCurrency, payInCurrency, optionsPending]);
   const chargeCurrency = payInCurrency || listingCurrency;
 
