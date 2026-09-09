@@ -107,12 +107,19 @@ async function changeDestination(
   payoutProvider: PayoutProvider,
   raw: string,
   country: string,
+  network: string,
+  bankCode: string,
 ): Promise<Response> {
   let destination;
   try {
     ({ destination } = await addSellerDestination(sellerId, {
       payoutProvider,
       destination: raw,
+      // Which wallet, or which bank. PayHold used to infer these and refuses
+      // to now — an inferred wrong one registered a destination Flutterwave
+      // will not transfer to, and nothing said so until a payout failed.
+      ...(network ? { network } : {}),
+      ...(bankCode ? { bankCode } : {}),
       // PayHold defaults country and currency from the seller's own row, and it
       // should: a host swapping MoMo for a bank account has not moved country,
       // and restating it here is a chance to restate it wrongly.
@@ -196,7 +203,7 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ error: 'Invalid or expired session.' }, 401);
     const uid = userData.user.id;
 
-    const { method, destination } = await req.json();
+    const { method, destination, network, bankCode } = await req.json();
     if (!method || !destination) {
       return json({ error: 'method and destination are required.' }, 400);
     }
@@ -230,6 +237,13 @@ Deno.serve(async (req: Request) => {
     }
     const country = String(profile.country).toUpperCase();
     const raw = String(destination).trim();
+    // The number alone no longer identifies a destination. PayHold used to
+    // guess the wallet from the prefix and the bank from nothing at all, and a
+    // wrong guess is a destination Flutterwave silently will not transfer to —
+    // so it refuses both without these now, and so do we, with a message that
+    // names the missing thing rather than passing on a policy_violation.
+    const networkName = typeof network === 'string' ? network.trim() : '';
+    const bank = typeof bankCode === 'string' ? bankCode.trim() : '';
 
     // Computed once, here, so registering and changing a destination refuse
     // the exact same combinations rather than two call sites drifting apart.
@@ -246,6 +260,22 @@ Deno.serve(async (req: Request) => {
             `this market yet — try Mobile Money or Bank instead.`,
           code: 'unsupported_payout_method',
         },
+        400,
+      );
+    }
+
+    if (payoutProvider === 'flutterwave_momo' && !networkName) {
+      return json(
+        {
+          error: 'Choose which mobile money network this number is on.',
+          code: 'network_required',
+        },
+        400,
+      );
+    }
+    if (payoutProvider === 'flutterwave_bank' && !bank) {
+      return json(
+        { error: 'Choose which bank this account is with.', code: 'bank_code_required' },
         400,
       );
     }
@@ -269,6 +299,8 @@ Deno.serve(async (req: Request) => {
         payoutProvider,
         raw,
         country,
+        networkName,
+        bank,
       );
     }
 
@@ -356,6 +388,10 @@ Deno.serve(async (req: Request) => {
         country,
         payoutProvider,
         destination: raw,
+        // See `changeDestination` — PayHold refuses a momo destination with no
+        // wallet named and a bank one with no bank code, rather than guessing.
+        ...(networkName ? { network: networkName } : {}),
+        ...(bank ? { bankCode: bank } : {}),
         // Same label `changeDestination` already sends on every later save —
         // this was the gap: a host's very first destination had no label at
         // all, so PayHold's own mask (guessed from a Flutterwave field that is

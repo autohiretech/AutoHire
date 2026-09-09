@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Landmark, Lock } from 'lucide-react';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry } from '@/lib/country';
+import { presentmentCurrenciesFor } from '@/lib/payments';
 import { CheckoutModal } from '@/components/CheckoutModal';
 import { Button, Label, Notice, Select } from '@/components/ui';
 
@@ -35,6 +37,7 @@ export function PayholdPayment({
   pickupTime,
   rentalType,
   estimatedHours,
+  listingCurrency,
   label,
   disabled,
   onCheckoutOpenChange,
@@ -47,6 +50,12 @@ export function PayholdPayment({
   rentalType: 'daily' | 'hourly';
   /** Required when rentalType is 'hourly' — the duration the deposit is against. */
   estimatedHours?: number;
+  /**
+   * What the car is priced in — the deal's settlement currency, and what the
+   * host is owed. The renter can ask to be charged in something else; this
+   * never moves.
+   */
+  listingCurrency: string;
   label: string;
   disabled: boolean;
   /**
@@ -59,8 +68,32 @@ export function PayholdPayment({
   onCheckoutOpenChange?: (open: boolean) => void;
 }) {
   const { data: me } = useCurrentUser();
-  const { countries } = useCountry();
+  // Only for the flag and the country name beside each code — the list of
+  // codes itself comes from PayHold below, not from here.
+  const { currencies: currencyMeta } = useCountry();
   const navigate = useNavigate();
+
+  // PayHold's own collection table. Shares react-query's cache with the payout
+  // screen's copy, so a renter who has been anywhere near /payouts/setup this
+  // session pays nothing for it.
+  const { data: payoutCountries } = useQuery({
+    queryKey: ['payholdPayoutCountries'],
+    queryFn: () => client.payholdPayoutCountries(),
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+
+  // What this renter's own market can actually be charged, which is a
+  // different and narrower question than the bulk table above answers. Asked
+  // per country and cached for an hour on both sides; skipped entirely until
+  // we know where the renter is, since the answer is about them.
+  const { data: collectOptions, isPending: optionsPending } = useQuery({
+    queryKey: ['payholdCollectionOptions', me?.country ?? ''],
+    queryFn: () => client.payholdCollectionOptions(me!.country!),
+    enabled: !!me?.country,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
 
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState<string | null>(null);
@@ -77,20 +110,36 @@ export function PayholdPayment({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Where the renter pays FROM decides what they can pay with, and which
-  // currency their card is actually charged in — not the car's market. Someone
-  // in Kigali renting in Dubai still pays the way Rwanda can. Defaults to their
-  // account country but is editable here: a renter whose card is foreign (or
-  // who simply prefers to be charged in a currency other than their account's)
-  // picks a different market for this one payment instead of being stuck with
-  // whatever their profile says.
+  // Where the renter pays FROM decides what they can pay with — not the car's
+  // market. Someone in Kigali renting in Dubai still pays the way Rwanda can,
+  // so this stays their own account country and is not something the picker
+  // below moves.
+  //
+  // The picker used to name a COUNTRY, and asking "which market shall we
+  // pretend you're in" to answer "which currency do you want to be charged in"
+  // was a riddle: a renter who wanted USD had to know to pick the United
+  // States, and picking it also changed which payment methods PayHold offered
+  // them. Currency is the thing they actually care about, so it is the thing
+  // they are asked.
   const payerCountry = me?.country ?? '';
-  const [payAsCountry, setPayAsCountry] = useState('');
+  const currencies = useMemo(
+    () =>
+      presentmentCurrenciesFor(payerCountry, payoutCountries?.countries, collectOptions),
+    [payerCountry, payoutCountries, collectOptions],
+  );
+  const [payInCurrency, setPayInCurrency] = useState('');
   useEffect(() => {
-    if (payerCountry && !payAsCountry) setPayAsCountry(payerCountry);
-  }, [payerCountry, payAsCountry]);
-  const chargeCountry = payAsCountry || payerCountry;
-  const chargeCurrency = countries.find((c) => c.code === chargeCountry)?.currency;
+    // The car's own currency when this renter's market can be charged in it —
+    // nothing is converted, and the total they were quoted is the total on
+    // their statement. Otherwise USD, which is what PayHold falls back to
+    // anyway, so defaulting anywhere else would be inventing a third answer.
+    // Not before PayHold has answered: the pre-load list cannot contain the
+    // renter's own market currency, so defaulting off it would quietly charge
+    // a Kigali renter in USD for a car priced in RWF.
+    if (optionsPending || payInCurrency || !currencies.length) return;
+    setPayInCurrency(currencies.includes(listingCurrency) ? listingCurrency : 'USD');
+  }, [currencies, listingCurrency, payInCurrency, optionsPending]);
+  const chargeCurrency = payInCurrency || listingCurrency;
 
   async function pay() {
     setBusy(true);
@@ -103,7 +152,12 @@ export function PayholdPayment({
         pickupTime,
         rentalType,
         ...(estimatedHours !== undefined ? { estimatedHours } : {}),
-        ...(chargeCountry && chargeCountry !== payerCountry ? { buyerCountry: chargeCountry } : {}),
+        // Still their real country — it is what decides which rails can take
+        // their money. Only the currency is theirs to choose.
+        ...(payerCountry ? { buyerCountry: payerCountry } : {}),
+        ...(chargeCurrency && chargeCurrency !== listingCurrency
+          ? { presentmentCurrency: chargeCurrency }
+          : {}),
       });
       setCheckoutBase(base);
       setLink(paymentLink);
@@ -130,29 +184,33 @@ export function PayholdPayment({
         </Notice>
       )}
 
-      {/* Which currency the card gets charged in, not which cars are shown —
-          that's the header's country selector. Changing it here only affects
-          this one payment; it never touches the account's saved country. */}
-      {payerCountry && countries.length > 0 && (
+      {/* Which currency the renter is charged in — not which cars are shown,
+          that's the header's country selector, and not where they pay from,
+          which stays their account country. Changing it affects this one
+          payment only; the host is still owed the car's own currency. */}
+      {payerCountry && !optionsPending && currencies.length > 1 && (
         <div className="mb-4 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3">
-          <Label htmlFor="pay-as-country" className="flex items-center gap-1.5 text-[var(--color-content-muted)]">
-            <Landmark size={14} className="text-[var(--color-content-subtle)]" /> Charge my card as
+          <Label htmlFor="pay-in-currency" className="flex items-center gap-1.5 text-[var(--color-content-muted)]">
+            <Landmark size={14} className="text-[var(--color-content-subtle)]" /> Pay in
           </Label>
           <Select
-            id="pay-as-country"
-            value={chargeCountry}
-            onChange={(e) => setPayAsCountry(e.target.value)}
+            id="pay-in-currency"
+            value={chargeCurrency}
+            onChange={(e) => setPayInCurrency(e.target.value)}
           >
-            {countries.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.flag} {c.name} — {c.currency}
-              </option>
-            ))}
+            {currencies.map((code) => {
+              const meta = currencyMeta.find((c) => c.currency === code);
+              return (
+                <option key={code} value={code}>
+                  {meta ? `${meta.flag} ${code} — ${meta.name}` : code}
+                </option>
+              );
+            })}
           </Select>
           <p className="mt-1.5 text-caption text-[var(--color-content-muted)]">
-            {chargeCurrency
-              ? `Your card will be charged in ${chargeCurrency}. PayHold converts the total automatically.`
-              : "PayHold picks the currency your card accepts once you continue."}
+            {chargeCurrency === listingCurrency
+              ? `Charged in ${chargeCurrency} — the price you see, with nothing converted.`
+              : `Charged in ${chargeCurrency}. PayHold converts from ${listingCurrency} and carries the exchange rate.`}
           </p>
         </div>
       )}

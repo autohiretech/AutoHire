@@ -57,7 +57,7 @@ import {
 import { getSupabase } from '@/lib/supabase';
 import { getCurrentUserId } from '@/lib/identity';
 import { PAYMENTS_PAYHOLD } from '@/lib/payments';
-import type { PayoutCountry, PayoutCountryRoute } from '@/lib/payments';
+import type { CollectionOptions, PayoutCountry, PayoutCountryRoute } from '@/lib/payments';
 
 /**
  * The Supabase-backed data client — the single implementation the app runs on.
@@ -682,6 +682,13 @@ export const supabaseClient = {
      * gets charged in a currency it actually accepts.
      */
     buyerCountry?: string;
+    /**
+     * The currency to charge the renter in — their own pick, from what their
+     * market can be charged in. Never the deal's `currency`, which stays the
+     * car's: the host is owed what the car is priced in whatever the renter
+     * paid with, and PayHold carries the conversion between the two.
+     */
+    presentmentCurrency?: string;
   }): Promise<{
     dealId: string;
     paymentLink: string;
@@ -735,6 +742,14 @@ export const supabaseClient = {
   async registerPayholdSeller(input: {
     method: PayoutMethodType;
     destination: string;
+    /**
+     * Which mobile money wallet the number is on — "MTN", "Airtel Money".
+     * Required for `momo`: PayHold refuses to guess it now, because guessing
+     * wrong registered a destination Flutterwave will not transfer to.
+     */
+    network?: string;
+    /** Which bank the account is with. Required for `bank` on a local rail. */
+    bankCode?: string;
   }): Promise<{
     sellerId: string;
     maskedDestination: string;
@@ -978,13 +993,42 @@ export const supabaseClient = {
    * only say whether a country is payable at all; this is what the payout
    * screen uses to decide which methods to offer inside one that is.
    */
-  async payholdPayoutRoute(country: string): Promise<PayoutCountryRoute> {
+  async payholdPayoutRoute(
+    country: string,
+    /**
+     * Ask for the bank list too. Opt-in because enumerating banks is a live
+     * call into the rail on PayHold's side, and only a host who has actually
+     * chosen Bank needs it — every other caller asks the same question without
+     * paying for an answer it will not render.
+     */
+    opts?: { banks?: boolean },
+  ): Promise<PayoutCountryRoute> {
     const { data, error } = await getSupabase().functions.invoke(
-      `payhold-payment-options?country=${encodeURIComponent(country)}`,
+      `payhold-payment-options?country=${encodeURIComponent(country)}${opts?.banks ? '&banks=1' : ''}`,
       { method: 'GET' },
     );
     if (error) throw await fnError(error);
     const payload = data as PayoutCountryRoute & { error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return payload;
+  },
+
+  /**
+   * What a renter in this country can be charged, and in which currencies.
+   *
+   * The collection counterpart of `payholdPayoutRoute`, and the authority the
+   * checkout currency picker reads: `currencies` is every currency that
+   * market's rails can take, intersected with the ones AutoHire's PayHold
+   * account has enabled. Neither half of that is knowable from this side,
+   * which is why the picker used to approximate it.
+   */
+  async payholdCollectionOptions(country: string): Promise<CollectionOptions> {
+    const { data, error } = await getSupabase().functions.invoke(
+      `payhold-payment-options?collect_country=${encodeURIComponent(country)}`,
+      { method: 'GET' },
+    );
+    if (error) throw await fnError(error);
+    const payload = data as CollectionOptions & { error?: string };
     if (payload?.error) throw new Error(payload.error);
     return payload;
   },

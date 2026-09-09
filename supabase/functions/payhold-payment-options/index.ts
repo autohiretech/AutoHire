@@ -40,16 +40,25 @@
 //   GET /payhold-payment-options              every country PayHold knows,
 //                                              with what it can do there
 //   GET /payhold-payment-options?country=RW   that one country's actual
-//                                              payout route and methods
+//                                              payout route and methods, plus
+//                                              the mobile-money networks a
+//                                              destination there may name
+//   GET …?country=RW&banks=1                  the same, with the bank list —
+//                                              opt-in because it is a live
+//                                              call into the rail on PayHold's
+//                                              side, and only a host who has
+//                                              picked Bank needs it
 //
 // Secrets:  PAYHOLD_* (see _shared/payhold.ts), ALLOWED_ORIGIN
 // Deploy:   supabase functions deploy payhold-payment-options
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
+  collectionOptionsFor,
   payholdConfigured,
   paymentOptions,
   payoutRouteFor,
+  type CollectionOptions,
   type PaymentOptions,
   type PayoutCountryRoute,
 } from '../_shared/payhold.ts';
@@ -87,8 +96,21 @@ let cached: { at: number; value: PaymentOptions } | null = null;
  * the bulk cache above, just one entry per country instead of one for
  * everything — the payout-setup screen only ever asks about the signed-in
  * host's own country, so this stays small in practice.
+ *
+ * The bank list is part of the key (`RW` vs `RW+banks`) rather than of the
+ * value: a route fetched without banks carries `banks: null`, which means "not
+ * asked" and not "none", so serving it to a caller that did ask would show a
+ * host an empty bank picker for a country full of banks.
  */
 const routeCache = new Map<string, { at: number; value: PayoutCountryRoute }>();
+
+/**
+ * The collection side, keyed the same way. A different question from
+ * `routeCache` above and deliberately a different map: that one answers "how
+ * would a host here be paid", this one "what can a renter here be charged", and
+ * a single cache keyed on a bare country code would serve one as the other.
+ */
+const collectCache = new Map<string, { at: number; value: CollectionOptions }>();
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -115,15 +137,42 @@ Deno.serve(async (req: Request) => {
     // One country's payout route — which methods it actually offers, not just
     // whether the country can be paid at all. Separate from the bulk list
     // below: `?country=` asks a different, more specific question.
-    const country = new URL(req.url).searchParams.get('country');
+    const params = new URL(req.url).searchParams;
+
+    // What a renter in this market can be charged, and in which currencies.
+    // PayHold's own answer rather than a guess assembled here: `currencies` is
+    // every currency that market's rails take, intersected with the ones this
+    // tenant has enabled, and neither half is knowable from AutoHire.
+    const collectCountry = params.get('collect_country');
+    if (collectCountry) {
+      const key = collectCountry.toUpperCase();
+      const entry = collectCache.get(key);
+      if (entry && Date.now() - entry.at < TTL_MS) {
+        return json({ ...entry.value, cached: true }, 200, 3600);
+      }
+      try {
+        const options = await collectionOptionsFor(key);
+        collectCache.set(key, { at: Date.now(), value: options });
+        return json({ ...options, cached: false }, 200, 3600);
+      } catch (e) {
+        // A stale answer beats none: the alternative is a checkout that cannot
+        // offer a currency at all because PayHold blinked.
+        if (entry) return json({ ...entry.value, cached: true, stale: true }, 200);
+        const message = e instanceof Error ? e.message : 'Could not reach PayHold.';
+        return json({ error: message }, 502);
+      }
+    }
+
+    const country = params.get('country');
     if (country) {
-      const key = country.toUpperCase();
+      const banks = params.get('banks') === '1' || params.get('banks') === 'true';
+      const key = banks ? `${country.toUpperCase()}+banks` : country.toUpperCase();
       const entry = routeCache.get(key);
       if (entry && Date.now() - entry.at < TTL_MS) {
         return json({ ...entry.value, cached: true }, 200, 3600);
       }
       try {
-        const route = await payoutRouteFor(key);
+        const route = await payoutRouteFor(country.toUpperCase(), { banks });
         routeCache.set(key, { at: Date.now(), value: route });
         return json({ ...route, cached: false }, 200, 3600);
       } catch (e) {

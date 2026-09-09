@@ -107,7 +107,75 @@ export interface PayoutCountryRoute {
     verified: boolean;
     reason: string;
   };
+  /**
+   * The mobile-money wallets that exist in this country — "MTN", "Airtel
+   * Money", "M-Pesa". A momo destination has to name one: PayHold used to
+   * guess it from the number and now refuses to, because a wrong guess
+   * registered a destination Flutterwave will not actually transfer to and
+   * nothing said so until a payout failed weeks later.
+   */
+  networks?: string[];
+  /**
+   * The banks, when they were asked for (`payholdPayoutRoute(code, { banks:
+   * true })`). **`null` is not an empty list** — it means "not asked for", or
+   * "the rail could not be reached to enumerate them". Rendering it as "no
+   * banks available" would be a lie about a country full of banks, so the
+   * screen falls back to a plain code field instead.
+   */
+  banks?: { code: string; name: string }[] | null;
   rails_verified: boolean;
+}
+
+/**
+ * What a renter in one country can be charged, straight from PayHold.
+ *
+ * The collection counterpart of `PayoutCountryRoute`. `currencies` is the
+ * authoritative list — every currency that market's rails can take,
+ * intersected with the ones AutoHire's PayHold account has enabled — and
+ * neither half of that is derivable here, which is why this replaced a guess.
+ */
+export interface CollectionOptions {
+  country: { code: string; name: string; flag: string; currency: string };
+  restricted: boolean;
+  closed?: boolean;
+  /** The currency `methods` are quoted in. */
+  charged_in?: string;
+  methods: { method: string; label: string; networks?: string[] }[];
+  /** Empty when the market is shut or sanctioned — then nobody there can pay. */
+  currencies: string[];
+  reason?: string;
+  rails_verified: boolean;
+}
+
+/**
+ * The currencies to offer a renter in `countryCode`, in the order to offer them.
+ *
+ * **PayHold decides which currencies exist; this decides only the order.** The
+ * list used to be assembled here — the country's own currency plus USD/EUR/GBP
+ * — which was a guess in both directions: it could offer a currency the market's
+ * rails cannot take, and hide one they can. `options.currencies` is the real
+ * answer and is passed straight through.
+ *
+ * Their own market's currency leads where it is offered: it is the one that
+ * needs no conversion and the one their card is least likely to be surcharged
+ * for. An empty list is a market that cannot pay at all, and is returned as
+ * such rather than papered over with USD — the checkout has to say so rather
+ * than offer a currency the charge would then be refused in.
+ */
+export function presentmentCurrenciesFor(
+  countryCode: string,
+  countries: PayoutCountry[] | undefined,
+  options: CollectionOptions | undefined,
+): string[] {
+  const offered = options?.currencies ?? [];
+  if (offered.length === 0) return [];
+
+  const local = options?.country?.currency ??
+    countries?.find((c) => c.code === countryCode)?.currency;
+
+  return local && offered.includes(local)
+    ? [local, ...offered.filter((c) => c !== local)]
+    : [...offered];
 }
 
 /**

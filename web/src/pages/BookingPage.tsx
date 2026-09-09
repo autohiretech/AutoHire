@@ -389,6 +389,7 @@ export function BookingPage() {
                   pickupTime={pickupTime}
                   rentalType={isHourly ? 'hourly' : 'daily'}
                   estimatedHours={isHourly ? estimatedHours : undefined}
+                  listingCurrency={cur}
                   label={money(total)}
                   disabled={!datesValid}
                   onCheckoutOpenChange={setCheckoutOpen}

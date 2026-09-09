@@ -326,6 +326,16 @@ export interface CreateDealInput {
   currency: string;
   /** The renter's own country, so PayHold can pick a rail they can pay on. */
   buyerCountry?: string;
+  /**
+   * The currency the RENTER is charged in, when it differs from `currency`.
+   *
+   * `currency` is the settlement currency — the car's own, what the host is
+   * owed — and it must not move because a renter picked something else to pay
+   * in. This is the other half of that pair: PayHold converts and carries the
+   * FX, so the host is still paid in the car's currency whatever the renter's
+   * card was charged. Omit and PayHold picks from `buyerCountry` as before.
+   */
+  presentmentCurrency?: string;
   /** When the trip ends — PayHold's completion clock reads it. */
   expectedCompleteAt?: string;
   /**
@@ -371,6 +381,7 @@ export function createDeal(input: CreateDealInput): Promise<CreateDealResult> {
       amount: input.amount,
       currency: input.currency,
       buyer_country: input.buyerCountry,
+      ...(input.presentmentCurrency ? { presentment_currency: input.presentmentCurrency } : {}),
       expected_complete_at: input.expectedCompleteAt,
       ...(input.splitPercent === undefined ? {} : { split_percent: input.splitPercent }),
       ...(input.overageRate === undefined
@@ -452,6 +463,17 @@ export interface CreateSellerInput {
    * holds it only for the duration of this call.
    */
   destination?: string;
+  /**
+   * The mobile-money wallet the number belongs to — "MTN", "Airtel Money",
+   * "M-Pesa". Required in practice for a momo destination: PayHold used to
+   * guess it, and a wrong guess registered a destination Flutterwave will not
+   * transfer to, which surfaces as a payout stuck weeks later rather than as
+   * an error the host could have fixed while they were still on the screen.
+   * PayHold now refuses a momo destination without it.
+   */
+  network?: string;
+  /** The bank's own code, for a bank destination. Refused without it, same reason. */
+  bankCode?: string;
   payoutCurrency?: string;
   /**
    * The host's `profiles.id`. Sent so the seller can be found again from our
@@ -481,6 +503,8 @@ export function createSeller(
       country: input.country,
       payout_provider: input.payoutProvider,
       destination: input.destination,
+      network: input.network,
+      bank_code: input.bankCode,
       payout_currency: input.payoutCurrency,
       external_user_id: input.externalUserId,
       label: input.label,
@@ -584,6 +608,10 @@ export interface AddDestinationInput {
   payoutProvider: PayoutProvider;
   /** Raw MoMo number, account number or wallet handle. Tokenized and dropped. */
   destination: string;
+  /** The wallet a momo number belongs to. See `CreateSellerInput.network`. */
+  network?: string;
+  /** The bank a bank account belongs to. See `CreateSellerInput.bankCode`. */
+  bankCode?: string;
   /** Defaults to the seller's own country, which a rail change does not move. */
   country?: string;
   label?: string;
@@ -611,6 +639,8 @@ export function addSellerDestination(
     body: {
       payout_provider: input.payoutProvider,
       destination: input.destination,
+      network: input.network,
+      bank_code: input.bankCode,
       country: input.country,
       label: input.label,
       role: input.role ?? 'primary',
@@ -803,6 +833,20 @@ export interface PayoutCountryRoute {
     verified: boolean;
     reason: string;
   };
+  /**
+   * The mobile-money wallets that actually exist in this country — "MTN",
+   * "Airtel Money", "M-Pesa". A momo destination has to name one, so the host
+   * has to be offered the real list rather than typing a brand PayHold will
+   * refuse.
+   */
+  networks?: string[];
+  /**
+   * The banks, when they were asked for (`banks: true`). **`null` is not an
+   * empty list**: it means either that they were not asked for, or that the
+   * rail could not be reached to enumerate them — and showing "no banks" for
+   * a country that has plenty is worse than showing nothing at all.
+   */
+  banks?: { code: string; name: string }[] | null;
   rails_verified: boolean;
 }
 
@@ -818,9 +862,46 @@ export interface PayoutCountryRoute {
  * corridors, where Stripe cannot reach a recipient and Flutterwave has no card
  * payout at all. Either one leaves a host's first payout stuck at `blocked`
  * weeks after they thought they had finished setup.
+ *
+ * `banks` is opt-in because enumerating them is a live call into the rail on
+ * PayHold's side, and only the host who has actually chosen Bank needs the
+ * list — every other caller of this asks the same question without paying for
+ * an answer it will not render.
  */
-export function payoutRouteFor(country: string): Promise<PayoutCountryRoute> {
-  return call(`/payment-options?payout_country=${encodeURIComponent(country)}`, { method: 'GET' });
+export function payoutRouteFor(
+  country: string,
+  opts?: { banks?: boolean },
+): Promise<PayoutCountryRoute> {
+  const query = `payout_country=${encodeURIComponent(country)}${opts?.banks ? '&banks=1' : ''}`;
+  return call(`/payment-options?${query}`, { method: 'GET' });
+}
+
+/**
+ * What a renter in one country can actually be charged — the collection side,
+ * and the mirror of `payoutRouteFor`'s seller side.
+ *
+ * `currencies` is the authoritative answer to "which currencies may this deal
+ * be presented in", and it is PayHold's to give: it is every currency that
+ * market's rails can take, intersected with the currencies this tenant has
+ * enabled. AutoHire used to approximate it (the country's own currency plus
+ * USD/EUR/GBP) because nothing here asked — an approximation that offers a
+ * currency PayHold will refuse, or hides one it would have taken.
+ */
+export interface CollectionOptions {
+  country: { code: string; name: string; flag: string; currency: string };
+  restricted: boolean;
+  closed?: boolean;
+  /** The currency `methods` are quoted in. */
+  charged_in?: string;
+  methods: { method: string; label: string; networks?: string[] }[];
+  /** Every currency a buyer here can be charged. Empty when the market is shut. */
+  currencies: string[];
+  reason?: string;
+  rails_verified: boolean;
+}
+
+export function collectionOptionsFor(country: string): Promise<CollectionOptions> {
+  return call(`/payment-options?country=${encodeURIComponent(country)}`, { method: 'GET' });
 }
 
 // ---------------------------------------------------------------------------

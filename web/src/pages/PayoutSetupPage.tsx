@@ -68,6 +68,31 @@ const PROVIDER_NAME: Record<PayoutProvider, string> = {
 };
 
 /**
+ * What actually happens to payouts while the new destination is checked.
+ *
+ * This screen used to say "payouts pause for up to 24 hours" everywhere, as a
+ * fact. §5.1's security hold is a per-tenant setting now and may be zero, so
+ * the sentence has to be read off the answer PayHold gave — telling a host to
+ * expect a day of silence they will not get is the same kind of wrong as not
+ * warning them about one they will.
+ */
+function holdNotice(securityHoldUntil: string | null, canReceivePayouts: boolean): string {
+  const until = securityHoldUntil ? new Date(securityHoldUntil) : null;
+  const msLeft = until && !Number.isNaN(until.getTime()) ? until.getTime() - Date.now() : 0;
+  if (msLeft <= 0) {
+    return canReceivePayouts
+      ? 'Nothing pauses — your next payout goes there.'
+      : 'Payouts start once PayHold has verified the account.';
+  }
+  const hours = Math.ceil(msLeft / 3_600_000);
+  const window = hours <= 1 ? 'about an hour' : `about ${hours} hours`;
+  return (
+    `It's verified first, so payouts pause for ${window} — your cars stay bookable and ` +
+    'the money keeps building up in the meantime.'
+  );
+}
+
+/**
  * Host payout-method setup. The host picks how they want to be paid — Mobile
  * Money, Bank, or Card — and the system routes it to the right provider behind
  * the scenes. Required before earning; surfaced from the dashboard checklist and
@@ -98,6 +123,15 @@ export function PayoutSetupPage() {
 
   const known = payoutCountries?.countries.find((c) => c.code === payoutCountry) ?? null;
 
+  const [selected, setSelected] = useState<PayoutMethodType | null>(null);
+  const [dest, setDest] = useState('');
+  // Which wallet the number is on, and which bank the account is with. PayHold
+  // used to infer both and refuses to now: an inferred wrong one registered a
+  // destination Flutterwave will not actually transfer to, and the host only
+  // found out when a payout failed weeks later.
+  const [network, setNetwork] = useState('');
+  const [bankCode, setBankCode] = useState('');
+
   // The bulk list above only says whether `payoutCountry` can be paid at all;
   // this is what actually decides which methods to offer inside it — see
   // `payoutMethodsFromRoute`. Asked only once the bulk check already says
@@ -107,6 +141,23 @@ export function PayoutSetupPage() {
     queryKey: ['payholdPayoutRoute', payoutCountry],
     queryFn: () => client.payholdPayoutRoute(payoutCountry),
     enabled: PAYMENTS_PAYHOLD && !!payoutCountry && !!known?.can_payout,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+
+  // Banks are a second, opt-in question: PayHold enumerates them live from the
+  // rail, so they are only asked for once a host has actually picked Bank —
+  // and never at all in a market whose bank rail is Stripe Connect, where
+  // there is no account number to name a bank for.
+  const { data: bankRoute, isFetching: banksLoading } = useQuery({
+    queryKey: ['payholdPayoutRoute', payoutCountry, 'banks'],
+    queryFn: () => client.payholdPayoutRoute(payoutCountry, { banks: true }),
+    enabled:
+      PAYMENTS_PAYHOLD &&
+      !!payoutCountry &&
+      !!known?.can_payout &&
+      selected === 'bank' &&
+      payoutRoute?.payout?.provider === 'flutterwave',
     staleTime: 60 * 60 * 1000,
     retry: false,
   });
@@ -130,8 +181,6 @@ export function PayoutSetupPage() {
     PAYMENTS_PAYHOLD && payoutRoute?.payout?.provider === 'stripe' &&
     payoutRoute?.payout?.kind === 'connect';
 
-  const [selected, setSelected] = useState<PayoutMethodType | null>(null);
-  const [dest, setDest] = useState('');
   // Payout country used to be inherited from the profile with no way back to
   // it here — a host paid in whatever currency their account happened to
   // carry, with no path to a different one even though PayHold reaches over
@@ -163,7 +212,15 @@ export function PayoutSetupPage() {
       // at all. The raw destination goes straight to PayHold to be tokenized
       // and is written down by neither side.
       if (PAYMENTS_PAYHOLD) {
-        return await client.registerPayholdSeller({ method, destination: dest.trim() });
+        // The number is sent exactly as typed — PayHold normalises it itself,
+        // and a second opinion here would only be a different wrong answer for
+        // the country whose format we guessed at.
+        return await client.registerPayholdSeller({
+          method,
+          destination: dest.trim(),
+          ...(method === 'momo' && network ? { network } : {}),
+          ...(method === 'bank' && bankCode ? { bankCode: bankCode.trim() } : {}),
+        });
       }
 
       const provider = payoutProviderFor(method, payoutCountry);
@@ -183,6 +240,8 @@ export function PayoutSetupPage() {
       refresh();
       setSelected(null);
       setDest('');
+      setNetwork('');
+      setBankCode('');
 
       // PayHold decides whether this host can actually be paid, and says why
       // not. Telling them now beats a payout that sits stuck weeks later with
@@ -217,8 +276,7 @@ export function PayoutSetupPage() {
         if (r.changed) {
           toast.success(
             `Payouts will now go to ${r.maskedDestination}. ` +
-              'It has to be verified first, so payouts pause for up to 24 hours — ' +
-              'your cars stay bookable and the money keeps building up in the meantime.',
+              holdNotice(r.securityHoldUntil ?? null, r.canReceivePayouts),
           );
           return;
         }
@@ -280,7 +338,21 @@ export function PayoutSetupPage() {
   }
 
   const meta = selected ? PAYOUT_METHOD_META[selected] : null;
-  const canSave = !!selected && dest.trim().length >= 4;
+
+  // A number on its own no longer names a destination. PayHold refuses a
+  // mobile-money one with no wallet and a local bank one with no bank code
+  // rather than guessing, so these are as required as the number itself —
+  // failing here, in front of the host, beats a policy_violation after.
+  const networks = payoutRoute?.networks ?? [];
+  const banks = bankRoute?.banks ?? null;
+  const needsNetwork = PAYMENTS_PAYHOLD && selected === 'momo';
+  const needsBankCode =
+    PAYMENTS_PAYHOLD && selected === 'bank' && payoutRoute?.payout?.provider === 'flutterwave';
+  const canSave =
+    !!selected &&
+    dest.trim().length >= 4 &&
+    (!needsNetwork || !!network) &&
+    (!needsBankCode || !!bankCode.trim());
   const routedProvider = selected ? payoutProviderFor(selected, payoutCountry) : null;
 
   return (
@@ -455,6 +527,8 @@ export function PayoutSetupPage() {
                   onClick={() => {
                     setSelected(isSel ? null : m);
                     setDest('');
+                    setNetwork('');
+                    setBankCode('');
                   }}
                   aria-pressed={isSel}
                   className={cn(
@@ -508,8 +582,9 @@ export function PayoutSetupPage() {
               {connected && (
                 <Notice tone="warn">
                   This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
-                  before they're paid, so payouts pause for up to 24 hours — your cars stay bookable and
-                  your earnings keep building up in the meantime.
+                  before they're paid, so payouts can pause while that happens — your cars stay
+                  bookable and your earnings keep building up either way. We'll tell you how long
+                  once it's saved.
                 </Notice>
               )}
               <Button
@@ -526,6 +601,83 @@ export function PayoutSetupPage() {
           selected && (
             <Card>
               <CardBody className="space-y-3">
+                {/* Which wallet, asked before the number, because it is what
+                    the number belongs to. PayHold's own list for this country
+                    — a wallet that isn't on it is one Flutterwave cannot
+                    transfer to, so typing a brand freely was never a kindness.
+                    The free-text fallback only runs if that list is missing:
+                    an unsaveable form is worse than an unvalidated one. */}
+                {needsNetwork && (
+                  <div>
+                    <Label htmlFor="payout-network">Mobile money network</Label>
+                    {networks.length > 0 ? (
+                      <Select
+                        id="payout-network"
+                        value={network}
+                        onChange={(e) => setNetwork(e.target.value)}
+                      >
+                        <option value="" disabled>
+                          Select your network
+                        </option>
+                        {networks.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <Input
+                        id="payout-network"
+                        value={network}
+                        onChange={(e) => setNetwork(e.target.value)}
+                        placeholder="MTN"
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* The bank list is fetched only once Bank is picked, and
+                    `banks: null` means "we couldn't ask", not "there are
+                    none" — so an empty picker is never shown; the host types
+                    the code from their own statement instead. */}
+                {needsBankCode && (
+                  <div>
+                    <Label htmlFor="payout-bank">Bank</Label>
+                    {banks && banks.length > 0 ? (
+                      <Select
+                        id="payout-bank"
+                        value={bankCode}
+                        onChange={(e) => setBankCode(e.target.value)}
+                      >
+                        <option value="" disabled>
+                          {banksLoading ? 'Loading banks…' : 'Select your bank'}
+                        </option>
+                        {banks.map((b) => (
+                          <option key={b.code} value={b.code}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <>
+                        <Input
+                          id="payout-bank"
+                          value={bankCode}
+                          onChange={(e) => setBankCode(e.target.value)}
+                          placeholder={banksLoading ? 'Loading banks…' : 'Bank code'}
+                          disabled={banksLoading}
+                        />
+                        {!banksLoading && (
+                          <p className="mt-1 text-caption text-[var(--color-content-muted)]">
+                            We couldn't load the bank list just now — your bank's code is on your
+                            statement, or ask them for it.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <div>
                   <Label htmlFor="payout-dest">{meta.field}</Label>
                   <Input
@@ -550,8 +702,9 @@ export function PayoutSetupPage() {
                   connected && (
                     <Notice tone="warn">
                       This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are
-                      verified before they're paid, so payouts pause for up to 24 hours — your cars
-                      stay bookable and your earnings keep building up in the meantime.
+                      verified before they're paid, so payouts can pause while that happens — your
+                      cars stay bookable and your earnings keep building up either way. We'll tell
+                      you how long once it's saved.
                     </Notice>
                   )
                 ) : (

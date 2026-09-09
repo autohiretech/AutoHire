@@ -225,8 +225,10 @@ atomically, because a window with no primary destination is a window in which
 the host is unpayable for a reason nobody chose.
 
 The new destination lands unverified and inside PayHold §5.1's security hold, so
-**payouts pause for up to 24 hours** while it is checked. There is no parameter
-to skip that, and there should not be: "get in, move the destination, withdraw"
+**payouts pause while it is checked**. How long is a per-tenant setting and may
+be zero, so the screens read it off `securityHoldUntil` rather than promising a
+number — they used to say "up to 24 hours" unconditionally, which is a lie in
+both directions. There is no parameter to skip the hold, and there should not be: "get in, move the destination, withdraw"
 is the whole shape of an account takeover, and the hold is what puts a person
 between the second step and the third. The response carries `changed: true` and
 `securityHoldUntil`, and the payout screen says plainly what will happen before
@@ -697,6 +699,15 @@ A trip is always denominated in the **car's** currency. PayHold converts to
 something the renter's country can actually be charged and carries the FX
 itself.
 
+The renter can now say which. `POST /deals` takes a `presentment_currency`
+alongside `currency`, and the two are not the same question: `currency` is
+**settlement** — what the host is owed, always the car's — while presentment is
+only what the card is charged. `payhold-create-deal` keeps sending the listing's
+currency as `currency` and adds the renter's pick beside it; the "Pay in" picker
+on the booking screen offers their own market's currency (when PayHold can
+collect it) plus the cross-border ones, defaulting to the car's own when it is
+among them so nothing is converted at all.
+
 ## The retiring functions
 
 These existed because AutoHire was orchestrating providers by hand. PayHold does
@@ -848,6 +859,22 @@ that cannot work.
 If the lookup fails or has not loaded, `payoutAvailability` falls back to the
 old constant rather than blocking. Being wrong the way it was before beats a
 screen a payable host cannot use.
+
+### The number alone is not a destination
+
+`POST /v1/sellers` and `POST /v1/sellers/:id/destinations` now take a `network`
+(the mobile-money wallet — "MTN", "Airtel Money", "M-Pesa") and a `bank_code`,
+and **refuse** a momo destination without the first or a bank one without the
+second. PayHold used to guess, and a wrong guess registered a destination
+Flutterwave will not actually transfer to — a payout stuck weeks later rather
+than an error while the host was still on the screen.
+
+So the payout form asks. `GET /payment-options?payout_country=RW` returns
+`networks: string[]`, and with `&banks=1` also `banks: {code, name}[] | null` —
+**`null` is not an empty list**, it means "not asked" or "rail unreachable", so
+the screen falls back to a plain code field rather than showing a host an empty
+bank picker for a country full of banks. Banks are opt-in because enumerating
+them is a live call into the rail; only a host who has picked Bank pays for it.
 
 ## Not done
 

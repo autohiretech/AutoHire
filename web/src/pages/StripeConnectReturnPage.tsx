@@ -53,8 +53,12 @@ export function StripeConnectReturnPage() {
             Stripe account connected
           </p>
           <p>
+            {/* No fixed duration: PayHold's security hold is a per-tenant
+                setting now and may be zero, and this response carries no
+                `securityHoldUntil` to read a real one off. */}
             Payouts go to {status.data.maskedDestination}. New accounts are verified before
-            they're paid, so this pauses for up to 24 hours — your cars stay bookable meanwhile.
+            they're paid, so payouts can pause while that happens — your cars stay bookable and
+            your earnings keep building up meanwhile.
           </p>
           <Link to="/payouts/setup" className="w-full">
             <Button className="w-full">Back to payout setup</Button>

@@ -114,6 +114,7 @@ Deno.serve(async (req: Request) => {
       preferredMethod,
       payerRef,
       buyerCountry,
+      presentmentCurrency,
       pickupTime,
       rentalType,
       estimatedHours,
@@ -132,6 +133,17 @@ Deno.serve(async (req: Request) => {
     // account's country just to pay for one trip.
     const buyerCountryOverride =
       typeof buyerCountry === 'string' && buyerCountry.trim() ? buyerCountry.trim().toUpperCase() : '';
+
+    // Which currency the renter is CHARGED in. Separate from the country above
+    // — a renter in Rwanda may still want to be charged in USD — and entirely
+    // separate from the deal's own `currency`, which stays the car's and is
+    // what the host is owed. Validated as an ISO shape only: PayHold owns the
+    // question of whether it can actually collect this one, and a list here
+    // would be the hardcoded-country-list mistake again in another column.
+    const presentment =
+      typeof presentmentCurrency === 'string' && /^[A-Za-z]{3}$/.test(presentmentCurrency.trim())
+        ? presentmentCurrency.trim().toUpperCase()
+        : '';
 
     // Where the renter wants to be charged — a MoMo number, a PayPal address.
     // Never a card: those are typed on PayHold's checkout.
@@ -345,6 +357,11 @@ Deno.serve(async (req: Request) => {
       // different one for this payment. Either way, this is what decides what
       // they can pay with and which currency their card is actually charged in.
       buyerCountry: buyerCountryOverride || (renter?.country as string | null) || undefined,
+      // What the renter asked to be charged in, when they picked. Never
+      // touches `currency` above — the host is owed the car's currency
+      // whatever the renter's card was charged, and PayHold carries the FX
+      // between the two.
+      ...(presentment && presentment !== currency ? { presentmentCurrency: presentment } : {}),
       expectedCompleteAt: isHourly ? hourlyExpectedCompleteAt : dailyExpectedCompleteAt,
       // No split, for either rental type — the full estimate is charged up
       // front. Overage is conditional on going past it, so mobile money

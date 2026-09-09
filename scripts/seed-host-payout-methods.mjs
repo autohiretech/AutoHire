@@ -91,6 +91,48 @@ function payoutMethodsFor(country) {
   return FLUTTERWAVE_COUNTRIES.has(country) ? ['momo', 'bank'] : ['bank', 'card'];
 }
 
+/**
+ * The wallet a seeded MoMo destination is registered against.
+ *
+ * PayHold now requires one — a beneficiary is registered against a carrier and
+ * there is no default that is safe to assume — so a seed with no network is
+ * refused outright. These are the labels PayHold's own `MOMO_NETWORKS` table
+ * carries for each market; anything else comes back as a `policy_violation`
+ * naming the valid ones, which is a better failure than a silent one.
+ *
+ * `null` means the market has no wallet PayHold can pay, and the seeder falls
+ * through to its next candidate rather than registering something unpayable.
+ */
+const SEED_MOMO_NETWORK = {
+  RW: 'MTN',
+  KE: 'M-Pesa',
+  UG: 'MTN',
+  TZ: 'Airtel Money',
+  GH: 'MTN',
+  ZM: 'Airtel Money',
+  CM: 'MTN',
+  CI: 'Orange Money',
+  SN: 'Orange Money',
+};
+
+/**
+ * Flutterwave wants a real bank code and there is no honest fake for one — a
+ * made-up code registers a beneficiary that cannot be paid, which is the exact
+ * failure PayHold's new refusal exists to prevent. The live list is per country
+ * and comes from the rail (`GET /v1/payment-options?payout_country=XX&banks=1`),
+ * so a seeder running offline against demo data has no business inventing one.
+ *
+ * So bank is no longer a seeded method inside the Flutterwave corridors: those
+ * hosts all get MoMo, which is what they would actually pick. Outside them,
+ * `bank` still means Stripe Connect, which takes an `acct_…` rather than a bank
+ * code and is unaffected.
+ */
+function seedableMethods(country) {
+  const methods = payoutMethodsFor(country);
+  if (!FLUTTERWAVE_COUNTRIES.has(country)) return methods;
+  return SEED_MOMO_NETWORK[country] ? ['momo'] : [];
+}
+
 /** `payoutProviderFor` in _shared/payhold.ts — the rail a destination is tokenized against. */
 const AFRICAN_PAYOUT = new Set([
   'RW', 'KE', 'UG', 'TZ', 'NG', 'GH', 'ZA', 'CM', 'CI', 'SN', 'ZM', 'ET',
@@ -314,7 +356,14 @@ function assign(hosts) {
       };
     }
 
-    const allowed = payoutMethodsFor(host.country);
+    const allowed = seedableMethods(host.country);
+    if (allowed.length === 0) {
+      // No rail this seeder can register honestly — see `seedableMethods`.
+      // Skipped rather than half-registered: a seller with an unpayable
+      // destination is worse for a demo than a seller with none, since PayHold
+      // now lets money accrue against one either way.
+      return { ...host, payoutCurrency, candidates: [] };
+    }
     const method = allowed[i % allowed.length];
     const destination = destinationFor({ method, phone: host.phone, nth: nth[method]++ });
     return {
@@ -327,6 +376,9 @@ function assign(hosts) {
           label: METHOD_LABEL[method],
           destination,
           masked: mask(destination),
+          // Required by PayHold for a mobile money beneficiary, and absent for
+          // every other rail.
+          network: method === 'momo' ? SEED_MOMO_NETWORK[host.country] : undefined,
         },
       ],
     };
@@ -427,6 +479,15 @@ async function main() {
       let seller = sellers.find((s) => s.external_user_id === h.id) ?? null;
       const isRelink = !!seller;
 
+      // Nothing this seeder can register honestly in this market, and no
+      // existing seller to repair the link to. Skipped loudly rather than
+      // crashing on `candidates[0]` — see `seedableMethods`.
+      if (!seller && h.candidates.length === 0) {
+        console.log(`· ${who}: no seedable payout rail in ${h.country} — skipped`);
+        skipped++;
+        continue;
+      }
+
       // Try each rail until PayHold accepts one. A refused corridor is a 4xx
       // that creates nothing, so the cost of trying is a round trip — and the
       // alternative is a market with no payout method at all.
@@ -444,6 +505,9 @@ async function main() {
                 destination: c.destination,
                 payout_currency: h.payoutCurrency,
                 external_user_id: h.id,
+                // Omitted for every rail but mobile money, where PayHold
+                // requires it.
+                ...(c.network ? { network: c.network } : {}),
               },
             });
             seller = res.seller;

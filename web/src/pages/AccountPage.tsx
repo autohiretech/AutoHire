@@ -97,12 +97,17 @@ export function AccountPage() {
                 <p className="font-semibold">
                   {profile.payoutStatus === 'pending'
                     ? 'Your payout method is being verified'
-                    : 'Add a payout method to get paid'}
+                    : 'Tell us where to send your earnings'}
                 </p>
+                {/* Not "you can't earn until you do this" — that was never true
+                    after PayHold started holding money against a seller with no
+                    destination at all. Earnings accrue from the first booking
+                    either way; what waits on this is the sending, not the
+                    earning. */}
                 <p className="mt-0.5">
                   {profile.payoutStatus === 'pending'
                     ? 'Earnings keep building up in the meantime.'
-                    : "You won't be able to receive earnings until one is on file."}
+                    : "Your earnings build up from your first booking — add a payout method whenever you like, and we’ll send them on."}
                 </p>
                 {profile.payoutStatus !== 'pending' && (
                   <Link
@@ -282,7 +287,6 @@ function AccountSkeleton() {
 /** Editable profile: avatar + name, plus the host/renter role switch. */
 function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>; email: string }) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const isCompany = profile.ownerType === 'business';
   const isHost = profile.role === 'owner';
   const displayName = profile.businessName ?? profile.fullName;
@@ -385,11 +389,13 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       queryClient.invalidateQueries({ queryKey: ['ownerHost'] });
       queryClient.invalidateQueries({ queryKey: ['ownerListings'] });
       queryClient.invalidateQueries({ queryKey: ['listings'] });
-      // New hosts need a payout method before they can earn — send them straight
-      // to set one up (unless they already have one on file).
-      if (becomingHost && profile.payoutStatus !== 'active') {
-        navigate('/payouts/setup');
-      }
+      // No forced trip to /payouts/setup. A seller with no destination still
+      // accrues money from their first booking — PayHold's `20260814000001`
+      // made that true — so payout setup is something a new host can do when
+      // it suits them, and marching them through it before they have even
+      // listed a car asked for a bank account in exchange for nothing yet.
+      // The dashboard checklist and the payout banner are where it is asked
+      // for now: a prompt they can act on, not a redirect they cannot refuse.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not switch your account.');
     } finally {
