@@ -20,6 +20,7 @@ import {
   createSeller,
   DAILY_OVERAGE_GRACE_HOURS,
   findSellerByExternalUserId,
+  PayHoldError,
   payholdConfigured,
   sessionToken,
   toMinorUnits,
@@ -257,39 +258,51 @@ Deno.serve(async (req: Request) => {
       .eq('id', listing.host_id)
       .single();
 
+    /**
+     * Establish the host's PayHold seller link and persist it, from scratch.
+     *
+     * Used for a host who has no link yet, and again when the link they have
+     * turns out to be dead — see the retry around `createDeal` below. Throws
+     * if PayHold cannot be reached to do it; the caller decides what a
+     * renter sees.
+     */
+    const linkSeller = async (): Promise<string> => {
+      const existing = await findSellerByExternalUserId(listing.host_id).catch(() => null);
+      let seller: Seller;
+      if (existing) {
+        seller = existing;
+      } else {
+        try {
+          ({ seller } = await createSeller({
+            name: (host?.business_name as string | null) ?? (host?.full_name as string) ??
+              'AutoHire host',
+            // No country, no payoutProvider, no destination — this mirrors
+            // `payhold-ensure-seller` exactly: none of that exists yet, and
+            // `payhold-register-seller` is still the only place a raw payout
+            // number is ever typed.
+            externalUserId: listing.host_id,
+          }));
+        } catch (e) {
+          // Two renters racing to book the same never-linked host both reach
+          // the create; PayHold refuses the second on its unique handle.
+          // Re-ask rather than treating that as a real failure.
+          if ((e as { code?: string }).code === 'policy_violation') {
+            const raced = await findSellerByExternalUserId(listing.host_id);
+            if (!raced) throw e;
+            seller = raced;
+          } else {
+            throw e;
+          }
+        }
+      }
+      await admin.from('profiles').update({ payhold_seller_id: seller.id }).eq('id', listing.host_id);
+      return seller.id;
+    };
+
     let sellerId = host?.payhold_seller_id as string | null;
     if (!sellerId) {
       try {
-        const existing = await findSellerByExternalUserId(listing.host_id).catch(() => null);
-        let seller: Seller;
-        if (existing) {
-          seller = existing;
-        } else {
-          try {
-            ({ seller } = await createSeller({
-              name: (host?.business_name as string | null) ?? (host?.full_name as string) ??
-                'AutoHire host',
-              // No country, no payoutProvider, no destination — this mirrors
-              // `payhold-ensure-seller` exactly: none of that exists yet, and
-              // `payhold-register-seller` is still the only place a raw payout
-              // number is ever typed.
-              externalUserId: listing.host_id,
-            }));
-          } catch (e) {
-            // Two renters racing to book the same never-linked host both reach
-            // the create; PayHold refuses the second on its unique handle.
-            // Re-ask rather than treating that as a real failure.
-            if ((e as { code?: string }).code === 'policy_violation') {
-              const raced = await findSellerByExternalUserId(listing.host_id);
-              if (!raced) throw e;
-              seller = raced;
-            } else {
-              throw e;
-            }
-          }
-        }
-        sellerId = seller.id;
-        await admin.from('profiles').update({ payhold_seller_id: sellerId }).eq('id', listing.host_id);
+        sellerId = await linkSeller();
       } catch {
         return json(
           {
@@ -359,9 +372,9 @@ Deno.serve(async (req: Request) => {
             DAILY_OVERAGE_GRACE_HOURS * 3_600_000,
         ).toISOString();
 
-    const { deal, payment_link } = await createDeal({
+    const buildDeal = (seller: string) => createDeal({
       buyerRef: uid,
-      sellerId,
+      sellerId: seller,
       description: isHourly
         ? `AutoHire — ${listing.title} (${hours}hr estimate, overage auto-settled on return)`
         : `AutoHire — ${listing.title} (${days} day${days === 1 ? '' : 's'})`,
@@ -442,6 +455,45 @@ Deno.serve(async (req: Request) => {
         ...(isHourly ? { estimatedHours: String(hours) } : {}),
       },
     });
+
+    /**
+     * A stored seller link can be dead, not just missing.
+     *
+     * `payhold_seller_id` is our copy of an id that lives in PayHold, and the
+     * two can diverge — a PayHold environment reset is the way it has
+     * actually happened, leaving every host pointing at a seller that no
+     * longer exists. The repair above only ever fired on a *missing* link, so
+     * a stale one sailed straight past it and PayHold refused the deal with
+     * "Seller <id> not found". Every booking for that host failed, hourly and
+     * daily alike, and nothing self-healed because from our side the link
+     * looked present and fine.
+     *
+     * So a 404 naming the seller is treated as what it is — evidence our copy
+     * is wrong — by re-running the same repair and retrying once. Retried
+     * exactly once, and only for this error: a second 404 means PayHold is
+     * refusing a seller it just handed us, which is a real fault and belongs
+     * in the renter's error rather than in a loop.
+     */
+    let deal: Awaited<ReturnType<typeof buildDeal>>['deal'];
+    let payment_link: Awaited<ReturnType<typeof buildDeal>>['payment_link'];
+    try {
+      ({ deal, payment_link } = await buildDeal(sellerId!));
+    } catch (e) {
+      const stale = e instanceof PayHoldError && e.status === 404 && /seller/i.test(e.message);
+      if (!stale) throw e;
+      try {
+        sellerId = await linkSeller();
+      } catch {
+        return json(
+          {
+            error: 'This car is not available for booking right now — please try again in a moment.',
+            code: 'host_registration_unavailable',
+          },
+          409,
+        );
+      }
+      ({ deal, payment_link } = await buildDeal(sellerId));
+    }
 
     /**
      * Make the deal payable by the browser as well as by the link.
