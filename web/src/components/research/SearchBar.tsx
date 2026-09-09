@@ -67,6 +67,12 @@ export interface SearchBarProps {
   initialValue?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Fired when the renter presses the search button in Search mode.
+   * Filtering already happened live as they typed, so this is not "run the
+   * search" — it is "take me to the results". Without it the button was
+   * inert: it closed an open date picker and returned, which reads as a
+   * broken primary control on a page whose results are further down. */
+  onSearch?: () => void;
   /** Drop the Search/Ask AI toggle and stay in AI mode. For `/ai`, which is
    * the agent's own room — landing there on the structured Where/From/Until
    * bar, with "Ask AI" as something you still have to opt into, contradicts
@@ -289,6 +295,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     onCityMatch,
     onDateRangeChange,
     onCountryMatch,
+    onSearch,
     initialValue = '',
     placeholder = 'Anything else? SUV, under 150k, automatic…',
     disabled = false,
@@ -453,11 +460,13 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
       // already applied live (onCityMatch/onDateRangeChange fire the instant
       // each changes); the button's only job left is closing an open picker.
       setDatesOpen(false);
+      setSuggestOpen(false);
       if (locationText.trim()) {
         const entry: RecentSearch = { label: locationText.trim(), dateLabel: formatDateRange(dateRange) ?? undefined };
         saveRecent(entry);
         setRecents(loadRecents());
       }
+      onSearch?.();
       return;
     }
     const message = composeMessage();

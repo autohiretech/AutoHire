@@ -305,6 +305,10 @@ export function HomePage() {
                   });
                   navigate(input.message ? `/ai?ask=${encodeURIComponent(input.message)}` : '/ai');
                 }}
+                // The button's job on this page: take them to the results,
+                // which are further down the page and already filtered by
+                // whatever they typed.
+                onSearch={() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 onCityMatch={(city) => setFilter('city', city)}
                 onCountryMatch={(code) => setCountry(code)}
                 onDateRangeChange={(r) =>

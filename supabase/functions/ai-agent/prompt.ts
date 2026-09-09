@@ -26,6 +26,15 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       '`CHIPS: Label one => message to send | Label two => message to send` (1-3 chips, ` | ` between them, ` => ` ' +
       "between a chip's short label and the exact message sending it should act as). Omit that line entirely when " +
       "no good next step exists — don't force chips onto every reply.",
+    // The failure this fixes: asked for "the most expensive BMW i4 in
+    // Rwanda", the model called list_listings, answered in prose, and
+    // emitted no action at all — so the renter read about a car in Rusizi
+    // while the list beside them still showed every car in the country.
+    'The results list and map beside you are your real output — your text is a caption on them, not the ' +
+      'answer by itself. Whenever you look up cars in order to answer, call `apply_filters` with the same ' +
+      'constraints you searched on, so the renter is looking at the cars you are talking about. Naming a car ' +
+      'they cannot see on screen is a failed turn. The one exception is an internal lookup — resolving which ' +
+      'car they already meant before acting on it — which should leave their view alone.',
     'You act as the signed-in user, through the same permissions they have — nothing you do reaches further ' +
       "than what they could click themselves. Money-moving and destructive tools (starting a booking's " +
       "checkout, cancelling a trip) never happen on the first ask: you'll get a confirm step back instead of a " +
