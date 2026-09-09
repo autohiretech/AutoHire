@@ -254,6 +254,11 @@ export const en = {
   'payhold.setCountryToPay': 'Set your country to pay',
   'payhold.pay': 'Pay {amount}',
   'payhold.couldNotStart': 'Could not start the payment.',
+  'payhold.priceChangedTitle': 'The price changed while this page was open',
+  'payhold.priceChangedBody':
+    'The host has updated their rate, so this booking now comes to {newTotal} instead of {oldTotal}. Nothing has been charged yet.',
+  'payhold.priceChangedContinue': 'Continue at {amount}',
+  'payhold.priceChangedCancel': "Don't book",
   'payhold.moneyHeldUntilDone':
     "Your money is held until the trip is done — the host is paid after you both confirm the car came back.",
 

@@ -422,6 +422,10 @@ export function BookingPage() {
                   estimatedHours={isHourly ? estimatedHours : undefined}
                   listingCurrency={cur}
                   label={money(total)}
+                  // The same number `label` is showing, unformatted — what the
+                  // deal's own total is checked against before any card form
+                  // opens. See PayholdPayment's `expectedTotal`.
+                  expectedTotal={total}
                   disabled={!datesValid}
                   onCheckoutOpenChange={setCheckoutOpen}
                 />

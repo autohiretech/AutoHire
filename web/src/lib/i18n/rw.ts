@@ -283,6 +283,14 @@ export const rw: Record<keyof typeof en, string> = {
   'payhold.setCountryToPay': 'Shyiraho igihugu cyawe kugira ngo wishyure',
   'payhold.pay': 'Wishyure {amount}',
   'payhold.couldNotStart': 'Ntibyashobotse gutangira ubwishyu.',
+  // Money-critical: these name two prices and ask the renter to accept one of
+  // them. Same reasoning as the currency disclosures above — kept in English
+  // pending native review rather than guessed, since misreading which figure
+  // is the new one is exactly the mistake that costs someone money.
+  'payhold.priceChangedTitle': en['payhold.priceChangedTitle'],
+  'payhold.priceChangedBody': en['payhold.priceChangedBody'],
+  'payhold.priceChangedContinue': en['payhold.priceChangedContinue'],
+  'payhold.priceChangedCancel': en['payhold.priceChangedCancel'],
   'payhold.moneyHeldUntilDone':
     "Amafaranga yawe abikwa kugeza urugendo rurangiye — nyir'imodoka ahabwa amafaranga nyuma yo kwemeza ko imodoka yagarutse.",
 

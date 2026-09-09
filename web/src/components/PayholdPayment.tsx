@@ -6,6 +6,7 @@ import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry } from '@/lib/country';
 import { presentmentCurrenciesFor } from '@/lib/payments';
+import { formatMoney, isCurrencyCode } from '@/lib/currency';
 import { CheckoutModal } from '@/components/CheckoutModal';
 import { Button, Label, Notice, Select, Skeleton } from '@/components/ui';
 import { useT } from '@/lib/i18n';
@@ -40,6 +41,7 @@ export function PayholdPayment({
   estimatedHours,
   listingCurrency,
   label,
+  expectedTotal,
   disabled,
   onCheckoutOpenChange,
 }: {
@@ -58,6 +60,18 @@ export function PayholdPayment({
    */
   listingCurrency: string;
   label: string;
+  /**
+   * The total the renter is being shown, as a number in `listingCurrency`.
+   *
+   * `label` is that same figure already formatted, which is no use for
+   * comparing. The deal is priced server-side from the listing as it is at the
+   * moment Pay is pressed — correctly, since a client must never supply its
+   * own price — while this page shows a figure computed from a listing it
+   * cached on load and never refetches. If the host edits their rate in
+   * between, those two disagree and the renter is charged the one they were
+   * not shown. This is what makes that detectable.
+   */
+  expectedTotal: number;
   disabled: boolean;
   /**
    * A deal is a snapshot — PayHold prices it once, at creation, off whatever
@@ -103,6 +117,16 @@ export function PayholdPayment({
   const [dealId, setDealId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * A created deal whose price does not match what the renter was quoted.
+   *
+   * Held here instead of opening the checkout, because the deal is real and
+   * already priced — the renter simply has not agreed to this number. They
+   * either accept it, or it gets withdrawn.
+   */
+  const [repriced, setRepriced] = useState<
+    { dealId: string; paymentLink: string; checkoutBase: string | null; total: number } | null
+  >(null);
 
   useEffect(() => {
     onCheckoutOpenChange?.(open);
@@ -123,6 +147,11 @@ export function PayholdPayment({
   // States, and picking it also changed which payment methods PayHold offered
   // them. Currency is the thing they actually care about, so it is the thing
   // they are asked.
+  // The deal's `total` is in the car's own currency — the settlement one,
+  // never whatever the renter chose to be charged in — so the reprice notice
+  // is denominated the same way the quote on this page already is.
+  const cur = isCurrencyCode(listingCurrency) ? listingCurrency : 'RWF';
+
   const payerCountry = me?.country ?? '';
   const currencies = useMemo(
     () =>
@@ -164,7 +193,12 @@ export function PayholdPayment({
     setBusy(true);
     setError(null);
     try {
-      const { dealId: newDealId, paymentLink, checkoutBase: base } = await client.createPayholdDeal({
+      const {
+        dealId: newDealId,
+        paymentLink,
+        checkoutBase: base,
+        total: dealTotal,
+      } = await client.createPayholdDeal({
         listingId,
         startDate,
         endDate,
@@ -178,6 +212,26 @@ export function PayholdPayment({
           ? { presentmentCurrency: chargeCurrency }
           : {}),
       });
+      // What the server actually priced, against what the button said. Both
+      // are `subtotal + serviceFee` in the car's own currency, computed the
+      // same way on each side, so a gap means the listing changed since this
+      // page loaded. Rounding only guards against a float arriving over the
+      // wire; these are whole units.
+      //
+      // Deliberately one-directional. Being charged MORE than the button says
+      // is the bug — that must never happen without the renter agreeing to the
+      // new number. Being charged LESS costs them nothing, and stopping to
+      // announce a discount would be friction over a non-problem.
+      //
+      // It also decides which way this fails if the two sides ever drift
+      // apart — `SERVICE_FEE_RATE` is declared once here and once in
+      // payhold-create-deal, and a day will come when someone changes one of
+      // them. Drifting cheap just charges less; drifting expensive stops and
+      // asks, which is the right way round for a bug about overcharging.
+      if (Math.round(dealTotal) > Math.round(expectedTotal)) {
+        setRepriced({ dealId: newDealId, paymentLink, checkoutBase: base, total: dealTotal });
+        return;
+      }
       setCheckoutBase(base);
       setLink(paymentLink);
       setDealId(newDealId);
@@ -265,10 +319,54 @@ export function PayholdPayment({
           you get a snapshot deal in a currency you were never shown and
           cannot now change. The choice has to exist before the button that
           commits it does. */}
+      {/* The price moved between this page loading and Pay being pressed.
+          The deal exists and is priced at the new figure, but the renter has
+          only ever agreed to the old one, so nothing opens until they say so.
+          Both numbers are named — "it went up" without saying from what is
+          the kind of notice people click past. */}
+      {repriced && (
+        <Notice tone="warn" className="mb-3 flex-col items-start gap-3">
+          <div>
+            <p className="font-medium">{t('payhold.priceChangedTitle')}</p>
+            <p className="mt-0.5">
+              {t('payhold.priceChangedBody', {
+                newTotal: formatMoney(repriced.total, cur),
+                oldTotal: formatMoney(expectedTotal, cur),
+              })}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => {
+                setCheckoutBase(repriced.checkoutBase);
+                setLink(repriced.paymentLink);
+                setDealId(repriced.dealId);
+                setRepriced(null);
+                setOpen(true);
+              }}
+            >
+              {t('payhold.priceChangedContinue', { amount: formatMoney(repriced.total, cur) })}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Withdraw it rather than leave it hanging. This deal was
+                // created for a price the renter has just declined, and an
+                // abandoned `created` deal is exactly the orphan
+                // payhold-cancel-deal exists to stop.
+                void client.cancelPayholdDeal(repriced.dealId).catch(() => {});
+                setRepriced(null);
+              }}
+            >
+              {t('payhold.priceChangedCancel')}
+            </Button>
+          </div>
+        </Notice>
+      )}
       <Button
         className="w-full"
         size="lg"
-        disabled={disabled || busy || optionsLoading || !payerCountry}
+        disabled={disabled || busy || optionsLoading || !payerCountry || !!repriced}
         onClick={pay}
       >
         {busy
