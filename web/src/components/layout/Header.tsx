@@ -20,6 +20,7 @@ import { useNotifications } from '@/components/NotificationsProvider';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
 import { CurrencySelector } from '@/components/marketplace/CurrencySelector';
 import { LanguageSelector } from '@/components/marketplace/LanguageSelector';
+import { LANGUAGES, useLanguage } from '@/lib/i18n';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCanRent } from '@/lib/account';
@@ -52,6 +53,7 @@ export function Header() {
   const { data: me } = useCurrentUser();
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { lang, setLang, t } = useLanguage();
   const { open: openNotifications } = useNotifications();
   const canRent = useCanRent();
 
@@ -124,10 +126,22 @@ export function Header() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
+        {/* `min-w-0` so this group can actually shrink. The three selectors
+            each carry `min-w-0 shrink` themselves, but a flex item cannot
+            compress below its content unless its parent can too — without
+            this the group stayed at its natural width and pushed the header
+            ~6px past the viewport at ~830px, taking the hamburger with it. */}
+        <div className="flex min-w-0 items-center gap-2">
           <CountrySelector />
           <CurrencySelector />
-          <LanguageSelector />
+          {/* Third selector only once there is room. At 390px the row is
+              logo + country + currency + language + hamburger, and the
+              hamburger was being pushed 18px off the right edge — unclickable.
+              Language is a set-once preference, so below `sm` it moves into
+              the menu rather than competing for the last 18px. */}
+          <div className="hidden sm:block">
+            <LanguageSelector />
+          </div>
           {user ? (
             <>
               {/* Desktop entry to the agent's own room. On phones the middle
@@ -156,7 +170,7 @@ export function Header() {
               {canRent && (
                 <Link
                   to="/watchlist"
-                  className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] sm:block"
+                  className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] lg:block"
                   aria-label="Cars you're watching"
                   title="Watching"
                 >
@@ -165,7 +179,7 @@ export function Header() {
               )}
               <Link
                 to="/feed"
-                className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] sm:block"
+                className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] lg:block"
                 aria-label="Feed"
                 title="Feed"
               >
@@ -174,7 +188,7 @@ export function Header() {
               {/* Circles are role-agnostic — a host and a renter both use them. */}
               <Link
                 to="/circles"
-                className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] sm:block"
+                className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] lg:block"
                 aria-label="Your circles"
                 title="Circles"
               >
@@ -252,6 +266,30 @@ export function Header() {
       {/* Mobile nav panel */}
       {menuOpen && (
         <nav id="mobile-nav" className="border-t border-[var(--color-line)] bg-[var(--color-surface-raised)] px-4 py-2 lg:hidden">
+          {/* Language lives here on the narrowest screens, where the
+              header has no room for a third selector. `sm:hidden`
+              rather than always-on so it is not offered twice. */}
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--color-line)] pb-2 sm:hidden">
+            <span className="text-body-sm font-semibold text-[var(--color-content-muted)]">{t('lang.label')}</span>
+            <div className="flex items-center gap-1">
+              {LANGUAGES.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  onClick={() => setLang(l.code)}
+                  aria-pressed={lang === l.code}
+                  className={cn(
+                    'rounded-[var(--radius-pill)] px-3 py-1.5 text-body-sm font-semibold transition-colors',
+                    lang === l.code
+                      ? 'bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
+                      : 'text-[var(--color-content-muted)]',
+                  )}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {navItems.map((item) => (
             <NavLink
               key={item.to}
