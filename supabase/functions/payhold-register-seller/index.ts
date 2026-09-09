@@ -109,7 +109,7 @@ async function changeDestination(
   country: string,
   network: string,
   bankCode: string,
-): Promise<Response> {
+): Promise<Response | null> {
   let destination;
   try {
     ({ destination } = await addSellerDestination(sellerId, {
@@ -127,19 +127,51 @@ async function changeDestination(
     }));
   } catch (e) {
     // Our column names a seller PayHold has never heard of — a profile carried
-    // between environments, or a seller id written by hand. "Seller <uuid> not
-    // found" is PayHold telling us about our own bookkeeping, and repeating it
-    // to a host asks them to fix something they cannot see.
+    // between environments, a seller id written by hand, or a tenant sandbox
+    // reset, which is a documented and repeatable owner action rather than an
+    // accident. "Seller <uuid> not found" is PayHold telling us about our own
+    // bookkeeping, and it is ours to repair.
+    //
+    // This used to stop here with "contact support and we will reconnect it",
+    // which stranded the host permanently: nothing cleared the column, so
+    // every later attempt took this same branch and hit the same wall. After a
+    // reset that is every linked host at once, and support has no button
+    // either.
+    //
+    // So the stale link is dropped and the caller falls through to the path it
+    // already has for a profile with no seller — a get-or-create on the
+    // client's own `external_user_id`. A seller that still exists under that
+    // handle is relinked rather than duplicated; one that is genuinely gone is
+    // registered fresh, with the destination the host just typed.
+    //
+    // **Only a 404 does this.** The refusals that matter to a host —
+    // `network_required`, `bank_code_required`, a corridor PayHold will not
+    // pay — are 4xx but never 404, so they still surface as themselves rather
+    // than silently unlinking somebody over their own typo. And this call
+    // names no destination id, so a 404 here can only be about the seller.
     if ((e as { status?: number }).status === 404) {
-      return json(
-        {
-          error:
-            'We could not find your payout account with our payments provider. ' +
-            'Contact support and we will reconnect it.',
-          code: 'seller_unknown',
-        },
-        409,
+      console.warn(
+        `payhold_seller_id ${sellerId} is unknown to PayHold — clearing the stale ` +
+          'link and re-registering this host from scratch.',
       );
+      const { error: clearErr } = await admin
+        .from('profiles')
+        .update({
+          payhold_seller_id: null,
+          // The masked destination and label describe a seller that no longer
+          // exists; leaving them would show the host an account they cannot be
+          // paid through. `payout_method` deliberately survives — it is their
+          // own preference, and the create path reads it.
+          payout_destination: null,
+          payout_label: null,
+          payout_status: null,
+        })
+        .eq('id', uid);
+      if (clearErr) return json({ error: clearErr.message }, 500);
+
+      // Null, not a Response: the caller reads this as "there was no usable
+      // link" and carries on into registration.
+      return null;
     }
     throw e;
   }
@@ -291,7 +323,7 @@ Deno.serve(async (req: Request) => {
     // cut off, a bank account closes, and the money keeps being sent somewhere
     // they can no longer reach.
     if (profile.payhold_seller_id) {
-      return await changeDestination(
+      const changed = await changeDestination(
         admin,
         uid,
         String(profile.payhold_seller_id),
@@ -302,6 +334,13 @@ Deno.serve(async (req: Request) => {
         networkName,
         bank,
       );
+      // A Response means the change was answered, one way or another. Null
+      // means the link was stale and has just been cleared — so this host is
+      // now exactly a host with no seller, and falls into the registration
+      // path below rather than being told to contact support about a row
+      // nobody can see.
+      if (changed) return changed;
+      profile.payhold_seller_id = null;
     }
 
     /**

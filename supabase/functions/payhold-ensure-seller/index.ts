@@ -116,10 +116,42 @@ Deno.serve(async (req: Request) => {
     // is the only path that reactivates a seller `payhold-deactivate-seller`
     // turned off on a previous toggle back to renter.
     if (profile.payhold_seller_id) {
+      // A 404 here is not a failed reactivation, it is a link to a seller that
+      // no longer exists — a profile carried between environments, or a tenant
+      // sandbox reset, which is a documented owner action rather than an
+      // accident. Swallowing it and returning `alreadyLinked` handed the caller
+      // a stale id as though it were real, and nothing ever repaired the
+      // column, so the host stayed broken through every retry.
+      //
+      // Only a 404 repairs. Any other failure keeps the old behaviour — logged
+      // and ignored — because reactivation is a convenience and a rail having a
+      // bad minute must not unlink a host who is perfectly fine.
+      let stale = false;
       await setSellerActive(profile.payhold_seller_id, true).catch((e) => {
+        if ((e as { status?: number }).status === 404) {
+          stale = true;
+          console.warn(
+            `payhold_seller_id ${profile.payhold_seller_id} is unknown to PayHold — ` +
+              'clearing the stale link and re-linking by external_user_id.',
+          );
+          return;
+        }
         console.error('reactivating seller failed', e);
       });
-      return json({ sellerId: profile.payhold_seller_id, alreadyLinked: true }, 200);
+
+      if (!stale) {
+        return json({ sellerId: profile.payhold_seller_id, alreadyLinked: true }, 200);
+      }
+
+      // Cleared, then straight into the get-or-create below — which is exactly
+      // the path a profile that never had a seller takes, and the one that
+      // re-links a seller still living under this handle rather than minting a
+      // second one.
+      const { error: clearErr } = await admin
+        .from('profiles')
+        .update({ payhold_seller_id: null })
+        .eq('id', uid);
+      if (clearErr) return json({ error: clearErr.message }, 500);
     }
 
     // A seller may already exist under this handle while this profile has
