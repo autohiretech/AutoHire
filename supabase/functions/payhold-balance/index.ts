@@ -120,10 +120,55 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const [wallet, caps] = await Promise.all([
-      sellerBalance(sellerId),
-      sellerCapabilities(sellerId).catch(() => null),
-    ]);
+    // A seller id we hold can be dead, not just absent — a PayHold environment
+    // reset wipes the tenant's sellers and leaves every `payhold_seller_id`
+    // pointing at nothing. That is the same "no wallet in PayHold" the branch
+    // above already answers for a host who never registered, so it gets the
+    // same answer rather than an error page: an empty wallet, and the payouts
+    // screen tells them to connect. Connecting runs `payhold-register-seller`,
+    // which clears the stale link and re-registers on exactly this 404 — so
+    // the empty shape is what walks the host into the repair.
+    //
+    // Only a 404 naming the seller. A timeout, a 500, or PayHold being down
+    // are not "you have no money" and must not be dressed up as an empty
+    // wallet — a host who sees a confident zero stops looking for their
+    // earnings. This call names no other resource, so a 404 can only be the
+    // seller.
+    //
+    // Nothing is written here. Clearing the stale id would be a write inside a
+    // GET, and `payhold-register-seller` already does it on the way through.
+    // `sellerUnlinked` is returned so the screen can say "reconnect your payout
+    // account" instead of "you have no earnings yet" — the failure stays
+    // visible to the host, which was the objection to answering with an empty
+    // wallet at all.
+    let wallet: Awaited<ReturnType<typeof sellerBalance>> | null = null;
+    let caps: Awaited<ReturnType<typeof sellerCapabilities>> | null = null;
+    try {
+      [wallet, caps] = await Promise.all([
+        sellerBalance(sellerId),
+        sellerCapabilities(sellerId).catch(() => null),
+      ]);
+    } catch (e) {
+      const unlinked = e instanceof PayHoldError && e.status === 404 && /seller/i.test(e.message);
+      if (!unlinked) throw e;
+      console.warn(
+        `payhold_seller_id ${sellerId} is unknown to PayHold — reporting an empty wallet; ` +
+          'payhold-register-seller will clear the stale link when the host reconnects.',
+      );
+      return json(
+        {
+          sellerId: null,
+          sellerUnlinked: true,
+          balances: [],
+          withdrawable: [],
+          canReceivePayouts: false,
+          kycStatus: 'pending',
+          reasons: [],
+          routeReasons: [],
+        },
+        200,
+      );
+    }
 
     // PayHold speaks snake_case; the app's types are camelCase. Mapped here
     // rather than in the browser so the shape crossing the wire is the shape
@@ -131,7 +176,7 @@ Deno.serve(async (req: Request) => {
     return json(
       {
         sellerId,
-        balances: wallet.balances.map((b) => ({
+        balances: wallet!.balances.map((b) => ({
           currency: b.currency,
           held: b.held,
           pendingClearance: b.pending_clearance,
@@ -139,7 +184,7 @@ Deno.serve(async (req: Request) => {
           reserved: b.reserved,
           paidOut: b.paid_out,
         })),
-        withdrawable: wallet.withdrawable.map((w) => ({
+        withdrawable: wallet!.withdrawable.map((w) => ({
           currency: w.currency,
           availableAmount: w.available_amount,
           availableCount: w.available_count,

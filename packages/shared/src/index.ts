@@ -599,6 +599,17 @@ export interface PayholdWithdrawable {
 export interface PayholdWallet {
   /** Null until the host has registered a payout destination. */
   sellerId: string | null;
+  /**
+   * The host HAD a seller record and PayHold no longer has it — a stale
+   * `payhold_seller_id`, as a PayHold environment reset leaves behind.
+   *
+   * Distinct from a plain `sellerId: null`, which means they never set payouts
+   * up. Both have an empty wallet, but only one of them is owed an
+   * explanation: telling a host who already connected payouts to "set up
+   * payouts to start earning" reads as their work having vanished. Reconnecting
+   * repairs the link (`payhold-register-seller` clears it on the same 404).
+   */
+  sellerUnlinked?: boolean;
   balances: PayholdBalance[];
   withdrawable: PayholdWithdrawable[];
   canReceivePayouts: boolean;

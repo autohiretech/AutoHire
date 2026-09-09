@@ -871,6 +871,7 @@ export const supabaseClient = {
     if (payload?.error) throw new Error(payload.error);
     return {
       sellerId: payload.sellerId ?? null,
+      sellerUnlinked: payload.sellerUnlinked ?? false,
       balances: payload.balances ?? [],
       withdrawable: payload.withdrawable ?? [],
       canReceivePayouts: payload.canReceivePayouts ?? false,

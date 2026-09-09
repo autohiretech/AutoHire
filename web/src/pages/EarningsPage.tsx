@@ -363,13 +363,24 @@ export function EarningsPage() {
       {w && !w.sellerId && !notConfigured && (
         <Notice tone="warn" className="mt-6 flex-col items-start gap-3">
           <div>
-            <p className="font-medium">Set up payouts to start earning</p>
+            {/* Same empty wallet, two different situations. A host who never
+                set payouts up is being asked to start; a host whose payout
+                account went missing on our side is owed the difference, not
+                copy implying they never did the work. Their earnings are
+                untouched either way — the wallet is empty because nothing can
+                reach PayHold's record of it, not because the money went
+                anywhere. */}
+            <p className="font-medium">
+              {w.sellerUnlinked ? 'Reconnect your payout account' : 'Set up payouts to start earning'}
+            </p>
             <p className="mt-0.5 text-body-sm">
-              Your trips can't pay out until we know where to send the money.
+              {w.sellerUnlinked
+                ? "Your payout account isn't reachable, so we can't show your balance. Reconnecting restores it — your earnings are safe in the meantime."
+                : "Your trips can't pay out until we know where to send the money."}
             </p>
           </div>
           <Button onClick={() => navigate('/payouts/setup')}>
-            <Banknote size={16} /> Add a payout method
+            <Banknote size={16} /> {w.sellerUnlinked ? 'Reconnect payouts' : 'Add a payout method'}
           </Button>
         </Notice>
       )}
