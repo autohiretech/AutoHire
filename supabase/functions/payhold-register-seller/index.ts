@@ -23,6 +23,7 @@ import {
   payholdConfigured,
   payoutProviderFor,
   sellerCapabilities,
+  sellerDestinations,
   type PayoutMethod,
   type PayoutProvider,
   type Seller,
@@ -110,6 +111,40 @@ async function changeDestination(
   network: string,
   bankCode: string,
 ): Promise<Response | null> {
+  // Does this seller have a payout corridor yet?
+  //
+  // PayHold defaults country and currency from the seller's own row, and for a
+  // seller that HAS them that is right: a host swapping MoMo for a bank account
+  // has not moved country, and restating it is a chance to restate it wrongly.
+  //
+  // But a seller registered with no destination has no country to default
+  // from. `payhold-ensure-seller` creates exactly that the moment somebody
+  // toggles to host — bare name and handle, no country — and so does
+  // `payhold-create-deal`'s stale-link repair. So by the time a host reaches
+  // payout setup they almost always have a seller, which sent them down this
+  // path, which said nothing about country, and PayHold refused the lot:
+  // "This seller has no country on file yet; country is required with their
+  // first destination". Every host registering a payout destination for the
+  // first time hit it, and AutoHire's own screen showed a masked number that
+  // PayHold had never accepted.
+  //
+  // Asking for the destinations rather than the seller because the seller is
+  // only reachable by `external_user_id`, and this has the seller id itself —
+  // the one the profile actually points at. Empty is the same condition
+  // PayHold is testing for: no destination means no corridor, which means
+  // nothing established to contradict, so stating the country is safe here
+  // and only here.
+  let firstDestination = false;
+  try {
+    const { destinations } = await sellerDestinations(sellerId);
+    firstDestination = destinations.length === 0;
+  } catch {
+    // Unknown. Leave it to PayHold's default — the same behaviour as before
+    // this check existed. A lookup that fails here is PayHold being
+    // unreachable, and the add is about to say so more accurately than a
+    // guessed country would.
+  }
+
   let destination;
   try {
     ({ destination } = await addSellerDestination(sellerId, {
@@ -120,9 +155,7 @@ async function changeDestination(
       // will not transfer to, and nothing said so until a payout failed.
       ...(network ? { network } : {}),
       ...(bankCode ? { bankCode } : {}),
-      // PayHold defaults country and currency from the seller's own row, and it
-      // should: a host swapping MoMo for a bank account has not moved country,
-      // and restating it here is a chance to restate it wrongly.
+      ...(firstDestination ? { country } : {}),
       label: METHOD_LABEL[method] ?? 'Payout',
     }));
   } catch (e) {
