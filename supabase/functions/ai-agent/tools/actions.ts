@@ -38,8 +38,11 @@ export const navigateTool: ToolDef<{ route: string }, { action: NavigateAction }
 
 export interface FiltersAction {
   type: 'filters';
+  /** The complete filter set that should be active after this action —
+   * not a patch. See `applyFiltersTool` for why the patch-plus-`clear`
+   * contract was dropped. */
   filters: Record<string, unknown>;
-  clear: string[];
+  replace: true;
 }
 
 export const applyFiltersTool: ToolDef<
@@ -55,16 +58,17 @@ export const applyFiltersTool: ToolDef<
     startDate?: string;
     endDate?: string;
     nearMe?: boolean;
-    clear?: string[];
   },
   { action: FiltersAction }
 > = {
   name: 'apply_filters',
   description:
-    "Apply search filters that best match the renter's request, same fields the browse page's filter bar " +
-    "uses. Filters carry over turn to turn — when a constraint no longer applies (\"not an suv\", \"any price " +
-    'is fine"), put that field in `clear`; omitting a field only means "leave it as it is", it does NOT clear a ' +
-    'value set earlier.',
+    "Set the renter's search filters — the same fields the browse page's filter bar uses. " +
+    'IMPORTANT: this REPLACES the whole filter set. Send every filter that should be active after this ' +
+    'call, including ones already on that you want to keep; anything you leave out is switched off. ' +
+    'So to add a city to an existing electric filter, send both. To drop the electric filter, send ' +
+    'everything except it. There is no separate clear step, and you never need to name a field just to ' +
+    'remove it.',
   input_schema: {
     type: 'object',
     properties: {
@@ -89,17 +93,13 @@ export const applyFiltersTool: ToolDef<
         description:
           "Order results by real distance from the renter's own location, nearest first. Use for \"near me\", \"closest\", \"around here\". Only works when their location is known — the system prompt says whether it is. Do NOT guess a city instead.",
       },
-      clear: {
-        type: 'array',
-        items: { type: 'string', enum: ['query', 'country', 'city', 'category', 'ownerType', 'transmission', 'minSeats', 'maxPriceRwf', 'startDate', 'endDate', 'nearMe'] },
-      },
     },
   },
   scope: 'any',
   effect: 'write',
   summary: (input) => `Updating filters${input.query ? ` — "${input.query}"` : ''}`,
   run(ctx, input) {
-    const { clear, nearMe, ...rest } = input;
+    const { nearMe, ...rest } = input;
     // `nearMe` is a boolean to the model and a coordinate pair to the app.
     // The model never sees or invents lat/lng — it only says "near them",
     // and the real coordinate comes from the client's own geolocation, which
@@ -110,11 +110,13 @@ export const applyFiltersTool: ToolDef<
       filters.nearLat = ctx.userLocation.lat;
       filters.nearLng = ctx.userLocation.lng;
     }
-    const cleared = [...(clear ?? [])];
-    // "nearMe" isn't a filter field — clearing it clears the pair it set.
-    const nearIdx = cleared.indexOf('nearMe');
-    if (nearIdx !== -1) cleared.splice(nearIdx, 1, 'nearLat', 'nearLng');
-    return Promise.resolve({ action: { type: 'filters', filters, clear: cleared } });
+    // `replace` tells the client this is the complete desired state, not a
+    // patch. The patch-plus-`clear` contract this replaces was more than the
+    // available models could hold: asked for "cars in Rusizi" they would set
+    // `city: 'Rusizi'` and put `city` in `clear` in the same call, or clear
+    // the city they had just been told about. Stating the full set removes
+    // the whole class of error — there is nothing left to get out of sync.
+    return Promise.resolve({ action: { type: 'filters', filters, replace: true } });
   },
 };
 

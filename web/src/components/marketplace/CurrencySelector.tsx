@@ -78,7 +78,12 @@ export function CurrencySelector() {
   }, [activeIndex]);
 
   return (
-    <div ref={ref} className="relative">
+    // `sm:relative`, not `relative`: below `sm` this wrapper is deliberately
+    // NOT a containing block, so the panel below resolves against the sticky
+    // <header> and can span the screen. Anchored to this button instead, a
+    // 304px right-aligned panel started at -54px on a 390px screen — the
+    // country list ran off the left edge with its labels cut in half.
+    <div ref={ref} className="sm:relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -106,7 +111,7 @@ export function CurrencySelector() {
       </button>
 
       {open && (
-        <div className="animate-popover-in absolute right-0 z-40 mt-1.5 w-64 origin-top-right overflow-hidden rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+        <div className="animate-popover-in absolute inset-x-3 top-full z-40 origin-top overflow-hidden rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)] sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-1.5 sm:w-64 sm:origin-top-right">
           <div className="border-b border-[var(--color-line)] p-2.5">
             <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-2.5 py-2 transition-colors focus-within:border-[var(--color-accent-on)] focus-within:bg-[var(--color-surface-raised)]">
               <Search size={15} className="shrink-0 text-[var(--color-content-subtle)]" />

@@ -92,7 +92,7 @@ export interface ResearchFieldProps {
    * /search chips use, so an agent-set filter and a hand-clicked one are one
    * system, never two competing states. */
   filters: ListingFilters;
-  onFilters: (filters: ListingFilters, clear?: (keyof ListingFilters)[]) => void;
+  onFilters: (filters: ListingFilters, clear?: (keyof ListingFilters)[], replace?: boolean) => void;
   onHighlight: (ids: string[]) => void;
   onRemoveFilter: (key: keyof ListingFilters) => void;
   onClearFilters: () => void;
@@ -239,7 +239,7 @@ export function ResearchField({
         break;
       case 'filters':
         awaitingNudgeRef.current = true;
-        onFilters(action.filters, action.clear);
+        onFilters(action.filters, action.clear, action.replace);
         break;
       case 'highlight':
         onHighlight(action.ids);

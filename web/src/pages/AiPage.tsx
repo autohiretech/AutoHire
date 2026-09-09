@@ -113,11 +113,29 @@ function RenterAiPage() {
   });
   const results = listings ?? [];
 
-  function onFilters(patch: ListingFilters, clear?: (keyof ListingFilters)[]) {
+  function onFilters(patch: ListingFilters, clear?: (keyof ListingFilters)[], replace?: boolean) {
     setAiPending(false);
+    // The agent sends the complete filter set it wants, not a patch, so its
+    // omissions are meaningful — they are the filters it chose to drop.
+    // Country is the one thing it may not lose: the market comes from the
+    // header, and a turn that forgot it would silently widen the search to
+    // every country.
+    if (replace) {
+      setFilters({ country: country.code, ...patch });
+      return;
+    }
     setFilters((prev) => {
       const next = { ...prev, ...patch };
-      for (const key of clear ?? []) delete next[key];
+      // A field set in this same patch wins over a clear of that field.
+      // The model does sometimes send both — asked for cars in Rusizi it
+      // returned `filters: {city:'Rusizi'}` alongside `clear: ['city']` —
+      // and because clear ran last, the city it had just set was deleted.
+      // The renter was left with the stale filters and no city, while the
+      // reply claimed to be showing Rusizi. Setting a value is the more
+      // specific instruction, so it wins.
+      for (const key of clear ?? []) {
+        if (!(key in patch)) delete next[key];
+      }
       return next;
     });
   }

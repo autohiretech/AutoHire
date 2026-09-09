@@ -38,7 +38,7 @@ export interface AgentContext {
 
 export type AgentAction =
   | { type: 'navigate'; to: string }
-  | { type: 'filters'; filters: ListingFilters; clear?: (keyof ListingFilters)[] }
+  | { type: 'filters'; filters: ListingFilters; clear?: (keyof ListingFilters)[]; replace?: boolean }
   | { type: 'highlight'; ids: string[] }
   | { type: 'toast'; text: string }
   | { type: 'confirm'; summary: string; token: string };

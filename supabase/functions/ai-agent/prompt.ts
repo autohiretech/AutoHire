@@ -71,7 +71,13 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   }
   if (ctx.filters && Object.keys(ctx.filters).length > 0) {
     lines.push(
-      `Filters already active on their results: ${JSON.stringify(ctx.filters)}. A genuinely new request ` +
+      `Filters already active on their results: ${JSON.stringify(ctx.filters)}. These are sticky, and that ` +
+        'cuts both ways: a filter the renter never asked for will silently narrow every later answer. If ' +
+        'their request is broader than what is active — "cars in Rusizi" while a fuel or category filter is ' +
+        'on — clear what they did not ask for rather than quietly keeping it. Never describe results using a ' +
+        'constraint they did not state ("here are the electric cars in Rusizi" when they asked for cars in ' +
+        'Rusizi is wrong, even if a stale electric filter is on). And never put the same field in both ' +
+        '`filters` and `clear` in one call — set it or clear it, not both. A genuinely new request ' +
         "(different vehicle type, different city, dropping a price cap) needs those fields cleared explicitly " +
         "via apply_filters' clear array — omitting a field only means you're not changing it.",
     );
