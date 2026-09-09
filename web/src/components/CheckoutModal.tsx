@@ -295,14 +295,29 @@ const DEAD = ['payment_failed', 'expired', 'canceled'];
 function StripeFields({
   action,
   amountLabel,
+  chargeCurrency,
   onDone,
 }: {
   action: Extract<NextAction, { type: 'payment_element' }>;
   amountLabel: string;
+  /** PayHold's `presentment_currency` for this deal — the currency the card is
+   * actually charged in, which is not always the currency the car is priced
+   * in. Named here because this step is the last thing the renter sees before
+   * the money moves, and "Pay RF 80,428" alone does not say where RF came
+   * from or that it is the settled charge rather than a converted estimate. */
+  chargeCurrency?: string | null;
   onDone: () => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
+  /**
+   * Stripe's PaymentElement is an iframe that renders nothing until it is
+   * ready, so the card fields occupied no height and the Pay button was the
+   * first — and briefly only — thing in the dialog. `stripe` being non-null
+   * is not the same signal: the SDK resolves before the element has painted,
+   * so the button went live above an empty space where the card should be.
+   */
+  const [fieldsReady, setFieldsReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -342,11 +357,30 @@ function StripeFields({
 
   return (
     <div>
-      <PaymentElement options={{ layout: 'tabs' }} />
+      {/* The skeleton holds the card's place so the dialog does not open as a
+          lone Pay button and then push it down when the fields arrive. */}
+      {!fieldsReady && (
+        <div className="flex flex-col gap-3" aria-hidden="true">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <div className="flex gap-3">
+            <Skeleton className="h-10 flex-1" />
+            <Skeleton className="h-10 w-24" />
+          </div>
+        </div>
+      )}
+      <div className={fieldsReady ? undefined : 'h-0 overflow-hidden'}>
+        <PaymentElement options={{ layout: 'tabs' }} onReady={() => setFieldsReady(true)} />
+      </div>
       {error && <Notice tone="danger" className="mt-3">{error}</Notice>}
-      <Button className="mt-4 w-full" size="lg" disabled={!stripe || busy} onClick={submit}>
-        {busy ? 'Confirming…' : `Pay ${amountLabel}`}
+      <Button className="mt-4 w-full" size="lg" disabled={!stripe || !fieldsReady || busy} onClick={submit}>
+        {busy ? 'Confirming…' : !fieldsReady ? 'Loading card form…' : `Pay ${amountLabel}`}
       </Button>
+      {chargeCurrency && (
+        <p className="mt-2 text-center text-caption text-[var(--color-content-muted)]">
+          Charged in {chargeCurrency} — the currency this booking settles in.
+        </p>
+      )}
       <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-muted)]">
         <Lock size={12} className="text-brand-600" />
         Your card is entered directly with our payment provider.
@@ -1253,6 +1287,7 @@ export function CheckoutModal({
             <StripeFields
               action={action}
               amountLabel={amountLabel}
+              chargeCurrency={deal?.currency}
               // Stripe has taken the card; the deal has not moved yet. Handing
               // over to the poll rather than declaring success keeps the webhook
               // the only thing that can call a trip paid for.
