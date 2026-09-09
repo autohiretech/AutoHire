@@ -290,6 +290,17 @@ export function BookingPage() {
   // by the renter's nationality or their header market selection.
   const cur: CurrencyCode = isCurrencyCode(listing.priceCurrency) ? listing.priceCurrency : 'RWF';
   const money = (n: number) => formatMoney(n, cur);
+  // What an extra hour costs on a daily booking, past the 2-hour grace. The
+  // multiplier applies to an implied hourly price the host's own form defines
+  // as day ÷ 24, and falls back to it here for listings that never stored one
+  // — the same rule `payhold-create-deal` bills by, so the figure quoted here
+  // is the figure charged. Quoted at all because it never was: this line used
+  // to send renters to "the car's listing", which says nothing about it.
+  const lateReturnRate = Math.round(
+    (listing.pricePerHourRwf && listing.pricePerHourRwf > 0
+      ? listing.pricePerHourRwf
+      : (listing.pricePerDayRwf ?? 0) / 24) * (listing.overageMultiplier ?? 2),
+  );
   const instant = true;
   const superhost = host?.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5;
 
@@ -345,7 +356,7 @@ export function BookingPage() {
                 <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
                   {isHourly
                     ? 'A late return past your estimate is settled against the actual time used.'
-                    : `Coming back more than 2 hours after ${formatDate(endDate)} at this time bills an overage — see the car's listing.`}
+                    : `Coming back more than 2 hours after ${formatDate(endDate)} at this time bills ${money(lateReturnRate)} for each extra hour, collected by the host rather than charged to your card.`}
                 </p>
               </div>
               <div>

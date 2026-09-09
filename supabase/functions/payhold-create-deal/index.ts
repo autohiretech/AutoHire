@@ -317,7 +317,19 @@ Deno.serve(async (req: Request) => {
     // --- The money ----------------------------------------------------------
     const days = diffDays(startDate, endDate);
     const pricePerHour = Number(listing.price_per_hour_rwf ?? 0);
-    const overageRate = Math.round(pricePerHour * Number(listing.overage_multiplier ?? 2));
+    // The late-return rate for a daily booking.
+    //
+    // `overage_multiplier` is a multiple of an *implied* hourly price, and the
+    // host-facing form has always spelled out what implies it: "day price ÷
+    // 24" (ListCarPage). This computed it from `price_per_hour_rwf` instead —
+    // a column daily listings never set — so the rate was 0 for all 429 of
+    // them, and a late return billed the host's follow-up figure as nothing.
+    // Falling back to the day rate is what the form already promises, not a
+    // new price.
+    const impliedHourly = pricePerHour > 0
+      ? pricePerHour
+      : Number(listing.price_per_day_rwf ?? 0) / 24;
+    const overageRate = Math.round(impliedHourly * Number(listing.overage_multiplier ?? 2));
 
     // `subtotal` is the full estimate, charged now, for both rental types.
     // For an hourly car any time beyond the estimate is collected
@@ -339,10 +351,9 @@ Deno.serve(async (req: Request) => {
     // charged in and carries the FX itself.
     const currency = String(listing.price_currency ?? 'RWF').toUpperCase();
 
-    // Hourly bills late time at the flat rate; daily applies the penalty
-    // multiplier. Both are 0 when the listing carries no per-hour rate, which
-    // is every daily listing today — see where this is sent.
-    const overageMinor = toMinorUnits(isHourly ? pricePerHour : overageRate, currency);
+    // Hourly bills late time at its own flat rate — it has never charged a
+    // penalty multiplier. Only ever sent for hourly; see where this is used.
+    const overageMinor = toMinorUnits(pricePerHour, currency);
 
     // The moment the ESTIMATE says the car should be back.
     //
@@ -404,21 +415,27 @@ Deno.serve(async (req: Request) => {
       // hourly has never charged a penalty multiplier, only daily does — not
       // because one of them auto-collects and the other doesn't.
       //
-      // Sent only when there is a real rate to send. `overageRate` for a
-      // daily listing is `price_per_hour_rwf × overage_multiplier`, and a
-      // daily listing has no per-hour rate — every one of them computes 0,
-      // which PayHold rejects outright ("overage_rate and
-      // overage_unit_seconds must both be set together, as positive
-      // integers"), failing the whole booking. Both fields are therefore
-      // omitted rather than sent as 0.
+      // Hourly only, and deliberately so. Sending `overageRate` is what turns
+      // on PayHold's *automatic* collection — it charges the renter's card at
+      // confirmation without anyone approving it. The host-facing form
+      // promises the opposite for a daily listing's late-return rate: "shown
+      // to you on the trip so you can follow up — never charged
+      // automatically" (ListCarPage). Honouring that promise is the whole
+      // reason the daily rate stays out of this payload, even now that it
+      // finally computes to a real number.
       //
-      // Omitting them is the truthful option, not merely the safe one: a
-      // rate does not exist for these listings, and inventing one from the
-      // daily price would bill renters a late fee no one ever quoted them.
+      // It is also what PayHold's own contract requires: it rejects
+      // `overage_rate: 0` outright ("overage_rate and overage_unit_seconds
+      // must both be set together, as positive integers"), which failed every
+      // daily booking while the rate was computed from a column daily
+      // listings never set. Both fields go or neither does.
+      //
       // A deal with no `overage_rate` routes settlement down its
-      // pre-overage-wiring branch in payhold-settle-usage, which is exactly
-      // the behaviour daily bookings have always had.
-      ...(overageMinor > 0 ? { overageRate: overageMinor, overageUnitSeconds: 3600 } : {}),
+      // pre-overage-wiring branch in payhold-settle-usage, which writes
+      // `amount_owed_rwf` for the host to act on — display, not collection.
+      ...(isHourly && overageMinor > 0
+        ? { overageRate: overageMinor, overageUnitSeconds: 3600 }
+        : {}),
       // Everything the webhook needs to build the trip. It reads these from the
       // deal, never from its own payload — see payhold-webhook.
       metadata: {
