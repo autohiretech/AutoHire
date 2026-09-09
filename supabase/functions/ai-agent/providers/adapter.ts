@@ -1,6 +1,6 @@
 // AutoHire — ai-agent provider adapter.
 //
-// One interface both `anthropic.ts` and `mistral.ts` implement, so `loop.ts`
+// One interface both `anthropic.ts` and `openai-compatible.ts` implement, so `loop.ts`
 // never branches on which model is talking. The shape is deliberately
 // smaller than either vendor's own message format — just enough to carry a
 // turn of text/tool-use/tool-result — and each adapter translates to/from

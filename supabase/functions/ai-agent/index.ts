@@ -46,7 +46,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.124.0';
 import { AnthropicAdapter } from './providers/anthropic.ts';
-import { MistralAdapter } from './providers/mistral.ts';
+import { GROQ_DEFAULT_MODELS, GroqAdapter, MistralAdapter } from './providers/openai-compatible.ts';
 import type { ProviderAdapter } from './providers/adapter.ts';
 import { ALL_TOOLS } from './tools/registry.ts';
 import type { ToolCtx } from './tools/types.ts';
@@ -127,6 +127,27 @@ interface RequestBody {
 
 function pickProvider(): { provider: ProviderAdapter; model: string } | { error: string } {
   const name = Deno.env.get('AI_AGENT_PROVIDER') ?? 'anthropic';
+  if (name === 'groq') {
+    const apiKey = Deno.env.get('GROQ_API_KEY');
+    if (!apiKey) return { error: 'AI agent is not configured yet (missing GROQ_API_KEY).' };
+    // An ordered fallback chain rather than one model, because this account is
+    // on Groq's free tier: 429s and per-model capacity refusals are routine
+    // there, and a rate limit on the biggest model should cost the renter a
+    // slightly worse answer rather than the whole turn. `GroqAdapter` walks the
+    // list on 429/404/5xx and stops dead on anything else — see
+    // `worthFallingBackFrom`.
+    //
+    // `AI_AGENT_MODELS` (comma-separated) reorders or replaces it without a
+    // deploy; `AI_AGENT_MODEL` still pins a single one, so the older env var
+    // keeps meaning what it always did. Every default was verified present on
+    // this account AND sent a real tool call — see `GROQ_DEFAULT_MODELS`.
+    const pinned = Deno.env.get('AI_AGENT_MODEL');
+    const models = pinned
+      ? [pinned]
+      : (Deno.env.get('AI_AGENT_MODELS')?.split(',') ?? GROQ_DEFAULT_MODELS);
+    const adapter = new GroqAdapter(models, apiKey);
+    return { provider: adapter, model: adapter.primaryModel };
+  }
   if (name === 'mistral') {
     const apiKey = Deno.env.get('MISTRAL_API_KEY');
     if (!apiKey) return { error: 'AI agent is not configured yet (missing MISTRAL_API_KEY).' };
