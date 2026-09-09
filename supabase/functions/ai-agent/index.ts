@@ -382,6 +382,42 @@ Deno.serve({ port: Number(Deno.env.get('PORT') ?? '8000') }, async (req: Request
         write('error', { message: err instanceof Error ? err.message : String(err) });
       }
 
+      // If the model searched for cars and then described what it found, but
+      // never called apply_filters, the renter reads an answer about cars they
+      // cannot see — the results beside them still show something else. That
+      // is the single most-reported complaint about this agent, and it is not
+      // an instruction problem: the system prompt already says the results
+      // view is the real output, and the model still forgets, in the same way
+      // it could not be talked into using the old `clear` array correctly.
+      //
+      // So it is enforced here instead of asked for. The search it actually
+      // ran is a fact we hold; the view is made to match it. Only when the
+      // model emitted no filters action of its own — an explicit
+      // apply_filters always wins, since that is the model deliberately
+      // choosing a different view.
+      const emittedFilters = actions.some(
+        (a) => (a as { type?: string } | null)?.type === 'filters',
+      );
+      if (!emittedFilters) {
+        const lastSearch = [...toolLog].reverse().find((e) => e.tool === 'list_listings' && !e.error);
+        const searched = (lastSearch?.input ?? null) as Record<string, unknown> | null;
+        if (searched) {
+          // `nearMe` is the model's boolean, not a filter field — the real
+          // coordinate lives on ctx, exactly as apply_filters resolves it.
+          const { nearMe, ...rest } = searched;
+          const synthesised: Record<string, unknown> = { ...rest };
+          if (nearMe && ctx.userLocation) {
+            synthesised.nearLat = ctx.userLocation.lat;
+            synthesised.nearLng = ctx.userLocation.lng;
+          }
+          if (Object.keys(synthesised).length > 0) {
+            const action = { type: 'filters', filters: synthesised, replace: true };
+            actions.push(action);
+            write('action', action);
+          }
+        }
+      }
+
       await supabase.from('ai_turns').insert({
         id: `turn-${crypto.randomUUID()}`,
         session_id: sessionId,
