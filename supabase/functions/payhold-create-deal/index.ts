@@ -351,9 +351,6 @@ Deno.serve(async (req: Request) => {
     // charged in and carries the FX itself.
     const currency = String(listing.price_currency ?? 'RWF').toUpperCase();
 
-    // Hourly bills late time at its own flat rate — it has never charged a
-    // penalty multiplier. Only ever sent for hourly; see where this is used.
-    const overageMinor = toMinorUnits(pricePerHour, currency);
 
     // The moment the ESTIMATE says the car should be back.
     //
@@ -387,7 +384,7 @@ Deno.serve(async (req: Request) => {
       buyerRef: uid,
       sellerId: seller,
       description: isHourly
-        ? `AutoHire — ${listing.title} (${hours}hr estimate, overage auto-settled on return)`
+        ? `AutoHire — ${listing.title} (${hours}hr estimate)`
         : `AutoHire — ${listing.title} (${days} day${days === 1 ? '' : 's'})`,
       amount: toMinorUnits(dealAmount, currency),
       currency,
@@ -411,31 +408,25 @@ Deno.serve(async (req: Request) => {
       // attempt it automatically. Card renters get it collected
       // automatically the moment both sides confirm the trip is over.
       //
-      // Hourly and daily still branch because their overage *rate* differs —
-      // hourly has never charged a penalty multiplier, only daily does — not
-      // because one of them auto-collects and the other doesn't.
+      // **No deal carries an overage rate, and that is the whole policy.**
       //
-      // Hourly only, and deliberately so. Sending `overageRate` is what turns
-      // on PayHold's *automatic* collection — it charges the renter's card at
-      // confirmation without anyone approving it. The host-facing form
-      // promises the opposite for a daily listing's late-return rate: "shown
-      // to you on the trip so you can follow up — never charged
-      // automatically" (ListCarPage). Honouring that promise is the whole
-      // reason the daily rate stays out of this payload, even now that it
-      // finally computes to a real number.
+      // Sending `overageRate` is what switches on PayHold's *automatic*
+      // collection: it charges the renter's card at confirmation, with nobody
+      // approving it. Hourly bookings used to do that and daily ones never
+      // did, which meant the same late return either silently billed a card or
+      // politely asked the host to chase it, depending on how the car happened
+      // to be listed.
       //
-      // It is also what PayHold's own contract requires: it rejects
-      // `overage_rate: 0` outright ("overage_rate and overage_unit_seconds
-      // must both be set together, as positive integers"), which failed every
-      // daily booking while the rate was computed from a column daily
-      // listings never set. Both fields go or neither does.
+      // One rule now: a late return is **shown** to both sides and collected
+      // by the host at handover. Nobody is charged for time they did not agree
+      // to at the moment they agreed to it. The rate itself is still computed
+      // and still travels in `overageRateRwf` below — it is the number both
+      // sides are shown, and the renter is quoted it before paying
+      // (BookingPage). What changed is that showing it is now all it does.
       //
-      // A deal with no `overage_rate` routes settlement down its
-      // pre-overage-wiring branch in payhold-settle-usage, which writes
-      // `amount_owed_rwf` for the host to act on — display, not collection.
-      ...(isHourly && overageMinor > 0
-        ? { overageRate: overageMinor, overageUnitSeconds: 3600 }
-        : {}),
+      // Deals created before this keep the `overage_rate` already written on
+      // them and will still auto-collect; the instruction lives on the deal,
+      // not here.
       // Everything the webhook needs to build the trip. It reads these from the
       // deal, never from its own payload — see payhold-webhook.
       metadata: {
@@ -468,7 +459,6 @@ Deno.serve(async (req: Request) => {
         // once written, same reasoning as subtotal/serviceFee/total above.
         pricePerHourRwf: String(pricePerHour),
         overageRateRwf: String(overageRate),
-        depositAmount: String(subtotal),
         ...(isHourly ? { estimatedHours: String(hours) } : {}),
       },
     });

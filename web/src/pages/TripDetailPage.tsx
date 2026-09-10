@@ -323,7 +323,7 @@ export function TripDetailPage() {
                 <Notice tone="warn" className="mt-1 flex-col items-stretch gap-1.5 text-[13px] leading-relaxed">
                   <p>
                     {booking.rentalType === 'hourly'
-                      ? 'Actual time used came in over the deposit.'
+                      ? 'Actual time used came in over the estimate you paid.'
                       : 'Returned more than 2 hours late.'}{' '}
                     This isn't charged automatically — the host follows up directly.
                   </p>

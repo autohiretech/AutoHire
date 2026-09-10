@@ -275,13 +275,11 @@ export function BookingPage() {
   // A car is priced by the day or by the hour, never both — fixed by the
   // listing, not a choice made on this page.
   const isHourly = listing.pricingMode === 'hourly';
-  // For an hourly booking this is an ESTIMATE, charged in full now, same as
-  // a daily booking's fixed total. Any time beyond it is settled against
-  // actual pickup-to-return time once the trip completes — collected
-  // automatically by PayHold on a card, or claimed by the host directly on a
-  // method with no reusable credential (mobile money). Running short of the
-  // estimate is refunded; PayHold's own overage collection can only add to
-  // what was charged, never subtract.
+  // For an hourly booking this is an ESTIMATE, charged in full now, same as a
+  // daily booking's fixed total. Coming back late is never charged to the card
+  // — the extra is shown to both sides and settled with the host at drop-off.
+  // Running short of the estimate IS refunded: the renter paid for time they
+  // did not use, and it is the one direction that moves on its own.
   const estimatedTotal = isHourly
     ? estimatedHours * (listing.pricePerHourRwf ?? 0)
     : (listing.pricePerDayRwf ?? 0) * days;
@@ -292,16 +290,22 @@ export function BookingPage() {
   // by the renter's nationality or their header market selection.
   const cur: CurrencyCode = isCurrencyCode(listing.priceCurrency) ? listing.priceCurrency : 'RWF';
   const money = (n: number) => formatMoney(n, cur);
-  // What an extra hour costs on a daily booking, past the 2-hour grace. The
-  // multiplier applies to an implied hourly price the host's own form defines
-  // as day ÷ 24, and falls back to it here for listings that never stored one
-  // — the same rule `payhold-create-deal` bills by, so the figure quoted here
-  // is the figure charged. Quoted at all because it never was: this line used
-  // to send renters to "the car's listing", which says nothing about it.
+  // What an extra hour costs, and the two rental types genuinely differ — so
+  // this quotes each the figure it will actually be billed at, not one number
+  // for both.
+  //
+  // Daily carries the host's penalty multiplier over an implied hourly price
+  // their own form defines as day ÷ 24, falling back to it for listings that
+  // never stored one — the rule `payhold-create-deal` computes by.
+  //
+  // Hourly does not, and never has: `payhold-settle-usage` bills extra hours
+  // at the plain hourly rate the booking is already priced in. Quoting the
+  // multiplied figure here would over-state what the host may ask for, on the
+  // one screen where the renter agrees to it.
   const lateReturnRate = Math.round(
-    (listing.pricePerHourRwf && listing.pricePerHourRwf > 0
-      ? listing.pricePerHourRwf
-      : (listing.pricePerDayRwf ?? 0) / 24) * (listing.overageMultiplier ?? 2),
+    isHourly
+      ? (listing.pricePerHourRwf ?? 0)
+      : ((listing.pricePerDayRwf ?? 0) / 24) * (listing.overageMultiplier ?? 2),
   );
   const instant = true;
   const superhost = host?.ratingAvg !== undefined && host.ratingAvg >= 4.8 && (host.ratingCount ?? 0) >= 5;
@@ -364,7 +368,7 @@ export function BookingPage() {
                 </h2>
                 <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
                   {isHourly
-                    ? t('booking.lateReturnHourly')
+                    ? t('booking.lateReturnHourly', { amount: money(lateReturnRate) })
                     : t('booking.lateReturnDaily', { date: formatDate(endDate), amount: money(lateReturnRate) })}
                 </p>
               </div>

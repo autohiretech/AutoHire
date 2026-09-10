@@ -233,7 +233,8 @@ export const rw: Record<keyof typeof en, string> = {
   'booking.confirmAndPaySubtitle':
     'Reba imodoka n’amatariki, hanyuma wishyure. Nta kintu kigera kuri nyir\'imodoka kugeza urugendo rurangiye.',
   'booking.whenPickingUp': 'Ni ryari uzayifata?',
-  'booking.lateReturnHourly': 'Gusubiza itinze urenze igihe wagenaga bizishyurwa hashingiwe ku gihe nyacyo wakoresheje.',
+  'booking.lateReturnHourly':
+    'Nusubiza itinze urenze igihe wagenaga, buri saha yiyongereye ni {amount}, ikishyurwa kuri nyir\'imodoka ubwe aho kuvanwa ku ikarita yawe. Nusubiza kare, itandukaniro rirasubizwa.',
   'booking.lateReturnDaily': en['booking.lateReturnDaily'],
   'booking.howManyHours': 'Amasaha angahe?',
   'booking.lockedForCheckout': 'Byafunzwe kuri iyi gahunda — amafaranga wagenewe yaturutse kuri ibi.',
