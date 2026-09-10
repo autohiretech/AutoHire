@@ -1041,6 +1041,41 @@ export const supabaseClient = {
    * during its own hosted onboarding, not a number a host can type. Returns
    * a one-time link to redirect the host to.
    */
+  /**
+   * Mint a Connect embedded-components session.
+   *
+   * **Called again every time Connect.js asks, and the result is never
+   * cached.** Sessions are single-use and short-lived by Stripe's design, and
+   * Connect.js re-invokes `fetchClientSecret` when one expires part-way
+   * through onboarding — returning a stale secret there strands the host on
+   * whatever step they had reached, usually bank details.
+   */
+  async payholdConnectSession(): Promise<{
+    accountId: string;
+    clientSecret: string;
+    publishableKey: string;
+  }> {
+    const { data, error } = await getSupabase().functions.invoke(
+      'payhold-stripe-connect?action=session',
+      { method: 'POST' },
+    );
+    if (error) throw await fnError(error);
+    const payload = data as {
+      account_id?: string;
+      client_secret?: string;
+      publishable_key?: string;
+      error?: string;
+    };
+    if (payload?.error || !payload?.client_secret || !payload?.publishable_key) {
+      throw new Error(payload?.error ?? "Couldn't start Stripe onboarding.");
+    }
+    return {
+      accountId: payload.account_id ?? '',
+      clientSecret: payload.client_secret,
+      publishableKey: payload.publishable_key,
+    };
+  },
+
   async startStripeConnectOnboarding(): Promise<{ url: string }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-stripe-connect', {
       method: 'POST',

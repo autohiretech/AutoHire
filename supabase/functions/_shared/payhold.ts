@@ -784,6 +784,49 @@ export function startConnectOnboarding(
   });
 }
 
+export interface ConnectSession {
+  account_id: string;
+  /**
+   * Single-use and short-lived, by Stripe's design. **Never cache it.**
+   * Connect.js calls `fetchClientSecret` again when a session expires
+   * mid-onboarding, and returning the first secret a second time strands the
+   * host on whatever step they had reached — typically the one where they are
+   * entering bank details. PayHold mints a fresh session per call for exactly
+   * this reason, so the correct client behaviour is to re-POST every time.
+   */
+  client_secret: string;
+  /**
+   * The tenant's own publishable key. Not a secret, and deliberately returned
+   * rather than compiled in: a client that hardcodes a provider key is a
+   * client that has to be rebuilt when the account behind it changes, and it
+   * is the same "never keep your own copy of somebody else's data" failure as
+   * the payout table.
+   */
+  publishable_key: string;
+}
+
+/**
+ * A Connect embedded-components session — the in-app alternative to
+ * `startConnectOnboarding`'s redirect.
+ *
+ * Same destination, different surface: `/connect/onboard` sends the host to
+ * Stripe's hosted page, this mounts the same onboarding inside AutoHire.
+ * Neither is evidence of completion — `connectOnboardingStatus` remains the
+ * only thing that promotes a destination, because a host can close either one
+ * at any point and Stripe tells us nothing by their leaving.
+ *
+ * **The redirect stays reachable.** Stripe's own docs rule embedded components
+ * out inside mobile and desktop webviews, and AutoHire ships as a PWA, so the
+ * hosted page is the fallback wherever this cannot mount rather than a legacy
+ * path to be removed.
+ */
+export function startConnectSession(sellerId: string): Promise<ConnectSession> {
+  return call(`/sellers/${encodeURIComponent(sellerId)}/connect/session`, {
+    method: 'POST',
+    body: {},
+  });
+}
+
 export type ConnectOnboardingStatus =
   | { status: 'not_started' }
   | { status: 'pending'; account_id: string }

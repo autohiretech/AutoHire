@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
+import { StripeConnectOnboarding } from '@/components/StripeConnectOnboarding';
 import { cn } from '@/lib/cn';
 import { useCountry } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -98,6 +99,8 @@ function PayoutSetupBody({
   chrome: 'page' | 'modal';
   onDone?: () => void;
 }) {
+  // Whether Stripe's onboarding is mounted here rather than redirected to.
+  const [embedConnect, setEmbedConnect] = useState(false);
   const { countries } = useCountry();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -680,13 +683,42 @@ function PayoutSetupBody({
                   once it's saved.
                 </Notice>
               )}
-              <Button
-                className="w-full"
-                disabled={connectStripe.isPending}
-                onClick={() => connectStripe.mutate()}
-              >
-                {connectStripe.isPending ? 'Starting…' : 'Connect with Stripe'}
-              </Button>
+              {/* Embedded first, hosted page as the way out.
+                  Onboarding now mounts here rather than sending the host to
+                  connect.stripe.com — the last part of payout setup that left
+                  the app. The redirect is not deprecated: Stripe rules
+                  embedded components out inside mobile and desktop webviews
+                  and AutoHire ships as a PWA, so `onFallback` has to stay
+                  reachable from inside the component too, not only when it
+                  fails to load. */}
+              {embedConnect ? (
+                <StripeConnectOnboarding
+                  onExit={() => {
+                    // Leaving is not finishing. Stripe says nothing about
+                    // whether the host completed anything, so this asks
+                    // PayHold — `/connect/status` is what promotes the
+                    // destination, and it is the same call the hosted-page
+                    // return route makes.
+                    setEmbedConnect(false);
+                    void client
+                      .stripeConnectStatus()
+                      .catch(() => undefined)
+                      .finally(refresh);
+                  }}
+                  onFallback={() => {
+                    setEmbedConnect(false);
+                    connectStripe.mutate();
+                  }}
+                />
+              ) : (
+                <Button
+                  className="w-full"
+                  disabled={connectStripe.isPending}
+                  onClick={() => setEmbedConnect(true)}
+                >
+                  Connect with Stripe
+                </Button>
+              )}
             </CardBody>
           </Card>
         ) : (

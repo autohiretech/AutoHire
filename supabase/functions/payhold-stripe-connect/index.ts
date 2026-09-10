@@ -7,7 +7,8 @@
 // This starts that onboarding and, once Stripe reports it finished, asks
 // PayHold to promote the resulting account into a real payout destination.
 //
-// GET  ?action=status  poll after the host returns from Stripe's page
+// GET  ?action=status   poll after the host returns from Stripe's page
+// POST ?action=session  mint an embedded-components session (never cached)
 // POST                 start (or resume) onboarding; returns a redirect URL
 //
 // Secrets:  PAYHOLD_* (see _shared/payhold.ts), ALLOWED_ORIGIN
@@ -19,6 +20,7 @@ import {
   payholdConfigured,
   sellerCapabilities,
   startConnectOnboarding,
+  startConnectSession,
 } from '../_shared/payhold.ts';
 
 const cors = {
@@ -121,6 +123,23 @@ Deno.serve(async (req: Request) => {
       }
 
       return json(result, 200);
+    }
+
+    // The embedded-components session. Same onboarding as the redirect below,
+    // mounted inside AutoHire instead of on Stripe's hosted page.
+    //
+    // A separate action rather than a replacement: Stripe rules embedded
+    // components out inside mobile and desktop webviews and AutoHire ships as
+    // a PWA, so the redirect has to stay reachable for the case where the
+    // component cannot mount at all.
+    //
+    // **Never cached, on either side.** Connect.js calls `fetchClientSecret`
+    // again when a session expires part-way through, so every call has to mint
+    // a new one — handing back the previous secret strands the host on the step
+    // they had reached.
+    if (req.method === 'POST' && new URL(req.url).searchParams.get('action') === 'session') {
+      const session = await startConnectSession(sellerId);
+      return json(session, 200);
     }
 
     if (req.method === 'POST') {
