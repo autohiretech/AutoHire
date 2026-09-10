@@ -1326,11 +1326,23 @@ export function payoutRailFromRoute(
   if (!payout || payout.blocked) return null;
 
   if (payout.provider === 'flutterwave') {
-    // Flutterwave settles to a wallet or a bank account and never to a card.
-    // A `momo` corridor can still take a bank account; a `bank` one has no
-    // wallet to send to.
+    // Only what the route positively names, never an inference from it.
+    //
+    // `kind` is a single value and cannot say "wallet yes, bank no", which is
+    // a real shape: Flutterwave gates bank transfers into Kenya ("submit a
+    // request") and Tanzania (Tanzanian-registered businesses only), so both
+    // left `flutterwave_bank`'s corridor list on 2026-09-09 while staying
+    // reachable by wallet. Malawi is the same shape.
+    //
+    // So `bank` is rescued only on an explicit `bank` route. Reading a `momo`
+    // route as "bank works too" would hand back `flutterwave_bank` for a
+    // corridor PayHold's own routing table has closed, and `assertRailOnRoute`
+    // would refuse it — turning a clean local refusal into a failure two
+    // systems away. Being strict costs nothing real: where bank genuinely
+    // works, `payoutProviderFor` already answered `flutterwave_bank` and this
+    // rescue path was never reached.
     if (method === 'momo') return payout.kind === 'momo' ? 'flutterwave_momo' : null;
-    if (method === 'bank') return 'flutterwave_bank';
+    if (method === 'bank') return payout.kind === 'bank' ? 'flutterwave_bank' : null;
     return null;
   }
 

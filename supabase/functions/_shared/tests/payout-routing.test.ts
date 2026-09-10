@@ -97,7 +97,15 @@ const route = (
 Deno.test('a live wallet corridor rescues a refusal the table got wrong', () => {
   // The MW shape: PayHold opens a wallet corridor, the table has not caught up.
   assertEquals(payoutRailFromRoute('momo', route('flutterwave', 'momo')), 'flutterwave_momo');
-  assertEquals(payoutRailFromRoute('bank', route('flutterwave', 'momo')), 'flutterwave_bank');
+});
+
+Deno.test('a wallet route does not imply the bank corridor is open', () => {
+  // KE and TZ are wallet-yes / bank-no — Flutterwave gates both bank corridors
+  // and they left `flutterwave_bank` on 2026-09-09. MW is the same shape. A
+  // single `kind` cannot say it, so the rescue must not infer it: answering
+  // `flutterwave_bank` here sends a destination `assertRailOnRoute` will
+  // refuse, which is worse than the local refusal it replaced.
+  assertEquals(payoutRailFromRoute('bank', route('flutterwave', 'momo')), null);
 });
 
 Deno.test('a live bank corridor still has no wallet to send to', () => {
