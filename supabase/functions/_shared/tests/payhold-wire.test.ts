@@ -94,10 +94,11 @@ Deno.test('a null currency is omitted rather than sent as the string "null"', as
 Deno.test('a connect session POSTs to the seller and carries no cached state', async () => {
   const { seen, restore } = captureFetch();
   try {
-    await startConnectSession('sel_123');
+    await startConnectSession('sel_123', { country: 'US' });
     assertEquals(seen[0].url, 'https://payhold.test/v1/sellers/sel_123/connect/session');
     assertEquals(seen[0].method, 'POST');
-    assertEquals(seen[0].body, '{}');
+    // The country and nothing else — no secret, no cached session id.
+    assertEquals(JSON.parse(seen[0].body ?? '{}'), { country: 'US' });
   } finally {
     restore();
   }
@@ -109,8 +110,8 @@ Deno.test('two session calls are two requests — the secret is never reused', a
   // handed a spent secret and stranded on the step they had reached.
   const { seen, restore } = captureFetch();
   try {
-    await startConnectSession('sel_123');
-    await startConnectSession('sel_123');
+    await startConnectSession('sel_123', { country: 'US' });
+    await startConnectSession('sel_123', { country: 'US' });
     assertEquals(seen.length, 2);
   } finally {
     restore();
@@ -120,7 +121,7 @@ Deno.test('two session calls are two requests — the secret is never reused', a
 Deno.test('a seller id is escaped rather than concatenated', async () => {
   const { seen, restore } = captureFetch();
   try {
-    await startConnectSession('sel/../admin');
+    await startConnectSession('sel/../admin', { country: 'US' });
     assertEquals(seen[0].url, 'https://payhold.test/v1/sellers/sel%2F..%2Fadmin/connect/session');
   } finally {
     restore();
@@ -206,6 +207,28 @@ Deno.test('an empty explain list falls back to PayHold own default', async () =>
   try {
     await payoutRouteFor('RW', { explain: [] });
     assertEquals(seen[0].url, 'https://payhold.test/v1/payment-options?payout_country=RW');
+  } finally {
+    restore();
+  }
+});
+
+Deno.test('a connect session states the country, never an empty body', async () => {
+  // This posted `{}`, which PayHold reads as "no opinion" and answers from the
+  // stored `seller.country`. A host who had moved to the US was refused with
+  // "We cannot pay out to Rwanda through Stripe" on a screen that said
+  // "Paying out from: United States" three rows above it.
+  //
+  // It matters more here than on a destination: Stripe fixes an account's
+  // country when the account is created and will not change it afterwards, so
+  // a session opened with the wrong country mints an account in the wrong
+  // market permanently — re-onboarding reuses the same pending account and
+  // cannot repair it.
+  const { seen, restore } = captureFetch();
+  try {
+    await startConnectSession('sel_1', { country: 'US' });
+    assertEquals(seen[0].url, 'https://payhold.test/v1/sellers/sel_1/connect/session');
+    assertEquals(seen[0].method, 'POST');
+    assertEquals(JSON.parse(seen[0].body ?? '{}').country, 'US');
   } finally {
     restore();
   }

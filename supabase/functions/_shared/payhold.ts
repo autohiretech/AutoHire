@@ -828,10 +828,24 @@ export interface ConnectSession {
  * hosted page is the fallback wherever this cannot mount rather than a legacy
  * path to be removed.
  */
-export function startConnectSession(sellerId: string): Promise<ConnectSession> {
+export function startConnectSession(
+  sellerId: string,
+  input: { country?: string },
+): Promise<ConnectSession> {
   return call(`/sellers/${encodeURIComponent(sellerId)}/connect/session`, {
     method: 'POST',
-    body: {},
+    // **The country, same as `/connect/onboard`.** This posted an empty body,
+    // which is not "no opinion" — PayHold falls back to the stored
+    // `seller.country`, so a host who had moved was refused with the country
+    // they left. A US host saw "Paying out from: United States" and "We cannot
+    // pay out to Rwanda through Stripe" on the same screen, inches apart.
+    //
+    // Exactly the failure `payhold-register-seller` had on its destination
+    // path, reintroduced here because this endpoint was added later and the
+    // empty body looked harmless. Stripe also fixes an account's country at
+    // creation and will not change it afterwards, so the country this call
+    // carries is the one the host is stuck with.
+    body: { country: input.country },
   });
 }
 

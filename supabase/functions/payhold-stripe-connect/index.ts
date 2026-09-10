@@ -138,7 +138,19 @@ Deno.serve(async (req: Request) => {
     // a new one — handing back the previous secret strands the host on the step
     // they had reached.
     if (req.method === 'POST' && new URL(req.url).searchParams.get('action') === 'session') {
-      const session = await startConnectSession(sellerId);
+      // Same guard as the redirect path below. Without a country PayHold falls
+      // back to the seller's stored one, and Stripe fixes an account's country
+      // at creation — so a session opened without it can mint an account in
+      // the wrong market permanently, which no amount of re-onboarding undoes.
+      if (!profile.country) {
+        return json(
+          { error: 'Set your country before connecting a payout method.', code: 'country_required' },
+          400,
+        );
+      }
+      const session = await startConnectSession(sellerId, {
+        country: String(profile.country).toUpperCase(),
+      });
       return json(session, 200);
     }
 
