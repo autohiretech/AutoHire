@@ -146,3 +146,67 @@ Deno.test('the disabled wallet rails are not rescued by any live route', () => {
     assertEquals(payoutRailFromRoute(method, route('flutterwave', 'momo')), null, method);
   }
 });
+
+/**
+ * `methods` — PayHold answering "what can this market actually be paid into"
+ * directly, instead of AutoHire inferring it from `kind`. It arrives inside
+ * `payout`, and it is the authority whenever it is present.
+ */
+
+const withMethods = (
+  provider: 'flutterwave' | 'stripe' | null,
+  kind: 'momo' | 'bank' | 'connect' | null,
+  methods: ('momo' | 'bank' | 'connect')[],
+  blocked = false,
+) => ({
+  country: { code: 'XX', name: 'Test', flag: '' },
+  payout: { provider, kind, currency: 'XXX', blocked, verified: true, reason: '', methods },
+  rails_verified: true,
+});
+
+Deno.test('the KE/TZ shape: a wallet market whose bank corridor is closed', () => {
+  const ke = withMethods('flutterwave', 'momo', ['momo']);
+  assertEquals(payoutRailFromRoute('momo', ke), 'flutterwave_momo');
+  assertEquals(payoutRailFromRoute('bank', ke), null);
+  assertEquals(payoutRailFromRoute('card', ke), null);
+});
+
+Deno.test('the ET shape: a market that takes either', () => {
+  const et = withMethods('flutterwave', 'momo', ['momo', 'bank']);
+  assertEquals(payoutRailFromRoute('momo', et), 'flutterwave_momo');
+  assertEquals(payoutRailFromRoute('bank', et), 'flutterwave_bank');
+});
+
+Deno.test('methods overrides kind rather than being checked after it', () => {
+  // A rail switched off leaves `methods` while `kind` still names it — that is
+  // the whole point of deriving from route_evaluation. The list must win.
+  const stale = withMethods('flutterwave', 'bank', ['momo']);
+  assertEquals(payoutRailFromRoute('bank', stale), null);
+  assertEquals(payoutRailFromRoute('momo', stale), 'flutterwave_momo');
+});
+
+Deno.test('a connect market reaches a bank account or a card', () => {
+  const us = withMethods('stripe', 'connect', ['connect']);
+  assertEquals(payoutRailFromRoute('bank', us), 'stripe_connect');
+  assertEquals(payoutRailFromRoute('card', us), 'stripe_connect');
+  assertEquals(payoutRailFromRoute('momo', us), null);
+});
+
+Deno.test('an empty methods list rescues nothing', () => {
+  const closed = withMethods('flutterwave', 'momo', []);
+  for (const m of ['momo', 'bank', 'card'] as const) {
+    assertEquals(payoutRailFromRoute(m, closed), null, m);
+  }
+});
+
+Deno.test('a blocked market rescues nothing even if methods says otherwise', () => {
+  const contradictory = withMethods('flutterwave', 'momo', ['momo'], true);
+  assertEquals(payoutRailFromRoute('momo', contradictory), null);
+});
+
+Deno.test('the disabled wallet rails are not rescued by a methods list either', () => {
+  const open = withMethods('stripe', 'connect', ['connect']);
+  for (const method of ['paypal', 'venmo', 'cash_app', 'alipay', 'wechat_pay'] as const) {
+    assertEquals(payoutRailFromRoute(method, open), null, method);
+  }
+});

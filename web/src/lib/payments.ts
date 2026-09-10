@@ -242,6 +242,13 @@ export function payoutProviderFor(method: PayoutMethodType, countryCode: string)
  * `unavailable` the moment it can hear back.
  */
 export function payoutMethodsFor(countryCode: string): PayoutMethodType[] {
+  // Known limit, and deliberately left: a `momo` row here yields
+  // `['momo', 'bank']`, so this over-offers Bank in the markets that take a
+  // wallet while their bank corridor is closed — KE, TZ, MW. One kind per
+  // country cannot say otherwise, and the fix is not a second hardcoded list
+  // but `payout.methods`, which `payoutMethodsFromRoute` already prefers
+  // whenever PayHold can be reached at all. This runs only when it cannot, and
+  // `warnOnMethodDrift` reports the disagreement the moment it can.
   const code = countryCode.toUpperCase();
   // No rail reaches these at all, so the `['bank', 'card']` default below would
   // be two methods that both dead-end at Stripe Connect. `payoutAvailability`
@@ -276,6 +283,26 @@ export interface PayoutCountryRoute {
     blocked: boolean;
     verified: boolean;
     reason: string;
+    /**
+     * Every destination this market can actually be paid into, not just the
+     * preferred one — PayHold's answer to the question `kind` cannot answer.
+     *
+     * `kind` is a single value and a market is not. Kenya and Tanzania take a
+     * wallet while their bank corridor sits behind a Flutterwave request,
+     * Malawi is the same, Ethiopia takes either. Reading `kind: 'momo'` as
+     * "wallet and bank" is the obvious inference and it is wrong — it showed
+     * Kenyan hosts a Bank option that `assertRailOnRoute` then refused.
+     *
+     * PayHold derives it from `route_evaluation` rather than from its registry,
+     * so it is what the routing table carries this second: a rail switched off,
+     * risk-held or missing its adapter drops out on its own. `kind` sorts
+     * first, so the preferred destination is still the head of the list.
+     *
+     * Optional because a market an operator has closed by hand answers without
+     * it, and because a client may be reading a PayHold that predates the
+     * field. `payoutMethodsFromRoute` falls back to the old inference then.
+     */
+    methods?: ('momo' | 'bank' | 'connect')[];
   };
   /**
    * The mobile-money wallets that exist in this country — "MTN", "Airtel
@@ -368,6 +395,27 @@ export function payoutMethodsFromRoute(
   route: PayoutCountryRoute['payout'] | null | undefined,
 ): PayoutMethodType[] {
   if (!route || route.blocked) return [];
+
+  // `methods` is PayHold answering the question directly, so nothing is
+  // inferred from `kind` when it is there. It arrives as payout *kinds* rather
+  // than as the methods a host picks, and `connect` is the one that is not a
+  // one-to-one mapping: Stripe Connect sends to a bank account or a debit card,
+  // so it becomes both. Order is preserved because PayHold sorts `kind` first.
+  if (route.methods) {
+    const out: PayoutMethodType[] = [];
+    for (const kind of route.methods) {
+      for (const m of kind === 'connect' ? (['bank', 'card'] as const) : ([kind] as const)) {
+        if (!out.includes(m)) out.push(m);
+      }
+    }
+    return out;
+  }
+
+  // A PayHold that predates `methods`. This is the inference that showed a
+  // Kenyan host Bank and had it refused — kept only because answering nothing
+  // would empty the payout screen, and narrowed nowhere, because guessing
+  // *fewer* methods would hide a corridor that works in the markets where
+  // wallet and bank both do.
   if (route.provider === 'flutterwave' && route.kind === 'momo') return ['momo', 'bank'];
   if (route.provider === 'flutterwave' && route.kind === 'bank') return ['bank'];
   if (route.provider === 'stripe' && route.kind === 'connect') return ['bank', 'card'];

@@ -883,6 +883,19 @@ export interface PayoutCountryRoute {
     blocked: boolean;
     verified: boolean;
     reason: string;
+    /**
+     * Every destination this market can actually be paid into, which is the
+     * question `kind` cannot answer: it is one value and a market is not.
+     * Kenya and Tanzania take a wallet while their bank corridor sits behind a
+     * Flutterwave request, Malawi likewise, Ethiopia takes either. PayHold
+     * derives it from `route_evaluation`, so a rail switched off or missing an
+     * adapter drops out without anyone remembering to remove it, and sorts
+     * `kind` first so the preferred destination heads the list.
+     *
+     * Optional: an operator-closed market answers without it, and a PayHold
+     * predating the field sends nothing.
+     */
+    methods?: ('momo' | 'bank' | 'connect')[];
   };
   /**
    * The mobile-money wallets that actually exist in this country — "MTN",
@@ -1324,6 +1337,21 @@ export function payoutRailFromRoute(
   const payout = route.payout;
   // A corridor PayHold has closed reaches nobody, whatever the method.
   if (!payout || payout.blocked) return null;
+
+  // PayHold answering directly beats anything derived from `kind`. A rescue may
+  // only ever hand back a rail this list contains — it is built from the
+  // routing table itself, so a rail that is not in it is one `assertRailOnRoute`
+  // would refuse.
+  if (payout.methods) {
+    if (method === 'momo') return payout.methods.includes('momo') ? 'flutterwave_momo' : null;
+    if (method === 'bank') {
+      if (payout.methods.includes('bank')) return 'flutterwave_bank';
+      return payout.methods.includes('connect') ? 'stripe_connect' : null;
+    }
+    if (method === 'card') return payout.methods.includes('connect') ? 'stripe_connect' : null;
+    // The five §29.3 wallets are never in `methods` — no rail carries them.
+    return null;
+  }
 
   if (payout.provider === 'flutterwave') {
     // Only what the route positively names, never an inference from it.
