@@ -638,8 +638,18 @@ export const PAYOUT_METHOD_META: Record<
   // offered to anyone.
   paypal: {
     label: 'PayPal',
-    blurb: 'Paid to your PayPal balance, usually within a day.',
-    field: 'PayPal email',
+    // Not "usually within a day", which this said while PayPal was a dead
+    // rail and nobody could reach it. A PayPal destination is checked and sits
+    // in the same security hold as every other one, so promising next-day here
+    // would have a host reading a normal hold as a fault.
+    blurb: 'Paid to your PayPal account once it is verified.',
+    // **"account email", deliberately.** A host who reads "PayPal email" as
+    // "the email you use here" sends their earnings to an address with no
+    // PayPal account behind it. PayPal will hold a payout for an unregistered
+    // address and invite the recipient to open an account, so the money is not
+    // lost — but it is unclaimable until they do, and nothing in AutoHire will
+    // say why.
+    field: 'PayPal account email',
     placeholder: 'you@example.com',
   },
   venmo: {
@@ -752,4 +762,27 @@ export function maskDestination(dest: string): string {
 /** "MTN MoMo · ••••3456" style label for the connected method. */
 export function payoutLabel(method: PayoutMethodType, dest: string): string {
   return `${PAYOUT_METHOD_META[method].label} · ${maskDestination(dest)}`;
+}
+
+
+/**
+ * Is this a destination PayPal will actually accept?
+ *
+ * Mirrors PayHold's own rule rather than inventing a looser one, because the
+ * only thing a weaker check here buys is the same refusal arriving later and
+ * from further away: an account email (`user@domain`, with a dot in the
+ * domain), or a payer id of 9–20 alphanumerics. PayHold rejects bank details
+ * outright with "A PayPal destination is an account email or a payer id, not
+ * bank details", and the generic `length >= 4` gate on the form would have
+ * happily submitted `ab@c`.
+ *
+ * Deliberately not a full RFC 5322 email test. That grammar accepts addresses
+ * no payout rail will take and rejects nothing a host is likely to type by
+ * accident; the failure worth catching here is a half-typed address or a bank
+ * account number, and both of those this catches.
+ */
+export function isPayPalDestination(value: string): boolean {
+  const v = value.trim();
+  if (/^[A-Za-z0-9]{9,20}$/.test(v)) return true; // payer id
+  return /^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(v); // account email
 }

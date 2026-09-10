@@ -23,6 +23,7 @@ import {
   PAYOUT_METHOD_ICON,
   PAYOUT_METHOD_META,
   maskDestination,
+  isPayPalDestination,
   payoutAvailability,
   payoutLabel,
   payoutProviderFor,
@@ -409,9 +410,16 @@ export function PayoutSetupPage() {
   const cardScheme = selected === 'card' ? detectCardScheme(dest) : null;
   const needsBankCode =
     PAYMENTS_PAYHOLD && selected === 'bank' && payoutRoute?.payout?.provider === 'flutterwave';
+  // PayPal is the one destination that is not a number, so the generic
+  // "at least 4 characters" gate does not describe it — `ab@c` would submit and
+  // come back refused from two systems away. `isPayPalDestination` is PayHold's
+  // own rule, checked here so the host is told in front of the field.
+  const destValid = selected === 'paypal'
+    ? isPayPalDestination(dest)
+    : dest.trim().length >= 4;
   const canSave =
     !!selected &&
-    dest.trim().length >= 4 &&
+    destValid &&
     (!needsNetwork || !!network) &&
     (!needsBankCode || !!bankCode.trim());
   const routedProvider = selected ? payoutProviderFor(selected, payoutCountry) : null;
@@ -791,7 +799,20 @@ export function PayoutSetupPage() {
                       value={dest}
                       onChange={(e) => setDest(e.target.value)}
                       placeholder={meta.placeholder}
-                      inputMode={selected === 'bank' || selected === 'card' ? 'numeric' : 'tel'}
+                      // `inputMode`, not `type="email"`. The browser's own
+                      // email validation would reject a PayPal payer id, which
+                      // PayHold accepts — so the strict-looking option is the
+                      // one that blocks a legitimate destination.
+                      autoComplete={selected === 'paypal' ? 'email' : 'off'}
+                      // A PayPal destination is an address, not a number. This
+                      // sent every non-bank method to a phone keypad, which on
+                      // a phone is a field you cannot type an email into
+                      // without hunting for the letters.
+                      inputMode={selected === 'bank' || selected === 'card'
+                        ? 'numeric'
+                        : selected === 'paypal'
+                        ? 'email'
+                        : 'tel'}
                       className={cn(cardScheme && 'pr-16')}
                     />
                     {/* The scheme, read off the number's own opening digits.
@@ -809,7 +830,15 @@ export function PayoutSetupPage() {
                 {routedProvider && (
                   <p className="flex items-center gap-1.5 text-caption text-[var(--color-content-muted)]">
                     <Lock size={12} className="text-[var(--color-accent-on)]" /> Processed securely via{' '}
-                    {PROVIDER_NAME[routedProvider]}. Only the last 4 digits are stored.
+                    {PROVIDER_NAME[routedProvider]}.{' '}
+                    {/* "Only the last 4 digits" is true of a number and false
+                        of an address — a PayPal destination is masked as
+                        ho•••@example.com, which is not four digits of
+                        anything. Saying the wrong thing about what we keep is
+                        worse than saying less. */}
+                    {selected === 'paypal'
+                      ? 'Your address is stored masked.'
+                      : 'Only the last 4 digits are stored.'}
                   </p>
                 )}
                 {/* What saving actually does, said before they do it. A change is
