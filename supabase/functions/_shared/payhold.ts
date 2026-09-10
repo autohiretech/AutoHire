@@ -675,6 +675,8 @@ export function sellerDestinations(id: string): Promise<{ destinations: SellerDe
 }
 
 export interface AddDestinationInput {
+  /** Which currency this destination is paid in. Omitted means the country's own. */
+  currency?: string | null;
   /** See `CreateSellerInput.payoutProvider` — a `PayoutRail` in practice. */
   payoutProvider: PayoutProvider;
   /** Raw MoMo number, account number or wallet handle. Tokenized and dropped. */
@@ -713,6 +715,12 @@ export function addSellerDestination(
       network: input.network,
       bank_code: input.bankCode,
       country: input.country,
+      // **Sent, or the currency chooser is decoration.** PayHold defaults
+      // `payout_currency` to the country's own, so a Kenyan host who chose USD
+      // and had it omitted here would get a KES destination — and PayPal, the
+      // reason they chose USD, is not a rail KES can use. Offering a currency
+      // and registering a different one is worse than not offering it.
+      payout_currency: input.currency,
       label: input.label,
       role: input.role ?? 'primary',
     },
@@ -959,6 +967,21 @@ export interface PayoutCountryRoute {
      * predating the field sends nothing.
      */
     methods?: ('momo' | 'bank' | 'connect' | 'paypal')[];
+    /**
+     * Every currency a host in this market can actually be paid in, and what
+     * each one can be paid into. The other half of `methods`, and the half a
+     * payout form cannot invent.
+     *
+     * **Nested inside `payout`, beside `methods`** — not a sibling of it.
+     * Read a level up it is `undefined`, which is silent.
+     *
+     * `default: true` marks the country's own currency, and PayHold sorts it
+     * first. Preselect it: a host who has been paid in their local currency
+     * for months should not find it quietly changed by a new picker.
+     *
+     * A closed market returns `[]`. Empty is not "no restriction".
+     */
+    currencies?: { currency: string; methods: ('momo' | 'bank' | 'connect' | 'paypal')[]; default: boolean }[];
   };
   /**
    * The mobile-money wallets that actually exist in this country — "MTN",

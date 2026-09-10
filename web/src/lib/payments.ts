@@ -309,6 +309,21 @@ export interface PayoutCountryRoute {
      * field. `payoutMethodsFromRoute` falls back to the old inference then.
      */
     methods?: ('momo' | 'bank' | 'connect' | 'paypal')[];
+    /**
+     * Every currency a host in this market can actually be paid in, and what
+     * each one can be paid into. The other half of `methods`, and the half a
+     * payout form cannot invent.
+     *
+     * **Nested inside `payout`, beside `methods`** — not a sibling of it.
+     * Read a level up it is `undefined`, which is silent.
+     *
+     * `default: true` marks the country's own currency, and PayHold sorts it
+     * first. Preselect it: a host who has been paid in their local currency
+     * for months should not find it quietly changed by a new picker.
+     *
+     * A closed market returns `[]`. Empty is not "no restriction".
+     */
+    currencies?: { currency: string; methods: ('momo' | 'bank' | 'connect' | 'paypal')[]; default: boolean }[];
   };
   /**
    * The mobile-money wallets that exist in this country — "MTN", "Airtel
@@ -785,4 +800,25 @@ export function isPayPalDestination(value: string): boolean {
   const v = value.trim();
   if (/^[A-Za-z0-9]{9,20}$/.test(v)) return true; // payer id
   return /^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(v); // account email
+}
+
+
+/**
+ * "Mobile Money or Bank" — what a currency actually gets you, in the words the
+ * method tiles use.
+ *
+ * Takes PayHold's payout *kinds* rather than AutoHire's method names, because
+ * that is what `payout.currencies[].methods` carries. `connect` is the one
+ * that is not a straight rename: Stripe Connect reaches a bank account or a
+ * debit card, so it reads as "Bank or Card" rather than as a rail name no host
+ * has heard of.
+ */
+export function methodNamesFor(kinds: ('momo' | 'bank' | 'connect' | 'paypal')[]): string {
+  const names = kinds.map((k) =>
+    k === 'connect' ? 'Bank or Card' : PAYOUT_METHOD_META[k === 'momo' ? 'momo' : k === 'bank' ? 'bank' : 'paypal'].label
+  );
+  const unique = [...new Set(names)];
+  if (unique.length === 0) return 'Not payable';
+  if (unique.length === 1) return unique[0];
+  return `${unique.slice(0, -1).join(', ')} or ${unique[unique.length - 1]}`;
 }

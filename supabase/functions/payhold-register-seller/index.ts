@@ -112,6 +112,7 @@ async function changeDestination(
   country: string,
   network: string,
   bankCode: string,
+  currency: string,
 ): Promise<Response | null> {
   // Does this seller have a payout corridor yet?
   //
@@ -158,6 +159,12 @@ async function changeDestination(
       ...(network ? { network } : {}),
       ...(bankCode ? { bankCode } : {}),
       ...(firstDestination ? { country } : {}),
+      // The currency the host was actually offered this method in. PayHold
+      // defaults it to the country's own, which is right almost everywhere and
+      // wrong in the one case the chooser exists for: PayPal reaches a Kenyan
+      // host in USD and not in KES, so dropping it here would register the
+      // destination in a currency the chosen rail cannot be paid in.
+      ...(currency ? { currency: String(currency).toUpperCase() } : {}),
       label: METHOD_LABEL[method] ?? 'Payout',
     }));
   } catch (e) {
@@ -270,7 +277,7 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ error: 'Invalid or expired session.' }, 401);
     const uid = userData.user.id;
 
-    const { method, destination, network, bankCode } = await req.json();
+    const { method, destination, network, bankCode, currency } = await req.json();
     if (!method || !destination) {
       return json({ error: 'method and destination are required.' }, 400);
     }
@@ -437,6 +444,7 @@ Deno.serve(async (req: Request) => {
         country,
         networkName,
         bank,
+        currency ? String(currency).toUpperCase() : '',
       );
       // A Response means the change was answered, one way or another. Null
       // means the link was stale and has just been cleared — so this host is
@@ -535,6 +543,10 @@ Deno.serve(async (req: Request) => {
         // wallet named and a bank one with no bank code, rather than guessing.
         ...(networkName ? { network: networkName } : {}),
         ...(bank ? { bankCode: bank } : {}),
+        // Same reason as the destination path below: a first-time seller whose
+        // chosen currency is dropped here is created against the country's own,
+        // and their first destination inherits it.
+        ...(currency ? { payoutCurrency: String(currency).toUpperCase() } : {}),
         // Same label `changeDestination` already sends on every later save —
         // this was the gap: a host's very first destination had no label at
         // all, so PayHold's own mask (guessed from a Flutterwave field that is

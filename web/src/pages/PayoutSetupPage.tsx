@@ -25,7 +25,9 @@ import {
   PAYOUT_METHOD_META,
   maskDestination,
   isPayPalDestination,
+  methodNamesFor,
   payoutAvailability,
+  payoutMethodsFromRoute,
   payoutLabel,
   payoutProviderFor,
 } from '@/lib/payments';
@@ -170,14 +172,27 @@ function PayoutSetupBody({
    */
   const [networkTouched, setNetworkTouched] = useState(false);
 
+  /**
+   * Which currency the host wants to be paid in, or `null` for their
+   * country's own.
+   *
+   * `null` rather than a guessed code on purpose: PayHold's default is the
+   * country's currency and it is right almost everywhere, so the chooser
+   * starts by asking for nothing and changes nobody who does not touch it.
+   */
+  const [payoutCurrency, setPayoutCurrency] = useState<string | null>(null);
+
   // The bulk list above only says whether `payoutCountry` can be paid at all;
   // this is what actually decides which methods to offer inside it — see
   // `payoutMethodsFromRoute`. Asked only once the bulk check already says
   // `can_payout`, so a host in a closed market costs one PayHold call instead
   // of two.
   const { data: payoutRoute } = useQuery({
-    queryKey: ['payholdPayoutRoute', payoutCountry],
-    queryFn: () => client.payholdPayoutRoute(payoutCountry),
+    // The currency is part of the question, so it is part of the key. Without
+    // it, switching currency would show the previous currency's methods from
+    // cache — the methods list is exactly what changes between them.
+    queryKey: ['payholdPayoutRoute', payoutCountry, payoutCurrency],
+    queryFn: () => client.payholdPayoutRoute(payoutCountry, { currency: payoutCurrency }),
     enabled: PAYMENTS_PAYHOLD && !!payoutCountry && !!known?.can_payout,
     staleTime: 60 * 60 * 1000,
     retry: false,
@@ -188,8 +203,9 @@ function PayoutSetupBody({
   // and never at all in a market whose bank rail is Stripe Connect, where
   // there is no account number to name a bank for.
   const { data: bankRoute, isFetching: banksLoading } = useQuery({
-    queryKey: ['payholdPayoutRoute', payoutCountry, 'banks'],
-    queryFn: () => client.payholdPayoutRoute(payoutCountry, { banks: true }),
+    queryKey: ['payholdPayoutRoute', payoutCountry, payoutCurrency, 'banks'],
+    queryFn: () =>
+      client.payholdPayoutRoute(payoutCountry, { banks: true, currency: payoutCurrency }),
     enabled:
       PAYMENTS_PAYHOLD &&
       !!payoutCountry &&
@@ -220,6 +236,20 @@ function PayoutSetupBody({
     // guess standing rather than emptying the field under the host.
     if (found && found !== network) setNetwork(found);
   }, [dest, selected, networkTouched, payoutRoute, payoutCountry, network]);
+
+  /**
+   * Drop a chosen method the new currency cannot pay.
+   *
+   * Switching KES → USD in Kenya turns Mobile Money into PayPal, and a
+   * `selected` left pointing at the old one would submit a method this
+   * currency has no rail for — offered by nothing on screen, refused two
+   * systems away. Only clears; never picks for the host.
+   */
+  useEffect(() => {
+    if (!selected) return;
+    const offered = payoutMethodsFromRoute(payoutRoute?.payout);
+    if (offered.length > 0 && !offered.includes(selected)) setSelected(null);
+  }, [payoutRoute, selected]);
 
   const availability = payoutAvailability(
     payoutCountry,
@@ -282,6 +312,12 @@ function PayoutSetupBody({
         return await client.registerPayholdSeller({
           method,
           destination: dest.trim(),
+          // The currency this method was actually offered in. Without it
+          // PayHold registers the destination in the country's own currency,
+          // and a Kenyan host who picked USD to reach PayPal would get a KES
+          // destination that PayPal cannot pay — the chooser would look like
+          // it worked and change nothing.
+          ...(payoutCurrency ? { currency: payoutCurrency } : {}),
           ...(method === 'momo' && network ? { network } : {}),
           ...(method === 'bank' && bankCode ? { bankCode: bankCode.trim() } : {}),
         });
@@ -413,6 +449,14 @@ function PayoutSetupBody({
   // failing here, in front of the host, beats a policy_violation after.
   const networks = payoutRoute?.networks ?? [];
   const banks = bankRoute?.banks ?? null;
+  /**
+   * The currencies PayHold says this market can be paid in, and which one is
+   * its default. Empty or single-entry means there is nothing to choose.
+   */
+  const payoutCurrencies = payoutRoute?.payout?.currencies ?? [];
+  const defaultCurrency = payoutCurrencies.find((c) => c.default)?.currency ??
+    payoutCurrencies[0]?.currency ?? null;
+
   const needsNetwork = PAYMENTS_PAYHOLD && selected === 'momo';
 
   // What the number says the wallet is, filtered against PayHold's own list
@@ -529,6 +573,56 @@ function PayoutSetupBody({
               Paying out from
             </ListRow>
           </ListGroup>
+        )}
+
+        {/* Which currency, but only where there is genuinely a choice.
+            PayHold answers with every currency this market can be paid in and
+            what each one reaches, because the two facts are inseparable: a
+            Kenyan host paid in KES gets Mobile Money, and the same host paid
+            in USD gets PayPal. One currency means no decision to make, so no
+            control is shown — most markets are that case.
+
+            The list is PayHold's and is never filtered here. Its `default`
+            entry is the country's own currency and stays preselected until the
+            host chooses otherwise, so nobody's existing arrangement moves
+            because a picker appeared. */}
+        {payoutCurrencies.length > 1 && !changingCountry && (
+          <div>
+            <Label htmlFor="payout-currency">Paid in</Label>
+            <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {payoutCurrencies.map((c) => {
+                const isSel = (payoutCurrency ?? defaultCurrency) === c.currency;
+                return (
+                  <button
+                    key={c.currency}
+                    id={c.currency === payoutCurrencies[0].currency ? 'payout-currency' : undefined}
+                    type="button"
+                    onClick={() => setPayoutCurrency(c.currency)}
+                    className={cn(
+                      'flex flex-col items-start gap-0.5 rounded-[var(--radius-control)] border px-3 py-2 text-left',
+                      isSel
+                        ? 'border-transparent bg-[var(--color-content)] text-[var(--color-content-inverse)]'
+                        : 'border-[var(--color-border)] hover:bg-[var(--color-surface-sunken)]',
+                    )}
+                  >
+                    <span className="font-semibold">{c.currency}</span>
+                    {/* What choosing it actually gets you. A currency on its
+                        own is not a reason to pick one. */}
+                    <span
+                      className={cn(
+                        'text-caption leading-tight',
+                        isSel
+                          ? 'text-[var(--color-content-inverse)]/80'
+                          : 'text-[var(--color-content-muted)]',
+                      )}
+                    >
+                      {methodNamesFor(c.methods)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {(!payoutCountry || changingCountry) && (

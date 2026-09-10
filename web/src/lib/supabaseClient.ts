@@ -750,6 +750,13 @@ export const supabaseClient = {
     network?: string;
     /** Which bank the account is with. Required for `bank` on a local rail. */
     bankCode?: string;
+    /**
+     * The currency the host chose to be paid in, when it is not their
+     * country's own. Sent because PayHold defaults it to the country's
+     * currency — a Kenyan host who picked USD to reach PayPal and had this
+     * omitted would get a KES destination, and PayPal is not a KES rail.
+     */
+    currency?: string | null;
   }): Promise<{
     sellerId: string;
     maskedDestination: string;
