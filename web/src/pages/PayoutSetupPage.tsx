@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Clock,
   Lock,
-  Coins,
   MapPin,
   ShieldCheck,
   Trash2,
@@ -27,7 +26,6 @@ import {
   PAYOUT_METHOD_META,
   maskDestination,
   isPayPalDestination,
-  methodNamesFor,
   payoutAvailability,
   payoutMethodsFromRoute,
   payoutLabel,
@@ -175,51 +173,30 @@ function PayoutSetupBody({
   const [networkTouched, setNetworkTouched] = useState(false);
 
   /**
-   * Which currency the host wants to be paid in, or `null` for their
-   * country's own.
+   * What PayHold said the last time Stripe onboarding closed.
    *
-   * `null` rather than a guessed code on purpose: PayHold's default is the
-   * country's currency and it is right almost everywhere, so the chooser
-   * starts by asking for nothing and changes nobody who does not touch it.
+   * Stripe fires `onExit` when a host submits *or* abandons, and says nothing
+   * about which. Closing the dialog silently left the screen looking exactly
+   * as it did before — so a host whose account still needed information saw
+   * no change, reopened it, met the same form, and reasonably concluded that
+   * submitting did nothing.
    */
-  const [payoutCurrency, setPayoutCurrency] = useState<string | null>(null);
-  /** Is the currency grid open? Closed by default — it is a row until asked. */
-  const [changingCurrency, setChangingCurrency] = useState(false);
+  const [connectOutcome, setConnectOutcome] = useState<
+    'pending' | 'not_started' | 'connected' | null
+  >(null);
 
   // The bulk list above only says whether `payoutCountry` can be paid at all;
   // this is what actually decides which methods to offer inside it — see
   // `payoutMethodsFromRoute`. Asked only once the bulk check already says
   // `can_payout`, so a host in a closed market costs one PayHold call instead
   // of two.
-  /**
-   * The currency this host is actually paid in today, from their primary
-   * destination.
-   *
-   * Passed to PayHold so that if it ever stops being offered, they are told
-   * why rather than finding it silently gone from the picker. PayHold cannot
-   * work this out — its payout branch is a catalogue keyed by country and
-   * currency, and a seller lookup there would make a cacheable answer depend
-   * on whose it is.
-   */
-  const currentPayoutCurrency =
-    liveSeller?.destinations?.find((d) => d.isPrimary)?.payoutCurrency ?? null;
-
-  // USD and EUR are PayHold's default; ours is those plus the host's own.
-  const explainCurrencies = useMemo(
-    () => [...new Set(['USD', 'EUR', ...(currentPayoutCurrency ? [currentPayoutCurrency] : [])])],
-    [currentPayoutCurrency],
-  );
 
   const { data: payoutRoute } = useQuery({
     // The currency is part of the question, so it is part of the key. Without
     // it, switching currency would show the previous currency's methods from
     // cache — the methods list is exactly what changes between them.
-    queryKey: ['payholdPayoutRoute', payoutCountry, payoutCurrency, explainCurrencies],
-    queryFn: () =>
-      client.payholdPayoutRoute(payoutCountry, {
-        currency: payoutCurrency,
-        explain: explainCurrencies,
-      }),
+    queryKey: ['payholdPayoutRoute', payoutCountry],
+    queryFn: () => client.payholdPayoutRoute(payoutCountry),
     enabled: PAYMENTS_PAYHOLD && !!payoutCountry && !!known?.can_payout,
     staleTime: 60 * 60 * 1000,
     retry: false,
@@ -230,9 +207,8 @@ function PayoutSetupBody({
   // and never at all in a market whose bank rail is Stripe Connect, where
   // there is no account number to name a bank for.
   const { data: bankRoute, isFetching: banksLoading } = useQuery({
-    queryKey: ['payholdPayoutRoute', payoutCountry, payoutCurrency, 'banks'],
-    queryFn: () =>
-      client.payholdPayoutRoute(payoutCountry, { banks: true, currency: payoutCurrency }),
+    queryKey: ['payholdPayoutRoute', payoutCountry, 'banks'],
+    queryFn: () => client.payholdPayoutRoute(payoutCountry, { banks: true }),
     enabled:
       PAYMENTS_PAYHOLD &&
       !!payoutCountry &&
@@ -349,8 +325,8 @@ function PayoutSetupBody({
           // stored, so a host who moved to the US was registered as US/RWF and
           // refused with "paypal cannot pay a destination in RW". Sending the
           // route's own currency means the pair stored is the pair displayed.
-          ...(payoutCurrency ?? payoutRoute?.payout?.currency
-            ? { currency: payoutCurrency ?? payoutRoute?.payout?.currency }
+          ...(payoutRoute?.payout?.currency
+            ? { currency: payoutRoute.payout.currency }
             : {}),
           ...(method === 'momo' && network ? { network } : {}),
           ...(method === 'bank' && bankCode ? { bankCode: bankCode.trim() } : {}),
@@ -487,21 +463,6 @@ function PayoutSetupBody({
    * The currencies PayHold says this market can be paid in, and which one is
    * its default. Empty or single-entry means there is nothing to choose.
    */
-  const payoutCurrencies = payoutRoute?.payout?.currencies ?? [];
-  const unavailableCurrencies = payoutRoute?.payout?.currencies_unavailable ?? [];
-  /**
-   * Show the currency control when there is a choice **or** something to
-   * explain.
-   *
-   * It used to be `payoutCurrencies.length > 1` alone, which hid the control
-   * in exactly the market the explanations exist for: Rwanda has one payable
-   * currency, so a Rwandan host wondering about dollars saw no currency UI at
-   * all and had nowhere to find the answer. Still behind a tap — a host who
-   * never wonders never reads about it.
-   */
-  const showCurrencyControl = payoutCurrencies.length + unavailableCurrencies.length > 1;
-  const defaultCurrency = payoutCurrencies.find((c) => c.default)?.currency ??
-    payoutCurrencies[0]?.currency ?? null;
 
   const needsNetwork = PAYMENTS_PAYHOLD && selected === 'momo';
 
@@ -576,17 +537,36 @@ function PayoutSetupBody({
           // is what promotes the destination, and it is the same call the
           // hosted-page return route makes.
           setEmbedConnect(false);
-          void client.stripeConnectStatus().catch(() => undefined).finally(refresh);
+          void client
+            .stripeConnectStatus()
+            .then((r) => setConnectOutcome(r.status))
+            .catch(() => undefined)
+            .finally(refresh);
         }}
-        title="Set up payouts with Stripe"
+        // "Add", not "set up payouts" — this stores where money will go, it
+        // does not move any. See the line inside the dialog.
+        title="Add your Stripe payout account"
         // Wider and taller than a normal dialog: this hosts Stripe's own
         // multi-step form, and the default width made every field wrap.
         className="sm:max-w-xl"
       >
+        {/* Said before the form, because Stripe's own wording does not.
+            Their panel opens with "Add information to start accepting money",
+            which reads as though money is about to move. It is not: this
+            stores where future earnings will go. A host who thinks they are
+            requesting a payout will look for one afterwards and find none. */}
+        <p className="mb-3 text-body-sm text-[var(--color-content-muted)]">
+          This saves where your earnings will be sent. Nothing is paid out now — you choose when to
+          take money out, from your Earnings screen.
+        </p>
         <StripeConnectOnboarding
           onExit={() => {
             setEmbedConnect(false);
-            void client.stripeConnectStatus().catch(() => undefined).finally(refresh);
+            void client
+              .stripeConnectStatus()
+              .then((r) => setConnectOutcome(r.status))
+              .catch(() => undefined)
+              .finally(refresh);
           }}
           onFallback={() => {
             setEmbedConnect(false);
@@ -667,105 +647,38 @@ function PayoutSetupBody({
             entry is the country's own currency and stays preselected until the
             host chooses otherwise, so nobody's existing arrangement moves
             because a picker appeared. */}
-        {/* Collapsed to a row, like the country above it.
-            A US host can be paid in twenty currencies, and rendering all of
-            them as tiles put seven rows of chooser between "where do you get
-            paid" and the actual payout methods — on a screen whose whole
-            problem was already length. It reads as a setting with a current
-            value, which is what it is, and opens to the full grid when the
-            host actually wants to change it. */}
-        {showCurrencyControl && !changingCountry && !changingCurrency && (
-          <ListGroup>
-            <ListRow
-              icon={<Coins size={18} />}
-              value={payoutCurrency ?? defaultCurrency ?? ''}
-              onClick={() => setChangingCurrency(true)}
-            >
-              Paid in
-            </ListRow>
-          </ListGroup>
+        {/* What happened the last time Stripe onboarding closed.
+            Stripe fires `onExit` on submit and on abandon alike and does not
+            say which, so this screen used to look identical either way — a
+            host whose account still needed details saw nothing change,
+            reopened it, met the same form, and concluded submitting did
+            nothing. Now the answer comes from PayHold and is said out loud. */}
+        {connectOutcome === 'pending' && (
+          <Notice tone="warn">
+            Stripe still needs a few details before this account can be paid. Reopening takes you
+            back to where you left off — nothing you have already entered is lost.
+          </Notice>
+        )}
+        {connectOutcome === 'connected' && (
+          <Notice tone="brand">
+            Your Stripe account is connected. It is being verified before the first payout — your
+            cars stay bookable and your earnings keep building up meanwhile.
+          </Notice>
         )}
 
-        {showCurrencyControl && !changingCountry && changingCurrency && (
-          <div>
-            <Label htmlFor="payout-currency">Paid in</Label>
-            <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {payoutCurrencies.map((c) => {
-                const isSel = (payoutCurrency ?? defaultCurrency) === c.currency;
-                return (
-                  <button
-                    key={c.currency}
-                    id={c.currency === payoutCurrencies[0].currency ? 'payout-currency' : undefined}
-                    type="button"
-                    onClick={() => {
-                      setPayoutCurrency(c.currency);
-                      setChangingCurrency(false);
-                    }}
-                    className={cn(
-                      'flex flex-col items-start gap-0.5 rounded-[var(--radius-control)] border px-3 py-2 text-left',
-                      isSel
-                        ? 'border-transparent bg-[var(--color-content)] text-[var(--color-content-inverse)]'
-                        : 'border-[var(--color-border)] hover:bg-[var(--color-surface-sunken)]',
-                    )}
-                  >
-                    <span className="font-semibold">{c.currency}</span>
-                    {/* What choosing it actually gets you. A currency on its
-                        own is not a reason to pick one. */}
-                    <span
-                      className={cn(
-                        'text-caption leading-tight',
-                        isSel
-                          ? 'text-[var(--color-content-inverse)]/80'
-                          : 'text-[var(--color-content-muted)]',
-                      )}
-                    >
-                      {methodNamesFor(c.methods)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+        {/* No currency choice here, deliberately.
+            Adding a destination answers "where does my money land" — a bank
+            account is in a country and its currency follows from that. Being
+            asked to pick a currency while typing an account number reads as a
+            second, unrelated question, and it is the wrong moment: which
+            currency to take money out in is a decision at the point of taking
+            it out, against a balance that exists. So the country is asked here
+            and the currency is PayHold's own default for it.
 
-            {/* Why a currency a host expected is not on the list.
-                PayHold's `message` states the fact about the market and stops
-                — it does not know whether this host has a payout method at
-                all, so anything about *them* is added here. The one clause
-                worth adding is the case that actually hurts: the currency
-                they are being paid in today no longer being offered. */}
-            {unavailableCurrencies.length > 0 && (
-              <ul className="mt-2 space-y-1.5">
-                {unavailableCurrencies.map((u) => (
-                  <li
-                    key={u.currency}
-                    className="flex gap-2 rounded-[var(--radius-control)] border border-dashed border-[var(--color-line)] px-3 py-2 text-caption text-[var(--color-content-muted)]"
-                  >
-                    <span className="font-semibold text-[var(--color-content-subtle)]">
-                      {u.currency}
-                    </span>
-                    <span className="flex-1">
-                      {u.message}
-                      {u.currency === currentPayoutCurrency && (
-                        <>
-                          {' '}
-                          <span className="font-medium text-[var(--color-content)]">
-                            This is the currency your current payout method uses, so it needs
-                            changing.
-                          </span>
-                        </>
-                      )}
-                      {/* `permanence`, not `reason_code`, so a code this build
-                          has never heard of still says something true rather
-                          than rendering blank. */}
-                      {u.permanence === 'temporary' && u.currency !== currentPayoutCurrency && (
-                        <> This one is not permanent.</>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+            The chooser and the "why is USD missing" explanations are moved off
+            this screen rather than deleted — `payout.currencies` and
+            `currencies_unavailable` are still requested, typed and tested,
+            ready for the payout side to render. */}
 
         {(!payoutCountry || changingCountry) && (
           <Notice tone="warn" className="flex-col items-stretch">
