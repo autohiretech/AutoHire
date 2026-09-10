@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
+import { CountryCombobox } from '@/components/CountryCombobox';
 import { StripeConnectOnboarding } from '@/components/StripeConnectOnboarding';
 import { cn } from '@/lib/cn';
 import { useCountry } from '@/lib/country';
@@ -514,7 +515,10 @@ function PayoutSetupBody({
         </>
       )}
 
-      <div className={cn('flex flex-col gap-6', !isModal && 'mt-6')}>
+      {/* Tighter in a dialog than on a page. A page has the viewport to breathe
+          into; a modal competes with its own scrollbar, and 24px between every
+          block is what turns a four-field form into something that scrolls. */}
+      <div className={cn('flex flex-col', isModal ? 'gap-4' : 'mt-6 gap-6')}>
         {/* Currently connected — a genuine state, so it's a Notice: reassurance
             (brand) once active, action-needed (warn) while still verifying. */}
         {connected && me && (
@@ -635,26 +639,23 @@ function PayoutSetupBody({
                 where you live.
               </p>
             </div>
-            <Select
-              aria-label="Payout country"
-              className="mt-3"
-              value=""
-              disabled={saveCountry.isPending}
-              onChange={(e) => {
-                if (!e.target.value) return;
-                saveCountry.mutate(e.target.value);
-                setChangingCountry(false);
-              }}
-            >
-              <option value="" disabled>
-                Select your country
-              </option>
-              {countries.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.flag} {c.name}
-                </option>
-              ))}
-            </Select>
+            {/* Typed, not scrolled. This was a native select over ~200
+                countries — a long hunt on desktop and the OS wheel picker on a
+                phone, where there is no way to type at all. The host already
+                knows their country, and this field decides which payout
+                methods and which currency they are offered, so it should take
+                one word rather than a drag through the alphabet. */}
+            <div className="mt-3">
+              <CountryCombobox
+                countries={countries}
+                disabled={saveCountry.isPending}
+                autoFocus={changingCountry}
+                onSelect={(code) => {
+                  saveCountry.mutate(code);
+                  setChangingCountry(false);
+                }}
+              />
+            </div>
             {payoutCountry && (
               <button
                 type="button"
@@ -1093,7 +1094,10 @@ function PayoutSetupSkeleton({ chrome }: { chrome: 'page' | 'modal' }) {
         </>
       )}
 
-      <div className={cn('flex flex-col gap-6', !isModal && 'mt-6')}>
+      {/* Tighter in a dialog than on a page. A page has the viewport to breathe
+          into; a modal competes with its own scrollbar, and 24px between every
+          block is what turns a four-field form into something that scrolls. */}
+      <div className={cn('flex flex-col', isModal ? 'gap-4' : 'mt-6 gap-6')}>
         <ListGroup>
           <ListRow
             icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />}
