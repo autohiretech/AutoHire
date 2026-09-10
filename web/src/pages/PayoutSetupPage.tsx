@@ -701,6 +701,38 @@ function PayoutSetupBody({
             carried by inverting to the solid surface rather than by hue, so
             the accent stays spent on the one Save/Connect action below. */}
         <div className={cn((!payoutCountry || availability.state !== 'ok') && 'pointer-events-none hidden')}>
+          {/* Two steps, not one column.
+              Every method's tile and the chosen method's form used to stack on
+              the same screen, so a host on a phone scrolled past three tiles,
+              a provider explanation, a security line and a hold warning to
+              reach one field. Choosing is one question and filling it in is
+              another; showing both at once makes the screen look like more
+              work than it is. Once a method is picked the grid collapses to a
+              single row naming it, with the way back to the others on it. */}
+          {selected && meta ? (
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="flex w-full items-center gap-3 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5 text-left hover:bg-[var(--color-surface-sunken)]"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
+                {(() => {
+                  const Icon = PAYOUT_METHOD_ICON[selected];
+                  return <Icon size={18} />;
+                })()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-[var(--color-content)]">{meta.label}</span>
+                <span className="block truncate text-caption text-[var(--color-content-muted)]">
+                  {meta.blurb}
+                </span>
+              </span>
+              <span className="shrink-0 text-caption font-medium underline underline-offset-2">
+                Change
+              </span>
+            </button>
+          ) : (
+          <>
           <p className="mb-2 text-body-sm font-medium text-[var(--color-content)]">
             {connected ? 'Change your payout method' : 'Choose how you want to be paid'}
           </p>
@@ -752,6 +784,8 @@ function PayoutSetupBody({
               );
             })}
           </div>
+          </>
+          )}
         </div>
 
         {/* Destination form for the chosen method — or, on Stripe Connect
