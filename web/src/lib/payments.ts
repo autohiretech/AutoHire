@@ -308,7 +308,7 @@ export interface PayoutCountryRoute {
      * it, and because a client may be reading a PayHold that predates the
      * field. `payoutMethodsFromRoute` falls back to the old inference then.
      */
-    methods?: ('momo' | 'bank' | 'connect')[];
+    methods?: ('momo' | 'bank' | 'connect' | 'paypal')[];
   };
   /**
    * The mobile-money wallets that exist in this country — "MTN", "Airtel
@@ -407,6 +407,12 @@ export function payoutMethodsFromRoute(
   // than as the methods a host picks, and `connect` is the one that is not a
   // one-to-one mapping: Stripe Connect sends to a bank account or a debit card,
   // so it becomes both. Order is preserved because PayHold sorts `kind` first.
+  //
+  // `paypal` joined the vocabulary on 2026-09-10 and passes straight through,
+  // which is why this screen offered it correctly from the moment PayHold
+  // enabled it while `payhold-register-seller` was still refusing it. Its
+  // eligibility is per (country, currency) — a Kenyan seller paid in USD gets
+  // it, the same seller paid in KES does not — so only this list can say.
   if (route.methods) {
     const out: PayoutMethodType[] = [];
     for (const kind of route.methods) {

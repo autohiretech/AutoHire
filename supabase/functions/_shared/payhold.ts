@@ -148,11 +148,31 @@ export interface Seller {
  * destination, so nothing else can ever come back on a `Seller` or a
  * `SellerDestination`, and nothing here may ever send one.
  */
-export type PayoutRail = 'flutterwave_momo' | 'flutterwave_bank' | 'stripe_connect';
+export type PayoutRail =
+  | 'flutterwave_momo'
+  | 'flutterwave_bank'
+  | 'stripe_connect'
+  /**
+   * Live since PayHold's `20260910000005` lifted the §16 gate on the
+   * `(paypal, paypal)` route. It is a real `payout_provider` value with an
+   * adapter behind it, so AutoHire may produce it — which nothing here could
+   * do while it sat in `DisabledPayoutRail`.
+   *
+   * **Eligibility is per (country, currency), not per country**, because the
+   * row carries PayPal's currencies intersected with what PayHold can price:
+   * a Kenyan seller paid in USD reaches it, the same seller paid in KES does
+   * not. Nothing in AutoHire may guess at that — `payout.methods` from the
+   * live route is the only thing that knows, which is why `payoutProviderFor`
+   * still answers `null` for it and the rescue path does the work.
+   */
+  | 'paypal';
 
 /**
- * §29.3's declared-and-disabled rails — PayPal, Venmo, Cash App Pay, Alipay,
- * WeChat Pay. They exist as `payout_routes` rows so a host who picks one gets a
+ * §29.3's declared-and-disabled rails — Venmo, Cash App Pay, Alipay, WeChat
+ * Pay. **PayPal left this set on 2026-09-10** (`20260910000005`): its route is
+ * enabled, it has an adapter, and it is a `PayoutRail` now. The other four are
+ * unchanged, and the way to tell is not this comment — it is whether PayHold
+ * names the method in `payout.methods`. They exist as `payout_routes` rows so a host who picks one gets a
  * specific sentence instead of "unknown destination type", and those rows carry
  * **no `provider`**, which a check constraint turns into "cannot be enabled".
  * There is no live payout adapter behind any of the five and no signed
@@ -171,7 +191,7 @@ export type PayoutRail = 'flutterwave_momo' | 'flutterwave_bank' | 'stripe_conne
  * one — which is why every field that holds what PayHold actually said is typed
  * `PayoutRail`, not this.
  */
-export type DisabledPayoutRail = 'paypal' | 'venmo' | 'cash_app_pay' | 'alipay' | 'wechat_pay';
+export type DisabledPayoutRail = 'venmo' | 'cash_app_pay' | 'alipay' | 'wechat_pay';
 
 export type PayoutProvider = PayoutRail | DisabledPayoutRail;
 
@@ -895,7 +915,7 @@ export interface PayoutCountryRoute {
      * Optional: an operator-closed market answers without it, and a PayHold
      * predating the field sends nothing.
      */
-    methods?: ('momo' | 'bank' | 'connect')[];
+    methods?: ('momo' | 'bank' | 'connect' | 'paypal')[];
   };
   /**
    * The mobile-money wallets that actually exist in this country — "MTN",
@@ -1276,13 +1296,17 @@ const NO_PAYOUT_RAIL = new Set(['BF', 'EG']);
  *     there at all (African payouts always ride Flutterwave, per
  *     docs/payhold.md) and Flutterwave has no card payout of its own.
  *
- *   • **All five wallets.** PayPal, Venmo, Cash App, Alipay and WeChat Pay are
- *     §29.3's declared-and-disabled rails: no `provider` on the route row, no
- *     live adapter, and not in PayHold's `payout_provider` enum at all — see
- *     `DisabledPayoutRail`. This used to map each one onto its own name and
- *     hand PayHold a value its own database cannot store. There is no PayPal
- *     integration to fall back to and inventing one is not a rounding error, so
- *     the honest answer is that these are not ways to get paid.
+ *   • **Every wallet, including PayPal — but for two different reasons now.**
+ *     Venmo, Cash App, Alipay and WeChat Pay are still §29.3's
+ *     declared-and-disabled rails: no `provider` on the route row, no live
+ *     adapter, nothing to fall back to. **PayPal is live** since
+ *     `20260910000005` and still answers `null` here, because this function is
+ *     synchronous and PayPal's eligibility is per (country, currency) — a
+ *     Kenyan seller paid in USD reaches it and the same seller paid in KES does
+ *     not. A hardcoded table cannot hold that and must not try. The caller
+ *     turns this `null` into a live-route check (`payoutRailFromRoute`), which
+ *     answers `'paypal'` wherever PayHold's `methods` names it, so a refusal
+ *     here is a question rather than a verdict.
  *
  *   • **A market Flutterwave collects in and nobody pays out from.** Burkina
  *     Faso and Egypt — see `NO_PAYOUT_RAIL`. These are not in the kind
@@ -1356,7 +1380,16 @@ export function payoutRailFromRoute(
       return payout.methods.includes('connect') ? 'stripe_connect' : null;
     }
     if (method === 'card') return payout.methods.includes('connect') ? 'stripe_connect' : null;
-    // The five §29.3 wallets are never in `methods` — no rail carries them.
+
+    // A wallet is a rail exactly when PayHold names it here, and never
+    // otherwise. This branch used to `return null` under the comment "the five
+    // §29.3 wallets are never in `methods` — no rail carries them", which was
+    // true when it was written and false about an hour later: PayPal's route
+    // was enabled and a US host was offered PayPal by the screen and refused
+    // by this function. The list is the gate now, so switching another wallet
+    // on at PayHold needs one entry here and in `PayoutRail`, not a hunt for
+    // whatever else assumed all five were dead.
+    if (method === 'paypal') return payout.methods.includes('paypal') ? 'paypal' : null;
     return null;
   }
 

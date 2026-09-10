@@ -335,9 +335,14 @@ Deno.serve(async (req: Request) => {
     // against the rail it named while the disagreement goes to the log for the
     // table to be corrected. If PayHold agrees, or cannot be reached, the
     // refusal stands exactly as before and nothing is registered.
+    // What PayHold said this market actually takes, when we had to ask. Used
+    // by the refusal below to name real alternatives instead of guessing.
+    let liveMethods: string[] | null = null;
+
     if (!payoutProvider) {
       try {
         const route = await payoutRouteFor(country);
+        liveMethods = route.payout?.methods ?? null;
         const liveRail = payoutRailFromRoute(method as PayoutMethod, route);
         if (liveRail) {
           console.warn(
@@ -365,11 +370,30 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!payoutProvider) {
+      // Say what this market *does* take, and stop blaming the market.
+      //
+      // This used to read "isn't a way to get paid in this market yet — try
+      // Mobile Money or Bank instead", which was wrong twice over for the US
+      // host who reported it: the refusal was not about their market at all
+      // (AutoHire refused PayPal everywhere), and Mobile Money does not exist
+      // in the United States, so the one piece of advice in the sentence sent
+      // them looking for something that was never there.
+      //
+      // `liveMethods` is PayHold's own answer for this country and we already
+      // paid for it on the branch above, so the alternatives are real ones
+      // rather than a guess. When PayHold could not be reached there is no
+      // list, and the honest sentence names no alternatives at all.
+      const alternatives = (liveMethods ?? [])
+        .filter((m) => m !== method)
+        .map((m) => (m === 'connect' ? 'Bank or Card' : METHOD_LABEL[m] ?? m));
+      const label = METHOD_LABEL[method as PayoutMethod] ?? method;
       return json(
         {
-          error:
-            `${METHOD_LABEL[method as PayoutMethod] ?? method} isn't a way to get paid in ` +
-            `this market yet — try Mobile Money or Bank instead.`,
+          error: alternatives.length > 0
+            ? `${label} isn't a way to get paid here yet — try ${
+              alternatives.join(' or ')
+            } instead.`
+            : `${label} isn't a way to get paid here yet.`,
           code: 'unsupported_payout_method',
         },
         400,

@@ -156,7 +156,7 @@ Deno.test('the disabled wallet rails are not rescued by any live route', () => {
 const withMethods = (
   provider: 'flutterwave' | 'stripe' | null,
   kind: 'momo' | 'bank' | 'connect' | null,
-  methods: ('momo' | 'bank' | 'connect')[],
+  methods: ('momo' | 'bank' | 'connect' | 'paypal')[],
   blocked = false,
 ) => ({
   country: { code: 'XX', name: 'Test', flag: '' },
@@ -228,4 +228,57 @@ Deno.test('Malawi pays to a wallet, and its bank corridor stays shut', () => {
     payoutRailFromRoute('bank', withMethods('flutterwave', 'momo', ['momo'])),
     null,
   );
+});
+
+/**
+ * PayPal, live since PayHold's `20260910000005`.
+ *
+ * The bug these pin: `payoutRailFromRoute` refused all five §29.3 wallets under
+ * the comment "never in `methods` — no rail carries them". True when written,
+ * false an hour later, and the result was a US host offered PayPal by the
+ * payout screen and refused by the registration path.
+ *
+ * Eligibility is per (country, currency), not per country — PayPal's currency
+ * list intersected with what PayHold can price — so nothing here may assert a
+ * country. `methods` is the only authority and these tests only ever vary it.
+ */
+
+const ppRoute = (methods: ('momo' | 'bank' | 'connect' | 'paypal')[]) =>
+  withMethods('stripe', 'connect', methods);
+
+Deno.test('PayPal is a rail wherever PayHold names it', () => {
+  assertEquals(payoutRailFromRoute('paypal', ppRoute(['connect', 'paypal'])), 'paypal');
+  // A market only PayPal reaches.
+  assertEquals(
+    payoutRailFromRoute('paypal', withMethods(null, null, ['paypal'])),
+    'paypal',
+  );
+});
+
+Deno.test('PayPal is refused wherever PayHold does not name it', () => {
+  // The same country in a currency PayPal cannot take — KES, RWF, NGN, GHS are
+  // outside its list, so the route comes back without it and this must refuse.
+  assertEquals(payoutRailFromRoute('paypal', withMethods('flutterwave', 'momo', ['momo'])), null);
+  assertEquals(payoutRailFromRoute('paypal', ppRoute(['connect'])), null);
+});
+
+Deno.test('a blocked market does not pay by PayPal either', () => {
+  assertEquals(
+    payoutRailFromRoute('paypal', withMethods('stripe', 'connect', ['paypal'], true)),
+    null,
+  );
+});
+
+Deno.test('the four still-disabled wallets are not rescued by PayPal going live', () => {
+  // §29.3 minus PayPal. Enabling one rail must not enable its neighbours.
+  for (const method of ['venmo', 'cash_app', 'alipay', 'wechat_pay'] as const) {
+    assertEquals(payoutRailFromRoute(method, ppRoute(['connect', 'paypal'])), null, method);
+  }
+});
+
+Deno.test('the synchronous table still refuses PayPal, and that is the design', () => {
+  // It cannot know a per-(country, currency) fact, so it defers rather than
+  // guesses — the refusal is a question the live route answers.
+  assertEquals(payoutProviderFor('paypal', 'US'), null);
+  assertEquals(payoutProviderFor('paypal', 'KE'), null);
 });
