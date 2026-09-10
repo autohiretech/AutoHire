@@ -845,13 +845,28 @@ export function PayoutSetupPage() {
                     not a free action — the new account is frozen while it is
                     checked — and a host who finds that out from a paused payout is
                     a host who thinks something broke. */}
+                {/* Shown on a first destination too, not only on a change.
+                    This used to render for `connected` alone, which had it
+                    exactly backwards: `add_seller_destination` stamps
+                    `security_hold_until = now() + destination_hold_hours` on
+                    every insert, with no branch for "there was no primary
+                    before". So the host who saw no warning was the one whose
+                    first payout was *certain* to be held — and the one with no
+                    prior experience of this to reason from. A hold nobody
+                    mentioned is indistinguishable from a fault. */}
                 {PAYMENTS_PAYHOLD ? (
-                  connected && (
+                  connected ? (
                     <Notice tone="warn">
                       This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are
                       verified before they're paid, so payouts can pause while that happens — your
                       cars stay bookable and your earnings keep building up either way. We'll tell
                       you how long once it's saved.
+                    </Notice>
+                  ) : (
+                    <Notice tone="info">
+                      New payout accounts are checked before the first payment goes out, so this
+                      won't be live the moment you save it — your cars stay bookable and your
+                      earnings keep building up meanwhile. We'll tell you how long once it's saved.
                     </Notice>
                   )
                 ) : (
