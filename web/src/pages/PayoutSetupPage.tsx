@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock,
   Lock,
+  Coins,
   MapPin,
   ShieldCheck,
   Trash2,
@@ -182,6 +183,8 @@ function PayoutSetupBody({
    * starts by asking for nothing and changes nobody who does not touch it.
    */
   const [payoutCurrency, setPayoutCurrency] = useState<string | null>(null);
+  /** Is the currency grid open? Closed by default — it is a row until asked. */
+  const [changingCurrency, setChangingCurrency] = useState(false);
 
   // The bulk list above only says whether `payoutCountry` can be paid at all;
   // this is what actually decides which methods to offer inside it — see
@@ -597,7 +600,26 @@ function PayoutSetupBody({
             entry is the country's own currency and stays preselected until the
             host chooses otherwise, so nobody's existing arrangement moves
             because a picker appeared. */}
-        {payoutCurrencies.length > 1 && !changingCountry && (
+        {/* Collapsed to a row, like the country above it.
+            A US host can be paid in twenty currencies, and rendering all of
+            them as tiles put seven rows of chooser between "where do you get
+            paid" and the actual payout methods — on a screen whose whole
+            problem was already length. It reads as a setting with a current
+            value, which is what it is, and opens to the full grid when the
+            host actually wants to change it. */}
+        {payoutCurrencies.length > 1 && !changingCountry && !changingCurrency && (
+          <ListGroup>
+            <ListRow
+              icon={<Coins size={18} />}
+              value={payoutCurrency ?? defaultCurrency ?? ''}
+              onClick={() => setChangingCurrency(true)}
+            >
+              Paid in
+            </ListRow>
+          </ListGroup>
+        )}
+
+        {payoutCurrencies.length > 1 && !changingCountry && changingCurrency && (
           <div>
             <Label htmlFor="payout-currency">Paid in</Label>
             <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -608,7 +630,10 @@ function PayoutSetupBody({
                     key={c.currency}
                     id={c.currency === payoutCurrencies[0].currency ? 'payout-currency' : undefined}
                     type="button"
-                    onClick={() => setPayoutCurrency(c.currency)}
+                    onClick={() => {
+                      setPayoutCurrency(c.currency);
+                      setChangingCurrency(false);
+                    }}
                     className={cn(
                       'flex flex-col items-start gap-0.5 rounded-[var(--radius-control)] border px-3 py-2 text-left',
                       isSel
