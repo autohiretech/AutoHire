@@ -20,32 +20,36 @@
 //            returns on its own. It cannot cover an EARLY one: PayHold's
 //            overage can only ever add to what was charged, never subtract.
 //
-// **A late return is never charged. It is shown.** One rule, both rental
-// types, as of 2026-09-10. `payhold-create-deal` no longer sends
-// `overage_rate` on any deal, so PayHold's automatic collection is switched
-// off at the source, and this function's job on a late return is to write
-// `amount_exceeded_rwf` for both sides to see and `amount_owed_rwf` for the
-// host to collect at handover.
+// **A late return is charged automatically, on both rental types.** Every deal
+// now carries `overage_rate`, so PayHold charges the renter's saved card for
+// whatever the trip ran over the moment both sides confirm. Before this an
+// hourly booking did that and a daily one only displayed the figure — the same
+// late return either billed a card or asked the host to chase it, decided by
+// how the car happened to be listed.
 //
-// Before this, an hourly booking silently billed the renter's card at
-// confirmation and a daily one only displayed the figure — the same late
-// return either took money without anyone approving it or politely asked the
-// host to chase it, decided by how the car happened to be listed. The renter
-// is quoted the rate before paying either way (BookingPage), so what changed
-// is that quoting it is now all it does.
+// So on a late return this function usually has nothing to record: PayHold has
+// already taken it. `autoCollects` detects that by re-reading the deal, and
+// leaves `amount_owed_rwf` alone rather than billing the renter twice — once
+// on their card and once through their host.
 //
-// Two things still move money here, and neither is a surprise:
+// **When the charge cannot happen, the host is told the figure.** A renter who
+// paid by mobile money has no reusable credential, so `chargeSaved` has no
+// token; PayHold emits `order.balance_charge_failed` carrying the amount it
+// could not take, and `payhold-webhook` writes that to the booking. The host
+// then sees exactly what to collect in person. That is why mobile money stays
+// offered at checkout: overage is conditional, and a trip that ends on time
+// never needed a reusable credential at all.
+//
+// Two things still settle here, and neither is a surprise:
 //
 //   an early hourly return is REFUNDED — the renter paid for time they did
-//            not use, and PayHold's overage cannot express it in that
-//            direction. A daily booking is not refunded: a day rate was never
-//            metered, which is why the meter cannot be run backwards on it.
+//            not use, and PayHold's overage cannot express that direction. A
+//            daily booking is not refunded: a day rate was never metered,
+//            which is why the meter cannot be run backwards on it.
 //
-//   deals created BEFORE this still carry `split_percent` or `overage_rate`
-//            and PayHold goes on settling those itself at confirmation. The
-//            instruction lives on the deal and cannot be migrated after the
-//            fact, so `autoCollects` below detects them by re-reading the deal
-//            and leaves their debt alone rather than recording it twice.
+//   a deal with NO overage terms — created before this, or for a listing with
+//            no usable rate — settles the old way: the overage is written to
+//            `amount_owed_rwf` for the host to act on, display not collection.
 //
 // Secrets:  PAYHOLD_* (see _shared/payhold.ts), ALLOWED_ORIGIN
 // Deploy:   supabase functions deploy payhold-settle-usage

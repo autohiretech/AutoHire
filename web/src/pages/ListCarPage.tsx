@@ -626,7 +626,9 @@ export function ListCarPage() {
                   {Number(pricePerHour) > 0 && Number(overageMultiplier) > 0
                     ? `Currently ${Math.round(Number(pricePerHour) * Number(overageMultiplier)).toLocaleString()} ${currency} per extra hour, after the grace period.`
                     : ''}{' '}
-                  Shown to you on the trip so you can follow up — never charged automatically.
+                  Charged to the renter automatically when they bring it back late. If
+                  their payment method can't be charged again, we tell you exactly how
+                  much to collect from them.
                 </p>
               </div>
             )}

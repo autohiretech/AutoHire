@@ -207,13 +207,13 @@ export const en = {
   'booking.confirmAndPaySubtitle': "Check the car and the dates, then pay. Nothing reaches the host until the trip is over.",
   'booking.whenPickingUp': 'When are you picking it up?',
   'booking.lateReturnHourly':
-    'Coming back after your estimate bills {amount} for each extra hour, collected by the host rather than charged to your card. Back early and the difference is refunded.',
+    'Coming back after your estimate is charged at {amount} for each extra hour. Back early and the difference is refunded.',
   'booking.lateReturnDaily':
-    'Coming back more than 2 hours after {date} at this time bills {amount} for each extra hour, collected by the host rather than charged to your card.',
+    'Coming back more than 2 hours after {date} at this time is charged at {amount} for each extra hour.',
   'booking.howManyHours': 'How many hours?',
   'booking.lockedForCheckout': 'Locked for this checkout — the amount you were quoted was priced against it.',
   'booking.payEstimatedNow':
-    'You pay the estimated {amount} now. Come back early and the difference is refunded; stay out longer and the extra is shown to you and the host, to settle with them at drop-off.',
+    'You pay the estimated {amount} now. Come back early and the difference is refunded; stay out longer and the extra is charged when the trip is confirmed.',
   'booking.howToPay': 'How do you want to pay?',
   'booking.choosePayOnNextStep': 'Choose your method on the next step — you stay right here on AutoHire.',
   'booking.datesNotAvailable': "These dates aren't available.",

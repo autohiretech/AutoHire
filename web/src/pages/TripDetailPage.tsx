@@ -325,7 +325,8 @@ export function TripDetailPage() {
                     {booking.rentalType === 'hourly'
                       ? 'Actual time used came in over the estimate you paid.'
                       : 'Returned more than 2 hours late.'}{' '}
-                    This isn't charged automatically — the host follows up directly.
+                    This could not be charged automatically — the host collects it
+                    directly.
                   </p>
                   <Row label="Exceeded by" value={formatRwf(booking.amountExceededRwf)} />
                   <Row

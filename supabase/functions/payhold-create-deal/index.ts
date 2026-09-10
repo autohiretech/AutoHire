@@ -351,6 +351,13 @@ Deno.serve(async (req: Request) => {
     // charged in and carries the FX itself.
     const currency = String(listing.price_currency ?? 'RWF').toUpperCase();
 
+    // What an extra hour is billed at, in minor units, per rental type.
+    // Hourly has never carried the penalty multiplier — it bills late time at
+    // the same flat rate the booking is already priced in — and daily has
+    // always carried it. `overageRate` above is the daily figure; this is the
+    // one that actually goes to PayHold, so it has to branch.
+    const overageMinor = toMinorUnits(isHourly ? pricePerHour : overageRate, currency);
+
 
     // The moment the ESTIMATE says the car should be back.
     //
@@ -408,25 +415,37 @@ Deno.serve(async (req: Request) => {
       // attempt it automatically. Card renters get it collected
       // automatically the moment both sides confirm the trip is over.
       //
-      // **No deal carries an overage rate, and that is the whole policy.**
+      // **Every deal carries an overage rate, so a late return is collected
+      // automatically — and when it cannot be, the host is told the figure.**
       //
-      // Sending `overageRate` is what switches on PayHold's *automatic*
-      // collection: it charges the renter's card at confirmation, with nobody
-      // approving it. Hourly bookings used to do that and daily ones never
-      // did, which meant the same late return either silently billed a card or
-      // politely asked the host to chase it, depending on how the car happened
-      // to be listed.
+      // Sending these two is what switches PayHold's automatic collection on:
+      // at confirmation it charges the renter's saved card for whatever the
+      // trip ran over. Hourly used to do this and daily never did, so the same
+      // late return either billed a card or asked the host to chase it,
+      // decided by how the car happened to be listed. Both do it now.
       //
-      // One rule now: a late return is **shown** to both sides and collected
-      // by the host at handover. Nobody is charged for time they did not agree
-      // to at the moment they agreed to it. The rate itself is still computed
-      // and still travels in `overageRateRwf` below — it is the number both
-      // sides are shown, and the renter is quoted it before paying
-      // (BookingPage). What changed is that showing it is now all it does.
+      // The rate differs by type and each is billed what it was quoted:
+      // hourly at its own flat hourly rate, which is the price the booking is
+      // already denominated in, and daily at the host's penalty multiplier
+      // over an implied hourly price their form defines as day ÷ 24. Neither
+      // is a new price and the renter is shown theirs before paying
+      // (BookingPage).
       //
-      // Deals created before this keep the `overage_rate` already written on
-      // them and will still auto-collect; the instruction lives on the deal,
-      // not here.
+      // Collection is never certain — a renter who paid by mobile money has
+      // no reusable credential, so `chargeSaved` has no token and the charge
+      // is refused. That is an ordinary outcome, not an error: PayHold emits
+      // `order.balance_charge_failed` with the amount it could not take, the
+      // webhook writes it to the booking, and the host is shown exactly what
+      // to claim in person. Which is why mobile money stays offered at
+      // checkout: overage is conditional, and a trip that ends on time never
+      // needed a reusable credential at all.
+      //
+      // PayHold refuses `overage_rate: 0` outright — both fields must be
+      // positive integers or neither may be sent — so a listing with no
+      // usable rate sends nothing and settles the old way, by display.
+      ...(overageMinor > 0
+        ? { overageRate: overageMinor, overageUnitSeconds: 3600 }
+        : {}),
       // Everything the webhook needs to build the trip. It reads these from the
       // deal, never from its own payload — see payhold-webhook.
       metadata: {

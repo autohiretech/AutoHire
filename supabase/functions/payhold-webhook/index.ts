@@ -22,6 +22,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
+  fromMinorUnits,
   getDeal,
   payholdConfigured,
   payholdWebhookConfigured,
@@ -159,7 +160,7 @@ async function createBooking(admin: SupabaseClient, deal: Deal): Promise<Respons
 async function bookingFor(admin: SupabaseClient, dealId: string) {
   const { data } = await admin
     .from('bookings')
-    .select('id, state, host_id, renter_id, total_rwf')
+    .select('id, state, host_id, renter_id, total_rwf, charge_currency')
     .eq('payhold_deal_id', dealId)
     .maybeSingle();
   return data;
@@ -267,11 +268,36 @@ Deno.serve(async (req: Request) => {
       case 'order.balance_charge_failed': {
         const booking = await bookingFor(admin, deal.id);
         if (booking) {
+          // **Record what could not be taken, not just that nothing was.**
+          // The host has to go and ask the renter for this in person, and
+          // "we couldn't charge it" without a figure leaves them working it
+          // out from a rate and a clock. PayHold sends `amount` in minor
+          // units of `currency` — exactly what `chargeSaved` was called
+          // with.
+          //
+          // Written into the booking's own columns only when that currency
+          // is the one the booking is denominated in, which is the ordinary
+          // case: both are the presentment currency the renter chose. If a
+          // deal ever settles in another, the figure still reaches the host
+          // in the sentence below rather than being silently converted at a
+          // rate nobody agreed.
+          const minor = Number(event.data?.amount ?? 0);
+          const currency = String(event.data?.currency ?? '').toUpperCase();
+          const sameCurrency = !currency ||
+            currency === String(booking.charge_currency ?? '').toUpperCase();
+          const owed = minor > 0 ? fromMinorUnits(minor, currency || 'RWF') : 0;
+
+          const reason = String(event.data?.reason ?? 'Could not be charged automatically.');
           await admin
             .from('bookings')
             .update({
               overage_collection_failed: true,
-              overage_collection_failed_reason: String(event.data?.reason ?? 'Could not be charged automatically.'),
+              overage_collection_failed_reason: owed > 0 && !sameCurrency
+                ? `${reason} (${currency} ${owed})`
+                : reason,
+              ...(owed > 0 && sameCurrency
+                ? { amount_owed_rwf: owed, amount_exceeded_rwf: owed }
+                : {}),
             })
             .eq('id', booking.id);
         }
