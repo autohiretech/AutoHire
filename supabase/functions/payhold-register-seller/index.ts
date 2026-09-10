@@ -181,12 +181,24 @@ async function changeDestination(
     // handle is relinked rather than duplicated; one that is genuinely gone is
     // registered fresh, with the destination the host just typed.
     //
-    // **Only a 404 does this.** The refusals that matter to a host —
-    // `network_required`, `bank_code_required`, a corridor PayHold will not
-    // pay — are 4xx but never 404, so they still surface as themselves rather
-    // than silently unlinking somebody over their own typo. And this call
-    // names no destination id, so a 404 here can only be about the seller.
-    if ((e as { status?: number }).status === 404) {
+    // **Only a 404 that says the seller is gone.** The refusals that matter to
+    // a host — `network_required`, `bank_code_required`, a corridor PayHold
+    // will not pay — are 4xx but never 404, so they still surface as
+    // themselves rather than silently unlinking somebody over their own typo.
+    //
+    // The message check is not belt-and-braces, it is load-bearing. This used
+    // to fire on *any* 404, on the reasoning that the call names no other
+    // resource so a 404 could only be the seller. PayHold's router now echoes
+    // the requested path on an unmatched route — `POST /sellers/<id>/connect
+    // is not a route` — which is a 404 that is not about the seller at all,
+    // and would have had a mistyped or newly-renamed endpoint quietly clear a
+    // host's payout link and re-register them from scratch. Note it also
+    // contains the word "sellers", so matching `/seller/i` alone is not
+    // enough; the seller-gone message is `Seller <uuid> not found`.
+    const notFound = (e as { status?: number }).status === 404;
+    const message404 = e instanceof Error ? e.message : String(e);
+    const sellerGone = notFound && /seller/i.test(message404) && /not found/i.test(message404);
+    if (sellerGone) {
       console.warn(
         `payhold_seller_id ${sellerId} is unknown to PayHold — clearing the stale ` +
           'link and re-registering this host from scratch.',
@@ -567,6 +579,25 @@ Deno.serve(async (req: Request) => {
     return await link(seller, false);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
+    // A 404 that is not "seller gone" is never the host's doing — a route we
+    // asked for that does not exist, a resource we named wrongly. PayHold now
+    // echoes the path in that message, so forwarding it verbatim would put
+    // `POST /sellers/<uuid>/connect is not a route` in front of a car owner as
+    // a toast. They cannot act on it and it is ours to fix, so they get a
+    // sentence that says so and the real one goes to the log.
+    if (status === 404) {
+      const raw = e instanceof Error ? e.message : String(e);
+      console.error(`[payhold-register-seller] unexpected 404 from PayHold: ${raw}`);
+      return json(
+        {
+          error:
+            "Something on our side isn't set up right, so we couldn't save that. " +
+            "Your earnings are safe — please try again shortly.",
+          code: 'payhold_unexpected_404',
+        },
+        502,
+      );
+    }
     return json({ error: e instanceof Error ? e.message : String(e) }, status);
   }
 });

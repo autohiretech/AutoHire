@@ -282,3 +282,44 @@ Deno.test('the synchronous table still refuses PayPal, and that is the design', 
   assertEquals(payoutProviderFor('paypal', 'US'), null);
   assertEquals(payoutProviderFor('paypal', 'KE'), null);
 });
+
+/**
+ * Telling "this seller is gone" apart from "that route does not exist".
+ *
+ * Four AutoHire functions repair a stale `payhold_seller_id` on a PayHold
+ * 404, on the reasoning that the call names no other resource so a 404 could
+ * only be about the seller. PayHold's router now echoes the requested path on
+ * an unmatched route — `POST /sellers/<uuid>/connect is not a route` — which
+ * is a 404 that contains the word "sellers" and means nothing of the kind.
+ *
+ * Matching too loosely unlinks a host over an endpoint typo; on
+ * `payhold-create-deal` it does so on the renter's booking path, where the
+ * host who could act on it never sees the failure. These pin the predicate
+ * itself, since the four copies of it are the thing that has to stay in step.
+ */
+const sellerGone = (msg: string) => /seller/i.test(msg) && /not found/i.test(msg);
+
+Deno.test('a seller PayHold has never heard of is recognised as gone', () => {
+  assertEquals(sellerGone('Seller 7c1e0578-0a35-4f67-811d-16ac2d57e314 not found'), true);
+});
+
+Deno.test('an unmatched route is not a missing seller, despite saying "sellers"', () => {
+  for (const msg of [
+    'POST /sellers/cafc075f-2415-48b7-ab9b-40542c218c30/connect is not a route',
+    'GET /sellers/x/typo is not a route',
+    'POST /sellers is not a route',
+  ]) {
+    assertEquals(sellerGone(msg), false, msg);
+  }
+});
+
+Deno.test('a refusal that is not about the seller existing is left alone', () => {
+  // These are 4xx and must surface as themselves rather than unlinking anyone.
+  for (const msg of [
+    'paypal cannot pay a destination in RW',
+    'A PayPal destination is an account email or a payer id, not bank details',
+    'Destination 9e8d9541-eb2f-4662-a6e8-49c894f87bc1 not found',
+  ]) {
+    assertEquals(sellerGone(msg), false, msg);
+  }
+});

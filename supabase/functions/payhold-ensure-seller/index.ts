@@ -128,7 +128,15 @@ Deno.serve(async (req: Request) => {
       // bad minute must not unlink a host who is perfectly fine.
       let stale = false;
       await setSellerActive(profile.payhold_seller_id, true).catch((e) => {
-        if ((e as { status?: number }).status === 404) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // A 404 naming the seller as gone, not any 404. PayHold's router now
+        // echoes the path it could not match, so an endpoint we renamed or
+        // mistyped returns a 404 containing "sellers" that has nothing to do
+        // with this host's link.
+        if (
+          (e as { status?: number }).status === 404 &&
+          /seller/i.test(msg) && /not found/i.test(msg)
+        ) {
           stale = true;
           console.warn(
             `payhold_seller_id ${profile.payhold_seller_id} is unknown to PayHold — ` +

@@ -149,7 +149,16 @@ Deno.serve(async (req: Request) => {
         sellerCapabilities(sellerId).catch(() => null),
       ]);
     } catch (e) {
-      const unlinked = e instanceof PayHoldError && e.status === 404 && /seller/i.test(e.message);
+      // `not found` as well as `seller`, and both are needed. PayHold's router
+      // now echoes the requested path on an unmatched route — `GET
+      // /sellers/<id>/balance is not a route` — which is a 404 whose message
+      // contains "sellers" while having nothing to do with this seller
+      // existing. Matching `/seller/i` alone would read a renamed or mistyped
+      // endpoint as "this host has no payout account" and show them a
+      // confident empty wallet. The seller-gone message is
+      // `Seller <uuid> not found`.
+      const unlinked = e instanceof PayHoldError && e.status === 404 &&
+        /seller/i.test(e.message) && /not found/i.test(e.message);
       if (!unlinked) throw e;
       console.warn(
         `payhold_seller_id ${sellerId} is unknown to PayHold — reporting an empty wallet; ` +

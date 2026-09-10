@@ -505,7 +505,15 @@ Deno.serve(async (req: Request) => {
     try {
       ({ deal, payment_link } = await buildDeal(sellerId!));
     } catch (e) {
-      const stale = e instanceof PayHoldError && e.status === 404 && /seller/i.test(e.message);
+      // Both halves matter. PayHold's router echoes the requested path on an
+      // unmatched route — `POST /sellers/<id>/deals is not a route` — a 404
+      // whose message contains "sellers" and says nothing about this seller
+      // existing. On this path a false positive is worse than anywhere else:
+      // it sits on the RENTER's booking, so the repair would run, fail, and
+      // the failure would be invisible to the host who is the only person able
+      // to act on it. The seller-gone message is `Seller <uuid> not found`.
+      const stale = e instanceof PayHoldError && e.status === 404 &&
+        /seller/i.test(e.message) && /not found/i.test(e.message);
       if (!stale) throw e;
       try {
         sellerId = await linkSeller();
