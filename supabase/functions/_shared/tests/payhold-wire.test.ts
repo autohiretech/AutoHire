@@ -182,3 +182,31 @@ Deno.test('country and currency travel together, never one alone', async () => {
     restore();
   }
 });
+
+Deno.test('explain_currencies names the host own currency alongside the defaults', async () => {
+  // PayHold defaults to USD,EUR. The case that actually hurts is the currency
+  // the host is already paid in dropping out — which PayHold cannot know,
+  // because its payout branch is a catalogue keyed by country and currency.
+  const { seen, restore } = captureFetch();
+  try {
+    await payoutRouteFor('RW', { explain: ['USD', 'EUR', 'RWF'] });
+    assertEquals(
+      seen[0].url,
+      'https://payhold.test/v1/payment-options?payout_country=RW&explain_currencies=USD%2CEUR%2CRWF',
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test('an empty explain list falls back to PayHold own default', async () => {
+  // Sending `explain_currencies=` empty would ask for nothing to be
+  // explained, which is different from not asking.
+  const { seen, restore } = captureFetch();
+  try {
+    await payoutRouteFor('RW', { explain: [] });
+    assertEquals(seen[0].url, 'https://payhold.test/v1/payment-options?payout_country=RW');
+  } finally {
+    restore();
+  }
+});

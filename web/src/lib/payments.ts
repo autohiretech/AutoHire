@@ -324,6 +324,35 @@ export interface PayoutCountryRoute {
      * A closed market returns `[]`. Empty is not "no restriction".
      */
     currencies?: { currency: string; methods: ('momo' | 'bank' | 'connect' | 'paypal')[]; default: boolean }[];
+    /**
+     * Currencies a host might have expected and cannot have, with why.
+     *
+     * Bounded by the caller, not by the table: `?explain_currencies=` names
+     * what to explain (default `USD,EUR`, capped at ten). PayHold cannot
+     * bound it itself — a Rwandan wallet row carries KES, UGX, TZS, GHS, ZMW,
+     * XOF and XAF, so "everything absent" would explain to a Rwandan host why
+     * they cannot be paid in Ugandan shillings, which nobody wondered.
+     *
+     * The one that matters most is the currency the host is *already* paid
+     * in quietly dropping out. This endpoint cannot know it — it is a
+     * catalogue keyed by country and currency, and a seller lookup would make
+     * a cacheable answer depend on whose it is — so the client names it.
+     *
+     * `reason_code` is the stable value to switch on; `permanence` is 1:1
+     * with it today and kept deliberately, so an unrecognised future code
+     * still renders correctly instead of showing a blank. `message` states
+     * the fact about the market and stops — anything about *this host's*
+     * situation is the client's to add, because PayHold does not know whether
+     * they have a payout method at all.
+     *
+     * Never overlaps `currencies`; `[]` for a closed market.
+     */
+    currencies_unavailable?: {
+      currency: string;
+      reason_code: 'no_rail_reaches_market' | 'local_currency_only' | 'rail_unavailable';
+      permanence: 'permanent' | 'method_dependent' | 'temporary';
+      message: string;
+    }[];
   };
   /**
    * The mobile-money wallets that exist in this country — "MTN", "Airtel

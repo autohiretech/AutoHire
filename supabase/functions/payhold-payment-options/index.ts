@@ -208,14 +208,23 @@ Deno.serve(async (req: Request) => {
       // the KES answer from whoever asked first, and the difference is a
       // payout method appearing or vanishing for no visible reason.
       const currency = (params.get('payout_currency') ?? '').toUpperCase() || null;
-      const key = [country.toUpperCase(), currency ?? 'default', banks ? 'banks' : 'no-banks']
-        .join('+');
+      // Which absent currencies were asked about changes the answer, so it
+      // changes the key too — otherwise a host who asked about their own
+      // currency would be served an explanation list built for somebody else.
+      const explain = (params.get('explain_currencies') ?? '')
+        .split(',').map((c) => c.trim().toUpperCase()).filter(Boolean).sort();
+      const key = [
+        country.toUpperCase(),
+        currency ?? 'default',
+        explain.length > 0 ? explain.join('.') : 'explain-default',
+        banks ? 'banks' : 'no-banks',
+      ].join('+');
       const entry = routeCache.get(key);
       if (entry && Date.now() - entry.at < ROUTE_TTL_MS) {
         return json({ ...entry.value, served_from: 'memory' }, 200, 0);
       }
       try {
-        const route = await payoutRouteFor(country.toUpperCase(), { banks, currency });
+        const route = await payoutRouteFor(country.toUpperCase(), { banks, currency, explain });
         routeCache.set(key, { at: Date.now(), value: route });
         return json({ ...route, served_from: 'payhold' }, 200, 0);
       } catch (e) {

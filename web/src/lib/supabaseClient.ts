@@ -1019,11 +1019,21 @@ export const supabaseClient = {
        * mobile money, while the same host asking about USD routes PayPal.
        */
       currency?: string | null;
+      /**
+       * Which absent currencies to explain. PayHold defaults to USD,EUR; pass
+       * the host's own payout currency too, because the case that actually
+       * hurts — the currency they are already paid in dropping out of the
+       * list — is one only this side can name.
+       */
+      explain?: string[];
     },
   ): Promise<PayoutCountryRoute> {
     const { data, error } = await getSupabase().functions.invoke(
       `payhold-payment-options?country=${encodeURIComponent(country)}` +
         (opts?.currency ? `&payout_currency=${encodeURIComponent(opts.currency)}` : '') +
+        (opts?.explain?.length
+          ? `&explain_currencies=${encodeURIComponent(opts.explain.join(','))}`
+          : '') +
         (opts?.banks ? '&banks=1' : ''),
       { method: 'GET' },
     );
