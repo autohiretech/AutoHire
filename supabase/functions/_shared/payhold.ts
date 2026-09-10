@@ -997,9 +997,17 @@ export interface PayoutCountryRoute {
  */
 export async function payoutRouteFor(
   country: string,
-  opts?: { banks?: boolean },
+  opts?: { banks?: boolean; currency?: string | null },
 ): Promise<PayoutCountryRoute> {
-  const query = `payout_country=${encodeURIComponent(country)}${opts?.banks ? '&banks=1' : ''}`;
+  // `payout_currency` is optional and PayHold defaults it to the country's own
+  // currency. That default is why PayPal was unreachable in every African
+  // corridor: PayPal takes no KES, NGN, GHS or RWF, so asking about KE always
+  // asked about KES and always got mobile money back, while KE in USD routes
+  // PayPal perfectly well. Sending it is what lets a host be paid in a
+  // currency their country does not use.
+  const query = `payout_country=${encodeURIComponent(country)}` +
+    (opts?.currency ? `&payout_currency=${encodeURIComponent(opts.currency)}` : '') +
+    (opts?.banks ? '&banks=1' : '');
   const route = await call<PayoutCountryRoute>(`/payment-options?${query}`, { method: 'GET' });
   warnOnRouteDrift(country, route);
   return route;

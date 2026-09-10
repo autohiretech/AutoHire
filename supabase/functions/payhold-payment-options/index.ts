@@ -201,13 +201,21 @@ Deno.serve(async (req: Request) => {
     const country = params.get('country');
     if (country) {
       const banks = params.get('banks') === '1' || params.get('banks') === 'true';
-      const key = banks ? `${country.toUpperCase()}+banks` : country.toUpperCase();
+      // The currency is part of the question, not a detail of it. PayPal's
+      // eligibility is per (country, currency) — KE in KES routes mobile money
+      // and KE in USD routes PayPal — so it has to be in the cache key too.
+      // Keyed on country alone, a host asking about USD would have been handed
+      // the KES answer from whoever asked first, and the difference is a
+      // payout method appearing or vanishing for no visible reason.
+      const currency = (params.get('payout_currency') ?? '').toUpperCase() || null;
+      const key = [country.toUpperCase(), currency ?? 'default', banks ? 'banks' : 'no-banks']
+        .join('+');
       const entry = routeCache.get(key);
       if (entry && Date.now() - entry.at < ROUTE_TTL_MS) {
         return json({ ...entry.value, served_from: 'memory' }, 200, 0);
       }
       try {
-        const route = await payoutRouteFor(country.toUpperCase(), { banks });
+        const route = await payoutRouteFor(country.toUpperCase(), { banks, currency });
         routeCache.set(key, { at: Date.now(), value: route });
         return json({ ...route, served_from: 'payhold' }, 200, 0);
       } catch (e) {

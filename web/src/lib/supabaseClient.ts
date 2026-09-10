@@ -1002,10 +1002,22 @@ export const supabaseClient = {
      * chosen Bank needs it — every other caller asks the same question without
      * paying for an answer it will not render.
      */
-    opts?: { banks?: boolean },
+    opts?: {
+      banks?: boolean;
+      /**
+       * Which currency the host wants to be paid in. Omitted means the
+       * country's own, which is PayHold's default and is the right answer
+       * almost everywhere — but not for PayPal, whose eligibility is per
+       * (country, currency): a Kenyan host asking about KES is correctly told
+       * mobile money, while the same host asking about USD routes PayPal.
+       */
+      currency?: string | null;
+    },
   ): Promise<PayoutCountryRoute> {
     const { data, error } = await getSupabase().functions.invoke(
-      `payhold-payment-options?country=${encodeURIComponent(country)}${opts?.banks ? '&banks=1' : ''}`,
+      `payhold-payment-options?country=${encodeURIComponent(country)}` +
+        (opts?.currency ? `&payout_currency=${encodeURIComponent(opts.currency)}` : '') +
+        (opts?.banks ? '&banks=1' : ''),
       { method: 'GET' },
     );
     if (error) throw await fnError(error);
