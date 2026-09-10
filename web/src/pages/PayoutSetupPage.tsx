@@ -563,6 +563,38 @@ function PayoutSetupBody({
       {/* Tighter in a dialog than on a page. A page has the viewport to breathe
           into; a modal competes with its own scrollbar, and 24px between every
           block is what turns a four-field form into something that scrolls. */}
+      {/* Stripe's own onboarding, in its own dialog above everything else.
+          Mounted last so its portal lands after the payout modal's in the
+          document and paints over it — closing this returns the host to the
+          payout screen exactly where they left it, rather than unwinding the
+          whole flow. */}
+      <Modal
+        open={embedConnect}
+        onClose={() => {
+          // Leaving is not finishing. Stripe says nothing about whether the
+          // host completed anything, so this asks PayHold — `/connect/status`
+          // is what promotes the destination, and it is the same call the
+          // hosted-page return route makes.
+          setEmbedConnect(false);
+          void client.stripeConnectStatus().catch(() => undefined).finally(refresh);
+        }}
+        title="Set up payouts with Stripe"
+        // Wider and taller than a normal dialog: this hosts Stripe's own
+        // multi-step form, and the default width made every field wrap.
+        className="sm:max-w-xl"
+      >
+        <StripeConnectOnboarding
+          onExit={() => {
+            setEmbedConnect(false);
+            void client.stripeConnectStatus().catch(() => undefined).finally(refresh);
+          }}
+          onFallback={() => {
+            setEmbedConnect(false);
+            connectStripe.mutate();
+          }}
+        />
+      </Modal>
+
       <div className={cn('flex flex-col', isModal ? 'gap-4' : 'mt-6 gap-6')}>
         {/* Currently connected — a genuine state, so it's a Notice: reassurance
             (brand) once active, action-needed (warn) while still verifying. */}
@@ -926,34 +958,20 @@ function PayoutSetupBody({
                   and AutoHire ships as a PWA, so `onFallback` has to stay
                   reachable from inside the component too, not only when it
                   fails to load. */}
-              {embedConnect ? (
-                <StripeConnectOnboarding
-                  onExit={() => {
-                    // Leaving is not finishing. Stripe says nothing about
-                    // whether the host completed anything, so this asks
-                    // PayHold — `/connect/status` is what promotes the
-                    // destination, and it is the same call the hosted-page
-                    // return route makes.
-                    setEmbedConnect(false);
-                    void client
-                      .stripeConnectStatus()
-                      .catch(() => undefined)
-                      .finally(refresh);
-                  }}
-                  onFallback={() => {
-                    setEmbedConnect(false);
-                    connectStripe.mutate();
-                  }}
-                />
-              ) : (
-                <Button
-                  className="w-full"
-                  disabled={connectStripe.isPending}
-                  onClick={() => setEmbedConnect(true)}
-                >
-                  Connect with Stripe
-                </Button>
-              )}
+              {/* Opens its own modal rather than unfolding here.
+                  Stripe's onboarding is a multi-step form of its own —
+                  business details, personal details, a bank account, an
+                  agreement — and rendering it inside the payout dialog put a
+                  scrolling form inside a scrolling dialog, each with its own
+                  scrollbar and neither with enough room. It is a step, so it
+                  gets a step, the way checkout does. */}
+              <Button
+                className="w-full"
+                disabled={connectStripe.isPending}
+                onClick={() => setEmbedConnect(true)}
+              >
+                Connect with Stripe
+              </Button>
             </CardBody>
           </Card>
         ) : (

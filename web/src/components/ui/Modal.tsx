@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/cn';
@@ -11,13 +11,38 @@ export interface ModalProps {
   className?: string;
 }
 
+/** Which modals are open, deepest last. See the Escape handler below. */
+const openModals: symbol[] = [];
+
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
+  // Identity for this instance's place in the stack, stable across renders.
+  const token = useMemo(() => Symbol('modal'), []);
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    // **Only the top modal answers Escape.**
+    //
+    // Every open Modal used to attach its own listener, so with one dialog
+    // over another — payout setup with Stripe's onboarding above it — a single
+    // Escape fired both and dismissed the whole flow, not the step. A host
+    // backing out of onboarding would land on the dashboard rather than on the
+    // screen they opened it from.
+    //
+    // A module-level stack rather than a context: nesting is rare and this
+    // needs no provider to be correct, and a Modal rendered outside any
+    // provider would silently go back to closing everything.
+    openModals.push(token);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (openModals[openModals.length - 1] !== token) return;
+      onClose();
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      const i = openModals.indexOf(token);
+      if (i !== -1) openModals.splice(i, 1);
+    };
+  }, [open, onClose, token]);
 
   if (!open) return null;
 
