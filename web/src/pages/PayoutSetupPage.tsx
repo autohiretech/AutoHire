@@ -313,12 +313,19 @@ function PayoutSetupBody({
         return await client.registerPayholdSeller({
           method,
           destination: dest.trim(),
-          // The currency this method was actually offered in. Without it
-          // PayHold registers the destination in the country's own currency,
-          // and a Kenyan host who picked USD to reach PayPal would get a KES
-          // destination that PayPal cannot pay — the chooser would look like
-          // it worked and change nothing.
-          ...(payoutCurrency ? { currency: payoutCurrency } : {}),
+          // The currency this method was actually offered in — always, not
+          // only when the host touched the chooser.
+          //
+          // Two failures sit behind this. Omitting a *chosen* currency
+          // registers a Kenyan host who picked USD to reach PayPal against
+          // KES, which PayPal cannot pay. And omitting an *unchosen* one is
+          // worse: PayHold pairs the country we send with the currency it has
+          // stored, so a host who moved to the US was registered as US/RWF and
+          // refused with "paypal cannot pay a destination in RW". Sending the
+          // route's own currency means the pair stored is the pair displayed.
+          ...(payoutCurrency ?? payoutRoute?.payout?.currency
+            ? { currency: payoutCurrency ?? payoutRoute?.payout?.currency }
+            : {}),
           ...(method === 'momo' && network ? { network } : {}),
           ...(method === 'bank' && bankCode ? { bankCode: bankCode.trim() } : {}),
         });

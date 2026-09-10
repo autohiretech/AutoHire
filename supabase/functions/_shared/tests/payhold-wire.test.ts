@@ -126,3 +126,59 @@ Deno.test('a seller id is escaped rather than concatenated', async () => {
     restore();
   }
 });
+
+/**
+ * The country/currency pair, which is one fact sent as two fields.
+ *
+ * A host moved from Rwanda to the United States, changed their profile
+ * country, and was refused with "paypal cannot pay a destination in RW".
+ * AutoHire sent `country` only on a seller's *first* destination, so every
+ * later change let PayHold fall back to `seller.country` — the country of the
+ * first one. The move could be made in the profile and never completed at the
+ * rail.
+ *
+ * Sending country alone is not the fix either: PayHold pairs a supplied
+ * country with the *stored* currency, which is how "in RW … paid in RWF"
+ * survives a move to the US. Both, every time, or neither is trustworthy.
+ */
+const { addSellerDestination } = await import('../payhold.ts');
+
+Deno.test('a destination change states the country every time', async () => {
+  const { seen, restore } = captureFetch();
+  try {
+    await addSellerDestination('sel_1', {
+      payoutProvider: 'paypal',
+      destination: 'host@example.com',
+      country: 'US',
+      currency: 'USD',
+      label: 'PayPal',
+    });
+    const body = JSON.parse(seen[0].body ?? '{}');
+    assertEquals(body.country, 'US');
+    assertEquals(body.payout_currency, 'USD');
+  } finally {
+    restore();
+  }
+});
+
+Deno.test('country and currency travel together, never one alone', async () => {
+  // The mismatched pair is the failure mode: US country against a stored RWF
+  // currency is what produced the error naming a country the host had left.
+  const { seen, restore } = captureFetch();
+  try {
+    await addSellerDestination('sel_1', {
+      payoutProvider: 'flutterwave_momo',
+      destination: '+250788123456',
+      country: 'RW',
+      currency: 'RWF',
+      network: 'MTN',
+      label: 'Mobile Money',
+    });
+    const body = JSON.parse(seen[0].body ?? '{}');
+    assertEquals(body.country, 'RW');
+    assertEquals(body.payout_currency, 'RWF');
+    assertEquals(body.network, 'MTN');
+  } finally {
+    restore();
+  }
+});

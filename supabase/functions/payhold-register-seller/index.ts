@@ -114,39 +114,20 @@ async function changeDestination(
   bankCode: string,
   currency: string,
 ): Promise<Response | null> {
-  // Does this seller have a payout corridor yet?
+  // Country and currency are stated on every destination, not inferred.
   //
-  // PayHold defaults country and currency from the seller's own row, and for a
-  // seller that HAS them that is right: a host swapping MoMo for a bank account
-  // has not moved country, and restating it is a chance to restate it wrongly.
+  // There used to be a `sellerDestinations` lookup here purely to decide
+  // whether this was the host's first destination, because PayHold only
+  // *requires* country on the first one and restating an established fact
+  // looked like a chance to restate it wrongly. Two problems: it spent a round
+  // trip on every destination change to answer a question the answer no longer
+  // depends on, and omitting country is what stranded a host who had moved —
+  // PayHold fell back to the country of their first destination and refused
+  // the new one for a market they had already left.
   //
-  // But a seller registered with no destination has no country to default
-  // from. `payhold-ensure-seller` creates exactly that the moment somebody
-  // toggles to host — bare name and handle, no country — and so does
-  // `payhold-create-deal`'s stale-link repair. So by the time a host reaches
-  // payout setup they almost always have a seller, which sent them down this
-  // path, which said nothing about country, and PayHold refused the lot:
-  // "This seller has no country on file yet; country is required with their
-  // first destination". Every host registering a payout destination for the
-  // first time hit it, and AutoHire's own screen showed a masked number that
-  // PayHold had never accepted.
-  //
-  // Asking for the destinations rather than the seller because the seller is
-  // only reachable by `external_user_id`, and this has the seller id itself —
-  // the one the profile actually points at. Empty is the same condition
-  // PayHold is testing for: no destination means no corridor, which means
-  // nothing established to contradict, so stating the country is safe here
-  // and only here.
-  let firstDestination = false;
-  try {
-    const { destinations } = await sellerDestinations(sellerId);
-    firstDestination = destinations.length === 0;
-  } catch {
-    // Unknown. Leave it to PayHold's default — the same behaviour as before
-    // this check existed. A lookup that fails here is PayHold being
-    // unreachable, and the add is about to say so more accurately than a
-    // guessed country would.
-  }
+  // So the lookup is gone and both facts are always sent. `profile.country` is
+  // read once at the top of the request and is the same value the payout
+  // screen resolved its route against, so client and server cannot disagree.
 
   let destination;
   try {
@@ -158,12 +139,26 @@ async function changeDestination(
       // will not transfer to, and nothing said so until a payout failed.
       ...(network ? { network } : {}),
       ...(bankCode ? { bankCode } : {}),
-      ...(firstDestination ? { country } : {}),
-      // The currency the host was actually offered this method in. PayHold
-      // defaults it to the country's own, which is right almost everywhere and
-      // wrong in the one case the chooser exists for: PayPal reaches a Kenyan
-      // host in USD and not in KES, so dropping it here would register the
-      // destination in a currency the chosen rail cannot be paid in.
+      // **Every time, not only on the first destination.**
+      //
+      // This used to be `firstDestination ? { country } : {}`, on the
+      // reasoning that a seller's country is already established and restating
+      // it is a chance to restate it wrongly. That held while a host could not
+      // move. They can now, and the omission made the move impossible to
+      // complete: PayHold falls back to `body.country ?? seller.country`, and
+      // `seller.country` is wherever the host registered their *first*
+      // destination — so a host who moved to the United States was still
+      // judged in Rwanda, and PayPal refused with "paypal cannot pay a
+      // destination in RW" naming a country they had already changed.
+      //
+      // `country` here is `profile.country`, read at the top of the request,
+      // which is the same value the payout screen resolved its route against.
+      country,
+      // Sent with it, always, because the two are one fact. PayHold pairs a
+      // supplied country with the *stored* `payout_currency` when no currency
+      // arrives — which is how "in RW … Paid in RWF" survives a move to the
+      // US. The client sends the currency its offer was actually based on, so
+      // the pair PayHold stores is the pair the host was shown.
       ...(currency ? { currency: String(currency).toUpperCase() } : {}),
       label: METHOD_LABEL[method] ?? 'Payout',
     }));
