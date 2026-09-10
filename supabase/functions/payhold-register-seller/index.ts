@@ -22,6 +22,8 @@ import {
   findSellerByExternalUserId,
   payholdConfigured,
   payoutProviderFor,
+  payoutRailFromRoute,
+  payoutRouteFor,
   sellerCapabilities,
   sellerDestinations,
   type PayoutMethod,
@@ -316,7 +318,52 @@ Deno.serve(async (req: Request) => {
     // all — Card in one of Flutterwave's African corridors, today — and a
     // destination created anyway would sit at `blocked` forever rather than
     // ever being fixable by the host.
-    const payoutProvider = payoutProviderFor(method as PayoutMethod, country);
+    let payoutProvider = payoutProviderFor(method as PayoutMethod, country);
+
+    // A refusal is checked against PayHold before it reaches the host.
+    //
+    // `payoutProviderFor` reads a hardcoded copy of PayHold's routing, because
+    // this decision has to be made synchronously, before anything is
+    // tokenized. That is worth keeping — but it makes every `null` here
+    // unfalsifiable, and a stale table has twice refused hosts who could have
+    // been paid, silently, for as long as it took a person to notice.
+    //
+    // So the fast path still decides, and only a refusal pays for a second
+    // opinion: one route lookup, on the rare branch, before telling somebody
+    // there is no way to pay them. If PayHold disagrees, PayHold is right — it
+    // is the authority and this is the copy — and the host is registered
+    // against the rail it named while the disagreement goes to the log for the
+    // table to be corrected. If PayHold agrees, or cannot be reached, the
+    // refusal stands exactly as before and nothing is registered.
+    if (!payoutProvider) {
+      try {
+        const route = await payoutRouteFor(country);
+        const liveRail = payoutRailFromRoute(method as PayoutMethod, route);
+        if (liveRail) {
+          console.warn(
+            `[payhold-register-seller] stale payout table for ${country}: ` +
+              `payoutProviderFor() refused ${method} but PayHold routes it as ` +
+              `${route.payout?.provider ?? 'none'}/${route.payout?.kind ?? 'none'} → ` +
+              `${liveRail}. Registering against PayHold's answer and continuing. ` +
+              `Correct FLUTTERWAVE_PAYOUT_KIND / NO_PAYOUT_RAIL in ` +
+              `_shared/payhold.ts against PayHold's generated countries.ts ` +
+              `(membership = flutterwavePayout, kind = momoPayout).`,
+          );
+          payoutProvider = liveRail;
+        }
+      } catch (err) {
+        // PayHold unreachable. The refusal below is the fail-closed answer and
+        // is what this path did before the check existed, so a route lookup
+        // being down can only cost the host the old behaviour, never a
+        // destination that cannot be paid.
+        console.warn(
+          `[payhold-register-seller] could not confirm the ${country} refusal ` +
+            `against PayHold (${err instanceof Error ? err.message : String(err)}); ` +
+            `refusing on the local table as before.`,
+        );
+      }
+    }
+
     if (!payoutProvider) {
       return json(
         {

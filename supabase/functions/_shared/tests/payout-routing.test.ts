@@ -1,5 +1,5 @@
 import { assertEquals } from 'jsr:@std/assert@^1.0.0';
-import { payoutProviderFor } from '../payhold.ts';
+import { payoutProviderFor, payoutRailFromRoute } from '../payhold.ts';
 
 /**
  * `FLUTTERWAVE_PAYOUT_KIND` is a hardcoded copy of PayHold's routing, kept
@@ -73,4 +73,68 @@ Deno.test('country codes are matched case-insensitively', () => {
   // The registration path receives whatever the client sent.
   assertEquals(payoutProviderFor('bank', 'bf'), null);
   assertEquals(payoutProviderFor('momo', 'et'), 'flutterwave_momo');
+});
+
+/**
+ * `payoutRailFromRoute` is the live-route mirror of `payoutProviderFor`, and
+ * the only thing standing between a stale table and a host being told there is
+ * no way to pay them. It has to be *exactly* as strict as the table on the
+ * combinations that are genuinely dead — rescuing a refusal that should have
+ * stood would register a destination that can never be paid, which is the
+ * failure this whole file exists to prevent.
+ */
+
+const route = (
+  provider: 'flutterwave' | 'stripe' | null,
+  kind: 'momo' | 'bank' | 'connect' | null,
+  blocked = false,
+) => ({
+  country: { code: 'XX', name: 'Test', flag: '' },
+  payout: { provider, kind, currency: 'XXX', blocked, verified: true, reason: '' },
+  rails_verified: true,
+});
+
+Deno.test('a live wallet corridor rescues a refusal the table got wrong', () => {
+  // The MW shape: PayHold opens a wallet corridor, the table has not caught up.
+  assertEquals(payoutRailFromRoute('momo', route('flutterwave', 'momo')), 'flutterwave_momo');
+  assertEquals(payoutRailFromRoute('bank', route('flutterwave', 'momo')), 'flutterwave_bank');
+});
+
+Deno.test('a live bank corridor still has no wallet to send to', () => {
+  assertEquals(payoutRailFromRoute('momo', route('flutterwave', 'bank')), null);
+  assertEquals(payoutRailFromRoute('bank', route('flutterwave', 'bank')), 'flutterwave_bank');
+});
+
+Deno.test('Flutterwave never pays out to a card, however live the route is', () => {
+  assertEquals(payoutRailFromRoute('card', route('flutterwave', 'momo')), null);
+  assertEquals(payoutRailFromRoute('card', route('flutterwave', 'bank')), null);
+});
+
+Deno.test('Stripe Connect reaches a bank account or a debit card, nothing else', () => {
+  assertEquals(payoutRailFromRoute('bank', route('stripe', 'connect')), 'stripe_connect');
+  assertEquals(payoutRailFromRoute('card', route('stripe', 'connect')), 'stripe_connect');
+  assertEquals(payoutRailFromRoute('momo', route('stripe', 'connect')), null);
+});
+
+Deno.test('a blocked corridor rescues nothing', () => {
+  // The BF shape. A refusal here is correct and must survive the second
+  // opinion, or the check becomes a way to register unpayable destinations.
+  for (const m of ['momo', 'bank', 'card'] as const) {
+    assertEquals(payoutRailFromRoute(m, route('flutterwave', 'momo', true)), null, m);
+    assertEquals(payoutRailFromRoute(m, route(null, null, true)), null, `${m} (no provider)`);
+  }
+});
+
+Deno.test('a route with no provider rescues nothing', () => {
+  assertEquals(payoutRailFromRoute('bank', route(null, null)), null);
+  assertEquals(payoutRailFromRoute('momo', route(null, null)), null);
+});
+
+Deno.test('the disabled wallet rails are not rescued by any live route', () => {
+  // §29.3 has no live adapter behind any of the five, so no route shape may
+  // turn one into a rail — including the Stripe route that reaches a card.
+  for (const method of ['paypal', 'venmo', 'cash_app', 'alipay', 'wechat_pay'] as const) {
+    assertEquals(payoutRailFromRoute(method, route('stripe', 'connect')), null, method);
+    assertEquals(payoutRailFromRoute(method, route('flutterwave', 'momo')), null, method);
+  }
 });

@@ -1290,3 +1290,58 @@ export function payoutProviderFor(
   if (method === 'card') return kind ? null : 'stripe_connect';
   return null;
 }
+
+/**
+ * The same question as `payoutProviderFor`, asked of PayHold's live route
+ * instead of the table — the second opinion that makes a refusal safe.
+ *
+ * `payoutProviderFor` is synchronous so that the registration path can fail
+ * closed without a network round trip, and that is the right shape: a host must
+ * never be handed a destination no rail can pay. The cost is that its `null` is
+ * unfalsifiable. When the table is stale, a host who could be paid perfectly
+ * well is refused, nothing distinguishes that from a correct refusal, and it
+ * stays that way until a person notices. That has now happened twice, in both
+ * directions:
+ *
+ *   • **BF missing from the table** — Burkinabè hosts refused for months.
+ *   • **BF stale in the table** — after PayHold blocked it, AutoHire went on
+ *     handing out `flutterwave_momo` for a corridor with no destination.
+ *
+ * So `payhold-register-seller` calls this before it turns a `null` into
+ * `unsupported_payout_method`, and only on that path: the accept path never
+ * pays for it, and a refusal is rare. A disagreement means the table is stale,
+ * which is a thing to log and correct — not a reason to refuse a host whom
+ * PayHold has just said it can pay.
+ *
+ * Returns `null` when the live route agrees there is no way through, which is
+ * also what a blocked corridor and every disabled wallet rail answer. The
+ * caller refuses exactly as before in that case.
+ */
+export function payoutRailFromRoute(
+  method: PayoutMethod,
+  route: PayoutCountryRoute,
+): PayoutRail | null {
+  const payout = route.payout;
+  // A corridor PayHold has closed reaches nobody, whatever the method.
+  if (!payout || payout.blocked) return null;
+
+  if (payout.provider === 'flutterwave') {
+    // Flutterwave settles to a wallet or a bank account and never to a card.
+    // A `momo` corridor can still take a bank account; a `bank` one has no
+    // wallet to send to.
+    if (method === 'momo') return payout.kind === 'momo' ? 'flutterwave_momo' : null;
+    if (method === 'bank') return 'flutterwave_bank';
+    return null;
+  }
+
+  if (payout.provider === 'stripe' && payout.kind === 'connect') {
+    // Connect sends to a bank account or a debit card.
+    return method === 'bank' || method === 'card' ? 'stripe_connect' : null;
+  }
+
+  // No provider on the route row is §29.3's declared-and-disabled shape, and
+  // the five wallet methods have no live adapter on any provider — so they are
+  // refused here for the same reason `payoutProviderFor` refuses them, rather
+  // than being rescued by a live route that cannot carry them either.
+  return null;
+}
