@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PayoutSetupModal } from '@/pages/PayoutSetupPage';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -110,6 +111,9 @@ const STAGES: Record<
  * who sees money that is not there makes plans against it.
  */
 export function EarningsPage() {
+  // Setting payouts up happens over this screen: the balance that prompts
+  // it is the context, and a page change throws that away.
+  const [payoutOpen, setPayoutOpen] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: me } = useCurrentUser();
@@ -387,7 +391,7 @@ export function EarningsPage() {
                 : "Your trips can't pay out until we know where to send the money."}
             </p>
           </div>
-          <Button onClick={() => navigate('/payouts/setup')}>
+          <Button onClick={() => setPayoutOpen(true)}>
             <Banknote size={16} /> {w.sellerUnlinked ? 'Reconnect payouts' : 'Add a payout method'}
           </Button>
         </Notice>
@@ -459,7 +463,7 @@ export function EarningsPage() {
                   which adds the row, makes it primary and demotes the old one
                   atomically. So the only thing standing between a host and
                   their own bank details was this condition. */}
-              <Button variant="outline" size="sm" onClick={() => navigate('/payouts/setup')}>
+              <Button variant="outline" size="sm" onClick={() => setPayoutOpen(true)}>
                 <Banknote size={14} />
                 {primary ? 'Change' : 'Add a method'}
               </Button>
@@ -702,6 +706,8 @@ export function EarningsPage() {
         </span>
         , or to retry a payout that didn't go through.
       </p>
+
+      <PayoutSetupModal open={payoutOpen} onClose={() => setPayoutOpen(false)} />
     </section>
   );
 }

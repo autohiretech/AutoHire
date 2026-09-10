@@ -35,20 +35,7 @@ import {
   detectMomoNetwork,
   walletBrand,
 } from '@/lib/paymentBrands';
-import {
-  Badge,
-  Button,
-  Card,
-  CardBody,
-  Input,
-  Label,
-  ListGroup,
-  ListRow,
-  Notice,
-  Select,
-  Skeleton,
-  toast,
-} from '@/components/ui';
+import { Badge, Button, Card, CardBody, Input, Label, ListGroup, ListRow, Modal, Notice, Select, Skeleton, toast } from '@/components/ui';
 
 const PROVIDER_NAME: Record<PayoutProvider, string> = {
   flutterwave: 'Flutterwave',
@@ -90,7 +77,27 @@ function holdNotice(securityHoldUntil: string | null, canReceivePayouts: boolean
  * the scenes. Required before earning; surfaced from the dashboard checklist and
  * when a renter switches to hosting.
  */
-export function PayoutSetupPage() {
+/**
+ * The payout setup UI itself, with no opinion about what surrounds it.
+ *
+ * Extracted so adding a payout method stops being a page change. Everywhere a
+ * host is prompted to set payouts up they are already looking at the thing
+ * that prompted them — the earnings screen, the dashboard tile, an account row
+ * — and navigating away to a form, then back, loses that context for a task
+ * that is four fields long. Checkout has worked this way for a while
+ * (`CheckoutModal`); this brings payouts in line.
+ *
+ * **The route stays**, so `chrome: 'page'` is not vestigial: Stripe Connect's
+ * hosted onboarding returns the host to a URL, `StripeConnectReturnPage` links
+ * back here, and a deep link to `/payouts/setup` has to keep working.
+ */
+function PayoutSetupBody({
+  chrome,
+  onDone,
+}: {
+  chrome: 'page' | 'modal';
+  onDone?: () => void;
+}) {
   const { countries } = useCountry();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -293,6 +300,9 @@ export function PayoutSetupPage() {
     onSuccess: (result) => {
       refresh();
       setSelected(null);
+      // In a modal, saving is the end of the task. On the page there is
+      // nowhere to go, so this is a no-op there.
+      onDone?.();
       setDest('');
       setNetwork('');
       setBankCode('');
@@ -389,7 +399,7 @@ export function PayoutSetupPage() {
   });
 
   if (isLoading) {
-    return <PayoutSetupSkeleton />;
+    return <PayoutSetupSkeleton chrome={chrome} />;
   }
 
   const meta = selected ? PAYOUT_METHOD_META[selected] : null;
@@ -424,29 +434,40 @@ export function PayoutSetupPage() {
     (!needsBankCode || !!bankCode.trim());
   const routedProvider = selected ? payoutProviderFor(selected, payoutCountry) : null;
 
+  const isModal = chrome === 'modal';
+  const Root = isModal ? 'div' : 'section';
+
   return (
-    <section className="mx-auto max-w-2xl px-4 py-8 sm:py-10">
-      <button
-        type="button"
-        onClick={() => navigate(-1)}
-        className="mb-5 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
-      >
-        <ArrowLeft size={16} /> Back
-      </button>
+    <Root className={isModal ? undefined : 'mx-auto max-w-2xl px-4 py-8 sm:py-10'}>
+      {/* Back, the title block and the icon are the page's own furniture. In a
+          modal the dialog supplies its own heading and a close control, and a
+          "Back" that calls `navigate(-1)` inside an overlay would take the host
+          off the screen they opened it from. */}
+      {!isModal && (
+        <>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="mb-5 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
+          >
+            <ArrowLeft size={16} /> Back
+          </button>
 
-      <div className="flex items-center gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
-          <Banknote size={22} />
-        </span>
-        <div>
-          <h1 className="text-h2">How you get paid</h1>
-          <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
-            Add where your rental earnings are sent. You keep the subtotal; AutoHire's fee is deducted.
-          </p>
-        </div>
-      </div>
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
+              <Banknote size={22} />
+            </span>
+            <div>
+              <h1 className="text-h2">How you get paid</h1>
+              <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
+                Add where your rental earnings are sent. You keep the subtotal; AutoHire's fee is deducted.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
-      <div className="mt-6 flex flex-col gap-6">
+      <div className={cn('flex flex-col gap-6', !isModal && 'mt-6')}>
         {/* Currently connected — a genuine state, so it's a Notice: reassurance
             (brand) once active, action-needed (warn) while still verifying. */}
         {connected && me && (
@@ -901,7 +922,7 @@ export function PayoutSetupPage() {
           </Link>
         )}
       </div>
-    </section>
+    </Root>
   );
 }
 
@@ -912,10 +933,18 @@ export function PayoutSetupPage() {
  * destination-form card that fill this space once `me` and the payout
  * country are known.
  */
-function PayoutSetupSkeleton() {
+function PayoutSetupSkeleton({ chrome }: { chrome: 'page' | 'modal' }) {
   const navigate = useNavigate();
+  const isModal = chrome === 'modal';
+  const Root = isModal ? 'div' : 'section';
   return (
-    <section className="mx-auto max-w-2xl px-4 py-8 sm:py-10" aria-busy="true" aria-label="Loading">
+    <Root
+      className={isModal ? undefined : 'mx-auto max-w-2xl px-4 py-8 sm:py-10'}
+      aria-busy="true"
+      aria-label="Loading"
+    >
+      {!isModal && (
+        <>
       <button
         type="button"
         onClick={() => navigate(-1)}
@@ -935,8 +964,10 @@ function PayoutSetupSkeleton() {
           </p>
         </div>
       </div>
+        </>
+      )}
 
-      <div className="mt-6 flex flex-col gap-6">
+      <div className={cn('flex flex-col gap-6', !isModal && 'mt-6')}>
         <ListGroup>
           <ListRow
             icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />}
@@ -966,6 +997,40 @@ function PayoutSetupSkeleton() {
           </CardBody>
         </Card>
       </div>
-    </section>
+    </Root>
+  );
+}
+
+
+/**
+ * `/payouts/setup` — the addressable version.
+ *
+ * Kept because things outside AutoHire point at it: Stripe Connect's hosted
+ * onboarding returns the host to a URL rather than to a component, and
+ * `StripeConnectReturnPage` links back here. A modal cannot be a redirect
+ * target, so this is not dead weight left behind by the modal.
+ */
+export function PayoutSetupPage() {
+  return <PayoutSetupBody chrome="page" />;
+}
+
+/**
+ * The same thing over whatever the host was already looking at.
+ *
+ * Every in-app prompt to set up payouts happens next to the reason for it —
+ * an earnings balance with nowhere to go, a dashboard tile, an account row —
+ * and sending someone to a separate page to type four fields throws that
+ * context away and makes them find their way back. Checkout has been a modal
+ * for a while; this is payouts catching up.
+ *
+ * `onDone` fires when a destination actually saves, so the modal closes on
+ * success and stays open on a refusal, where the error belongs next to the
+ * field that caused it.
+ */
+export function PayoutSetupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Modal open={open} onClose={onClose} title="How you get paid">
+      <PayoutSetupBody chrome="modal" onDone={onClose} />
+    </Modal>
   );
 }

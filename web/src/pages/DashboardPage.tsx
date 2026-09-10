@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { PayoutSetupModal } from '@/pages/PayoutSetupPage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -1285,6 +1286,10 @@ function CarManage({ listing }: { listing: Listing }) {
  * affects — would never see it.
  */
 function ReconnectPayouts({ host }: { host: Host }) {
+  // Reconnecting happens here, over the dashboard. This tile exists because
+  // the host's cars are unbookable, so sending them to another page to fix it
+  // is a detour away from the notice explaining why.
+  const [open, setOpen] = useState(false);
   if (!PAYMENTS_PAYHOLD || host.payholdSellerId) return null;
 
   return (
@@ -1300,9 +1305,8 @@ function ReconnectPayouts({ host }: { host: Host }) {
           </p>
         </div>
       </div>
-      <Link to="/payouts/setup">
-        <Button>Reconnect</Button>
-      </Link>
+      <Button onClick={() => setOpen(true)}>Reconnect</Button>
+      <PayoutSetupModal open={open} onClose={() => setOpen(false)} />
     </Notice>
   );
 }
@@ -1312,6 +1316,7 @@ function ReconnectPayouts({ host }: { host: Host }) {
  * Verification is one of the steps, so this doubles as the verification nudge.
  */
 function SetupChecklist({ host, listingCount }: { host: Host; listingCount: number }) {
+  const [payoutOpen, setPayoutOpen] = useState(false);
   const verifyCta =
     host.verification === 'pending' ? 'Under review' : host.verification === 'rejected' ? 'Resubmit' : 'Verify';
   const steps = [
@@ -1333,6 +1338,9 @@ function SetupChecklist({ host, listingCount }: { host: Host; listingCount: numb
       // question, and /earnings answers it.
       done: PAYMENTS_PAYHOLD ? !!host.payholdSellerId : host.payoutStatus === 'active',
       to: '/payouts/setup',
+      // Opens over the checklist instead of navigating: a host working through
+      // setup steps loses their place if step two replaces the page.
+      onSelect: () => setPayoutOpen(true),
       cta: 'Add payout',
     },
     {
@@ -1375,6 +1383,10 @@ function SetupChecklist({ host, listingCount }: { host: Host; listingCount: numb
             {!s.done &&
               (s.muted ? (
                 <span className="text-caption font-medium text-[var(--color-content-muted)]">{s.cta}</span>
+              ) : s.onSelect ? (
+                <Button variant="outline" size="sm" onClick={s.onSelect}>
+                  {s.cta}
+                </Button>
               ) : (
                 <Link to={s.to}>
                   <Button variant="outline" size="sm">
@@ -1385,6 +1397,7 @@ function SetupChecklist({ host, listingCount }: { host: Host; listingCount: numb
           </li>
         ))}
       </ul>
+      <PayoutSetupModal open={payoutOpen} onClose={() => setPayoutOpen(false)} />
     </Notice>
   );
 }

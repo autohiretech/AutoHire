@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { PayoutSetupModal } from '@/pages/PayoutSetupPage';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
@@ -45,6 +46,8 @@ import {
 
 /** Account settings: shows who you are and lets you permanently delete the account. */
 export function AccountPage() {
+  // Payout setup opens over the account screen rather than replacing it.
+  const [payoutOpen, setPayoutOpen] = useState(false);
   const { user, signOut, deleteAccount } = useAuth();
   const { data, isLoading } = useCurrentUser();
   // A company account's profile row carries the host columns (owner_type, etc.).
@@ -110,12 +113,13 @@ export function AccountPage() {
                     : "Your earnings build up from your first booking — add a payout method whenever you like, and we’ll send them on."}
                 </p>
                 {profile.payoutStatus !== 'pending' && (
-                  <Link
-                    to="/payouts/setup"
+                  <button
+                    type="button"
+                    onClick={() => setPayoutOpen(true)}
                     className="mt-2 inline-block text-body-sm font-semibold underline underline-offset-2"
                   >
                     Set up payouts
-                  </Link>
+                  </button>
                 )}
               </div>
             </Notice>
@@ -156,7 +160,7 @@ export function AccountPage() {
             <ListGroup label="Hosting">
               <ListRow
                 icon={<Banknote size={18} />}
-                to="/payouts/setup"
+                onClick={() => setPayoutOpen(true)}
                 value={payoutStatusLabel(profile.payoutStatus)}
               >
                 Payout method
@@ -221,6 +225,8 @@ export function AccountPage() {
           </div>
         </div>
       </Modal>
+
+      <PayoutSetupModal open={payoutOpen} onClose={() => setPayoutOpen(false)} />
     </section>
   );
 }
