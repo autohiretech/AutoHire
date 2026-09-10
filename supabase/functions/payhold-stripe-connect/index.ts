@@ -160,6 +160,14 @@ Deno.serve(async (req: Request) => {
     // them to try again would be a lie. What IS true is that their money is
     // safe and accruing, which is the thing they actually want to know.
     // Operators get the real cause in the logs, where it can be acted on.
+    //
+    // **It must not say "in your country".** It said exactly that, and the
+    // first person to read it was a host in the United States — the single
+    // best-supported Stripe country there is, and one of the 44 this refusal
+    // hits identically. Blaming the market for a switch on our own account
+    // sends the one person who cannot fix it looking for a reason that does
+    // not exist, and would read as "we don't serve you" to every host in
+    // every one of those countries.
     if (/signed up for Connect|Connect.*not (enabled|activated)|platform.*not.*onboard/i.test(message)) {
       console.error(
         'stripe connect onboarding refused — Connect is not enabled on the platform Stripe account. ' +
@@ -169,9 +177,10 @@ Deno.serve(async (req: Request) => {
       return json(
         {
           error:
-            "Payouts in your country aren't switched on yet — this is on us, not " +
-            'something you can fix. Your earnings keep building up in the meantime ' +
-            "and nothing is lost; we'll let you know the moment it's ready.",
+            "Card payouts aren't switched on yet — this is on us, not something " +
+            'you can fix, and it is not about where you are. Your earnings keep ' +
+            "building up in the meantime and nothing is lost; we'll let you know " +
+            "the moment it's ready.",
           code: 'payouts_not_enabled',
         },
         503,
