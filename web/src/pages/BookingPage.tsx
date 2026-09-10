@@ -34,7 +34,7 @@ import {
   PAYMENTS_EXTERNAL,
   PAYMENTS_LIVE,
   PAYMENTS_PAYHOLD,
-  isAfricanMarket,
+  collectsLocally,
 } from '@/lib/payments';
 import {
   AcceptedCards,
@@ -308,7 +308,14 @@ export function BookingPage() {
 
   // African-market cars accept mobile money and route to Flutterwave; others are
   // card-only via Stripe. `africanLive` is the real hosted-Flutterwave checkout.
-  const isAfrican = isAfricanMarket(listing.country);
+  //
+  // `collectsLocally`, not `isAfricanMarket`: this drives what the *renter* is
+  // offered, and `isAfricanMarket` also requires the market to be payable to
+  // the host. Burkina Faso stopped being payable on 2026-09-10 and still
+  // collects — reading the stricter answer here would have dropped a
+  // Burkinabè renter onto the card-only Stripe rail for a car that settles
+  // perfectly well in XOF.
+  const isAfrican = collectsLocally(listing.country);
   const africanLive = PAYMENTS_LIVE && isAfrican;
 
   const stripePromise = getStripe();

@@ -953,27 +953,41 @@ export async function payoutRouteFor(
 function warnOnRouteDrift(country: string, route: PayoutCountryRoute): void {
   try {
     const code = country.toUpperCase();
-    // A deliberately closed corridor is not drift. `payment_markets` is an
-    // overlay an operator sets with a reason, it changes without the registry
-    // changing, and `payoutAvailability` already renders it as "not open yet" —
-    // warning about it every time would bury the one message worth reading.
-    if (route.payout?.blocked) return;
 
     // What PayHold just said, in this table's own terms.
     const live: 'momo' | 'bank' | null = route.payout?.provider === 'flutterwave'
       ? route.payout.kind === 'momo' ? 'momo' : 'bank'
       : null;
     const local = FLUTTERWAVE_PAYOUT_KIND[code] ?? null;
-    if (live === local) return;
+
+    // A deliberately closed corridor is usually not drift: `payment_markets` is
+    // an overlay an operator sets with a reason, it changes without the
+    // registry changing, and `payoutAvailability` already renders it as "not
+    // open yet" — warning every time would bury the one message worth reading.
+    //
+    // **But only when this table agrees the country is unpayable.** This used
+    // to return on `blocked` before reading the table at all, and that is why
+    // the BF drift was silent for its whole life: PayHold blocked Burkina Faso,
+    // the table still said `momo`, `payoutProviderFor` still handed out
+    // `flutterwave_momo`, and the one mechanism built to notice suppressed
+    // itself on the very signal that meant it was wrong. A blocked corridor the
+    // table still thinks it can pay is the most urgent drift there is — it is
+    // the shape that registers destinations which can never be paid.
+    if (route.payout?.blocked && local === null) return;
+    if (!route.payout?.blocked && live === local) return;
 
     console.warn(
-      `[payhold] payout-route drift for ${code}: PayHold routes it as ` +
-        `${live ?? 'not a Flutterwave payout corridor'} (provider=` +
-        `${route.payout?.provider ?? 'none'}, kind=${route.payout?.kind ?? 'none'}), while ` +
+      `[payhold] payout-route drift for ${code}: PayHold ` +
+        (route.payout?.blocked
+          ? `BLOCKS payouts here (${route.payout.reason || 'no reason given'})`
+          : `routes it as ${live ?? 'not a Flutterwave payout corridor'}`) +
+        ` (provider=${route.payout?.provider ?? 'none'}, kind=` +
+        `${route.payout?.kind ?? 'none'}, blocked=${route.payout?.blocked ?? false}), while ` +
         `FLUTTERWAVE_PAYOUT_KIND in _shared/payhold.ts says ` +
         `${local ?? 'not a Flutterwave payout corridor'}. ` +
         `payoutProviderFor() is therefore refusing or mis-routing destinations ` +
-        `in ${code} — correct the table against PayHold's generated countries.ts.`,
+        `in ${code} — correct the table against PayHold's generated countries.ts ` +
+        `(membership = flutterwavePayout, kind = momoPayout).`,
     );
   } catch {
     // A diagnostic must never be able to fail a payout-route lookup.
@@ -1162,13 +1176,22 @@ export type PayoutMethod =
  * account, PayHold's `assertRailOnRoute` refused the rail, and they could not
  * set up payouts at all — with nothing on the screen able to tell them why.
  *
+ * **The derivation below used to read `c.momo` and that is now the wrong
+ * flag.** PayHold split one `momo` boolean into two on 2026-09-10 (`momo` =
+ * a wallet can be *charged* here, `momoPayout` = a wallet can be *paid* here),
+ * because they are two different provider pages and they disagree. `rails.ts`
+ * picks the kind from the payout side — `hasWallet` is a `mobile_money` rail
+ * with `payout: true` — so this table has to read `momoPayout` too. Reading
+ * the collection flag is what put **ET** on `bank` below: Ethiopia has no
+ * collection channel at all, so `momo` is false there, while Amole Money has
+ * taken payouts since the split.
+ *
  * Re-derive against PayHold's generated `_shared/countries.ts` with:
  *   COUNTRIES.filter(c => c.flutterwavePayout)
- *            .map(c => [c.code, c.momo ? 'momo' : 'bank'])
+ *            .map(c => [c.code, c.momoPayout ? 'momo' : 'bank'])
  */
 const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
   // West Africa
-  BF: 'momo',
   CI: 'momo',
   GH: 'momo',
   NG: 'bank', // No mobile money on Flutterwave in Nigeria — bank transfer only.
@@ -1176,7 +1199,7 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
   // Central Africa
   CM: 'momo',
   // East Africa
-  ET: 'bank', // A transfer guide and no collection channel at all; bank only.
+  ET: 'momo', // Amole Money. No collection channel here — payout wallet only.
   KE: 'momo',
   RW: 'momo',
   TZ: 'momo',
@@ -1185,6 +1208,31 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
   ZA: 'bank',
   ZM: 'momo',
 };
+
+/**
+ * Flutterwave *collects* here and nothing *pays out* here — so no rail on
+ * earth reaches a host in one of these three, and the honest answer at
+ * registration is to refuse rather than to tokenize.
+ *
+ * Without this set they fall out of `FLUTTERWAVE_PAYOUT_KIND` into
+ * `payoutProviderFor`'s `stripe_connect` default, which is the precise bug
+ * recorded above: Stripe cannot reach a recipient in any of them (African
+ * payouts always ride Flutterwave, per docs/payhold.md), `assertRailOnRoute`
+ * refuses, and the host is left with no way through and no explanation. **BF**
+ * was removed from the table above on 2026-09-10 — its Flutterwave transfer
+ * guide is real, but `/banks/BF` errors so there are no bank codes to send to,
+ * and the momo transfer table names no Burkinabè network — and it would have
+ * re-entered that bug on the way out. EG and MW have sat in it all along.
+ *
+ * Collection is a different fact and is deliberately untouched: renters in all
+ * three can still pay. See `FLUTTERWAVE_COLLECT_COUNTRIES` in
+ * `web/src/lib/payments.ts`.
+ *
+ * Re-derive with:
+ *   COUNTRIES.filter(c => c.flutterwaveLocal && !c.flutterwavePayout && !c.stripePayout)
+ *            .map(c => c.code)
+ */
+const NO_PAYOUT_RAIL = new Set(['BF', 'EG', 'MW']);
 
 /**
  * Which PayHold rail a host's payout destination is tokenized against, or
@@ -1216,6 +1264,11 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
  *     integration to fall back to and inventing one is not a rounding error, so
  *     the honest answer is that these are not ways to get paid.
  *
+ *   • **A market Flutterwave collects in and nobody pays out from.** Burkina
+ *     Faso, Egypt and Malawi — see `NO_PAYOUT_RAIL`. These are not in the kind
+ *     table, so `bank` and `card` used to fall through to the `stripe_connect`
+ *     default and fail at `assertRailOnRoute` two systems away.
+ *
  * The caller turns `null` into `unsupported_payout_method` with a sentence
  * naming the method, which is a host being told something true and actionable
  * rather than a rail error from two systems away.
@@ -1224,7 +1277,14 @@ export function payoutProviderFor(
   method: PayoutMethod,
   countryCode: string,
 ): PayoutRail | null {
-  const kind = FLUTTERWAVE_PAYOUT_KIND[countryCode.toUpperCase()];
+  const code = countryCode.toUpperCase();
+  // Checked before the kind lookup: absence from the kind table means "not a
+  // Flutterwave payout corridor", which for most of the world correctly means
+  // Stripe. For these three it means nothing reaches them at all, and the
+  // default below would be a rail that cannot pay them.
+  if (NO_PAYOUT_RAIL.has(code)) return null;
+
+  const kind = FLUTTERWAVE_PAYOUT_KIND[code];
   if (method === 'momo') return kind === 'momo' ? 'flutterwave_momo' : null;
   if (method === 'bank') return kind ? 'flutterwave_bank' : 'stripe_connect';
   if (method === 'card') return kind ? null : 'stripe_connect';
