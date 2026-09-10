@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PayoutSetupModal } from '@/pages/PayoutSetupPage';
+import { PayoutCurrencyModal } from '@/components/PayoutCurrencyModal';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -114,6 +115,10 @@ export function EarningsPage() {
   // Setting payouts up happens over this screen: the balance that prompts
   // it is the context, and a page change throws that away.
   const [payoutOpen, setPayoutOpen] = useState(false);
+  /** Currency picker for the method already on file. */
+  const [changingCurrency, setChangingCurrency] = useState(false);
+  /** Chosen on this screen, carried into the payout form. */
+  const [presetCurrency, setPresetCurrency] = useState<string | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: me } = useCurrentUser();
@@ -494,7 +499,19 @@ export function EarningsPage() {
                         {primary.label ?? primary.maskedDestination}
                       </p>
                       <p className="text-caption text-[var(--color-content-muted)]">
-                        {primary.maskedDestination} · {primary.payoutCurrency}
+                        {primary.maskedDestination} ·{' '}
+                        {/* The currency is a control here, not a label.
+                            This is the moment the decision belongs to — the
+                            host is looking at a balance, not typing an account
+                            number — which is why it is not asked for while
+                            adding a destination. */}
+                        <button
+                          type="button"
+                          onClick={() => setChangingCurrency(true)}
+                          className="font-medium text-[var(--color-content)] underline underline-offset-2"
+                        >
+                          {primary.payoutCurrency}
+                        </button>
                       </p>
                     </div>
                   </div>
@@ -707,7 +724,27 @@ export function EarningsPage() {
         , or to retry a payout that didn't go through.
       </p>
 
-      <PayoutSetupModal open={payoutOpen} onClose={() => setPayoutOpen(false)} />
+      <PayoutSetupModal
+        open={payoutOpen}
+        onClose={() => {
+          setPayoutOpen(false);
+          setPresetCurrency(null);
+        }}
+        initialCurrency={presetCurrency}
+        initialMethod={presetCurrency ? (me?.payoutMethod ?? null) : null}
+      />
+
+      <PayoutCurrencyModal
+        open={changingCurrency}
+        onClose={() => setChangingCurrency(false)}
+        country={me?.country ?? ''}
+        current={primary?.payoutCurrency ?? null}
+        onPick={(code: string) => {
+          setChangingCurrency(false);
+          setPresetCurrency(code);
+          setPayoutOpen(true);
+        }}
+      />
     </section>
   );
 }

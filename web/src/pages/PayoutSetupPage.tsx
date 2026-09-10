@@ -97,9 +97,22 @@ function holdNotice(securityHoldUntil: string | null, canReceivePayouts: boolean
 function PayoutSetupBody({
   chrome,
   onDone,
+  initialCurrency = null,
+  initialMethod = null,
 }: {
   chrome: 'page' | 'modal';
   onDone?: () => void;
+  /**
+   * Seeded when the host came here to change the currency of a method they
+   * already have. The choice itself is made on Earnings, against a balance
+   * that exists; this screen only collects the destination again.
+   *
+   * Re-entry rather than a silent switch, because PayHold has no route that
+   * restates an existing destination's currency and AutoHire never keeps the
+   * raw account number — registering it again is the only way to move one.
+   */
+  initialCurrency?: string | null;
+  initialMethod?: PayoutMethodType | null;
 }) {
   // Whether Stripe's onboarding is mounted here rather than redirected to.
   const [embedConnect, setEmbedConnect] = useState(false);
@@ -154,7 +167,7 @@ function PayoutSetupBody({
 
   const known = payoutCountries?.countries.find((c) => c.code === payoutCountry) ?? null;
 
-  const [selected, setSelected] = useState<PayoutMethodType | null>(null);
+  const [selected, setSelected] = useState<PayoutMethodType | null>(initialMethod);
   const [dest, setDest] = useState('');
   // Which wallet the number is on, and which bank the account is with. PayHold
   // used to infer both and refuses to now: an inferred wrong one registered a
@@ -191,12 +204,16 @@ function PayoutSetupBody({
   // `can_payout`, so a host in a closed market costs one PayHold call instead
   // of two.
 
+  /** The currency this destination will be registered in. */
+  const [payoutCurrency] = useState<string | null>(initialCurrency);
+
   const { data: payoutRoute } = useQuery({
     // The currency is part of the question, so it is part of the key. Without
-    // it, switching currency would show the previous currency's methods from
-    // cache — the methods list is exactly what changes between them.
-    queryKey: ['payholdPayoutRoute', payoutCountry],
-    queryFn: () => client.payholdPayoutRoute(payoutCountry),
+    // it, a host arriving to change currency would be shown the previous
+    // currency's methods from cache — the methods list is exactly what
+    // changes between them.
+    queryKey: ['payholdPayoutRoute', payoutCountry, payoutCurrency],
+    queryFn: () => client.payholdPayoutRoute(payoutCountry, { currency: payoutCurrency }),
     enabled: PAYMENTS_PAYHOLD && !!payoutCountry && !!known?.can_payout,
     staleTime: 60 * 60 * 1000,
     retry: false,
@@ -325,8 +342,10 @@ function PayoutSetupBody({
           // stored, so a host who moved to the US was registered as US/RWF and
           // refused with "paypal cannot pay a destination in RW". Sending the
           // route's own currency means the pair stored is the pair displayed.
-          ...(payoutRoute?.payout?.currency
-            ? { currency: payoutRoute.payout.currency }
+          // The currency chosen on Earnings when the host came here to change
+          // it, otherwise whatever this country resolves to.
+          ...(payoutCurrency ?? payoutRoute?.payout?.currency
+            ? { currency: payoutCurrency ?? payoutRoute?.payout?.currency }
             : {}),
           ...(method === 'momo' && network ? { network } : {}),
           ...(method === 'bank' && bankCode ? { bankCode: bankCode.trim() } : {}),
@@ -1228,10 +1247,29 @@ export function PayoutSetupPage() {
  * success and stays open on a refusal, where the error belongs next to the
  * field that caused it.
  */
-export function PayoutSetupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function PayoutSetupModal({
+  open,
+  onClose,
+  initialCurrency = null,
+  initialMethod = null,
+}: {
+  open: boolean;
+  onClose: () => void;
+  initialCurrency?: string | null;
+  initialMethod?: PayoutMethodType | null;
+}) {
   return (
-    <Modal open={open} onClose={onClose} title="How you get paid">
-      <PayoutSetupBody chrome="modal" onDone={onClose} />
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={initialCurrency ? `Get paid in ${initialCurrency}` : 'How you get paid'}
+    >
+      <PayoutSetupBody
+        chrome="modal"
+        onDone={onClose}
+        initialCurrency={initialCurrency}
+        initialMethod={initialMethod}
+      />
     </Modal>
   );
 }
