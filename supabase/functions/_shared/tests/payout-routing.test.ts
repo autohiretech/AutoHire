@@ -20,10 +20,10 @@ import { payoutProviderFor, payoutRailFromRoute } from '../payhold.ts';
  */
 
 Deno.test('a market nothing can pay out to refuses every method', () => {
-  // Flutterwave collects in all three and pays out to none of them; Stripe
-  // cannot reach a recipient in an African corridor at all. Answering
-  // `stripe_connect` here is the bug that stranded Burkinabè hosts.
-  for (const country of ['BF', 'EG', 'MW']) {
+  // Flutterwave collects in both and pays out to neither; Stripe cannot reach a
+  // recipient in an African corridor at all. Answering `stripe_connect` here is
+  // the bug that stranded Burkinabè hosts.
+  for (const country of ['BF', 'EG']) {
     assertEquals(payoutProviderFor('momo', country), null, `momo/${country}`);
     assertEquals(payoutProviderFor('bank', country), null, `bank/${country}`);
     assertEquals(payoutProviderFor('card', country), null, `card/${country}`);
@@ -209,4 +209,23 @@ Deno.test('the disabled wallet rails are not rescued by a methods list either', 
   for (const method of ['paypal', 'venmo', 'cash_app', 'alipay', 'wechat_pay'] as const) {
     assertEquals(payoutRailFromRoute(method, open), null, method);
   }
+});
+
+
+Deno.test('Malawi pays to a wallet, and its bank corridor stays shut', () => {
+  // Opened 2026-09-10 by PayHold's `20260910000004` — Airtel Money
+  // (`AIRTELMW`, MWK). It left `NO_PAYOUT_RAIL` on the same day, which is the
+  // first time a country has moved *into* payability rather than out of it.
+  //
+  // `bank` still answers `flutterwave_bank` from the table because one kind per
+  // country cannot say "wallet yes, bank no" — the live route does, and
+  // `payoutRailFromRoute` refuses it there. That split is the design, not an
+  // oversight: the table is the synchronous approximation and `payout.methods`
+  // is the authority.
+  assertEquals(payoutProviderFor('momo', 'MW'), 'flutterwave_momo');
+  assertEquals(payoutProviderFor('card', 'MW'), null);
+  assertEquals(
+    payoutRailFromRoute('bank', withMethods('flutterwave', 'momo', ['momo'])),
+    null,
+  );
 });

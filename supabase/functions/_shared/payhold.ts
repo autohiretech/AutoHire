@@ -1218,14 +1218,15 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
   TZ: 'momo',
   UG: 'momo',
   // Southern Africa
+  MW: 'momo', // Airtel Money (AIRTELMW). Bank transfers there stay closed.
   ZA: 'bank',
   ZM: 'momo',
 };
 
 /**
  * Flutterwave *collects* here and nothing *pays out* here — so no rail on
- * earth reaches a host in one of these three, and the honest answer at
- * registration is to refuse rather than to tokenize.
+ * earth reaches a host in one of these, and the honest answer at registration
+ * is to refuse rather than to tokenize.
  *
  * Without this set they fall out of `FLUTTERWAVE_PAYOUT_KIND` into
  * `payoutProviderFor`'s `stripe_connect` default, which is the precise bug
@@ -1235,7 +1236,13 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
  * was removed from the table above on 2026-09-10 — its Flutterwave transfer
  * guide is real, but `/banks/BF` errors so there are no bank codes to send to,
  * and the momo transfer table names no Burkinabè network — and it would have
- * re-entered that bug on the way out. EG and MW have sat in it all along.
+ * re-entered that bug on the way out. EG has sat in it all along.
+ *
+ * **MW left this set the same day**, in the other direction: PayHold opened
+ * Malawi's wallet corridor (`20260910000004`), so Airtel Money reaches a
+ * Malawian host and the country belongs in the kind table above. Its *bank*
+ * corridor stays closed, which this set cannot express and does not need to —
+ * `payout.methods` says so per request.
  *
  * Collection is a different fact and is deliberately untouched: renters in all
  * three can still pay. See `FLUTTERWAVE_COLLECT_COUNTRIES` in
@@ -1245,7 +1252,7 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
  *   COUNTRIES.filter(c => c.flutterwaveLocal && !c.flutterwavePayout && !c.stripePayout)
  *            .map(c => c.code)
  */
-const NO_PAYOUT_RAIL = new Set(['BF', 'EG', 'MW']);
+const NO_PAYOUT_RAIL = new Set(['BF', 'EG']);
 
 /**
  * Which PayHold rail a host's payout destination is tokenized against, or
@@ -1278,7 +1285,7 @@ const NO_PAYOUT_RAIL = new Set(['BF', 'EG', 'MW']);
  *     the honest answer is that these are not ways to get paid.
  *
  *   • **A market Flutterwave collects in and nobody pays out from.** Burkina
- *     Faso, Egypt and Malawi — see `NO_PAYOUT_RAIL`. These are not in the kind
+ *     Faso and Egypt — see `NO_PAYOUT_RAIL`. These are not in the kind
  *     table, so `bank` and `card` used to fall through to the `stripe_connect`
  *     default and fail at `assertRailOnRoute` two systems away.
  *
@@ -1293,7 +1300,7 @@ export function payoutProviderFor(
   const code = countryCode.toUpperCase();
   // Checked before the kind lookup: absence from the kind table means "not a
   // Flutterwave payout corridor", which for most of the world correctly means
-  // Stripe. For these three it means nothing reaches them at all, and the
+  // Stripe. For these two it means nothing reaches them at all, and the
   // default below would be a rail that cannot pay them.
   if (NO_PAYOUT_RAIL.has(code)) return null;
 

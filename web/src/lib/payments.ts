@@ -106,6 +106,7 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
   ET: 'momo',
   GH: 'momo',
   KE: 'momo',
+  MW: 'momo',
   NG: 'bank',
   RW: 'momo',
   SN: 'momo',
@@ -117,7 +118,7 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
 
 /**
  * Flutterwave collects here and nothing pays out here — the two facts crossing
- * over, in the three markets where they cross the wrong way.
+ * over, in the markets where they cross the wrong way.
  *
  * A host in one of these cannot be paid by any rail PayHold has: Flutterwave
  * does not pay out to them and Stripe cannot reach a recipient in an African
@@ -132,11 +133,16 @@ const FLUTTERWAVE_PAYOUT_KIND: Record<string, 'momo' | 'bank'> = {
  * `FLUTTERWAVE_COLLECT_COUNTRIES`: renters there can still pay, and that is a
  * separate flag (`flutterwaveLocal`) that did not move.
  *
+ * **MW left it the same day**, the other way round: Malawi's wallet corridor
+ * opened, so Airtel Money reaches a Malawian host and the country moved up into
+ * the kind table. Its bank corridor is still closed — which this set was never
+ * the place to say, and `payout.methods` says per request.
+ *
  * Re-derive with:
  *   COUNTRIES.filter(c => c.flutterwaveLocal && !c.flutterwavePayout && !c.stripePayout)
  *            .map(c => c.code)
  */
-const NO_PAYOUT_RAIL = new Set(['BF', 'EG', 'MW']);
+const NO_PAYOUT_RAIL = new Set(['BF', 'EG']);
 
 /**
  * The markets Flutterwave *collects* in locally, which is a different fact.
