@@ -137,8 +137,10 @@ export function StripeConnectOnboarding({
       {/* Said before it happens, not after. An unexplained Stripe popup in the
           middle of entering bank details reads as something going wrong. */}
       <p className="text-caption text-[var(--color-content-muted)]">
-        Stripe will ask you to sign in or create a Stripe account as part of
-        this — that step is theirs, and your details go straight to them.
+        Near the end, Stripe opens its own window to text you a code and confirm
+        it's you. That step belongs to Stripe and can't happen in here — finish
+        it and you'll come straight back. Your details go to them, never
+        through us.
       </p>
       <ConnectComponentsProvider connectInstance={connectInstance}>
         <ConnectAccountOnboarding onExit={onExit} />
