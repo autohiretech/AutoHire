@@ -354,6 +354,26 @@ async function hydrateBroadcasts(rows: Record<string, unknown>[] | null): Promis
 }
 
 /** What `payhold-sync-verification` reports back. Mirrors `SyncResult` in its `sync.ts`. */
+/** Who an admin notification goes to. Resolved on the server (migration 078). */
+export type NotifyAudience = 'everyone' | 'hosts' | 'renters' | 'unverified' | 'unverified_hosts' | 'people';
+
+/** One notification an admin sent to an audience, with how many have read it. */
+export interface AdminBroadcast {
+  id: string;
+  adminId: string | null;
+  adminName: string | null;
+  audience: NotifyAudience;
+  country: string | null;
+  /** Names of the chosen people, for `people` only. */
+  peopleNames: string[];
+  title: string;
+  body: string;
+  link: string | null;
+  recipientCount: number;
+  readCount: number;
+  createdAt: string;
+}
+
 export interface PayholdVerificationSync {
   profileId: string;
   /** What `profiles.verification` holds — the one fact that was relayed. */
@@ -2281,6 +2301,63 @@ export const supabaseClient = {
   /** Send a warning to a user (notification + recorded action; admin only). */
   async warnUser(profileId: string, message: string): Promise<void> {
     await run(sb().rpc('admin_warn_user', { p_profile_id: profileId, p_message: message }));
+  },
+  /** How many people each group audience reaches, optionally within one country (admin only). */
+  async notifyAudienceSizes(country?: string | null): Promise<Record<string, number>> {
+    const rows = (await run(
+      sb().rpc('admin_notify_audience_sizes', { p_country: country ?? null }),
+    )) as { audience: string; people: number | string }[] | null;
+    return Object.fromEntries((rows ?? []).map((r) => [r.audience, Number(r.people)]));
+  },
+  /** Countries people are in, largest first — for the audience country filter (admin only). */
+  async notifyCountries(): Promise<{ country: string; people: number }[]> {
+    const rows = (await run(sb().rpc('admin_notify_countries'))) as
+      | { country: string; people: number | string }[]
+      | null;
+    return (rows ?? []).map((r) => ({ country: r.country, people: Number(r.people) }));
+  },
+  /** Send one in-app notification to everyone in an audience (admin only). */
+  async notifyPeople(input: {
+    audience: NotifyAudience;
+    title: string;
+    body: string;
+    country?: string | null;
+    people?: string[];
+    link?: string | null;
+  }): Promise<{ broadcastId: string; recipientCount: number }> {
+    const rows = (await run(
+      sb().rpc('admin_notify_people', {
+        p_audience: input.audience,
+        p_title: input.title,
+        p_body: input.body,
+        p_country: input.country ?? null,
+        p_people: input.people ?? null,
+        p_link: input.link ?? null,
+      }),
+    )) as { broadcast_id: string; recipient_count: number }[] | null;
+    const row = rows?.[0];
+    if (!row) throw new Error('The notification was not sent.');
+    return { broadcastId: row.broadcast_id, recipientCount: Number(row.recipient_count) };
+  },
+  /** Notifications admins have sent, newest first, with read counts (admin only). */
+  async listBroadcasts(limit = 50): Promise<AdminBroadcast[]> {
+    const rows = (await run(sb().rpc('admin_list_broadcasts', { p_limit: limit }))) as
+      | Record<string, unknown>[]
+      | null;
+    return (rows ?? []).map((r) => ({
+      id: String(r.id),
+      adminId: (r.admin_id as string | null) ?? null,
+      adminName: (r.admin_name as string | null) ?? null,
+      audience: r.audience as NotifyAudience,
+      country: (r.country as string | null) ?? null,
+      peopleNames: (r.people_names as string[] | null) ?? [],
+      title: String(r.title),
+      body: String(r.body),
+      link: (r.link as string | null) ?? null,
+      recipientCount: Number(r.recipient_count),
+      readCount: Number(r.read_count),
+      createdAt: String(r.created_at),
+    }));
   },
   /** A user's listings (cars/machines they host). */
   async listUserListings(hostId: string): Promise<Listing[]> {

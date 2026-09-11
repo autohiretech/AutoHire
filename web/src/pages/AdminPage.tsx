@@ -49,6 +49,7 @@ import { PhotoCarousel } from '@/components/PhotoCarousel';
 import { Navigate, useLocation } from 'react-router-dom';
 import { sectionForPath } from '@/components/admin/AdminSidebar';
 import { DisputesSection } from '@/components/admin/DisputesSection';
+import { NotificationsSection } from '@/components/admin/NotificationsSection';
 
 /**
  * Tell PayHold what AutoHire now says about this person, and say what happened.
@@ -156,6 +157,7 @@ export function AdminPage() {
           </TabState>
         )}
         {tab === 'disputes' && <DisputesSection nameOf={nameOf} />}
+        {tab === 'notifications' && <NotificationsSection />}
       </div>
     </section>
   );

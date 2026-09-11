@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Bell,
   Car,
   ExternalLink,
   Flag,
@@ -25,7 +26,14 @@ import { cn } from '@/lib/cn';
 import { Avatar } from '@/components/ui';
 import { useScrollLock } from '@/components/ui/Sheet';
 
-export type AdminSection = 'overview' | 'users' | 'verification' | 'activity' | 'moderation' | 'disputes';
+export type AdminSection =
+  | 'overview'
+  | 'users'
+  | 'notifications'
+  | 'verification'
+  | 'activity'
+  | 'moderation'
+  | 'disputes';
 
 interface NavItem {
   key: AdminSection;
@@ -96,6 +104,13 @@ export const ADMIN_NAV: { heading: string | null; items: NavItem[] }[] = [
         label: 'Users',
         icon: Users,
         description: 'Find any account, then message, warn, suspend or verify it.',
+      },
+      {
+        key: 'notifications',
+        path: '/notifications',
+        label: 'Notifications',
+        icon: Bell,
+        description: 'Tell a group of people something at once, and see how many have read it.',
       },
     ],
   },
