@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tints the phone's own browser chrome to match the app shell, so the
+         status bar doesn't sit as a white band above a dark page (or vice
+         versa). Two tags, one per scheme — there is no token indirection here
+         because the browser reads this before any CSS loads. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1211" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>AutoHire Admin</title>
+    <!-- Theme stamp. The token layer in index.css follows the OS by default
+         and honours an explicit data-theme="light|dark" on <html> over it.
+         This runs before any CSS paints so there is no flash of the wrong
+         theme. A `?theme=` query wins for one load (previews, screenshots);
+         otherwise a saved preference applies; otherwise nothing is stamped
+         and the OS decides. -->
+    <script>
+      (function () {
+        try {
+          var q = new URLSearchParams(location.search).get('theme');
+          var t = q === 'light' || q === 'dark' ? q : localStorage.getItem('autohire-theme');
+          if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/admin-main.tsx"></script>
+  </body>
+</html>

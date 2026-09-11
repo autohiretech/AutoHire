@@ -1,6 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { AdminPage } from '@/pages/AdminPage';
+import { AdminRedirect } from '@/components/AdminRedirect';
 import { HomePage } from '@/pages/HomePage';
 import { SearchResultsPage } from '@/pages/SearchResultsPage';
 import { AiPage } from '@/pages/AiPage';
@@ -224,7 +224,9 @@ export default function App() {
           path="admin"
           element={
             <RequireRole roles={['admin']}>
-              <AdminPage />
+              {/* The admin area is its own site now. This route stays so old
+                  bookmarks and links still land somewhere useful. */}
+              <AdminRedirect />
             </RequireRole>
           }
         />

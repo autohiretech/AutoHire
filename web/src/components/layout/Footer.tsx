@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Car } from 'lucide-react';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { ADMIN_URL } from '@/lib/siteUrls';
 import { PaymentMethods } from '@/components/marketplace/PaymentMethods';
 
 const LINK_COLUMNS: { heading: string; links: { to: string; label: string }[] }[] = [
@@ -91,9 +92,9 @@ export function Footer() {
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-line)] pt-6 text-caption text-[var(--color-content-subtle)] sm:flex-row">
           <p>© {year} AutoHire. All rights reserved.</p>
           {isAdmin && (
-            <Link to="/admin" className="hover:text-[var(--color-content)]">
+            <a href={ADMIN_URL} className="hover:text-[var(--color-content)]">
               Admin
-            </Link>
+            </a>
           )}
         </div>
       </div>

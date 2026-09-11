@@ -1,0 +1,8 @@
+# The admin site is never meant to be framed, indexed, or to leak its URLs.
+# No Content-Security-Policy: neither site has one, and adding a first-ever CSP
+# is its own change with its own origin inventory, not part of this split.
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Robots-Tag: noindex, nofollow

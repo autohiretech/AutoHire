@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { ADMIN_URL } from '@/lib/siteUrls';
 import { Avatar, Button } from '@/components/ui';
 import { useNotifications } from '@/components/NotificationsProvider';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
@@ -157,13 +158,15 @@ export function Header() {
                 <Sparkles size={15} className="text-[var(--color-accent-on)]" /> Ask AI
               </Link>
               {me?.role === 'admin' && (
-                <Link
-                  to="/admin"
+                // A plain link, not a router Link: the admin panel is its own
+                // site now, on a different origin.
+                <a
+                  href={ADMIN_URL}
                   className="rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)]"
                   aria-label="Admin panel"
                 >
                   <ShieldCheck size={20} />
-                </Link>
+                </a>
               )}
               {/* Watching is a renter's tool — hosts and companies can't book,
                   so "tell me when this is free" means nothing to them. */}
