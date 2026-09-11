@@ -5,7 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `interactive-widget=resizes-content`: when the on-screen keyboard
+         opens, Chrome on Android shrinks the layout to the space above it (the
+         default only shrinks the visual viewport, so bottom-pinned controls —
+         the chat composer — sat behind the keyboard). iOS ignores it;
+         `useVisualViewport` covers Safari. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <!-- iOS ignores the manifest entirely — these are the only way to get a
          standalone (no Safari chrome) launch and a themed status bar there. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />

@@ -15,6 +15,7 @@ import { client } from '@/lib/client';
 import { useAppMode, type AppMode } from '@/lib/appMode';
 import { useAuth } from '@/lib/auth';
 import { useT, type TranslationKey } from '@/lib/i18n';
+import { useVisualViewport } from '@/lib/useVisualViewport';
 
 /**
  * The mobile tab bar. Phones are how this marketplace is actually used in
@@ -70,6 +71,7 @@ export function BottomTabBar() {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const t = useT();
+  const { keyboardOpen } = useVisualViewport();
 
   // Same query Header's desktop nav reads (shared cache key, so this doesn't
   // double the request) — the bar needs its own copy because it renders
@@ -97,6 +99,13 @@ export function BottomTabBar() {
         ...TABS_BY_MODE.renter.slice(0, -1),
         { to: '/login', label: 'nav.signIn', icon: User },
       ];
+
+  // Two moments the bar gets out of the way. Inside a conversation, which is
+  // a full-screen screen with its own back button (see AppLayout). And while
+  // the on-screen keyboard is up anywhere: once the layout shrinks to the
+  // space above the keyboard, a fixed bottom bar rides up on top of it and
+  // covers the very field being typed into.
+  if (/^\/messages\/[^/]+/.test(pathname) || keyboardOpen) return null;
 
   return (
     <nav

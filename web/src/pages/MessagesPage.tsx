@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -22,10 +30,14 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
 import { formatDayLabel, formatTime, timeAgo } from '@/lib/format';
 import { Avatar, Skeleton } from '@/components/ui';
+import { useMatchMedia, useVisualViewport } from '@/lib/useVisualViewport';
 
 type Party = UserProfile & Partial<Host>;
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+/** The composer's tallest, px — about five lines — before it scrolls. Matches `max-h-32`. */
+const COMPOSER_MAX_PX = 128;
 
 function partyName(p?: Party): string {
   return p?.businessName ?? p?.fullName ?? 'User';
@@ -47,6 +59,11 @@ export function MessagesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const { data: me } = useCurrentUser();
+  // On a phone an open thread fills the *visible* screen — the part above the
+  // keyboard — rather than the layout, which extends behind it.
+  const isPhone = useMatchMedia('(max-width: 767px)');
+  const phoneThread = isPhone && !!id;
+  const viewport = useVisualViewport(phoneThread);
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations'],
@@ -101,8 +118,10 @@ export function MessagesPage() {
   const selected = conversations?.find((c) => c.id === id);
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col p-3 sm:p-4">
-      <div className="flex h-full overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]">
+    // Edge to edge on a phone — a card with a 12px gutter and a border cost a
+    // messaging screen width and height it has none of to spare.
+    <div className="mx-auto flex h-full max-w-6xl flex-col md:p-4">
+      <div className="flex h-full overflow-hidden bg-[var(--color-surface-raised)] md:rounded-[var(--radius-card)] md:border md:border-[var(--color-line)]">
         {/* Conversation list */}
         <aside
           className={cn(
@@ -138,7 +157,9 @@ export function MessagesPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search conversations"
                 aria-label="Search conversations"
-                className="w-full bg-transparent text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)]"
+                // 16px on phones: iOS Safari zooms the page into any field
+                // whose text is smaller, and doesn't zoom back out.
+                className="w-full bg-transparent text-base text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] md:text-body-sm"
               />
             </div>
           </div>
@@ -170,9 +191,29 @@ export function MessagesPage() {
         </aside>
 
         {/* Thread */}
-        <div className={cn('flex flex-1 flex-col', !id && 'hidden md:flex')}>
+        {/* On a phone the open thread is a fixed layer sized to the visible
+            viewport and moved to wherever iOS has scrolled it, so the header
+            stays at the top and the composer sits directly on the keyboard.
+            (Android, with `interactive-widget=resizes-content`, just reports
+            a smaller height and no offset.) */}
+        <div
+          className={cn(
+            'flex flex-1 flex-col',
+            !id && 'hidden md:flex',
+            id && 'max-md:fixed max-md:inset-x-0 max-md:top-0 max-md:z-50 max-md:bg-[var(--color-surface-raised)]',
+          )}
+          style={
+            phoneThread
+              ? { height: viewport.height, transform: `translateY(${viewport.offsetTop}px)` }
+              : undefined
+          }
+        >
           {selected ? (
-            <Thread conversation={selected} party={partyOf(selected)} />
+            <Thread
+              conversation={selected}
+              party={partyOf(selected)}
+              viewportHeight={phoneThread ? viewport.height : undefined}
+            />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-[var(--color-content-subtle)]">
               <MessageSquare size={28} />
@@ -290,7 +331,9 @@ function ConversationRow({
           e.stopPropagation();
           onDelete();
         }}
-        className="absolute bottom-2.5 right-3 rounded-[var(--radius-control)] p-1 text-[var(--color-content-subtle)] opacity-0 transition-opacity hover:bg-[var(--color-danger-tint)] hover:text-[var(--color-danger-500)] group-hover:opacity-100"
+        // Hover reveals it on desktop; a touch screen has no hover, so there
+        // it is simply always there.
+        className="absolute bottom-2.5 right-3 rounded-[var(--radius-control)] p-1 text-[var(--color-content-subtle)] opacity-0 transition-opacity hover:bg-[var(--color-danger-tint)] hover:text-[var(--color-danger-500)] group-hover:opacity-100 [@media(hover:none)]:p-2 [@media(hover:none)]:opacity-100"
         aria-label="Delete conversation"
         title="Delete conversation"
       >
@@ -300,7 +343,16 @@ function ConversationRow({
   );
 }
 
-function Thread({ conversation, party }: { conversation: Conversation; party?: Party }) {
+function Thread({
+  conversation,
+  party,
+  viewportHeight,
+}: {
+  conversation: Conversation;
+  party?: Party;
+  /** The visible height on a phone; changes when the keyboard opens or closes. */
+  viewportHeight?: number;
+}) {
   const queryClient = useQueryClient();
   const { data: me } = useCurrentUser();
   const [draft, setDraft] = useState('');
@@ -309,6 +361,7 @@ function Thread({ conversation, party }: { conversation: Conversation; party?: P
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const listingQuery = useQuery({
     queryKey: ['listing', conversation.listingId],
@@ -355,9 +408,25 @@ function Thread({ conversation, party }: { conversation: Conversation; party?: P
     const hasUnread = (messages ?? []).some((m) => m.senderId !== me?.id && !m.readAt);
     if (hasUnread) markRead();
   }, [messages, me?.id, markRead]);
+  // New messages, and the keyboard opening (the thread just lost ~40% of its
+  // height), both keep the latest message in view.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
+  }, [messages, viewportHeight]);
+
+  // The composer grows with what's typed, up to ~5 lines, then scrolls.
+  // `scrollHeight` leaves out the border but `height` (border-box) includes
+  // it, so the border is added back — without that a single line measured 2px
+  // too short and showed a scrollbar in an empty field.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const border = el.offsetHeight - el.clientHeight;
+    const wanted = el.scrollHeight + border;
+    el.style.height = `${Math.min(wanted, COMPOSER_MAX_PX)}px`;
+    el.style.overflowY = wanted > COMPOSER_MAX_PX ? 'auto' : 'hidden';
+  }, [draft]);
 
   function send(body: string, opts?: Parameters<typeof client.sendMessage>[2]) {
     sendMutation.mutate({ body, opts: { ...opts, replyTo: replyTo?.id } });
@@ -370,6 +439,17 @@ function Thread({ conversation, party }: { conversation: Conversation; party?: P
     if (!body) return;
     send(body);
     setDraft('');
+    // Keep the keyboard up for the next message, as a messaging app does.
+    inputRef.current?.focus();
+  }
+
+  // Enter sends, Shift+Enter is a new line. `isComposing` leaves Enter alone
+  // while an IME is still composing a word.
+  function onComposerKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      e.currentTarget.form?.requestSubmit();
+    }
   }
 
   async function onPickFile(e: ChangeEvent<HTMLInputElement>) {
@@ -393,13 +473,13 @@ function Thread({ conversation, party }: { conversation: Conversation; party?: P
   return (
     <>
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[var(--color-line)] px-4 py-3">
+      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--color-line)] px-4 py-2 md:py-3">
         <Link
           to="/messages"
-          className="rounded-[var(--radius-control)] p-1 text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)] md:hidden"
-          aria-label="Back"
+          className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] md:hidden"
+          aria-label="Back to conversations"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={20} />
         </Link>
         <Avatar name={name} src={party?.avatarUrl} size="sm" />
         <div className="min-w-0">
@@ -415,7 +495,7 @@ function Thread({ conversation, party }: { conversation: Conversation; party?: P
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex flex-1 flex-col gap-1.5 overflow-y-auto bg-[var(--color-surface)] p-4"
+        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain bg-[var(--color-surface)] p-4"
         {...(messagesQuery.isLoading ? { 'aria-busy': 'true', 'aria-label': 'Loading' } : {})}
       >
         {messagesQuery.isLoading ? (
@@ -465,7 +545,13 @@ function Thread({ conversation, party }: { conversation: Conversation; party?: P
       )}
 
       {/* Composer — a pill input with one send button, the screen's one accent. */}
-      <form onSubmit={onSend} className="flex items-center gap-2 border-t border-[var(--color-line)] p-3">
+      {/* `onPointerDown` preventDefault on the two buttons: tapping a button
+          normally moves focus off the text field, which closes a phone's
+          keyboard mid-conversation. The click still fires. */}
+      <form
+        onSubmit={onSend}
+        className="flex shrink-0 items-end gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface-raised)] px-3 py-2 md:p-3"
+      >
         <input
           ref={fileRef}
           type="file"
@@ -475,28 +561,35 @@ function Thread({ conversation, party }: { conversation: Conversation; party?: P
         />
         <button
           type="button"
+          onPointerDown={(e) => e.preventDefault()}
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-50"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-50"
           aria-label="Attach file"
           title="Attach a photo or file"
         >
-          <Paperclip size={18} />
+          <Paperclip size={20} />
         </button>
-        <input
+        <textarea
+          ref={inputRef}
           value={draft}
+          rows={1}
           onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onComposerKeyDown}
+          enterKeyHint="send"
           placeholder={uploading ? 'Uploading…' : 'Type a message…'}
           aria-label="Message"
-          className="h-11 min-w-0 flex-1 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-4 text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)]"
+          // 16px on phones, or iOS zooms the page into the field on focus.
+          className="block max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-[1.375rem] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-4 py-2.5 text-base leading-6 text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] md:text-body-sm md:leading-6"
         />
         <button
           type="submit"
+          onPointerDown={(e) => e.preventDefault()}
           disabled={!draft.trim() || sendMutation.isPending}
           aria-label="Send"
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Send size={16} />
+          <Send size={18} />
         </button>
       </form>
     </>
@@ -521,6 +614,7 @@ function MessageBubble({
   onDelete: () => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const mine = message.senderId === myId;
   const showDay = !previous || new Date(previous.sentAt).toDateString() !== new Date(message.sentAt).toDateString();
   const reactions = message.reactions ?? {};
@@ -541,6 +635,7 @@ function MessageBubble({
           {mine && (
             <BubbleActions
               mine
+              open={actionsOpen || showPicker}
               onReply={onReply}
               onReact={onReact}
               onDelete={onDelete}
@@ -552,6 +647,11 @@ function MessageBubble({
           {/* Mine = surface-inverse (high-contrast, no hue); theirs = surface-sunken.
               Never green — the accent is spent once, on the composer's send button. */}
           <div
+            onClick={() => {
+              // A touch screen has no hover, so a tap on the bubble is what
+              // reveals react / reply / delete.
+              if (window.matchMedia('(hover: none)').matches) setActionsOpen((v) => !v);
+            }}
             className={cn(
               'rounded-[var(--radius-card)] px-3.5 py-2 text-body-sm',
               mine
@@ -616,6 +716,7 @@ function MessageBubble({
 
           {!mine && (
             <BubbleActions
+              open={actionsOpen || showPicker}
               onReply={onReply}
               onReact={onReact}
               onDelete={onDelete}
@@ -652,6 +753,7 @@ function MessageBubble({
 
 function BubbleActions({
   mine,
+  open,
   onReply,
   onReact,
   onDelete,
@@ -659,6 +761,8 @@ function BubbleActions({
   setShowPicker,
 }: {
   mine?: boolean;
+  /** Shown without hover — after a tap on a touch screen, or while the picker is up. */
+  open?: boolean;
   onReply: () => void;
   onReact: (emoji: string) => void;
   onDelete: () => void;
@@ -666,7 +770,12 @@ function BubbleActions({
   setShowPicker: (v: boolean) => void;
 }) {
   return (
-    <div className="relative flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+    <div
+      className={cn(
+        'relative flex items-center gap-0.5 transition-opacity',
+        open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100',
+      )}
+    >
       <IconBtn label="React" onClick={() => setShowPicker(!showPicker)}>
         <Smile size={15} />
       </IconBtn>
@@ -705,7 +814,7 @@ function IconBtn({ label, onClick, children }: { label: string; onClick: () => v
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="rounded-[var(--radius-pill)] p-1 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content)]"
+      className="rounded-[var(--radius-pill)] p-1 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content)] [@media(hover:none)]:p-2"
     >
       {children}
     </button>

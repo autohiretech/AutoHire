@@ -45,6 +45,12 @@ export function AppLayout() {
     pathname === '/search' ||
     pathname === '/ai';
 
+  // One conversation on a phone is its own full-screen screen, as in every
+  // messaging app: the thread's header (back, name, car) replaces the site's,
+  // and neither the eco banner nor the tab bar spends a line of the screen a
+  // keyboard is about to halve. The conversation *list* keeps the normal shell.
+  const inThread = /^\/messages\/[^/]+/.test(pathname);
+
   return (
     <NotificationsProvider>
       {/* Wraps the whole shell, not just the assistant, so any page under
@@ -62,7 +68,12 @@ export function AppLayout() {
               before the page had said anything. It is a standing fact, not an
               action, so it now reads as one: quiet type on the page surface,
               with the accent carried only by the leaf. */}
-          <div className="border-b border-[var(--color-line)] bg-[var(--color-surface-sunken)]">
+          <div
+            className={cn(
+              'border-b border-[var(--color-line)] bg-[var(--color-surface-sunken)]',
+              inThread && 'max-md:hidden',
+            )}
+          >
             <p className="mx-auto flex max-w-[1500px] items-center justify-center gap-2 px-4 py-1.5 text-center text-caption text-[var(--color-content-muted)]">
               <Leaf size={13} className="shrink-0 text-[var(--color-accent-on)]" />
               <span>
@@ -73,7 +84,11 @@ export function AppLayout() {
               </span>
             </p>
           </div>
-          <Header />
+          {/* `contents`, not a box: the header is `sticky`, and a wrapping box
+              would become its containing block and stop it sticking. */}
+          <div className={inThread ? 'max-md:hidden md:contents' : 'contents'}>
+            <Header />
+          </div>
           {!fullBleed && <LocationPrompt />}
           {/* The tab bar is fixed and exists for every visitor on a phone —
               guests included, since BottomTabBar stopped returning null for
@@ -84,7 +99,8 @@ export function AppLayout() {
               above the bar rather than behind it. */}
           <main
             className={cn(
-              'flex-1 pb-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom))] md:pb-0',
+              'flex-1 md:pb-0',
+              inThread ? 'pb-0' : 'pb-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom))]',
               fullBleed && 'min-h-0 overflow-hidden',
             )}
           >
