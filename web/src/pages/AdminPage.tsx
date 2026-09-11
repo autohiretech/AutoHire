@@ -46,22 +46,56 @@ import {
   FLAG_REASON_LABEL,
   MODERATION_STATUS_META,
 } from '@/lib/admin';
-import {
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  Chip,
-  ChipRow,
-  ConfirmDialog,
-  Input,
-  Label,
-  Skeleton,
-  Spinner,
-} from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, CardHeader, Chip, ChipRow, ConfirmDialog, Input, Label, Skeleton, Spinner, toast } from '@/components/ui';
 import { PhotoCarousel } from '@/components/PhotoCarousel';
+
+/**
+ * Tell PayHold what AutoHire now says about this person, and say what happened.
+ *
+ * Runs after the AutoHire decision has already been saved, so nothing here can
+ * undo it or make it look failed. The Edge Function reads the stored status
+ * itself — this only passes the profile id.
+ *
+ * Verifying someone is not the same as making them payable: PayHold still
+ * checks each payout account separately, so the success message says so
+ * rather than implying money will now move.
+ */
+async function relayVerificationToPayhold(
+  profileId: string,
+  opts: { quietUnlessVerified?: boolean } = {},
+) {
+  try {
+    const r = await client.syncHostVerificationToPayhold(profileId);
+    switch (r.payhold) {
+      case 'verified':
+        toast.success(
+          'Verified in PayHold too. Their payout account still needs its own check before money can be sent.',
+        );
+        break;
+      case 'unverified':
+        // A single document approval usually leaves the person pending, which
+        // relays "not verified" — true, but not news, so it stays quiet.
+        if (!opts.quietUnlessVerified) toast.info('PayHold now shows this person as not verified.');
+        break;
+      case 'not_trusted_yet':
+        toast.info(
+          "Saved in AutoHire. PayHold hasn't been told to accept AutoHire's checks yet — in PayHold, open Settings and turn on \u201cI review each seller myself and tell PayHold the result\u201d.",
+        );
+        break;
+      case 'failed':
+        toast.error(
+          `Saved in AutoHire, but PayHold couldn't be updated${r.error ? `: ${r.error}` : ''}. Pressing the button again is safe.`,
+        );
+        break;
+      // 'not_registered': most people in this queue are renters, with no PayHold
+      // seller to update. Nothing to say.
+    }
+  } catch (e) {
+    toast.error(
+      `Saved in AutoHire, but PayHold couldn't be reached: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
 
 type Tab = 'overview' | 'users' | 'verification' | 'activity' | 'moderation' | 'disputes';
 
@@ -636,6 +670,7 @@ function UserVerificationSection({ user }: { user: AdminUser }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
       queryClient.invalidateQueries({ queryKey: ['userActions', user.id] });
+      void relayVerificationToPayhold(user.id);
     },
   });
 
@@ -1172,11 +1207,18 @@ function PersonReview({ person }: { person: KycProfile }) {
   const override = useMutation({
     mutationFn: (v: { status: VerificationStatus }) =>
       client.overrideProfileVerification(person.id, v.status),
-    onSuccess: () => invalidateKyc(queryClient),
+    onSuccess: () => {
+      invalidateKyc(queryClient);
+      void relayVerificationToPayhold(person.id);
+    },
   });
   const clearOverride = useMutation({
     mutationFn: () => client.clearVerificationOverride(person.id),
-    onSuccess: () => invalidateKyc(queryClient),
+    // Clearing hands the status back to the documents, which may change it.
+    onSuccess: () => {
+      invalidateKyc(queryClient);
+      void relayVerificationToPayhold(person.id);
+    },
   });
 
   return (
@@ -1235,10 +1277,15 @@ function DocumentRow({ doc }: { doc: VerificationReviewItem }) {
   const decide = useMutation({
     mutationFn: (v: { status: 'verified' | 'rejected'; note?: string }) =>
       client.reviewVerificationDocument(doc.id, v.status, v.note),
-    onSuccess: () => {
+    onSuccess: (_row, v) => {
       invalidateKyc(queryClient);
       setRejecting(false);
       setNote('');
+      // Approving one document only verifies the person once every required
+      // one is approved; until then PayHold is told "not verified", quietly.
+      void relayVerificationToPayhold(doc.profileId, {
+        quietUnlessVerified: v.status === 'verified',
+      });
     },
   });
 

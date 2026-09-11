@@ -312,6 +312,26 @@ export class PayHoldError extends Error {
   }
 }
 
+/**
+ * "The seller this `payhold_seller_id` names no longer exists" — the one 404
+ * that means a stale link and licenses repairing it. This is the SAME rule
+ * `payhold-register-seller`, `-ensure-seller`, `-balance` and `-create-deal`
+ * each carry inline, lifted here so a fifth caller does not write a fifth copy
+ * (those four are left as they are; folding them onto this is a separate
+ * change). Pinned as a standalone rule in `tests/payout-routing.test.ts`.
+ *
+ * Deliberately narrow. PayHold's router echoes the path it could not match,
+ * so `POST /sellers/<id>/x is not a route` is a 404 that contains "sellers" and
+ * is about a typo, not this host — a looser match would unlink a host over
+ * one. Likewise a destination or deal that is gone is a 404 with "not found"
+ * that names something other than the seller.
+ */
+export function isSellerGone(e: unknown): boolean {
+  const status = (e as { status?: number } | null)?.status;
+  const message = e instanceof Error ? e.message : String(e);
+  return status === 404 && /seller/i.test(message) && /not found/i.test(message);
+}
+
 // ---------------------------------------------------------------------------
 // Transport
 // ---------------------------------------------------------------------------
@@ -638,6 +658,42 @@ export function setSellerActive(id: string, active: boolean): Promise<Seller> {
     method: 'POST',
     body: { active },
   });
+}
+
+/**
+ * Relay an admin's verification decision about a host to PayHold — §12's
+ * "the identity check came back", stated seller by seller.
+ *
+ * This is an attestation, not a fact about our roster, so PayHold treats it
+ * differently from `setSellerActive`: an API key is refused with a 422
+ * `policy_violation` ("Verifying a seller is a person's decision …") until the
+ * account owner turns on verification relay in PayHold's Settings. That
+ * refusal is PayHold working as designed, not a fault — callers map it to
+ * "not trusted yet" and never retry it (`isVerificationRelayRefused`).
+ *
+ * `verified` is always sent explicitly. PayHold reads a missing field as
+ * `true`, so an un-verify that forgot the body would verify instead.
+ *
+ * Both directions go through the same gate: with relay off, `false` is refused
+ * exactly as `true` is.
+ */
+export function setSellerVerified(id: string, verified: boolean): Promise<Seller> {
+  return call(`/sellers/${encodeURIComponent(id)}/verify`, {
+    method: 'POST',
+    body: { verified },
+  });
+}
+
+/**
+ * PayHold's refusal to take a verification over an API key while the tenant
+ * has not turned relay on. A 422 `policy_violation` whose message says this is
+ * a person's decision — matched on both the status and the words, because
+ * `policy_violation` is also the code for a duplicate handle on `createSeller`
+ * and an unroutable destination, none of which mean "turn on a setting".
+ */
+export function isVerificationRelayRefused(e: unknown): boolean {
+  if (!(e instanceof PayHoldError) || e.status !== 422) return false;
+  return /person/i.test(e.message) && /decision/i.test(e.message);
 }
 
 /**

@@ -351,6 +351,19 @@ async function hydrateBroadcasts(rows: Record<string, unknown>[] | null): Promis
     .filter((b): b is HostBroadcast => !!b);
 }
 
+/** What `payhold-sync-verification` reports back. Mirrors `SyncResult` in its `sync.ts`. */
+export interface PayholdVerificationSync {
+  profileId: string;
+  /** What `profiles.verification` holds — the one fact that was relayed. */
+  verification: string;
+  verified: boolean;
+  payhold: 'verified' | 'unverified' | 'not_registered' | 'not_trusted_yet' | 'failed';
+  sellerId: string | null;
+  relinked?: boolean;
+  staleLinkCleared?: boolean;
+  error?: string;
+}
+
 export const supabaseClient = {
   // --- Listings ----------------------------------------------------------
   /**
@@ -1103,6 +1116,26 @@ export const supabaseClient = {
       clientSecret: payload.client_secret,
       publishableKey: payload.publishable_key,
     };
+  },
+
+  /**
+   * Tell PayHold what AutoHire's own record now says about one person.
+   *
+   * Sends only the profile id. The Edge Function reads `profiles.verification`
+   * itself and relays that stored status, so a stale or tampered browser cannot
+   * tell PayHold anything the database does not say — and calling it twice is
+   * harmless.
+   *
+   * PayHold's part is reported in `payhold`, not thrown: the AutoHire decision
+   * has already been saved by the time this runs, and a PayHold refusal must
+   * not read as that save having failed.
+   */
+  async syncHostVerificationToPayhold(profileId: string): Promise<PayholdVerificationSync> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-sync-verification', {
+      body: { profileId },
+    });
+    if (error) throw await fnError(error);
+    return data as PayholdVerificationSync;
   },
 
   async startStripeConnectOnboarding(): Promise<{ url: string }> {
