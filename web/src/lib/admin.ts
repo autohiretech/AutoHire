@@ -14,6 +14,7 @@ export const DISPUTE_STATUS_META: Record<DisputeStatus, { label: string; tone: B
   under_review: { label: 'Under review', tone: 'accent' },
   resolved_renter: { label: 'Resolved — renter', tone: 'success' },
   resolved_host: { label: 'Resolved — host', tone: 'success' },
+  resolved_split: { label: 'Resolved — split', tone: 'success' },
   dismissed: { label: 'Dismissed', tone: 'neutral' },
 };
 

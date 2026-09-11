@@ -26,7 +26,6 @@ import {
 import type {
   AdminAction,
   AdminUser,
-  Dispute,
   Flag as FlagType,
   KycMetrics,
   KycProfile,
@@ -42,7 +41,6 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatRwf, timeAgo } from '@/lib/format';
 import { listingHeadlinePrice } from '@/lib/pricing';
 import {
-  DISPUTE_STATUS_META,
   FLAG_REASON_LABEL,
   MODERATION_STATUS_META,
 } from '@/lib/admin';
@@ -50,6 +48,7 @@ import { Avatar, Badge, Button, Card, CardBody, CardHeader, Chip, ConfirmDialog,
 import { PhotoCarousel } from '@/components/PhotoCarousel';
 import { Navigate, useLocation } from 'react-router-dom';
 import { sectionForPath } from '@/components/admin/AdminSidebar';
+import { DisputesSection } from '@/components/admin/DisputesSection';
 
 /**
  * Tell PayHold what AutoHire now says about this person, and say what happened.
@@ -118,12 +117,10 @@ export function AdminPage() {
   const { data: me } = useCurrentUser();
 
   const flagsQuery = useQuery({ queryKey: ['flags'], queryFn: () => client.listFlags() });
-  const disputesQuery = useQuery({ queryKey: ['disputes'], queryFn: () => client.listDisputes() });
   const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => client.listHosts() });
   const kycQuery = useQuery({ queryKey: ['kycMetrics'], queryFn: () => client.getKycMetrics() });
 
   const flags = flagsQuery.data ?? [];
-  const disputes = disputesQuery.data ?? [];
   const hostsById = new Map((hostsQuery.data ?? []).map((h) => [h.id, h]));
 
   function nameOf(id: string): string {
@@ -158,24 +155,7 @@ export function AdminPage() {
             )}
           </TabState>
         )}
-        {tab === 'disputes' && (
-          <TabState query={disputesQuery}>
-            {disputes.length === 0 ? (
-              <Empty text="No disputes." />
-            ) : (
-              <div className="space-y-4">
-                {disputes.map((d) => (
-                  <DisputeCard
-                    key={d.id}
-                    dispute={d}
-                    raisedByName={nameOf(d.raisedBy)}
-                    againstName={nameOf(d.against)}
-                  />
-                ))}
-              </div>
-            )}
-          </TabState>
-        )}
+        {tab === 'disputes' && <DisputesSection nameOf={nameOf} />}
       </div>
     </section>
   );
@@ -1608,59 +1588,6 @@ function FlagCard({ flag, reporter }: { flag: FlagType; reporter: string }) {
               disabled={mutation.isPending}
             >
               Remove
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => mutation.mutate('dismissed')}
-              disabled={mutation.isPending}
-            >
-              Dismiss
-            </Button>
-          </div>
-        )}
-      </CardBody>
-    </Card>
-  );
-}
-
-function DisputeCard({
-  dispute,
-  raisedByName,
-  againstName,
-}: {
-  dispute: Dispute;
-  raisedByName: string;
-  againstName: string;
-}) {
-  const queryClient = useQueryClient();
-  const meta = DISPUTE_STATUS_META[dispute.status];
-  const mutation = useMutation({
-    mutationFn: (status: Dispute['status']) => client.resolveDispute(dispute.id, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['disputes'] }),
-  });
-  const actionable = dispute.status === 'open' || dispute.status === 'under_review';
-
-  return (
-    <Card>
-      <CardHeader className="flex items-center justify-between gap-2">
-        <span className="tabular font-medium text-[var(--color-content)]">
-          {formatRwf(dispute.amountRwf)} claim
-        </span>
-        <Badge tone={meta.tone}>{meta.label}</Badge>
-      </CardHeader>
-      <CardBody className="space-y-3">
-        <p className="text-body-sm text-[var(--color-content-muted)]">{dispute.reason}</p>
-        <p className="tabular text-caption text-[var(--color-content-subtle)]">
-          {raisedByName} vs {againstName} · booking {dispute.bookingId} · {timeAgo(dispute.createdAt)}
-        </p>
-        {actionable && (
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => mutation.mutate('resolved_renter')} disabled={mutation.isPending}>
-              Favor renter
-            </Button>
-            <Button size="sm" onClick={() => mutation.mutate('resolved_host')} disabled={mutation.isPending}>
-              Favor host
             </Button>
             <Button
               variant="outline"
