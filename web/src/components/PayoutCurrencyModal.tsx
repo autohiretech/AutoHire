@@ -73,9 +73,14 @@ export function PayoutCurrencyModal({
 
       {!isLoading && available.length > 0 && (
         <>
+          {/* With one payout account per host, re-registering for a new
+              currency replaces the current account rather than adding a
+              second — say so before they pick, not after they save. */}
           <p className="mb-3 text-body-sm text-[var(--color-content-muted)]">
-            Changing this means confirming your payout details once more — we never store your full
-            account number, so there is nothing for us to move across on your behalf.
+            Changing this means entering your payout details once more — we never store your full
+            account number, so there is nothing for us to move across on your behalf. You can have
+            one payout account, so the new one replaces your current one, and payouts can pause
+            while it is verified.
           </p>
           <ul className="space-y-2">
             {available.map((c) => {

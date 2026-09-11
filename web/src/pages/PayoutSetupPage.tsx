@@ -876,10 +876,11 @@ function PayoutSetupBody({
               </p>
               {connected && (
                 <Notice tone="warn">
-                  This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are verified
-                  before they're paid, so payouts can pause while that happens — your cars stay
-                  bookable and your earnings keep building up either way. We'll tell you how long
-                  once it's saved.
+                  You can have one payout account, so this replaces{' '}
+                  {me?.payoutLabel ?? 'your current method'}. It keeps being paid until you finish
+                  setting up Stripe; after that, payouts can pause while the new account is verified
+                  — your cars stay bookable and your earnings keep building up either way. We'll
+                  tell you how long once it's saved.
                 </Notice>
               )}
               {/* Embedded first, hosted page as the way out.
@@ -1095,10 +1096,11 @@ function PayoutSetupBody({
                 {PAYMENTS_PAYHOLD ? (
                   connected ? (
                     <Notice tone="warn">
-                      This replaces {me?.payoutLabel ?? 'your current method'}. New accounts are
-                      verified before they're paid, so payouts can pause while that happens — your
-                      cars stay bookable and your earnings keep building up either way. We'll tell
-                      you how long once it's saved.
+                      You can have one payout account, so saving this replaces{' '}
+                      {me?.payoutLabel ?? 'your current method'} — it won't be paid again. New
+                      accounts are verified before they're paid, so payouts can pause while that
+                      happens — your cars stay bookable and your earnings keep building up either
+                      way. We'll tell you how long once it's saved.
                     </Notice>
                   ) : (
                     <Notice tone="info">

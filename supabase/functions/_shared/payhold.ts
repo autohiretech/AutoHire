@@ -756,8 +756,6 @@ export interface AddDestinationInput {
   /** Defaults to the seller's own country, which a rail change does not move. */
   country?: string;
   label?: string;
-  /** 'primary' moves where the money goes; 'backup' is only used after a failure. */
-  role?: 'primary' | 'backup';
 }
 
 /**
@@ -770,6 +768,12 @@ export interface AddDestinationInput {
  * belongs to the host. That pause is the feature — the shape of an account
  * takeover is "move the destination, then withdraw" — and there is no parameter
  * to skip it. A caller's job is to tell the host it will happen.
+ *
+ * **It replaces, it does not add.** A PayHold seller has exactly one live
+ * destination: this archives the current one (kept as history for payouts
+ * already sent to it, never paid again) and makes the new one the destination.
+ * There is no backup role any more — `role` is no longer sent; PayHold treats
+ * an absent role as the one destination, and refuses `'backup'`.
  */
 export function addSellerDestination(
   sellerId: string,
@@ -790,7 +794,6 @@ export function addSellerDestination(
       // and registering a different one is worse than not offering it.
       payout_currency: input.currency,
       label: input.label,
-      role: input.role ?? 'primary',
     },
   });
 }

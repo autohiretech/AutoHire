@@ -202,12 +202,11 @@ export function EarningsPage() {
   ];
   const destinations = earnings.data?.destinations ?? [];
 
-  // A host is shown one destination — the one PayHold actually pays.
-  // `destinations` can carry more (PayHold keeps a demoted one on file rather
-  // than deleting it, so money already sent there stays explained), but a
-  // second row nobody chose to see is confusing, not informative. `isPrimary`
-  // is PayHold's own answer to "which one is live"; falling back to the
-  // first row only covers a seller synced from before that flag existed.
+  // A host has one destination — the one PayHold pays. PayHold keeps exactly
+  // one live destination per seller and archives the previous one on every
+  // change (kept only as payout history, and not returned here), so this list
+  // is one row. `isPrimary` and the first-row fallback stay as a guard for a
+  // PayHold still running the old many-destinations model during a deploy.
   const primary = destinations.find((d) => d.isPrimary) ?? destinations[0] ?? null;
   // The destination row itself carries no method — only PayHold's own
   // `payout_provider` ('flutterwave_momo' / 'flutterwave_bank' /
@@ -465,8 +464,9 @@ export function EarningsPage() {
                   `seller_exists`. That stopped being true when
                   `payhold-register-seller` grew its change path: it branches
                   on `payhold_seller_id` and calls `POST /sellers/:id/destinations`,
-                  which adds the row, makes it primary and demotes the old one
-                  atomically. So the only thing standing between a host and
+                  which replaces the destination atomically — the new one
+                  becomes the seller's only destination and the old one is
+                  archived. So the only thing standing between a host and
                   their own bank details was this condition. */}
               <Button variant="outline" size="sm" onClick={() => setPayoutOpen(true)}>
                 <Banknote size={14} />

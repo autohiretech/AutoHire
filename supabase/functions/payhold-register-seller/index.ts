@@ -92,7 +92,8 @@ function methodForProvider(provider: PayoutProvider | null): string | null {
 /**
  * Move a host's payout destination — the second and every later save.
  *
- * PayHold registers the new destination, makes it the primary, and puts it
+ * PayHold registers the new destination as the seller's one destination —
+ * archiving the old one, which is never paid again — and puts it
  * inside §5.1's security hold: unverified, and frozen for a window measured in
  * hours. Payouts pause for that window. That is the trade this operation makes
  * and the screen says so, because the alternative — letting a fresh destination

@@ -291,9 +291,19 @@ Saving again goes down the change path below, which does use what was typed.
 **Changing where a host is paid** is a different operation and now exists.
 `payhold-register-seller` branches on `profiles.payhold_seller_id`: absent, it
 registers a seller; present, it calls `POST /v1/sellers/:id/destinations`, which
-adds a `seller_destinations` row, makes it primary and demotes the old one —
-atomically, because a window with no primary destination is a window in which
-the host is unpayable for a reason nobody chose.
+**replaces** the destination — atomically, because a window with no destination
+is a window in which the host is unpayable for a reason nobody chose.
+
+**One destination per seller (2026-09-11).** A PayHold seller has exactly one
+live `seller_destinations` row. Adding one archives the previous row
+(`archived_at`, kept for the payouts that reference it, never paid again);
+nothing is deleted. There are no backup destinations and no "make primary".
+AutoHire no longer sends `role`; PayHold accepts an absent or `'primary'` role
+and refuses `'backup'`. Stripe Connect is the exception to "replaced on save":
+its destination is only added when onboarding completes (`connect/status`
+reports `payouts_enabled`), so a half-finished onboarding leaves the current
+account being paid. Existing sellers were cut down to their preferred row
+(the one already being paid), so no seller's payout target moved.
 
 The new destination lands unverified and inside PayHold §5.1's security hold, so
 **payouts pause while it is checked**. How long is a per-tenant setting and may
