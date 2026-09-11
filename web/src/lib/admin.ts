@@ -111,7 +111,7 @@ export async function relayVerificationToPayhold(
     switch (r.payhold) {
       case 'verified':
         toast.success(
-          'Verified in PayHold too. Their payout account still needs its own check before money can be sent.',
+          'Verified in PayHold too. Their payout account needs its own check — under Payout account — before money can be sent.',
         );
         break;
       case 'unverified':

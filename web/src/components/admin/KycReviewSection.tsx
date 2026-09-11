@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  Banknote,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -18,6 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type {
+  HostPayoutAccount,
   OwnerType,
   UserRole,
   VerificationDocType,
@@ -55,7 +57,15 @@ export interface KycPerson {
 
 /** Everything a KYC decision can change on screen. */
 export function invalidateKyc(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of ['verificationProfiles', 'kycMetrics', 'kycEvents', 'adminOverview', 'profileDocs', 'adminUsers']) {
+  for (const key of [
+    'verificationProfiles',
+    'kycMetrics',
+    'kycEvents',
+    'adminOverview',
+    'profileDocs',
+    'adminUsers',
+    'hostPayoutAccount',
+  ]) {
     qc.invalidateQueries({ queryKey: [key] });
   }
 }
@@ -517,6 +527,9 @@ export function PersonVerification({
       </Card>
 
       <AccountDecision person={person} />
+      {/* A host is any account with host details, admins aside — some hosts
+          still carry role 'renter'. Renters have no PayHold seller to pay. */}
+      {person.ownerType != null && person.role !== 'admin' && <PayoutAccountCard person={person} />}
       <PersonHistory profileId={person.id} />
 
       {shortcuts && (
@@ -889,6 +902,195 @@ function AccountDecision({ person }: { person: KycPerson }) {
               <p className="text-caption text-[var(--color-content-subtle)]">Add a reason to reject the account.</p>
             )}
           </div>
+        }
+      />
+    </Card>
+  );
+}
+
+const METHOD_LABEL: Record<string, string> = {
+  momo: 'Mobile money',
+  bank: 'Bank account',
+  card: 'Card',
+  paypal: 'PayPal',
+  stripe: 'Stripe',
+};
+
+/** A hold ends at a time of day, not just on a date — "12 Sept, 14:05". */
+function holdTime(d: Date): string {
+  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function holdEnds(account: HostPayoutAccount | null | undefined): Date | null {
+  if (!account?.securityHoldUntil) return null;
+  const d = new Date(account.securityHoldUntil);
+  return d > new Date() ? d : null;
+}
+
+/**
+ * The host's payout account, and the one check that decides whether PayHold
+ * may pay it. Verification is AutoHire's alone: PayHold no longer verifies
+ * sellers or accounts itself, it carries out this decision.
+ *
+ * Verifying does not end PayHold's security hold on a new or changed account —
+ * nothing sent from AutoHire can — so a verified account still waits for the
+ * hold to run out on its own. The card says so, because "I verified it and
+ * nothing is paid" reads as a fault otherwise.
+ */
+function PayoutAccountCard({ person }: { person: KycPerson }) {
+  const qc = useQueryClient();
+  const [pending, setPending] = useState<'verify' | 'withdraw' | null>(null);
+  const query = useQuery({
+    queryKey: ['hostPayoutAccount', person.id],
+    queryFn: () => client.getHostPayoutAccount(person.id),
+  });
+  const account = query.data?.account ?? null;
+  const hold = holdEnds(account);
+
+  const decide = useMutation({
+    mutationFn: (verified: boolean) => client.setHostPayoutAccountVerified(person.id, verified),
+    onSuccess: (r) => {
+      qc.setQueryData(['hostPayoutAccount', person.id], { account: r.account });
+      invalidateKyc(qc);
+      setPending(null);
+      const h = holdEnds(r.account);
+      switch (r.outcome) {
+        case 'verified':
+          toast.success(
+            h
+              ? `Payout account verified. PayHold pays it once its security hold ends (${holdTime(h)}).`
+              : 'Payout account verified. PayHold can pay it from the next payout.',
+          );
+          break;
+        case 'unverified':
+          toast.info("Verification withdrawn. PayHold won't pay this account until it's verified again.");
+          break;
+        case 'changed':
+          toast.info('They changed their payout account while you were looking. Check the new one before verifying.');
+          break;
+        case 'not_trusted_yet':
+          toast.info(
+            "Not saved in PayHold: it isn't set to take payout-account checks from AutoHire yet. In PayHold, open Settings and turn on AutoHire verification.",
+          );
+          break;
+        case 'not_registered':
+        case 'no_destination':
+          toast.info('This host has no payout account to verify any more.');
+          break;
+      }
+    },
+    onError: (e) => {
+      setPending(null);
+      toast.error(e instanceof Error ? e.message : "Couldn't update the payout account.");
+    },
+  });
+
+  const method = account ? (METHOD_LABEL[account.method] ?? account.method) : '';
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <Banknote size={18} className="mt-0.5 shrink-0 text-[var(--color-content-subtle)]" />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-body font-semibold text-[var(--color-content)]">Payout account</h3>
+
+          {query.isLoading ? (
+            <div className="mt-3">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="mt-2 h-3 w-32" />
+            </div>
+          ) : query.isError ? (
+            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
+              Couldn&apos;t load it from PayHold.{' '}
+              <button type="button" className="font-medium underline" onClick={() => void query.refetch()}>
+                Try again
+              </button>
+            </p>
+          ) : !account ? (
+            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
+              {query.data?.reason === 'not_registered'
+                ? "They haven't set up payouts yet."
+                : 'No payout account saved yet.'}
+            </p>
+          ) : (
+            <>
+              {/* The masked destination already names its rail ("Bank •••• 3493"),
+                  so the method goes on the line below rather than repeating it. */}
+              <p className="tabular mt-1 font-mono text-body-sm text-[var(--color-content)]">
+                {account.maskedDestination}
+              </p>
+              <p className="text-caption text-[var(--color-content-muted)]">
+                {method} · {account.country} · paid in {account.payoutCurrency}
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {account.verifiedAt ? (
+                  <Badge tone="success">Verified</Badge>
+                ) : (
+                  <Badge tone="warning">Not verified — payouts wait for this</Badge>
+                )}
+                {hold && <Badge tone="neutral">Security hold until {holdTime(hold)}</Badge>}
+              </div>
+              {account.verifiedAt && (
+                <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
+                  {account.verifierName
+                    ? `Verified by ${account.verifierName} · ${timeAgo(account.verifiedAt)}`
+                    : `Verified ${timeAgo(account.verifiedAt)}`}
+                </p>
+              )}
+              {hold && (
+                <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
+                  New and changed accounts wait out a security hold before their first payout, even once
+                  verified. It ends on its own.
+                </p>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {account.verifiedAt ? (
+                  <Button size="sm" variant="ghost" onClick={() => setPending('withdraw')}>
+                    Withdraw verification
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={() => setPending('verify')}>
+                    Verify payout account
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={pending !== null && !!account}
+        tone={pending === 'verify' ? 'primary' : 'danger'}
+        title={pending === 'verify' ? 'Verify this payout account?' : 'Withdraw verification?'}
+        confirmLabel={pending === 'verify' ? "Yes, it's theirs" : 'Withdraw verification'}
+        busy={decide.isPending}
+        onClose={() => setPending(null)}
+        onConfirm={() => decide.mutate(pending === 'verify')}
+        body={
+          account &&
+          (pending === 'verify' ? (
+            <div className="space-y-2">
+              <p>
+                Check that <span className="font-mono">{account.maskedDestination}</span> ({method.toLowerCase()})
+                belongs to <span className="font-medium">{person.fullName}</span> — compare it with their ID and
+                documents above.
+              </p>
+              <p>
+                Once verified, PayHold pays this account
+                {hold ? ` after its security hold ends (${holdTime(hold)})` : ''}. Neither AutoHire
+                nor PayHold keeps the full account number, so the masked number and the account type are what you
+                can compare.
+              </p>
+            </div>
+          ) : (
+            <p>
+              PayHold stops paying <span className="font-mono">{account.maskedDestination}</span> until an admin
+              verifies it again. {person.fullName}&apos;s earnings are kept, not lost.
+            </p>
+          ))
         }
       />
     </Card>
