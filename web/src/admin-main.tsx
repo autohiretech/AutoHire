@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from './lib/auth';
 import { useCurrentUser } from './lib/useCurrentUser';
 import { Button, Spinner, Toaster } from './components/ui';
 import { AdminPage } from './pages/AdminPage';
+import { AdminLayout } from './components/admin/AdminSidebar';
 import { LoginPage } from './pages/LoginPage';
 import { MAIN_URL } from './lib/siteUrls';
 import './index.css';
@@ -74,26 +75,6 @@ function AdminGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** A thin bar naming the site, with the way back to the marketplace. */
-function AdminShell({ children }: { children: ReactNode }) {
-  return (
-    <>
-      <header className="border-b border-[var(--color-line)]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <span className="text-body font-semibold text-[var(--color-content)]">AutoHire Admin</span>
-          <a
-            href={MAIN_URL}
-            className="text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
-          >
-            Open AutoHire
-          </a>
-        </div>
-      </header>
-      <main>{children}</main>
-    </>
-  );
-}
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
@@ -107,11 +88,14 @@ createRoot(document.getElementById('root')!).render(
                   <Route
                     path="*"
                     element={
-                      <AdminShell>
-                        <AdminGate>
+                      // Gate outside the layout: the sidebar's queue counts
+                      // query admin-only data, so they must not run for an
+                      // account that is about to be told it isn't an admin.
+                      <AdminGate>
+                        <AdminLayout>
                           <AdminPage />
-                        </AdminGate>
-                      </AdminShell>
+                        </AdminLayout>
+                      </AdminGate>
                     }
                   />
                 </Routes>

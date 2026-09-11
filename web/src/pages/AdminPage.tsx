@@ -46,8 +46,10 @@ import {
   FLAG_REASON_LABEL,
   MODERATION_STATUS_META,
 } from '@/lib/admin';
-import { Avatar, Badge, Button, Card, CardBody, CardHeader, Chip, ChipRow, ConfirmDialog, Input, Label, Skeleton, Spinner, toast } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardBody, CardHeader, Chip, ConfirmDialog, Input, Label, Skeleton, Spinner, toast } from '@/components/ui';
 import { PhotoCarousel } from '@/components/PhotoCarousel';
+import { Navigate, useLocation } from 'react-router-dom';
+import { sectionForPath } from '@/components/admin/AdminSidebar';
 
 /**
  * Tell PayHold what AutoHire now says about this person, and say what happened.
@@ -97,8 +99,6 @@ async function relayVerificationToPayhold(
   }
 }
 
-type Tab = 'overview' | 'users' | 'verification' | 'activity' | 'moderation' | 'disputes';
-
 const DOC_TYPE_LABEL: Record<string, string> = {
   drivers_license: "Driver's license",
   national_id: 'National ID / passport',
@@ -107,9 +107,14 @@ const DOC_TYPE_LABEL: Record<string, string> = {
   business_registration: 'Business registration',
 };
 
-/** Admin panel: overview, KYC review + activity, moderation, and disputes. */
+/**
+ * Admin panel: overview, KYC review + activity, moderation, and disputes.
+ * The section comes from the URL — the sidebar (`AdminLayout`) links to each
+ * one — so a path the admin site doesn't have goes back to the overview.
+ */
 export function AdminPage() {
-  const [tab, setTab] = useState<Tab>('overview');
+  const { pathname } = useLocation();
+  const section = sectionForPath(pathname);
   const { data: me } = useCurrentUser();
 
   const flagsQuery = useQuery({ queryKey: ['flags'], queryFn: () => client.listFlags() });
@@ -127,49 +132,13 @@ export function AdminPage() {
     return h?.businessName ?? h?.fullName ?? id;
   }
 
-  const openFlags = flags.filter((f) => f.status === 'open').length;
-  const openDisputes = disputes.filter(
-    (d) => d.status === 'open' || d.status === 'under_review',
-  ).length;
-
-  const tabs: { key: Tab; label: string; badge?: number }[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'users', label: 'Users' },
-    { key: 'verification', label: 'Verification', badge: kycQuery.data?.pendingDocs || undefined },
-    { key: 'activity', label: 'KYC activity' },
-    { key: 'moderation', label: 'Moderation', badge: openFlags || undefined },
-    { key: 'disputes', label: 'Disputes', badge: openDisputes || undefined },
-  ];
+  if (!section) return <Navigate to="/" replace />;
+  const tab = section.key;
 
   return (
-    <section className="mx-auto max-w-4xl px-4 py-6 sm:py-8">
-      <h1 className="text-h2 text-[var(--color-content)]">Admin</h1>
-      <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
-        Platform overview, KYC verification, moderation, and disputes.
-      </p>
-
-      {/* Section switcher as Chips, same control as every other filter/tab row
-          in the app — an operator scans this, so weight+fill (not hue) marks
-          the active section. */}
-      <ChipRow className="mt-5 -mx-4 px-4 pb-1">
-        {tabs.map((t) => (
-          <Chip key={t.key} selected={tab === t.key} onClick={() => setTab(t.key)}>
-            {t.label}
-            {t.badge !== undefined && (
-              <span
-                className={cn(
-                  'tabular rounded-[var(--radius-pill)] px-1.5 text-caption font-semibold',
-                  tab === t.key
-                    ? 'bg-[var(--color-content-inverse)]/20'
-                    : 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
-                )}
-              >
-                {t.badge}
-              </span>
-            )}
-          </Chip>
-        ))}
-      </ChipRow>
+    <section className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
+      <h1 className="text-h2 text-[var(--color-content)]">{section.label}</h1>
+      <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">{section.description}</p>
 
       <div className="mt-6">
         {tab === 'overview' && <OverviewTab kyc={kycQuery.data} />}
