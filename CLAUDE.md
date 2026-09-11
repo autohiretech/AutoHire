@@ -56,6 +56,34 @@ in the bundle is not enough; only rendering the page catches a broken build.
 Also delete `dist/__phone.html` before deploying — it is a dev-only harness in
 `public/` that Vite copies into every build.
 
+### The admin site is a second deploy
+
+The admin area is **not** in the marketplace build. It is a second build of
+the same source, deployed to its own Pages project:
+
+```
+npm run build:admin     # from web/ → dist-admin/
+wrangler pages deploy dist-admin --project-name=autohiretech-admin --branch=main
+```
+
+Live at https://autohiretech-admin.pages.dev. `admin.html` →
+`src/admin-main.tsx` is its entry; `public-admin/` replaces `public/` (no
+service worker, no manifest, no `__phone.html`, plus frame-deny/noindex
+headers). The same `.env` copy and Supabase-ref grep gate apply — grep
+`dist-admin/assets/*.js`.
+
+**A change to `src/pages/AdminPage.tsx` or anything it imports ships only
+when the admin site is redeployed.** Deploying the marketplace alone leaves
+the admin site on its old build. The marketplace itself must contain no
+admin code — `App.tsx` forwards `/admin` to the admin origin — so a string
+unique to `AdminPage.tsx` should appear in `dist-admin/` and never in `dist/`.
+
+**Leave `ALLOWED_ORIGIN` unset.** Every Edge Function answers
+`Access-Control-Allow-Origin` with `Deno.env.get('ALLOWED_ORIGIN') ?? '*'`,
+so the second origin already works. Setting it to either origin breaks the
+other, a comma-list is an invalid header everywhere, and
+`payhold-stripe-connect` and `payhold-create-deal` also build URLs from it.
+
 ## Conventions
 
 (Document code style, structure, and any project-specific conventions here.)
