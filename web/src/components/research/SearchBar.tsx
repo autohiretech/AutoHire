@@ -1,16 +1,19 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
 import {
+  AlertCircle,
   BedDouble,
   Building2,
   ChevronDown,
   Clock,
   Globe,
+  Info,
   MapPin,
   Navigation,
   Plane,
   Search,
   Sparkles,
   TrainFront,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Button, Spinner } from '@/components/ui';
@@ -180,7 +183,7 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
 
 /** Short, human label for the free-text prefix — "Kigali" out of a full
  * Nominatim address, or "your location" for a raw geolocated coordinate
- * (there is no reverse-geocoded place name for that case in this app). */
+ * that hasn't been reverse-geocoded (yet, or at all). */
 function shortLocationLabel(label: string): string {
   return label.startsWith('Current location') ? 'your location' : label.split(',')[0].trim();
 }
@@ -192,6 +195,34 @@ const KIND_ICONS: Record<PlaceKind, typeof MapPin> = {
   city: Building2,
   place: MapPin,
 };
+
+/** Inner radius for anything sitting inside the bar's 4px inset, so the
+ * corners run parallel to the bar's own instead of bulging against them. */
+const INNER_RADIUS = 'rounded-[calc(var(--radius-card)-4px)]';
+
+/** A segment's resting, hover and "its popover is open" looks. The open state
+ * lifts the segment onto the sunken well, which is how the renter keeps track
+ * of which field a floating panel belongs to. */
+function segmentClass(active: boolean) {
+  return cn(
+    'relative flex min-w-0 items-center transition-colors',
+    INNER_RADIUS,
+    active ? 'bg-[var(--color-surface-sunken)]' : 'hover:bg-[var(--color-surface-sunken)]',
+  );
+}
+
+const CAPTION = 'block text-caption font-medium text-[var(--color-content-subtle)]';
+
+/** A hairline between segments. Fades while a neighbour is active, because a
+ * divider drawn beside a filled segment reads as a stray mark. */
+function SegmentDivider({ hidden }: { hidden?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn('my-3 w-px shrink-0 bg-[var(--color-line)] transition-opacity', hidden && 'opacity-0')}
+    />
+  );
+}
 
 /** "Add dates" is the label this bar wants, but on a phone the From/Until
  * segments are ~70px of text width and it truncates to "Add d…". The caption
@@ -211,12 +242,10 @@ function EmptyDateLabel() {
 /**
  * One row of the location picker.
  *
- * The icon sits in a filled circular badge rather than floating naked beside
- * the text: at eight rows the badges form a single scannable column down the
- * left edge, which is what makes a list this long readable at a glance
- * instead of a wall of similar strings. It uses the same `surface-inverse`
- * fill every selected Chip and secondary Button in this app uses, so it
- * costs no new colour.
+ * The icon sits in a quiet square tile rather than floating naked beside the
+ * text: at eight rows the tiles form a single scannable column down the left
+ * edge, which is what makes a list this long readable at a glance instead of
+ * a wall of similar strings.
  *
  * Two lines, not one clamped to two: a Nominatim `display_name` is a full
  * comma-separated address, and clamping it buries the part that identifies
@@ -229,12 +258,16 @@ function PickerRow({
   subtitle,
   onClick,
   disabled,
+  emphasis,
 }: {
   icon: typeof MapPin;
   title: ReactNode;
   subtitle?: string;
   onClick: () => void;
   disabled?: boolean;
+  /** The standing "Current location" action — its tile takes the accent so
+   * the one row that does something other than pick a string stands apart. */
+  emphasis?: boolean;
 }) {
   return (
     <button
@@ -242,9 +275,16 @@ function PickerRow({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center gap-3 rounded-[var(--radius-control)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
+      className="flex w-full items-center gap-3 rounded-[var(--radius-control)] px-2 py-2 text-left transition-colors hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]">
+      <span
+        className={cn(
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)]',
+          emphasis
+            ? 'bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]'
+            : 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
+        )}
+      >
         <Icon size={16} />
       </span>
       <span className="min-w-0 flex-1">
@@ -255,6 +295,10 @@ function PickerRow({
       </span>
     </button>
   );
+}
+
+function PanelHeading({ children }: { children: ReactNode }) {
+  return <p className="px-2 pb-1 pt-2.5 text-caption font-medium text-[var(--color-content-subtle)]">{children}</p>;
 }
 
 /** "Kigali International Airport, KK 147 Street, Kanombe, …" reads as a name
@@ -270,11 +314,15 @@ function TimeSelect({
   onChange,
   placeholder,
   disabled,
+  up,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
   disabled?: boolean;
+  /** Open the list upward — for a select at the bottom of a popover, where a
+   * downward list would run off the bottom of the screen. */
+  up?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -305,7 +353,7 @@ function TimeSelect({
         aria-expanded={open}
         aria-label={placeholder}
         className={cn(
-          'inline-flex w-[92px] items-center justify-between gap-1 rounded-[var(--radius-control)] py-1 text-left text-body-sm outline-none disabled:opacity-50',
+          'inline-flex w-[88px] items-center justify-between gap-1 rounded-[var(--radius-control)] py-1 text-left text-body-sm outline-none disabled:opacity-50',
           value ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
         )}
       >
@@ -316,7 +364,10 @@ function TimeSelect({
       {open && (
         <div
           role="listbox"
-          className="animate-popover-in absolute right-0 top-[calc(100%+6px)] z-[1200] max-h-64 w-36 overflow-y-auto overscroll-contain rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1 shadow-[var(--shadow-float)]"
+          className={cn(
+            'animate-popover-in absolute z-[1200] max-h-64 w-36 overflow-y-auto overscroll-contain rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1 shadow-[var(--shadow-float)]',
+            up ? 'bottom-[calc(100%+6px)] left-0' : 'right-0 top-[calc(100%+10px)]',
+          )}
         >
           <button
             type="button"
@@ -350,10 +401,18 @@ function TimeSelect({
   );
 }
 
+/** A dismissible line under the bar for what "use my location" could not do
+ * silently. It sits on its own raised surface because the bar lives over a
+ * photograph on Home, where bare caption text would vanish into the image. */
+interface LocateNote {
+  tone: 'error' | 'info';
+  text: string;
+}
+
 /**
- * The Turo-style compound search bar: Where / From / Until / a round search
- * button, plus a subtler free-text row underneath — one shared component so
- * Home's hero and /ai's field can never drift into two different bars.
+ * The compound search bar: Where / From / Until / search, one shared
+ * component so Home's hero and /ai's field can never drift into two
+ * different bars.
  *
  * Two segments do *real* filtering, no agent round trip, the instant they
  * change — same as clicking a `/search` filter chip: "Where", when it
@@ -366,10 +425,14 @@ function TimeSelect({
  * its own judgement) to make sense of; a matched city or a set date range is
  * deliberately left OUT of that prose once it's already a live filter, so
  * the agent is never asked to re-derive something already applied. Nothing
- * here claims a capability the app doesn't have: no per-row place categories
- * (Nominatim doesn't return any), no time-of-day filtering (no such field
- * exists — pickup/return time is carried for a future booking prefill, not
- * used to narrow results).
+ * here claims a capability the app doesn't have: no time-of-day filtering
+ * (no such field exists — pickup/return time is carried for a future booking
+ * prefill, not used to narrow results).
+ *
+ * Visually it is one engineered object rather than a row of pills: a card
+ * radius, a 4px inset, segments that fill on hover and while their popover
+ * is open, and hairline dividers between them — restrained, in line with the
+ * Inter Tight / Inter type the rest of the app now uses.
  */
 export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function SearchBar(
   {
@@ -396,8 +459,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   // 'ai' is opt-in, for the minority of asks a filter can't express
   // ("something for a wedding, cheap, automatic"). Switching doesn't touch
   // whatever's already applied — a city/date match from 'search' stays live
-  // and reaches the agent as `context.filters`, just no longer restated as
-  // prose once excluded below, same as before this toggle existed.
+  // and reaches the agent as `context.filters`.
   const [mode, setMode] = useState<'search' | 'ai'>(aiOnly ? 'ai' : 'search');
   const [locationText, setLocationText] = useState('');
   const [locationPoint, setLocationPoint] = useState<{ lat: number; lng: number } | null>(null);
@@ -408,6 +470,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   const [returnTime, setReturnTime] = useState('');
   const [freeText, setFreeText] = useState(initialValue);
   const [recents, setRecents] = useState<RecentSearch[]>(() => loadRecents());
+  const [locateNote, setLocateNote] = useState<LocateNote | null>(null);
 
   const { locating, locate } = useMyLocation();
   // Covers the reverse-geocode network call too, which happens after the GPS
@@ -418,21 +481,26 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
   const { suggestions, searching } = useAddressSuggestions(locationText);
 
   const locationBoxRef = useRef<HTMLDivElement>(null);
+  const suggestPanelRef = useRef<HTMLDivElement>(null);
   const datesBoxRef = useRef<HTMLDivElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
   const freeTextRef = useRef<HTMLInputElement>(null);
+  const locationInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({ focus: () => freeTextRef.current?.focus() }));
 
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
-      if (locationBoxRef.current && !locationBoxRef.current.contains(e.target as Node)) setSuggestOpen(false);
-      // Both the trigger segment and the panel count as "inside" — the
-      // panel is a sibling of the segment now, not a descendant, so checking
-      // only the segment would close the calendar on the first day clicked.
-      const inTrigger = datesBoxRef.current?.contains(e.target as Node);
-      const inPanel = calendarRef.current?.contains(e.target as Node);
-      if (!inTrigger && !inPanel) setDatesOpen(false);
+      // Trigger and panel both count as "inside" — each panel is a sibling of
+      // its segment (anchored to the whole bar), not a descendant, so checking
+      // only the segment would close it on the first click inside.
+      const target = e.target as Node;
+      if (!locationBoxRef.current?.contains(target) && !suggestPanelRef.current?.contains(target)) {
+        setSuggestOpen(false);
+      }
+      if (!datesBoxRef.current?.contains(target) && !calendarRef.current?.contains(target)) {
+        setDatesOpen(false);
+      }
     }
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
@@ -444,6 +512,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     setLocationText(value);
     setLocationPoint(null);
     setSuggestOpen(true);
+    setLocateNote(null);
     onPointMatch?.(null);
     onCityMatch?.(matchKnownCity(value, country.code));
   }
@@ -454,6 +523,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     setLocationText(s.label);
     setLocationPoint({ lat: s.lat, lng: s.lng });
     setSuggestOpen(false);
+    setLocateNote(null);
     onCityMatch?.(undefined);
     onPointMatch?.({ lat: s.lat, lng: s.lng });
   }
@@ -463,49 +533,69 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     setLocationText(r.label);
     setLocationPoint(null);
     setSuggestOpen(false);
+    setLocateNote(null);
     onPointMatch?.(null);
     onCityMatch?.(matchKnownCity(r.label, country.code));
   }
 
   function useCurrentLocationClick() {
-    locate(async (p) => {
-      // Show the raw fix immediately — reverse geocoding is a second network
-      // round trip, and the renter shouldn't stare at "Finding you…" for both
-      // when the GPS fix alone is already worth showing.
-      setLocationText(`Current location (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`);
-      setLocationPoint(p);
-      setSuggestOpen(false);
-      // The fix itself is the filter, from this moment on — the reverse
-      // geocode below is only ever going to improve the *label*.
-      onCityMatch?.(undefined);
-      onPointMatch?.(p);
-      // Remembered so the next visit ranks by distance without asking again;
-      // this is the same store Account → Your location writes.
-      saveHomeLocation({ lat: p.lat, lng: p.lng, label: 'Current location' });
+    setLocateNote(null);
+    locate(
+      async (p) => {
+        // Show the raw fix immediately — reverse geocoding is a second network
+        // round trip, and the renter shouldn't stare at "Finding you…" for both
+        // when the GPS fix alone is already worth showing.
+        setLocationText(`Current location (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`);
+        setLocationPoint({ lat: p.lat, lng: p.lng });
+        setSuggestOpen(false);
+        // A network (IP) fix is city-level at best. Still worth using — it
+        // ranks the right city's cars first — but said out loud, so nobody
+        // wonders why "near me" is a few kilometres off.
+        if (p.source === 'network') setLocateNote({ tone: 'info', text: t('search.approxLocation') });
+        // The fix itself is the filter, from this moment on — the reverse
+        // geocode below is only ever going to improve the *label*.
+        onCityMatch?.(undefined);
+        onPointMatch?.({ lat: p.lat, lng: p.lng });
+        // Remembered so the next visit ranks by distance without asking again;
+        // this is the same store Account → Your location writes.
+        saveHomeLocation({ lat: p.lat, lng: p.lng, label: 'Current location' });
 
-      setResolvingPlace(true);
-      try {
-        const resolved = await reverseGeocode(p.lat, p.lng);
-        if (!resolved) return; // network/lookup failure — the raw fix stands.
-        setLocationText(resolved.label);
-        saveHomeLocation({ lat: p.lat, lng: p.lng, label: resolved.label });
-        // Still no `onCityMatch` here: knowing the renter is in Kigali is no
-        // reason to stop knowing *where* in Kigali. The market, though, is a
-        // genuinely different question — a renter physically in another
-        // country is browsing the wrong catalogue, not merely sorted oddly.
-        if (resolved.countryCode && resolved.countryCode !== country.code) {
-          onCountryMatch?.(resolved.countryCode);
+        setResolvingPlace(true);
+        try {
+          const resolved = await reverseGeocode(p.lat, p.lng);
+          if (!resolved) return; // network/lookup failure — the raw fix stands.
+          setLocationText(resolved.label);
+          saveHomeLocation({ lat: p.lat, lng: p.lng, label: resolved.label });
+          // Still no `onCityMatch` here: knowing the renter is in Kigali is no
+          // reason to stop knowing *where* in Kigali. The market, though, is a
+          // genuinely different question — a renter physically in another
+          // country is browsing the wrong catalogue, not merely sorted oddly.
+          if (resolved.countryCode && resolved.countryCode !== country.code) {
+            onCountryMatch?.(resolved.countryCode);
+          }
+        } finally {
+          setResolvingPlace(false);
         }
-      } finally {
-        setResolvingPlace(false);
-      }
-    });
+      },
+      // Before this, a failure here did nothing at all: the spinner stopped
+      // and the field stayed empty, which in Firefox — where the browser's
+      // own provider can fail every time — looked like the page reloading.
+      (reason) => {
+        setSuggestOpen(false);
+        setLocateNote({
+          tone: 'error',
+          text: reason === 'denied' ? t('search.locationDenied') : t('search.locationUnavailable'),
+        });
+        locationInputRef.current?.focus();
+      },
+    );
   }
 
   function pickAnywhere() {
     setLocationText('');
     setLocationPoint(null);
     setSuggestOpen(false);
+    setLocateNote(null);
     onCityMatch?.(undefined);
     onPointMatch?.(null);
   }
@@ -564,7 +654,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
       // Nothing here goes to a model, on purpose — that's the whole point of
       // the renter having picked this mode. A matched city and picked dates
       // already applied live (onCityMatch/onDateRangeChange fire the instant
-      // each changes); the button's only job left is closing an open picker.
+      // each changes); the button's job is to take them to the results.
       setDatesOpen(false);
       setSuggestOpen(false);
       if (locationText.trim()) {
@@ -585,13 +675,52 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
     setFreeText('');
   }
 
-  // Search mode's button is a "done, close this" confirm, not a submit gated
+  // Search mode's button is a "take me to results" action, not a submit gated
   // on content — the filtering already happened live. Only AI mode needs
   // something worth sending before it lights up.
   const hasMessage = mode === 'search' || !!composeMessage();
   const fromLabel = formatSingleDate(dateRange.start);
   const untilLabel = formatSingleDate(dateRange.end);
   const showRecents = locationText.trim().length === 0 && recents.length > 0;
+
+  const modeButton = (value: 'search' | 'ai', icon: ReactNode, label: string) => (
+    <button
+      type="button"
+      onClick={() => setMode(value)}
+      aria-pressed={mode === value}
+      className={cn(
+        'flex items-center gap-1.5 rounded-[calc(var(--radius-control)-2px)] px-3 py-1.5 text-body-sm font-medium transition-colors',
+        mode === value
+          ? 'bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
+          : 'text-[var(--color-content-muted)] hover:text-[var(--color-content)]',
+      )}
+    >
+      {icon} {label}
+    </button>
+  );
+
+  const dateTrigger = (caption: string, value: string | null, time: string) => (
+    <button
+      type="button"
+      onClick={() => {
+        setSuggestOpen(false);
+        setDatesOpen((v) => !v);
+      }}
+      disabled={disabled}
+      aria-expanded={datesOpen}
+      className="flex min-w-0 flex-1 flex-col items-start py-2 text-left"
+    >
+      <span className={CAPTION}>{caption}</span>
+      <span
+        className={cn(
+          'block w-full truncate text-body-sm font-medium',
+          value ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
+        )}
+      >
+        {value ? (time ? `${value} · ${formatTimeLabel(time)}` : value) : <EmptyDateLabel />}
+      </span>
+    </button>
+  );
 
   return (
     <form
@@ -602,43 +731,17 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
       className={cn('@container flex flex-col gap-2', className)}
     >
       {/* The renter's own choice, front and centre — not a corner control
-          easy to miss. Search is first and inverts when active, same
-          fill-and-weight language every selected Chip in this app uses, so
-          "which mode am I in" reads the same way "which filter is on" does
-          everywhere else. */}
+          easy to miss. A compact segmented control on its own raised surface,
+          so it reads over a hero photograph as well as on a plain page. */}
       <div
         className={cn(
-          'flex items-center gap-1 self-start rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] p-1',
+          'flex items-center gap-0.5 self-start rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-0.5 shadow-[var(--shadow-float)]',
           // On /ai there is nothing to toggle to — see `aiOnly`.
           aiOnly && 'hidden',
         )}
       >
-        <button
-          type="button"
-          onClick={() => setMode('search')}
-          aria-pressed={mode === 'search'}
-          className={cn(
-            'flex items-center gap-1.5 rounded-[var(--radius-pill)] px-3 py-1.5 text-body-sm font-semibold transition-colors',
-            mode === 'search'
-              ? 'bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
-              : 'text-[var(--color-content-muted)]',
-          )}
-        >
-          <Search size={13} /> {t('search.modeSearch')}
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('ai')}
-          aria-pressed={mode === 'ai'}
-          className={cn(
-            'flex items-center gap-1.5 rounded-[var(--radius-pill)] px-3 py-1.5 text-body-sm font-semibold transition-colors',
-            mode === 'ai'
-              ? 'bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
-              : 'text-[var(--color-content-muted)]',
-          )}
-        >
-          <Sparkles size={13} /> {t('search.modeAskAi')}
-        </button>
+        {modeButton('search', <Search size={13} />, t('search.modeSearch'))}
+        {modeButton('ai', <Sparkles size={13} />, t('search.modeAskAi'))}
       </div>
 
       {mode === 'ai' ? (
@@ -648,7 +751,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
         // from Search mode stays applied (parent state, untouched by this
         // toggle) and reaches the agent as `context.filters`; this field is
         // only for what a filter can't say.
-        <div className="flex items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] py-1 pl-4 pr-1.5 shadow-[var(--shadow-float)]">
+        <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] p-1 pl-4 shadow-[var(--shadow-float)]">
           <Sparkles size={16} className="shrink-0 text-[var(--color-accent-on)]" />
           <input
             ref={freeTextRef}
@@ -657,15 +760,18 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
             placeholder={placeholder}
             aria-label="Describe the car you need"
             disabled={disabled}
-            className="min-w-0 flex-1 bg-transparent py-1.5 text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
+            className="min-w-0 flex-1 bg-transparent py-3 text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={disabled || !hasMessage}
             aria-label="Ask"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
+            className={cn(
+              'flex h-11 w-11 shrink-0 items-center justify-center bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] transition-opacity hover:opacity-90 disabled:opacity-40',
+              INNER_RADIUS,
+            )}
           >
-            <Search size={16} />
+            <Search size={17} />
           </button>
         </div>
       ) : (
@@ -676,179 +782,152 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
          about a fifth of that. Everything that makes a single row fit on a
          narrow screen is a width concession, never a structural one: each
          segment is `min-w-0` so its text truncates instead of forcing the row
-         wider than the screen, padding tightens, and the two extras that need
-         room they don't have on a phone — the inline time selects and the
-         locate button — wait for a container wide enough to hold them. Both
-         remain reachable: "Current location" is the first row of the picker,
-         and pickup time never filtered anything (there is no time-of-day
-         field to filter on). */
-      <div className="relative flex flex-nowrap items-stretch overflow-visible rounded-[var(--radius-pill)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+         wider than the screen, padding tightens, and the inline time selects
+         wait for a container wide enough to hold them (pickup time never
+         filtered anything — there is no time-of-day field to filter on). */
+      <div className="relative flex flex-nowrap items-stretch gap-0.5 rounded-[var(--radius-card)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] p-1 shadow-[var(--shadow-float)]">
         {/* Where */}
         <div
           ref={locationBoxRef}
-          className="relative flex min-w-0 flex-[1.4] flex-col border-r border-[var(--color-line)] px-3 py-1 @md:flex-1 @md:px-4"
+          className={cn(segmentClass(suggestOpen), 'flex-[1.4] gap-1 pr-1 @md:flex-[1.2]')}
         >
-          <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.where')}</span>
-          <div className="flex items-center gap-2">
+          <label className="flex min-w-0 flex-1 cursor-text flex-col py-2 pl-3 @md:pl-4">
+            <span className={CAPTION}>{t('search.where')}</span>
             <input
+              ref={locationInputRef}
               value={locationText}
               onChange={(e) => onLocationTextChange(e.target.value)}
-              onFocus={() => setSuggestOpen(true)}
+              onFocus={() => {
+                setDatesOpen(false);
+                setSuggestOpen(true);
+              }}
               onKeyDown={(e) => e.key === 'Escape' && setSuggestOpen(false)}
               placeholder={t('search.wherePlaceholder')}
               aria-label="Pickup location"
               disabled={disabled}
-              className="min-w-0 flex-1 truncate bg-transparent py-2.5 text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
+              // `outline-none!`: the global :focus-visible ring is unlayered
+              // CSS, so it beats a plain utility. The segment's own filled
+              // state (the picker opens on focus) is the focus indicator here —
+              // a ring drawn inside it boxed the text in twice.
+              className="w-full min-w-0 truncate bg-transparent text-body-sm font-medium text-[var(--color-content)] outline-none! placeholder:font-normal placeholder:text-[var(--color-content-subtle)] disabled:opacity-60"
             />
-            <button
-              type="button"
-              onClick={useCurrentLocationClick}
-              disabled={disabled || busyLocating}
-              aria-label={t('search.useMyLocation')}
-              // Visible at every width. Hiding it on phones to buy room for
-              // the one-row bar was the wrong trade: "find cars near me" is
-              // the single most likely thing a renter on a phone wants, and
-              // it is the one control that can't be reached any other way
-              // without first opening the picker. The Where placeholder
-              // truncates a little sooner instead — the "Where" caption
-              // above it already says what the field is for.
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-pill)] text-[var(--color-accent-on)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-60"
-            >
-              {busyLocating ? <Spinner size={14} /> : <Navigation size={15} />}
-            </button>
-          </div>
-
-          {suggestOpen && (
-            // Full-width on a phone (there's nothing beside it to look narrow
-            // against), but pinned to the Where segment's own width alone on
-            // a wide screen reads as an unfinished sliver next to the rest of
-            // the hero — a proper panel, like Turo's own, needs real width of
-            // its own rather than borrowing whatever one field happens to be.
-            <div className="absolute left-0 top-[calc(100%+8px)] z-[1100] max-h-[min(70vh,26rem)] w-full animate-popover-in overflow-y-auto overscroll-contain rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-float)] @md:w-[420px]">
-              <PickerRow
-                icon={Navigation}
-                title={busyLocating ? t('search.findingYou') : t('search.currentLocation')}
-                onClick={useCurrentLocationClick}
-                disabled={disabled || busyLocating}
-              />
-              <PickerRow
-                icon={Globe}
-                title={t('search.anywhere')}
-                subtitle={t('search.anywhereSub')}
-                onClick={pickAnywhere}
-              />
-
-              {showRecents && (
-                <>
-                  {/* A hairline between the two standing actions and the
-                      renter's own history — the only divider in the panel,
-                      because it's the only place the rows stop meaning the
-                      same kind of thing. */}
-                  <div className="my-1.5 border-t border-[var(--color-line)]" />
-                  {recents.map((r, i) => (
-                    <PickerRow
-                      key={`${r.label}-${i}`}
-                      icon={Clock}
-                      title={splitAddress(r.label).name}
-                      subtitle={r.dateLabel ?? splitAddress(r.label).context}
-                      onClick={() => pickRecent(r)}
-                    />
-                  ))}
-                </>
-              )}
-
-              {searching && (
-                <p className="px-2.5 py-2 text-caption text-[var(--color-content-subtle)]">{t('search.searching')}</p>
-              )}
-              {suggestions.map((s, i) => {
-                const { name, context } = splitAddress(s.label);
-                return (
-                  <PickerRow
-                    key={`${s.lat},${s.lng},${i}`}
-                    icon={KIND_ICONS[s.kind]}
-                    title={name}
-                    subtitle={context}
-                    onClick={() => pickSuggestion(s)}
-                  />
-                );
-              })}
-              {suggestions.length > 0 && (
-                <p className="px-2.5 pt-2 pb-1 text-center text-caption text-[var(--color-content-subtle)]">
-                  {t('search.poweredByOsm')}
-                </p>
-              )}
-            </div>
-          )}
+          </label>
+          <button
+            type="button"
+            onClick={useCurrentLocationClick}
+            disabled={disabled || busyLocating}
+            aria-label={t('search.useMyLocation')}
+            title={t('search.useMyLocation')}
+            // Visible at every width: "find cars near me" is the single most
+            // likely thing a renter on a phone wants, and it shouldn't take
+            // opening the picker first.
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-accent-on)] transition-colors hover:bg-[var(--color-surface-raised)] disabled:opacity-60"
+          >
+            {busyLocating ? <Spinner size={14} /> : <Navigation size={15} />}
+          </button>
         </div>
 
-        {/* From + Until — two triggers, one shared calendar popover */}
+        <SegmentDivider hidden={suggestOpen || datesOpen} />
+
+        {/* From + Until — two triggers, one shared calendar popover. Pickup
+            and return times live inside that popover rather than inline:
+            inline they cost ~90px a side, which hid them on phones entirely
+            and crowded the bar into "Add dates Add time ⌄" everywhere else. */}
         <div
           ref={datesBoxRef}
-          className="relative flex min-w-0 flex-[1.1] flex-row divide-x divide-[var(--color-line)] @md:flex-[1.6]"
+          className={cn(segmentClass(datesOpen), 'flex-[1.1] @md:flex-[1.6]')}
         >
-          <div className="flex min-w-0 flex-1 flex-col px-3 py-1 @md:px-4">
-            <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.from')}</span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setDatesOpen((v) => !v)}
-                disabled={disabled}
-                className={cn(
-                  // Truncates on a phone, where the row genuinely has no room; holds its
-                  // full width once the time select appears beside it, since that
-                  // select is `shrink-0` and would otherwise push the whole
-                  // shortfall onto this label — "Add dates" clipped to "Add …".
-                  'min-w-0 flex-1 truncate py-2.5 text-left text-body-sm font-medium @xl:min-w-max',
-                  fromLabel ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
-                )}
-              >
-                {fromLabel ?? <EmptyDateLabel />}
-              </button>
-              {/* The pickup-time select is a nice-to-have that only earns
-                  its width once there's real room for it — in the /ai
-                  dock's own narrower dock it would otherwise squeeze "Add
-                  dates" itself down to nothing. */}
-              <span className="hidden items-center gap-1.5 @xl:flex">
-                <span className="h-3.5 w-px shrink-0 bg-[var(--color-line)]" />
-                <TimeSelect value={pickupTime} onChange={setPickupTime} placeholder={t('search.addTime')} disabled={disabled} />
-              </span>
-            </div>
+          <div className="flex min-w-0 flex-1 px-3 @md:px-4">
+            {dateTrigger(t('search.from'), fromLabel, pickupTime)}
           </div>
-
-          <div className="flex min-w-0 flex-1 flex-col px-3 py-1 @md:px-4">
-            <span className="text-caption font-semibold text-[var(--color-content-muted)]">{t('search.until')}</span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setDatesOpen((v) => !v)}
-                disabled={disabled}
-                className={cn(
-                  // Truncates on a phone, where the row genuinely has no room; holds its
-                  // full width once the time select appears beside it, since that
-                  // select is `shrink-0` and would otherwise push the whole
-                  // shortfall onto this label — "Add dates" clipped to "Add …".
-                  'min-w-0 flex-1 truncate py-2.5 text-left text-body-sm font-medium @xl:min-w-max',
-                  untilLabel ? 'text-[var(--color-content)]' : 'text-[var(--color-content-subtle)]',
-                )}
-              >
-                {untilLabel ?? <EmptyDateLabel />}
-              </button>
-              <span className="hidden items-center gap-1.5 @xl:flex">
-                <span className="h-3.5 w-px shrink-0 bg-[var(--color-line)]" />
-                <TimeSelect value={returnTime} onChange={setReturnTime} placeholder={t('search.addTime')} disabled={disabled} />
-              </span>
-            </div>
+          <span aria-hidden className="my-3 w-px shrink-0 self-stretch bg-[var(--color-line)]" />
+          <div className="flex min-w-0 flex-1 px-3 @md:px-4">
+            {dateTrigger(t('search.until'), untilLabel, returnTime)}
           </div>
-
         </div>
 
-        {/* Anchored to the whole bar, not to the From/Until segment.
-            Those two segments share about half of a 390px bar — roughly
-            190px — and a 7-column month grid crushed into that width
-            collapses the day numbers into each other ("202 12 22 32 42 526").
-            The calendar has nothing to do with the width of the control that
-            opens it, so it spans the bar on a phone and only becomes a
-            right-aligned two-month panel once there is room. */}
+        {/* Search */}
+        <button
+          type="submit"
+          disabled={disabled || !hasMessage}
+          aria-label={t('search.submit')}
+          className={cn(
+            'flex w-12 shrink-0 items-center justify-center self-stretch bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] transition-opacity hover:opacity-90 disabled:opacity-40 @md:w-14',
+            INNER_RADIUS,
+          )}
+        >
+          <Search size={18} />
+        </button>
+
+        {/* Both panels anchor to the whole bar, not the segment that opens
+            them. The Where segment is under half of a 390px bar, and a list
+            of full addresses — or a 7-column month grid — crushed into that
+            width is unreadable. Full width on a phone; a panel of its own
+            proper width once there is room. */}
+        {suggestOpen && (
+          <div
+            ref={suggestPanelRef}
+            className="absolute inset-x-0 top-[calc(100%+8px)] z-[1100] max-h-[min(70vh,26rem)] animate-popover-in overflow-y-auto overscroll-contain rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-float)] @md:right-auto @md:w-[420px]"
+          >
+            <PickerRow
+              icon={Navigation}
+              emphasis
+              title={busyLocating ? t('search.findingYou') : t('search.currentLocation')}
+              subtitle={t('search.nearMe')}
+              onClick={useCurrentLocationClick}
+              disabled={disabled || busyLocating}
+            />
+            <PickerRow
+              icon={Globe}
+              title={t('search.anywhere')}
+              subtitle={t('search.anywhereSub')}
+              onClick={pickAnywhere}
+            />
+
+            {showRecents && (
+              <>
+                <div className="mx-2 mt-1.5 border-t border-[var(--color-line)]" />
+                <PanelHeading>{t('search.recent')}</PanelHeading>
+                {recents.map((r, i) => (
+                  <PickerRow
+                    key={`${r.label}-${i}`}
+                    icon={Clock}
+                    title={splitAddress(r.label).name}
+                    subtitle={r.dateLabel ?? splitAddress(r.label).context}
+                    onClick={() => pickRecent(r)}
+                  />
+                ))}
+              </>
+            )}
+
+            {(searching || suggestions.length > 0) && (
+              <div className="mx-2 mt-1.5 border-t border-[var(--color-line)]" />
+            )}
+            {searching && (
+              <p className="flex items-center gap-2 px-2 py-2.5 text-caption text-[var(--color-content-subtle)]">
+                <Spinner size={12} /> {t('search.searching')}
+              </p>
+            )}
+            {suggestions.map((s, i) => {
+              const { name, context } = splitAddress(s.label);
+              return (
+                <PickerRow
+                  key={`${s.lat},${s.lng},${i}`}
+                  icon={KIND_ICONS[s.kind]}
+                  title={name}
+                  subtitle={context}
+                  onClick={() => pickSuggestion(s)}
+                />
+              );
+            })}
+            {suggestions.length > 0 && (
+              <p className="px-2 pb-1 pt-2 text-center text-caption text-[var(--color-content-subtle)]">
+                {t('search.poweredByOsm')}
+              </p>
+            )}
+          </div>
+        )}
+
         {datesOpen && (
           <div
             ref={calendarRef}
@@ -866,31 +945,53 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(function Se
               isUnavailable={() => false}
               months={2}
             />
-            <div className="mt-2 flex justify-end gap-2">
-              {(dateRange.start || dateRange.end) && (
-                <Button type="button" variant="ghost" size="sm" onClick={clearDates}>
-                  {t('common.clear')}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] py-2 pl-3 pr-2 shadow-[var(--shadow-float)]">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="flex items-center gap-2">
+                  <span className={CAPTION}>{t('search.pickupTime')}</span>
+                  <TimeSelect up value={pickupTime} onChange={setPickupTime} placeholder={t('search.addTime')} disabled={disabled} />
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className={CAPTION}>{t('search.returnTime')}</span>
+                  <TimeSelect up value={returnTime} onChange={setReturnTime} placeholder={t('search.addTime')} disabled={disabled} />
+                </span>
+              </div>
+              <div className="flex gap-2">
+                {(dateRange.start || dateRange.end) && (
+                  <Button type="button" variant="ghost" size="sm" onClick={clearDates}>
+                    {t('common.clear')}
+                  </Button>
+                )}
+                <Button type="button" variant="outline" size="sm" onClick={() => setDatesOpen(false)}>
+                  {t('common.done')}
                 </Button>
-              )}
-              <Button type="button" variant="outline" size="sm" onClick={() => setDatesOpen(false)}>
-                {t('common.done')}
-              </Button>
+              </div>
             </div>
           </div>
         )}
+      </div>
+      )}
 
-        {/* Round search button */}
-        <div className="flex items-center justify-center p-1.5 @md:pl-1">
+      {locateNote && mode === 'search' && (
+        <div
+          role="status"
+          className="flex max-w-full items-start gap-2 self-start rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] py-2 pl-3 pr-2 text-caption text-[var(--color-content-muted)] shadow-[var(--shadow-float)] animate-popover-in"
+        >
+          {locateNote.tone === 'error' ? (
+            <AlertCircle size={14} className="mt-px shrink-0 text-[var(--color-danger-500)]" />
+          ) : (
+            <Info size={14} className="mt-px shrink-0 text-[var(--color-info-500)]" />
+          )}
+          <span className="min-w-0">{locateNote.text}</span>
           <button
-            type="submit"
-            disabled={disabled || !hasMessage}
-            aria-label={t('search.submit')}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
+            type="button"
+            onClick={() => setLocateNote(null)}
+            aria-label={t('search.dismiss')}
+            className="-my-0.5 shrink-0 rounded-[var(--radius-pill)] p-0.5 text-[var(--color-content-subtle)] hover:text-[var(--color-content)]"
           >
-            <Search size={18} />
+            <X size={12} />
           </button>
         </div>
-      </div>
       )}
     </form>
   );

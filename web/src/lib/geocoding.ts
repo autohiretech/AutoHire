@@ -87,6 +87,30 @@ export function useAddressSuggestions(query: string) {
   return { suggestions, searching };
 }
 
+/**
+ * An approximate coordinate for the renter from their IP address, for when
+ * the browser's own geolocation can't produce one (see `useMyLocation` — some
+ * Firefox builds still ask a location service that no longer exists).
+ * BigDataCloud's client endpoint, the same keyless service `LocationPrompt`
+ * already calls: with no `latitude`/`longitude` it geolocates the caller's IP
+ * (`lookupSource: "ip geolocation"`). City-level accuracy at best, and `null`
+ * on any failure — never a default coordinate.
+ */
+export async function locateByNetwork(signal?: AbortSignal): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=en', {
+      signal,
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { latitude?: number; longitude?: number };
+    if (typeof data.latitude !== 'number' || typeof data.longitude !== 'number') return null;
+    if (data.latitude === 0 && data.longitude === 0) return null; // the service's "unknown"
+    return { lat: data.latitude, lng: data.longitude };
+  } catch {
+    return null;
+  }
+}
+
 export interface ReverseGeocodeResult {
   /** A real, human place name for the coordinate — Nominatim's own
    * `display_name`, not a raw "(lat, lng)" string. */

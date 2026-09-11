@@ -73,6 +73,14 @@ export const en = {
   'search.poweredByOsm': 'Powered by OpenStreetMap',
   'search.useMyLocation': 'Use my current location',
   'search.aiPlaceholder': 'Describe the car you need…',
+  'search.nearMe': 'Cars closest to you first',
+  'search.recent': 'Recent',
+  'search.pickupTime': 'Pickup',
+  'search.returnTime': 'Return',
+  'search.dismiss': 'Dismiss',
+  'search.approxLocation': 'Approximate location, based on your network. Pick a place for exact results.',
+  'search.locationDenied': 'Location is blocked for this site. Allow it from the icon in your address bar, or type a city.',
+  'search.locationUnavailable': "We couldn't find your location. Type a city or airport instead.",
 
   // --- Car detail / booking ----------------------------------------------
   'car.perDay': 'per day',

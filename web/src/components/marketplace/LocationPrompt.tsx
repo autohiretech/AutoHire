@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { MapPin, X } from 'lucide-react';
 import { useCountry } from '@/lib/country';
 import { saveHomeLocation } from '@/lib/homeLocation';
+import { useMyLocation } from '@/lib/useMyLocation';
 import { toast, Notice, Button } from '@/components/ui';
 
 const DISMISS_KEY = 'autohire.locationPrompted';
@@ -36,12 +37,17 @@ export function LocationPrompt() {
     setShow(false);
   }
 
+  // The shared hook, not a bare getCurrentPosition: it falls back to an
+  // approximate network location when the browser's own provider can't
+  // produce a fix (some Firefox builds fail every time), and it never leaves
+  // "Detecting…" spinning when Firefox drops the permission prompt silently.
+  const { locate } = useMyLocation();
+
   function detect() {
     setBusy(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+    locate(
+      async ({ lat: latitude, lng: longitude }) => {
         try {
-          const { latitude, longitude } = pos.coords;
           const res = await fetch(
             `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
           );
@@ -83,12 +89,15 @@ export function LocationPrompt() {
           done();
         }
       },
-      () => {
+      (reason) => {
         setBusy(false);
-        toast.info('No problem — pick your country from the top-right selector any time.');
+        if (reason === 'denied') {
+          toast.info('No problem — pick your country from the top-right selector any time.');
+        } else {
+          toast.error("Couldn't detect your location — pick your country instead.");
+        }
         done();
       },
-      { timeout: 8000 },
     );
   }
 

@@ -430,9 +430,12 @@ export function ResearchField({
         saveHomeLocation({ lat: p.lat, lng: p.lng, label: 'Current location' });
         setLine(null);
       },
-      () => {
+      (reason) => {
         setLine({
-          text: "Couldn't get your location — check your browser's location permission.",
+          text:
+            reason === 'denied'
+              ? "Location is blocked for this site — allow it from your browser's address bar."
+              : "Couldn't find your location — type a city or airport instead.",
           tone: 'error',
         });
       },

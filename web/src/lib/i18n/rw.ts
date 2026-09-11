@@ -94,6 +94,14 @@ export const rw: Record<keyof typeof en, string> = {
   'search.poweredByOsm': 'Bikorwa na OpenStreetMap',
   'search.useMyLocation': 'Koresha aho ndi ubu',
   'search.aiPlaceholder': 'Sobanura imodoka ukeneye…',
+  'search.nearMe': 'Imodoka ziri hafi yawe mbere',
+  'search.recent': 'Ibyo washakishije',
+  'search.pickupTime': 'Kuyifata',
+  'search.returnTime': 'Kuyigarura',
+  'search.dismiss': 'Funga',
+  'search.approxLocation': 'Aho uri hagereranyijwe hakurikijwe interineti yawe. Hitamo ahantu kugira ngo ubone ibisubizo nyabyo.',
+  'search.locationDenied': 'Uru rubuga ntirwemerewe kumenya aho uri. Byemere ukoresheje ikimenyetso kiri aho wandika aderesi, cyangwa wandike umujyi.',
+  'search.locationUnavailable': "Ntitwabashije kumenya aho uri. Andika umujyi cyangwa ikibuga cy'indege.",
 
   // --- Car detail / booking ----------------------------------------------
   'car.perDay': 'ku munsi',
