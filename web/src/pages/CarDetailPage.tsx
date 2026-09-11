@@ -924,22 +924,28 @@ function PhotoGallery({
         <PhotoCarousel photos={photos} alt={title} heightClass="h-64" className="rounded-[var(--radius-card)]" />
       </div>
 
-      {/* Desktop — one large photo left, two stacked right */}
+      {/* Desktop — one large photo left, two stacked right. Each photo is
+          absolutely positioned inside its tile: an in-flow <img> with `h-full`
+          has no definite height to resolve against in a grid row, so it falls
+          back to its natural aspect ratio — an 800×600 photo at 827px wide
+          grew the row to 628px, spilling out of the 420px block and over the
+          title and the booking card. Taken out of flow, the photo can only
+          fill the tile, never size it. */}
       <div className="relative hidden sm:block">
-        <div className="grid h-[420px] grid-cols-[2fr_1fr] gap-2">
+        <div className="grid h-[420px] grid-cols-[2fr_1fr] grid-rows-1 gap-2">
           <button
             type="button"
             onClick={() => onOpen(0)}
-            className="group overflow-hidden rounded-[var(--radius-card)]"
+            className="group relative min-h-0 overflow-hidden rounded-[var(--radius-card)]"
           >
             <Img
               src={hero}
               alt={title}
               loading="eager"
-              className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+              className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
             />
           </button>
-          <div className="grid grid-rows-2 gap-2">
+          <div className="grid min-h-0 grid-rows-2 gap-2">
             {[0, 1].map((i) => {
               const p = tiles[i];
               return p ? (
@@ -947,12 +953,12 @@ function PhotoGallery({
                   key={p}
                   type="button"
                   onClick={() => onOpen(i + 1)}
-                  className="group overflow-hidden rounded-[var(--radius-card)]"
+                  className="group relative min-h-0 overflow-hidden rounded-[var(--radius-card)]"
                 >
                   <Img
                     src={p}
                     alt=""
-                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                    className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
                   />
                 </button>
               ) : (
