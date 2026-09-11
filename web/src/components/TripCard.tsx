@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CalendarDays } from 'lucide-react';
 import type { Booking, Listing } from '@autohire/shared';
 import { cn } from '@/lib/cn';
-import { formatDate, formatRwf } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { bookingCurrency, formatAmount } from '@/lib/money';
 import { TRIP_STATE_META } from '@/lib/trips';
 import { Img } from '@/components/Img';
 import { Badge, Card, CardBody, Skeleton } from '@/components/ui';
@@ -63,7 +64,7 @@ export function TripCard({
               </span>
             </p>
             <div className="mt-auto flex items-end justify-between gap-2 pt-3">
-              <p className="tabular text-body-sm font-semibold text-[var(--color-content)] sm:text-body">{formatRwf(booking.totalRwf)}</p>
+              <p className="tabular text-body-sm font-semibold text-[var(--color-content)] sm:text-body">{formatAmount(booking.totalRwf, bookingCurrency(booking, listing))}</p>
               {hint && (
                 <span className={cn('inline-flex items-center gap-1 text-body-sm font-medium', HINT_COLOR[hint.tone])}>
                   {hint.label} <ArrowRight size={14} />

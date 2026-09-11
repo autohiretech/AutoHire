@@ -31,7 +31,8 @@ import {
 import type { Booking, Host, Listing, Payout } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { formatDate, formatRwf } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { bookingCurrency, formatAmount, formatTotals, sumByCurrency } from '@/lib/money';
 import { formatMoney } from '@/lib/currency';
 import { listingHeadlinePrice } from '@/lib/pricing';
 import { PAYMENTS_PAYHOLD } from '@/lib/payments';
@@ -90,14 +91,16 @@ function listingPriceLabel(listing: Listing): string {
   return `${formatMoney(amount, listing.priceCurrency)}/${unit}`;
 }
 
-function bookingStats(bookings: Booking[]) {
+/** `currencyOf` says which currency each booking's amounts are in — a host
+    with cars in two markets earns in two currencies, kept apart. */
+function bookingStats(bookings: Booking[], currencyOf: (b: Booking) => string = (b) => bookingCurrency(b)) {
   const completed = bookings.filter((b) => b.state === 'completed');
   return {
     pending: bookings.filter((b) => b.state === 'requested').length,
     upcoming: bookings.filter((b) => b.state === 'confirmed').length,
     active: bookings.filter((b) => ACTIVE_STATES.includes(b.state)).length,
     completed: completed.length,
-    earned: completed.reduce((sum, b) => sum + b.subtotalRwf, 0),
+    earned: sumByCurrency(completed.map((b) => ({ amount: b.subtotalRwf, currency: currencyOf(b) }))),
   };
 }
 
@@ -185,11 +188,23 @@ export function DashboardPage() {
     return map;
   }, [bookings]);
 
-  const stats = bookingStats(bookings);
+  // Amounts are in each car's own currency (see `bookingCurrency`); a payout
+  // is in its booking's. RWF is only the fallback for a host with no cars yet.
+  const currencyOfBooking = (b: Booking) =>
+    bookingCurrency(b, listings.find((l) => l.id === b.listingId));
+  const currencyOfPayout = (p: Payout) => {
+    const b = bookings.find((x) => x.id === p.bookingId);
+    return b ? currencyOfBooking(b) : (listings[0]?.priceCurrency ?? 'RWF');
+  };
+  const fallbackCurrency = listings[0]?.priceCurrency ?? 'RWF';
+
+  const stats = bookingStats(bookings, currencyOfBooking);
   const overdueTotal = bookings.filter(isOverdue).length;
-  const scheduledTotal = payouts
-    .filter((p) => p.status !== 'paid')
-    .reduce((sum, p) => sum + p.amountRwf, 0);
+  const scheduledTotals = sumByCurrency(
+    payouts
+      .filter((p) => p.status !== 'paid')
+      .map((p) => ({ amount: p.amountRwf, currency: currencyOfPayout(p) })),
+  );
 
   // Real secondary indicators for the stat cards — all derived from live data,
   // no fabricated deltas (we don't store historical snapshots to trend against).
@@ -376,15 +391,15 @@ export function DashboardPage() {
         <StatCard
           icon={Banknote}
           label="Earned"
-          value={formatRwf(stats.earned)}
+          value={formatTotals(stats.earned, fallbackCurrency)}
           note={`${stats.completed} completed trip${stats.completed === 1 ? '' : 's'}`}
         />
         <StatCard
           icon={Wallet}
           label="Payouts due"
-          value={formatRwf(scheduledTotal)}
+          value={formatTotals(scheduledTotals, fallbackCurrency)}
           note={
-            scheduledTotal
+            scheduledTotals.some((t) => t.amount > 0)
               ? indicators.nextPayoutDays != null
                 ? `Next in ${indicators.nextPayoutDays}d`
                 : 'Scheduled'
@@ -415,7 +430,7 @@ export function DashboardPage() {
           ) : payoutsQuery.isError ? (
             <ErrorState onRetry={() => payoutsQuery.refetch()} />
           ) : (
-            <PayoutsView payouts={payouts} />
+            <PayoutsView payouts={payouts} currencyOf={currencyOfPayout} fallbackCurrency={fallbackCurrency} />
           )}
         </div>
       ) : listingsQuery.isError || bookingsQuery.isError ? (
@@ -862,7 +877,7 @@ function CarListRow({
 function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: Booking[]; onBack: () => void }) {
   const [tab, setTab] = useState<CarTab>('requests');
   const status = carStatusBadge(listing, bookings);
-  const s = bookingStats(bookings);
+  const s = bookingStats(bookings, (b) => bookingCurrency(b, listing));
   const overdue = bookings.filter(isOverdue);
 
   const requests = bookings.filter((b) => b.state === 'requested');
@@ -931,7 +946,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
           <MiniStat label="Requests" value={`${s.pending}`} highlight={s.pending > 0} />
           <MiniStat label="Upcoming" value={`${s.upcoming}`} />
           <MiniStat label="On trip" value={`${s.active}`} />
-          <MiniStat label="Earned" value={formatRwf(s.earned)} />
+          <MiniStat label="Earned" value={formatTotals(s.earned, listing.priceCurrency)} />
         </div>
 
         {/* Sub-tabs — the one place besides the primary button an active
@@ -969,7 +984,7 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
           ) : (
             <div className="space-y-3">
               {requests.map((b) => (
-                <RequestRow key={b.id} booking={b} />
+                <RequestRow key={b.id} booking={b} listing={listing} />
               ))}
             </div>
           ))}
@@ -994,7 +1009,8 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
 }
 
 /** A pending request inside a car's detail: dates, total, and inline actions. */
-function RequestRow({ booking }: { booking: Booking }) {
+function RequestRow({ booking, listing }: { booking: Booking; listing: Listing }) {
+  const total = formatAmount(booking.totalRwf, bookingCurrency(booking, listing));
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [messaging, setMessaging] = useState(false);
@@ -1044,7 +1060,7 @@ function RequestRow({ booking }: { booking: Booking }) {
             </span>
           </p>
           <p className="tabular mt-0.5 text-body-sm font-semibold text-[var(--color-content)]">
-            {formatRwf(booking.totalRwf)}
+            {total}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1104,7 +1120,7 @@ function RequestRow({ booking }: { booking: Booking }) {
               {formatDate(booking.startDate)} – {formatDate(booking.endDate)}
             </span>{' '}
             ({booking.days} day{booking.days === 1 ? '' : 's'} ·{' '}
-            <span className="tabular font-medium text-[var(--color-content)]">{formatRwf(booking.totalRwf)}</span>).
+            <span className="tabular font-medium text-[var(--color-content)]">{total}</span>).
             {confirm === 'approve'
               ? ' These dates will be reserved on your calendar.'
               : ' The renter will be notified and the dates stay open.'}
@@ -1488,7 +1504,7 @@ function ActionRow({
           <Icon size={15} /> {label}
         </p>
         <p className="tabular truncate text-caption text-[var(--color-content-muted)]">
-          {listing?.title ?? 'Car'} · {formatDate(b.startDate)} – {formatDate(b.endDate)} · {formatRwf(b.totalRwf)}
+          {listing?.title ?? 'Car'} · {formatDate(b.startDate)} – {formatDate(b.endDate)} · {formatAmount(b.totalRwf, bookingCurrency(b, listing))}
         </p>
       </div>
       {item.kind === 'request' ? (
@@ -1506,7 +1522,16 @@ function ActionRow({
   );
 }
 
-function PayoutsView({ payouts }: { payouts: Payout[] }) {
+function PayoutsView({
+  payouts,
+  currencyOf,
+  fallbackCurrency,
+}: {
+  payouts: Payout[];
+  /** A payout is in its booking's car's currency, not RWF. */
+  currencyOf: (p: Payout) => string;
+  fallbackCurrency: string;
+}) {
   // Under PayHold these rows are a local shadow of a ledger it owns. The real
   // answer — what has cleared, what is still holding, when it lands — lives on
   // /earnings, so point there rather than letting a host trust a stale copy.
@@ -1540,8 +1565,10 @@ function PayoutsView({ payouts }: { payouts: Payout[] }) {
   }
   const due = payouts.filter((p) => p.status !== 'paid');
   const paid = payouts.filter((p) => p.status === 'paid');
-  const dueTotal = due.reduce((sum, p) => sum + p.amountRwf, 0);
-  const paidTotal = paid.reduce((sum, p) => sum + p.amountRwf, 0);
+  const totals = (items: Payout[]) =>
+    sumByCurrency(items.map((p) => ({ amount: p.amountRwf, currency: currencyOf(p) })));
+  const dueTotals = totals(due);
+  const paidTotals = totals(paid);
   const nextPayout = due
     .map((p) => p.scheduledFor)
     .filter(Boolean)
@@ -1562,7 +1589,7 @@ function PayoutsView({ payouts }: { payouts: Payout[] }) {
                 className="flex items-center justify-between gap-3 border-t border-[var(--color-line)] px-4 py-3 first:border-t-0 sm:px-5"
               >
                 <div>
-                  <p className="tabular font-medium text-[var(--color-content)]">{formatRwf(p.amountRwf)}</p>
+                  <p className="tabular font-medium text-[var(--color-content)]">{formatAmount(p.amountRwf, currencyOf(p))}</p>
                   <p className="text-body-sm text-[var(--color-content-muted)]">
                     {PAYOUT_CHANNEL_LABEL[p.channel]} ·{' '}
                     {p.paidAt ? `Paid ${formatDate(p.paidAt)}` : `Due ${formatDate(p.scheduledFor)}`}
@@ -1580,8 +1607,12 @@ function PayoutsView({ payouts }: { payouts: Payout[] }) {
     <div className="space-y-5">
       {earningsLink}
       <div className="grid grid-cols-2 gap-3">
-        <MiniStat label="Due" value={formatRwf(dueTotal)} highlight={dueTotal > 0} />
-        <MiniStat label="Paid out" value={formatRwf(paidTotal)} />
+        <MiniStat
+          label="Due"
+          value={formatTotals(dueTotals, fallbackCurrency)}
+          highlight={dueTotals.some((t) => t.amount > 0)}
+        />
+        <MiniStat label="Paid out" value={formatTotals(paidTotals, fallbackCurrency)} />
       </div>
       {nextPayout && (
         <p className="flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)]">

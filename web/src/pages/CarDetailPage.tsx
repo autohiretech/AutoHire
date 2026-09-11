@@ -29,7 +29,8 @@ import { useCanRent, useIsBusinessHost, useIsHost } from '@/lib/account';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useBackToBrowse } from '@/lib/useBackToBrowse';
 import { SERVICE_FEE_RATE } from '@/lib/types';
-import { formatDate, formatRwf } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { bookingCurrency, formatAmount } from '@/lib/money';
 import { formatMoney, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
 import { isMachine } from '@/lib/categories';
 import { listingHeadlinePrice } from '@/lib/pricing';
@@ -357,7 +358,7 @@ export function CarDetailPage() {
       <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
         {/* Left: content */}
         <div className="min-w-0">
-          {isOwner && <OwnerRequests listingId={listing.id} />}
+          {isOwner && <OwnerRequests listingId={listing.id} priceCurrency={listing.priceCurrency} />}
 
           {/* Overview + host */}
           <div className="flex items-start justify-between gap-4 pb-5">
@@ -1178,7 +1179,7 @@ function SpecChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
  * company — right on the listing, so they can see and vet each requester
  * (profile + verification documents) before approving.
  */
-function OwnerRequests({ listingId }: { listingId: string }) {
+function OwnerRequests({ listingId, priceCurrency }: { listingId: string; priceCurrency: string }) {
   const t = useT();
   const queryClient = useQueryClient();
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
@@ -1214,7 +1215,12 @@ function OwnerRequests({ listingId }: { listingId: string }) {
           <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">{t('car.reviewRequestsHint')}</p>
           <div className="mt-4 space-y-3">
             {requests.map((b) => (
-              <RequesterRow key={b.id} booking={b} onReview={() => setActiveBooking(b)} />
+              <RequesterRow
+                key={b.id}
+                booking={b}
+                currency={bookingCurrency(b, { priceCurrency })}
+                onReview={() => setActiveBooking(b)}
+              />
             ))}
           </div>
         </>
@@ -1232,7 +1238,16 @@ function OwnerRequests({ listingId }: { listingId: string }) {
 }
 
 /** One requester preview row — name, verification, dates — with a review action. */
-function RequesterRow({ booking, onReview }: { booking: Booking; onReview: () => void }) {
+function RequesterRow({
+  booking,
+  currency,
+  onReview,
+}: {
+  booking: Booking;
+  /** The car's currency — the booking total is in it, not RWF. */
+  currency: string;
+  onReview: () => void;
+}) {
   const t = useT();
   const { data: p } = useQuery({
     queryKey: ['profile', booking.renterId],
@@ -1253,7 +1268,7 @@ function RequesterRow({ booking, onReview }: { booking: Booking; onReview: () =>
           </p>
           <p className="text-body-sm text-[var(--color-content-muted)]">
             {formatDate(booking.startDate)} – {formatDate(booking.endDate)} ·{' '}
-            <span className="tabular">{formatRwf(booking.totalRwf)}</span>
+            <span className="tabular">{formatAmount(booking.totalRwf, currency)}</span>
           </p>
         </div>
       </div>

@@ -19,7 +19,8 @@ import type { Booking, CheckPhoto, Host, PostVisibility, Review, ReviewDirection
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
-import { formatDate, formatRwf, formatTime } from '@/lib/format';
+import { formatDate, formatTime } from '@/lib/format';
+import { bookingCurrency, formatAmount } from '@/lib/money';
 import { TRIP_STATE_META, TRIP_TIMELINE } from '@/lib/trips';
 import { StarRatingInput } from '@/components/StarRatingInput';
 import { CameraCapture } from '@/components/CameraCapture';
@@ -115,6 +116,8 @@ export function TripDetailPage() {
   }
 
   const listing = listingQuery.data;
+  // Every amount on the booking is in the car's own currency, not RWF.
+  const money = (n: number) => formatAmount(n, bookingCurrency(booking, listing));
   const host = hostQuery.data;
   const isActuallyCancelled = booking.state === 'cancelled' || booking.state === 'declined';
   // Requested but the server hasn't caught up yet — PayHold's webhook is what
@@ -301,21 +304,21 @@ export function TripDetailPage() {
             <CardBody className="tabular space-y-2 text-body-sm">
               {booking.rentalType === 'hourly' ? (
                 <Row
-                  label={`${formatRwf(booking.pricePerHourRwf ?? 0)} × ${booking.estimatedHours ?? '?'} hrs (estimate)`}
-                  value={formatRwf(booking.subtotalRwf)}
+                  label={`${money(booking.pricePerHourRwf ?? 0)} × ${booking.estimatedHours ?? '?'} hrs (estimate)`}
+                  value={money(booking.subtotalRwf)}
                 />
               ) : (
-                <Row label={`${formatRwf(listing?.pricePerDayRwf ?? 0)} × ${booking.days} days`} value={formatRwf(booking.subtotalRwf)} />
+                <Row label={`${money(listing?.pricePerDayRwf ?? 0)} × ${booking.days} days`} value={money(booking.subtotalRwf)} />
               )}
-              <Row label="Service fee" value={formatRwf(booking.serviceFeeRwf)} />
+              <Row label="Service fee" value={money(booking.serviceFeeRwf)} />
               <div className="border-t border-[var(--color-line)] pt-2">
-                <Row label={booking.rentalType === 'hourly' ? 'Deposit paid' : 'Total'} value={formatRwf(booking.totalRwf)} strong />
+                <Row label={booking.rentalType === 'hourly' ? 'Deposit paid' : 'Total'} value={money(booking.totalRwf)} strong />
               </div>
               {booking.rentalType === 'hourly' && booking.actualHours != null && (
                 <div className="border-t border-[var(--color-line)] pt-2">
                   <Row
                     label={`Actual usage — ${booking.actualHours} hr${booking.actualHours === 1 ? '' : 's'}`}
-                    value={formatRwf(booking.finalAmountRwf ?? 0)}
+                    value={money(booking.finalAmountRwf ?? 0)}
                   />
                 </div>
               )}
@@ -328,10 +331,10 @@ export function TripDetailPage() {
                     This could not be charged automatically — the host collects it
                     directly.
                   </p>
-                  <Row label="Exceeded by" value={formatRwf(booking.amountExceededRwf)} />
+                  <Row label="Exceeded by" value={money(booking.amountExceededRwf)} />
                   <Row
                     label="Still to pay"
-                    value={booking.amountOwedRwf > 0 ? formatRwf(booking.amountOwedRwf) : 'Resolved'}
+                    value={booking.amountOwedRwf > 0 ? money(booking.amountOwedRwf) : 'Resolved'}
                     strong={booking.amountOwedRwf === 0}
                   />
                   {amHost && booking.amountOwedRwf > 0 && <AmountOwedResolver booking={booking} />}
