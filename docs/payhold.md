@@ -139,7 +139,10 @@ note:
    with `toMinorUnits`.
 2. The decision is **recorded on the `disputes` row first** — `resolution`,
    `refund_amount_minor`, `currency`, `resolution_note`,
-   `decided_by = autohire-admin:<session email>` — with `status = under_review`
+   `decided_by = autohire-admin:<admin profile id>`, taken from the session and
+   never an email, because both parties can read the column and it is sent to
+   PayHold (the admin view shows the name as `decidedByName`, looked up from
+   `profiles.full_name` server-side) — with `status = under_review`
    and no `resolved_at`. Once recorded, a *different* decision is refused
    (`409 decision_already_recorded`).
 3. The **recorded** decision is relayed: `POST /v1/disputes/:id/resolve`

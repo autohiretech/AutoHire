@@ -16,7 +16,9 @@
 //
 // Which side raised it comes from the SESSION, never the request. A renter who
 // could pass raised_by=seller would file against themselves. Likewise the name
-// on a decision is the admin's session email, never a field in the body.
+// on a decision is the admin's session profile id (`autohire-admin:<id>`) —
+// never a field in the body, and never their email, since both parties can
+// read `decided_by` and PayHold stores it.
 //
 //   GET  /payhold-dispute          every dispute this person is party to
 //   GET  /payhold-dispute?id=…     admin: one dispute + its PayHold case
@@ -95,6 +97,14 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
         return (data as BookingRef | null) ?? null;
       },
+      profileName: async (profileId) => {
+        const { data } = await admin
+          .from('profiles')
+          .select('full_name')
+          .eq('id', profileId)
+          .maybeSingle();
+        return (data?.full_name as string | null | undefined) ?? null;
+      },
     });
 
     // ---------------------------------------------------------------------
@@ -158,7 +168,10 @@ Deno.serve(async (req: Request) => {
       if ((await callerRole()) !== 'admin') {
         return json({ error: 'Only an admin can decide a dispute.' }, 403);
       }
-      const decidedBy = `autohire-admin:${userData.user.email ?? uid}`;
+      // The profile id, not the email: `decided_by` is readable by both
+      // parties and is sent to PayHold. The name is looked up for the admin
+      // view only (`decidedByName`).
+      const decidedBy = `autohire-admin:${uid}`;
       return json(await resolveAdminDispute(body, decidedBy, adminDeps()), 200);
     }
 

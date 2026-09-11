@@ -17,7 +17,11 @@ const { DisputeActionError, adminDisputeDetail, resolveAdminDispute } = await im
  */
 
 type Reply = { status: number; body: unknown };
-const ADMIN = 'autohire-admin:ops@example.com';
+const ADMIN = 'autohire-admin:profile-admin-1';
+
+/** `profiles.full_name` by id, as `index.ts` resolves it. */
+const NAMES: Record<string, string> = { 'profile-admin-1': 'Ops Admin', 'profile-first': 'First Admin' };
+const names = (id: string) => Promise.resolve(NAMES[id] ?? null);
 
 // deno-lint-ignore no-explicit-any
 function phCase(overrides: Record<string, any> = {}): Record<string, any> {
@@ -124,7 +128,7 @@ function setup(seed: Partial<DisputeRow> = {}) {
   const mem = memoryStore([
     row({ id: 'dsp-1', booking_id: 'bk-1', payhold_dispute_id: 'ph-1', ...seed }),
   ]);
-  return { ...mem, deps: { store: mem.store, booking: () => Promise.resolve(booking) } };
+  return { ...mem, deps: { store: mem.store, profileName: names, booking: () => Promise.resolve(booking) } };
 }
 
 async function refusal(fn: () => Promise<unknown>) {
@@ -266,7 +270,7 @@ Deno.test('once a decision waits, a different one is refused and nothing is sent
     status: 'under_review',
     resolution: 'release',
     resolution_note: 'Pre-existing dent.',
-    decided_by: 'autohire-admin:first@example.com',
+    decided_by: 'autohire-admin:profile-first',
     currency: 'USD',
   });
   const ph = payhold();
@@ -310,7 +314,7 @@ Deno.test('retry relays the recorded decision — its decider and note, not the 
     resolution: 'partial_refund',
     refund_amount_minor: 1000,
     resolution_note: 'Ten dollars.',
-    decided_by: 'autohire-admin:first@example.com',
+    decided_by: 'autohire-admin:profile-first',
     currency: 'USD',
   });
   const ph = payhold();
@@ -324,7 +328,7 @@ Deno.test('retry relays the recorded decision — its decider and note, not the 
     assertEquals(ph.resolves()[0].body, {
       resolution: 'partial_refund',
       note: 'Ten dollars.',
-      decided_by: 'autohire-admin:first@example.com',
+      decided_by: 'autohire-admin:profile-first',
       refund_amount: 1000,
     });
     assertEquals(rows.get('dsp-1')!.status, 'resolved_split');
@@ -338,7 +342,7 @@ Deno.test('the same decision again relays the recorded one', async () => {
     status: 'under_review',
     resolution: 'release',
     resolution_note: 'Original note.',
-    decided_by: 'autohire-admin:first@example.com',
+    decided_by: 'autohire-admin:profile-first',
     currency: 'USD',
   });
   const ph = payhold();
@@ -348,7 +352,7 @@ Deno.test('the same decision again relays the recorded one', async () => {
     assertEquals(ph.resolves()[0].body, {
       resolution: 'release',
       note: 'Original note.',
-      decided_by: 'autohire-admin:first@example.com',
+      decided_by: 'autohire-admin:profile-first',
     });
   } finally {
     ph.restore();
@@ -509,7 +513,7 @@ Deno.test('a dispute with no PayHold case cannot be relayed', async () => {
   const mem = memoryStore([row({ id: 'dsp-1', booking_id: 'bk-1' })]);
   const deps = {
     store: mem.store,
-    booking: () => Promise.resolve({ ...booking, payhold_deal_id: null }),
+    profileName: names, booking: () => Promise.resolve({ ...booking, payhold_deal_id: null }),
   };
   const ph = payhold();
   try {
@@ -529,7 +533,7 @@ Deno.test('a dispute with no PayHold case cannot be relayed', async () => {
 
 Deno.test('the detail links a blank case id by deal, backfills it, and speaks major units', async () => {
   const mem = memoryStore([row({ id: 'dsp-1', booking_id: 'bk-1', payhold_dispute_id: '' })]);
-  const deps = { store: mem.store, booking: () => Promise.resolve(booking) };
+  const deps = { store: mem.store, profileName: names, booking: () => Promise.resolve(booking) };
   const ph = payhold({
     case: {
       disputed_amount: 15050,
@@ -582,7 +586,7 @@ Deno.test('a zero-decimal deal is shown as it is stored', async () => {
 
 Deno.test('no PayHold link means payhold: null, and PayHold is not asked', async () => {
   const mem = memoryStore([row({ id: 'dsp-1', booking_id: 'bk-1' })]);
-  const deps = { store: mem.store, booking: () => Promise.resolve({ ...booking, payhold_deal_id: null }) };
+  const deps = { store: mem.store, profileName: names, booking: () => Promise.resolve({ ...booking, payhold_deal_id: null }) };
   const ph = payhold();
   try {
     const out = await adminDisputeDetail('dsp-1', deps);
@@ -603,4 +607,73 @@ Deno.test('the detail catches up a decision PayHold executed that the webhook ne
   } finally {
     ph.restore();
   }
+});
+
+// ---------------------------------------------------------------------------
+// Who decided — an id on the row, a name only in the admin view
+// ---------------------------------------------------------------------------
+
+Deno.test('what is stored and sent names the admin by profile id, never by email', async () => {
+  const { deps, rows } = setup();
+  const ph = payhold();
+  try {
+    await resolveAdminDispute({ disputeId: 'dsp-1', resolution: 'release', note: 'Pre-existing dent.' }, ADMIN, deps);
+    assertEquals(rows.get('dsp-1')!.decided_by, 'autohire-admin:profile-admin-1');
+    assertEquals(ph.resolves()[0].body, {
+      resolution: 'release',
+      note: 'Pre-existing dent.',
+      decided_by: 'autohire-admin:profile-admin-1',
+    });
+  } finally {
+    ph.restore();
+  }
+});
+
+Deno.test('the detail resolves an AutoHire decider to their name', async () => {
+  const { deps } = setup({
+    status: 'under_review',
+    resolution: 'release',
+    resolution_note: 'Pre-existing dent.',
+    decided_by: ADMIN,
+    currency: 'USD',
+  });
+  const ph = payhold();
+  try {
+    const out = await adminDisputeDetail('dsp-1', deps);
+    assertEquals(out.decidedByName, 'Ops Admin');
+    assertEquals(out.dispute.decidedBy, 'autohire-admin:profile-admin-1');
+  } finally {
+    ph.restore();
+  }
+});
+
+Deno.test('decidedByName is null for no decider, a PayHold actor, or an unknown profile', async () => {
+  const cases: [string | null, string][] = [
+    [null, 'nobody decided'],
+    ['staff:jo@payhold.test', 'a PayHold actor is not looked up'],
+    ['autohire-admin:profile-gone', 'a profile that no longer exists'],
+    ['autohire-admin:', 'a prefix with no id'],
+  ];
+  for (const [decidedBy, why] of cases) {
+    // No PayHold link — the early return must carry the name too.
+    const mem = memoryStore([row({ id: 'dsp-1', booking_id: 'bk-1', decided_by: decidedBy })]);
+    const deps = {
+      store: mem.store,
+      profileName: names,
+      booking: () => Promise.resolve({ ...booking, payhold_deal_id: null }),
+    };
+    const out = await adminDisputeDetail('dsp-1', deps);
+    assertEquals(out.decidedByName, null, why);
+  }
+});
+
+Deno.test('a profile lookup that fails reads as no name rather than failing the detail', async () => {
+  const mem = memoryStore([row({ id: 'dsp-1', booking_id: 'bk-1', decided_by: ADMIN })]);
+  const deps = {
+    store: mem.store,
+    profileName: () => Promise.reject(new Error('profiles unreachable')),
+    booking: () => Promise.resolve({ ...booking, payhold_deal_id: null }),
+  };
+  const out = await adminDisputeDetail('dsp-1', deps);
+  assertEquals(out.decidedByName, null);
 });

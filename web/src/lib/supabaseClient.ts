@@ -2472,7 +2472,11 @@ export const supabaseClient = {
     if (payload?.error || !payload?.dispute) {
       throw new Error(payload?.error ?? 'Could not load the dispute.');
     }
-    return { dispute: payload.dispute, payhold: payload.payhold ?? null };
+    return {
+      dispute: payload.dispute,
+      decidedByName: payload.decidedByName ?? null,
+      payhold: payload.payhold ?? null,
+    };
   },
   /**
    * Decide a PayHold-backed dispute. The decision is saved on the dispute first,

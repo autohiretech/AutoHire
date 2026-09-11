@@ -171,26 +171,26 @@ Deno.test('resolve sends the decision, the note and the decider — and a refund
       resolution: 'release',
       note: 'Photos show the dent was there at pickup.',
       refundAmount: 999,
-      decidedBy: 'autohire-admin:ops@example.com',
+      decidedBy: 'autohire-admin:profile-admin-1',
     });
     assertEquals(calls[0].method, 'POST');
     assertEquals(calls[0].path, '/disputes/ph-1/resolve');
     assertEquals(calls[0].body, {
       resolution: 'release',
       note: 'Photos show the dent was there at pickup.',
-      decided_by: 'autohire-admin:ops@example.com',
+      decided_by: 'autohire-admin:profile-admin-1',
     });
 
     await resolveDispute('ph-1', {
       resolution: 'partial_refund',
       note: 'Half the repair.',
       refundAmount: 2500,
-      decidedBy: 'autohire-admin:ops@example.com',
+      decidedBy: 'autohire-admin:profile-admin-1',
     });
     assertEquals(calls[1].body, {
       resolution: 'partial_refund',
       note: 'Half the repair.',
-      decided_by: 'autohire-admin:ops@example.com',
+      decided_by: 'autohire-admin:profile-admin-1',
       refund_amount: 2500,
     });
   } finally {
@@ -431,7 +431,7 @@ Deno.test('a split relayed from AutoHire keeps the amount the admin decided', as
       refund_amount_minor: 2500,
       currency: 'USD',
       resolution_note: 'Half the repair.',
-      decided_by: 'autohire-admin:ops@example.com',
+      decided_by: 'autohire-admin:profile-admin-1',
     }),
   ]);
   const { restore } = stubPayhold(casesRoute([
@@ -441,7 +441,7 @@ Deno.test('a split relayed from AutoHire keeps the amount the admin decided', as
     await mirrorDisputeResolved(store, booking, deal, { dispute_id: 'ph-1' }, false);
     const r = rows.get('dsp-1')!;
     assertEquals(r.refund_amount_minor, 2500);
-    assertEquals(r.decided_by, 'autohire-admin:ops@example.com');
+    assertEquals(r.decided_by, 'autohire-admin:profile-admin-1');
     assertEquals(r.resolution_note, 'Half the repair.');
   } finally {
     restore();

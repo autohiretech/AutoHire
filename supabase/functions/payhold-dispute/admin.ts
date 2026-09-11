@@ -60,6 +60,25 @@ export class DisputeActionError extends Error {
 export interface AdminDeps {
   store: DisputeStore;
   booking: (bookingId: string) => Promise<BookingRef | null>;
+  /** `profiles.full_name` for a profile id, or null when there is none. */
+  profileName: (profileId: string) => Promise<string | null>;
+}
+
+/** Prefix on `decided_by` for a decision made in AutoHire; the rest is a profile id. */
+export const AUTOHIRE_DECIDER_PREFIX = 'autohire-admin:';
+
+/**
+ * Who decided, in words, for the admin view. `decided_by` carries a profile id
+ * and never a name or email, because both parties can read it; the name is
+ * resolved here, server-side. Null for a decider that is not an AutoHire
+ * profile (a PayHold staff actor) or a profile with no name.
+ */
+async function deciderName(decidedBy: string | null, deps: AdminDeps): Promise<string | null> {
+  if (!decidedBy?.startsWith(AUTOHIRE_DECIDER_PREFIX)) return null;
+  const profileId = decidedBy.slice(AUTOHIRE_DECIDER_PREFIX.length).trim();
+  if (!profileId) return null;
+  const name = await deps.profileName(profileId).catch(() => null);
+  return name?.trim() || null;
 }
 
 const RESOLUTIONS: DisputeResolution[] = ['release', 'refund', 'partial_refund'];
@@ -112,11 +131,19 @@ async function linkCase(
 export async function adminDisputeDetail(localId: string, deps: AdminDeps) {
   let row = await deps.store.get(localId);
   if (!row) throw new DisputeActionError('Dispute not found.', 404, 'not_found');
-  if (!payholdConfigured()) return { dispute: toDisputeJson(row), payhold: null };
+  if (!payholdConfigured()) return {
+        dispute: toDisputeJson(row),
+        decidedByName: await deciderName(row.decided_by, deps),
+        payhold: null,
+      };
 
   const linked = await linkCase(row, deps);
   row = linked.row;
-  if (!linked.payholdId) return { dispute: toDisputeJson(row), payhold: null };
+  if (!linked.payholdId) return {
+        dispute: toDisputeJson(row),
+        decidedByName: await deciderName(row.decided_by, deps),
+        payhold: null,
+      };
 
   let ph: DisputeCase;
   try {
@@ -125,7 +152,11 @@ export async function adminDisputeDetail(localId: string, deps: AdminDeps) {
     // The link names a case PayHold does not have — a sandbox reset. Nothing
     // is frozen behind it, which is what `payhold: null` says.
     if (e instanceof PayHoldError && e.status === 404) {
-      return { dispute: toDisputeJson(row), payhold: null };
+      return {
+        dispute: toDisputeJson(row),
+        decidedByName: await deciderName(row.decided_by, deps),
+        payhold: null,
+      };
     }
     throw e;
   }
@@ -151,6 +182,7 @@ export async function adminDisputeDetail(localId: string, deps: AdminDeps) {
 
   return {
     dispute: toDisputeJson(row),
+    decidedByName: await deciderName(row.decided_by, deps),
     payhold: {
       id: ph.id,
       status: ph.status,
@@ -208,7 +240,7 @@ function describe(row: DisputeRow): string {
 }
 
 /**
- * `decidedBy` is the caller's — `autohire-admin:<email>`, from the session in
+ * `decidedBy` is the caller's — `autohire-admin:<profile id>`, from the session in
  * `index.ts`. Nothing in `body` can name a decider.
  */
 export async function resolveAdminDispute(

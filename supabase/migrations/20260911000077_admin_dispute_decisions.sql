@@ -61,7 +61,7 @@ comment on column disputes.currency is
 comment on column disputes.disputed_amount_minor is
   'What the raiser disputed, minor units of `currency`. Null means the whole deal.';
 comment on column disputes.decided_by is
-  'Who decided: autohire-admin:<email> for a decision made here, PayHold''s actor otherwise.';
+  'Who decided: autohire-admin:<profile id> for a decision made here, PayHold''s actor otherwise. Never an email or name — both parties can read this column.';
 comment on column disputes.resolved_at is
   'When PayHold executed the decision. Null while a recorded decision is still waiting to be relayed.';
 

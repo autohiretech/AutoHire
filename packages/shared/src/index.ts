@@ -575,7 +575,11 @@ export interface Dispute {
   /** Minor units of `currency`; null means the whole deal is disputed. */
   disputedAmountMinor?: number | null;
   resolutionNote?: string | null;
-  /** `autohire-admin:<email>` for a decision made in AutoHire. */
+  /**
+   * `autohire-admin:<profile id>` for a decision made in AutoHire, PayHold's
+   * actor otherwise. Never a name or email — both parties can read it. The
+   * admin view gets the name as `AdminDisputeDetail.decidedByName`.
+   */
   decidedBy?: string | null;
   /** When PayHold executed the decision. */
   resolvedAt?: string | null;
@@ -590,6 +594,12 @@ export interface Dispute {
  */
 export interface AdminDisputeDetail {
   dispute: Dispute;
+  /**
+   * `profiles.full_name` of the AutoHire admin named in `dispute.decidedBy`,
+   * resolved server-side. Null when nobody has decided, the decider is not an
+   * AutoHire profile, or the profile has no name.
+   */
+  decidedByName: string | null;
   payhold: {
     id: string;
     status: PayholdDisputeStatus;
