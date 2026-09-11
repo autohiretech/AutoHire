@@ -46,7 +46,11 @@ if something goes wrong instead
   │
   ├─ POST /disputes ─────────────► case opened, PAYOUT FROZEN   (payhold-dispute)
   │  ◄──── webhook dispute.opened ─ mirrored back either way
-  │        resolved by a person in PayHold's dashboard, not by us
+  │
+  ├─ admin decides in Admin → Disputes; the decision is saved on the row
+  │  POST /disputes/:id/resolve ─► PayHold releases, refunds or splits
+  │                                 (payhold-dispute, needs dispute_decision_relay)
+  │  ◄──── webhook dispute.resolved
   │
   └─ POST /deals/:id/refund ─────► money goes back               (payhold-refund)
      ◄──── webhook refund.succeeded
@@ -87,7 +91,9 @@ What "Send it now" actually does, from `request_withdrawal`:
 | [`payhold-seller`](../supabase/functions/payhold-seller/index.ts) | The host's seller record: id, KYC, capabilities, destinations. |
 | [`payhold-payment-options`](../supabase/functions/payhold-payment-options/index.ts) | Which countries PayHold can collect in and pay out to. Drives the payout screen. |
 | [`payhold-stripe-connect`](../supabase/functions/payhold-stripe-connect/index.ts) | Starts (POST) and polls (GET) Stripe Connect onboarding — the destination `stripe_connect` needs and a host cannot type in. See "Stripe Connect onboarding" below. |
-| [`payhold-dispute`](../supabase/functions/payhold-dispute/index.ts) | Raise a case in PayHold — this is what freezes the payout. |
+| [`payhold-dispute`](../supabase/functions/payhold-dispute/index.ts) | Raise a case in PayHold — this is what freezes the payout. Admins: read a case in full, and decide it ([`admin.ts`](../supabase/functions/payhold-dispute/admin.ts) — record, then relay). |
+| [`_shared/dispute-mirror.ts`](../supabase/functions/_shared/dispute-mirror.ts) | PayHold case → `disputes` row, shared by the webhook and `payhold-dispute`. |
+| [migration 077](../supabase/migrations/20260911000077_admin_dispute_decisions.sql) | `resolved_split`; the decision columns on `disputes`; a trigger refusing non-service-role writes to them. |
 | [`payhold-refund`](../supabase/functions/payhold-refund/index.ts) | Send the renter's money back, in full or in part. |
 | [`EarningsPage`](../web/src/pages/EarningsPage.tsx) | `/earnings` — totals, trip-by-trip stages, fee breakdown, withdraw. |
 | [`seed-host-payout-methods.mjs`](../scripts/seed-host-payout-methods.mjs) | Gives the demo hosts a varied payout method and a real PayHold seller (step 9). |
@@ -116,9 +122,57 @@ What "Send it now" actually does, from `request_withdrawal`:
 | `POST /sellers/:id/withdraw` | `withdraw` | `payhold-balance` |
 | `GET /payouts` | `listPayouts` | `payhold-earnings` — tenant-wide, filtered to the seller locally |
 | `POST /disputes` | `openDispute` | `payhold-dispute` |
+| `GET /disputes?deal_id=&status=&limit=` | `listDisputes` | `payhold-dispute` (linking a case to a row), `payhold-webhook` (a `dispute.*` event with no id), `payhold-refund` (the under-dispute check) |
+| `GET /disputes/:id` | `getDispute` | `payhold-dispute` (admin detail), `payhold-webhook` (the trust boundary for `dispute.*`) |
+| `POST /disputes/:id/resolve` | `resolveDispute` | `payhold-dispute` — an admin's decision, relayed |
 
-PayHold refuses `resolve` from an API key: deciding a case is a person's
-judgement made in their dashboard. Resolutions come back by webhook.
+### Disputes are decided in AutoHire; PayHold moves the money
+
+A case is decided in **Admin → Disputes**, not in PayHold's dashboard. What
+happens when an admin decides — `release`, `refund` or `partial_refund`, with a
+note:
+
+1. `payhold-dispute` (`action: 'resolve'`, admin session only) validates it
+   against the deal: a note is required, and a partial refund must be above
+   zero, below the deal amount and no more than the disputed amount. Amounts
+   are entered in major units of the **PayHold deal currency** and converted
+   with `toMinorUnits`.
+2. The decision is **recorded on the `disputes` row first** — `resolution`,
+   `refund_amount_minor`, `currency`, `resolution_note`,
+   `decided_by = autohire-admin:<session email>` — with `status = under_review`
+   and no `resolved_at`. Once recorded, a *different* decision is refused
+   (`409 decision_already_recorded`).
+3. The **recorded** decision is relayed: `POST /v1/disputes/:id/resolve`
+   `{resolution, note, refund_amount?, decided_by}`. A retry
+   (`{action:'resolve', disputeId, retry: true}`) relays the same recorded
+   decision and nothing from the client, so a timeout and a retry cannot move
+   money twice or differently. PayHold answers 200 when the case is already
+   resolved the same way.
+4. On success the row takes PayHold's status: `payhold_status`, `status`
+   (`resolved_released → resolved_host`, `resolved_refunded → resolved_renter`,
+   `resolved_split → resolved_split`) and `resolved_at`.
+
+PayHold only takes a decision over an API key while the tenant setting
+**`dispute_decision_relay`** is on (PayHold Settings, owner only). Until then
+it answers 422 and `payhold-dispute` returns `outcome: 'not_trusted_yet'` —
+the decision stays recorded, the money stays frozen, and a retry sends it once
+the setting is on. Other outcomes:
+
+| PayHold says | Row | Admin sees |
+|---|---|---|
+| 409 resolved differently | refreshed from `GET /disputes/:id` | the conflict, `409 dispute_already_resolved` |
+| 400/404/409/422 refusing the decision | decision **cleared** — nothing moved | PayHold's reason; decide again |
+| 5xx / unreachable | decision kept | "saved — retry it" (502) |
+
+`payhold-refund` refuses a booking with a dispute open locally or on PayHold
+(`409 under_dispute`), so disputed money is only ever moved by the decision.
+Migration 077 also refuses any non-service-role write to the decision columns,
+because the relay trusts what they say.
+
+Resolutions also arrive by webhook — `dispute.resolved` (and the legacy
+`deal.dispute_resolved`, which reports a split as `refund` and is ignored once
+the row is resolved) — which covers a case decided in PayHold's dashboard. The
+webhook reads the outcome from `GET /disputes/:id`, never from the payload.
 
 **AutoHire's own routes** — what the app and its hosts call:
 
@@ -137,8 +191,10 @@ judgement made in their dashboard. Resolutions come back by webhook.
 | `payhold-balance` | POST | host | Withdraw — an expedite, not the route |
 | `payhold-earnings` | GET | host | Every trip's money and the stage it's at |
 | `payhold-dispute` | GET | either party (admin: all) | The cases they are party to |
+| `payhold-dispute?id=` | GET | admin | One dispute with its PayHold case — offers, evidence, timeline; amounts in major units of the deal currency. Links a row with no case id to its deal's case |
 | `payhold-dispute` | POST | renter or host | Raises a case — **freezes the payout** |
-| `payhold-refund` | POST | host (own bookings) or admin | Refunds the renter, full or partial |
+| `payhold-dispute` | POST `{action:'resolve'}` | admin | Records the decision, relays the recorded one to PayHold (`retry: true` re-relays it). `resolved` or `not_trusted_yet` |
+| `payhold-refund` | POST | host (own bookings) or admin | Refunds the renter, full or partial. Refused while the booking is under dispute |
 | `payhold-webhook` | POST | PayHold's server | Signed events → bookings, refunds, disputes |
 
 Every one of these takes the side, the seller id and the party from the
@@ -354,7 +410,18 @@ these payloads carry deal amounts and a signature proves who sent a thing, not
 that nobody read it.
 
 Subscribe it to: `order.funded_held`, `order.clearing_started`,
-`order.released`, `payout.paid`, `refund.succeeded`, `dispute.opened`.
+`order.released`, `payout.paid`, `refund.succeeded`, `dispute.opened`,
+`dispute.resolved`. (`deal.dispute_resolved` is also handled if an older
+endpoint is still subscribed to it, but `dispute.resolved` is the one to add.)
+
+**Deploy `payhold-webhook` before PayHold starts sending the new
+`dispute.opened` payload** (`{dispute_id, raised_by, reason, reason_code,
+disputed_amount}`). The old handler stored whatever `data.dispute_id` held and
+named the renter as raiser regardless.
+
+**Then, in PayHold Settings, turn on `dispute_decision_relay`** once AutoHire's
+admin should be the one deciding. Until it is on, a decision made in
+Admin → Disputes is saved but not executed (`not_trusted_yet`).
 
 **The signing secret also appears once.** Copy it now — it becomes
 `PAYHOLD_WEBHOOK_SECRET` in the next step. Unlike the API key it is encrypted
@@ -899,11 +966,12 @@ them is a live call into the rail; only a host who has picked Bank pays for it.
   PayHold reports `order.funded_held` — so an instant-book hold releases with
   neither party acting, then clears on PayHold's window. Rentals still depend
   on the trip-return confirm (button TBD) or the auto-release timer.
-- **Disputes go both ways now, but no button raises one.** `payhold-dispute`
+- **Disputes go both ways, and are decided in AutoHire.** `payhold-dispute`
   pushes a case to PayHold — which is what freezes the payout — and the webhook
-  mirrors PayHold's back. Neither the trip screen nor `/admin` calls it yet, so
-  the only way to raise one today is the API. Resolution is still one-way by
-  design: PayHold refuses `resolve` from an API key.
+  mirrors PayHold's back, including `dispute.resolved`. An admin decides in
+  Admin → Disputes and `payhold-dispute` relays that decision; PayHold executes
+  it once `dispute_decision_relay` is on (see "Disputes are decided in
+  AutoHire" above). The trip screen still has no button to *raise* a case.
 - **Refunds have an endpoint, not a screen.** `payhold-refund` is wired for
   hosts (own bookings) and admins, full or partial. Nothing in the UI calls it,
   so a refund is still a curl or a dashboard action.

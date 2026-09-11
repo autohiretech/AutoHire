@@ -1,7 +1,7 @@
 // AutoHire — payhold-dispute Edge Function.
 //
 // Opens a case in PayHold's Resolution Center and mirrors it into AutoHire's
-// `disputes` table, in that order.
+// `disputes` table, in that order — and, for admins, decides it.
 //
 // Until this existed, disputes were ONE-WAY: a case opened in PayHold arrived
 // here by webhook, but a dispute raised in AutoHire stayed in AutoHire. That
@@ -12,20 +12,34 @@
 // Order matters and is deliberate. PayHold is called FIRST: if it refuses, no
 // local row is written, so AutoHire never shows a dispute that is not freezing
 // anything. If PayHold accepts and our write then fails, the case still exists
-// on their side and the `dispute.opened` webhook mirrors it in — the loss is a
-// slightly worse `raised_by`, not a missed freeze.
+// on their side and the `dispute.opened` webhook mirrors it in.
 //
 // Which side raised it comes from the SESSION, never the request. A renter who
-// could pass raised_by=seller would file against themselves.
+// could pass raised_by=seller would file against themselves. Likewise the name
+// on a decision is the admin's session email, never a field in the body.
 //
-//   GET  /payhold-dispute   every dispute this person is party to
-//   POST /payhold-dispute   { bookingId, reason, reasonCode?, amount? }
+//   GET  /payhold-dispute          every dispute this person is party to
+//   GET  /payhold-dispute?id=…     admin: one dispute + its PayHold case
+//   POST /payhold-dispute          { bookingId, reason, reasonCode?, amount? }  open
+//   POST /payhold-dispute          { action: 'resolve', disputeId, resolution,
+//                                    refundAmount?, note }                     admin
+//   POST /payhold-dispute          { action: 'resolve', disputeId, retry: true } admin
+//
+// Deciding is AutoHire's; moving the money is PayHold's. See `admin.ts` for the
+// record-then-relay rule that keeps a retry from moving money differently.
 //
 // Secrets:  PAYHOLD_* (see _shared/payhold.ts), ALLOWED_ORIGIN
 // Deploy:   supabase functions deploy payhold-dispute
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { openDispute, payholdConfigured, toMinorUnits } from '../_shared/payhold.ts';
+import { supabaseDisputeStore, type BookingRef } from '../_shared/dispute-mirror.ts';
+import {
+  DisputeActionError,
+  adminDisputeDetail,
+  resolveAdminDispute,
+  type AdminDeps,
+} from './admin.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
@@ -66,8 +80,25 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ error: 'Invalid or expired session.' }, 401);
     const uid = userData.user.id;
 
+    const callerRole = async () => {
+      const { data: caller } = await admin.from('profiles').select('role').eq('id', uid).single();
+      return (caller?.role as string | undefined) ?? null;
+    };
+
+    const adminDeps = (): AdminDeps => ({
+      store: supabaseDisputeStore(admin),
+      booking: async (bookingId) => {
+        const { data } = await admin
+          .from('bookings')
+          .select('id, renter_id, host_id, total_rwf, charge_currency, payhold_deal_id')
+          .eq('id', bookingId)
+          .maybeSingle();
+        return (data as BookingRef | null) ?? null;
+      },
+    });
+
     // ---------------------------------------------------------------------
-    // GET — the cases this person is party to
+    // GET — the cases this person is party to, or (admin) one case in full
     // ---------------------------------------------------------------------
     //
     // Both sides, in one list. A host wants the cases filed against them and
@@ -76,11 +107,13 @@ Deno.serve(async (req: Request) => {
     // reads today — this route exists so a *party* can see their own without
     // going through an admin.
     if (req.method === 'GET') {
-      const { data: caller } = await admin
-        .from('profiles')
-        .select('role')
-        .eq('id', uid)
-        .single();
+      const role = await callerRole();
+      const localId = new URL(req.url).searchParams.get('id');
+
+      if (localId) {
+        if (role !== 'admin') return json({ error: 'Only an admin can open a dispute case.' }, 403);
+        return json(await adminDisputeDetail(localId, adminDeps()), 200);
+      }
 
       let q = admin
         .from('disputes')
@@ -88,7 +121,7 @@ Deno.serve(async (req: Request) => {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (caller?.role !== 'admin') q = q.or(`raised_by.eq.${uid},against.eq.${uid}`);
+      if (role !== 'admin') q = q.or(`raised_by.eq.${uid},against.eq.${uid}`);
 
       const { data: rows, error } = await q;
       if (error) return json({ error: error.message }, 500);
@@ -115,11 +148,24 @@ Deno.serve(async (req: Request) => {
 
     if (req.method !== 'POST') return json({ error: 'GET or POST only.' }, 405);
 
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+
+    // ---------------------------------------------------------------------
+    // POST { action } — admin actions. Opening a case has no `action`.
+    // ---------------------------------------------------------------------
+    if (body.action !== undefined) {
+      if (body.action !== 'resolve') return json({ error: `Unknown action "${String(body.action)}".` }, 400);
+      if ((await callerRole()) !== 'admin') {
+        return json({ error: 'Only an admin can decide a dispute.' }, 403);
+      }
+      const decidedBy = `autohire-admin:${userData.user.email ?? uid}`;
+      return json(await resolveAdminDispute(body, decidedBy, adminDeps()), 200);
+    }
+
     // ---------------------------------------------------------------------
     // POST — open one
     // ---------------------------------------------------------------------
 
-    const body = await req.json().catch(() => ({}));
     const bookingId = typeof body.bookingId === 'string' ? body.bookingId : '';
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
     const reasonCode = typeof body.reasonCode === 'string' ? body.reasonCode : 'other';
@@ -163,13 +209,18 @@ Deno.serve(async (req: Request) => {
     // One open case per booking — the same rule the webhook's mirror follows.
     // A second case against one deal would give an operator two half-records of
     // the same argument and no way to tell which freeze is the live one.
-    const { data: existing } = await admin
+    // Filtered to open cases: a booking may carry a resolved one from before,
+    // and that is history, not a reason to refuse.
+    const { data: activeRows } = await admin
       .from('disputes')
       .select('id, status, payhold_dispute_id')
       .eq('booking_id', bookingId)
-      .maybeSingle();
+      .in('status', ['open', 'under_review'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const existing = activeRows?.[0];
 
-    if (existing && ['open', 'under_review'].includes(existing.status as string)) {
+    if (existing) {
       return json(
         {
           error: 'A case is already open on this booking.',
@@ -209,13 +260,12 @@ Deno.serve(async (req: Request) => {
     const now = new Date().toISOString();
 
     // Re-read: the `dispute.opened` webhook may have landed while we waited on
-    // the call above and mirrored the case already. If it did, its row has the
-    // renter as raiser by default — correct it to who actually filed.
-    const { data: raced } = await admin
-      .from('disputes')
-      .select('id')
-      .eq('booking_id', bookingId)
-      .maybeSingle();
+    // the call above and mirrored the case already. Found by the case id first,
+    // then by an OPEN row on the booking — never a resolved one, which would
+    // be re-opened and have its decision overwritten.
+    const store = supabaseDisputeStore(admin);
+    const raced = (payholdDisputeId ? await store.byPayholdId(payholdDisputeId) : null) ??
+      (await store.activeUnlinkedForBooking(bookingId));
 
     if (raced) {
       const { error: upErr } = await admin
@@ -225,7 +275,6 @@ Deno.serve(async (req: Request) => {
           against,
           reason,
           amount_rwf: amountRwf,
-          status: 'open',
           // Only when we have one. PayHold being unconfigured must not erase an
           // id the webhook already wrote — that id is the freeze.
           ...(payholdDisputeId ? { payhold_dispute_id: payholdDisputeId } : {}),
@@ -249,6 +298,8 @@ Deno.serve(async (req: Request) => {
       created_at: now,
       status: 'open',
       payhold_dispute_id: payholdDisputeId,
+      payhold_status: payholdDisputeId ? 'open' : null,
+      reason_code: reasonCode,
     });
 
     if (insErr) {
@@ -268,6 +319,9 @@ Deno.serve(async (req: Request) => {
     // nothing is holding it is worse than one that says nothing.
     return json({ disputeId: id, payholdDisputeId, frozen: !!payholdDisputeId, status: 'open', side }, 200);
   } catch (e) {
+    if (e instanceof DisputeActionError) {
+      return json({ error: e.message, code: e.code, ...e.extra }, e.status);
+    }
     const status = (e as { status?: number }).status ?? 500;
     return json({ error: e instanceof Error ? e.message : String(e) }, status);
   }

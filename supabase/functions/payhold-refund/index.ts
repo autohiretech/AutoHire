@@ -7,7 +7,9 @@
 //
 // Who may call it, and why not everyone:
 //
-//   admin  — always. Refunding is how a decided dispute is actually settled.
+//   admin  — any booking not under dispute. A disputed booking is settled by
+//            deciding the dispute (Admin → Disputes → `payhold-dispute`), which
+//            has PayHold move the money; a refund here would route around it.
 //   host   — their own bookings. A host who cancels on a renter must be able to
 //            give the money back without waiting on support.
 //   renter — never. A renter refunding themselves mid-trip is not a refund, it
@@ -34,6 +36,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   PayHoldError,
+  hasOpenDisputeOnDeal,
   payholdConfigured,
   refundDeal,
   toMinorUnits,
@@ -126,6 +129,47 @@ Deno.serve(async (req: Request) => {
     }
     if (booking.payment_status === 'refunded') {
       return json({ error: 'This booking has already been refunded.', code: 'already_refunded' }, 409);
+    }
+
+    // Not while a dispute is open. A refund here would move the renter's money
+    // on one person's say-so while a case about that same money is waiting on
+    // a decision — and the decision, when it comes, moves money too. Disputed
+    // money moves once, through Admin → Disputes (`payhold-dispute`). Both
+    // records are checked, because either can know before the other does: a
+    // case opened in PayHold reaches `disputes` only when its webhook lands.
+    const { data: activeDisputes, error: disputeErr } = await admin
+      .from('disputes')
+      .select('id')
+      .eq('booking_id', booking.id)
+      .in('status', ['open', 'under_review'])
+      .limit(1);
+    if (disputeErr) return json({ error: disputeErr.message }, 500);
+
+    let underDispute = (activeDisputes ?? []).length > 0;
+    if (!underDispute) {
+      try {
+        underDispute = await hasOpenDisputeOnDeal(booking.payhold_deal_id as string);
+      } catch (e) {
+        // Fail closed: not knowing whether the money is under dispute is not
+        // permission to move it.
+        return json(
+          {
+            error: 'Could not check PayHold for an open dispute on this booking, so no refund was sent. Try again shortly.',
+            code: 'dispute_check_failed',
+            detail: e instanceof Error ? e.message : String(e),
+          },
+          502,
+        );
+      }
+    }
+    if (underDispute) {
+      return json(
+        {
+          error: 'This booking is under dispute — decide it in Admin → Disputes.',
+          code: 'under_dispute',
+        },
+        409,
+      );
     }
 
     const currency = (booking.charge_currency as string | null) ?? 'RWF';

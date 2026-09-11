@@ -539,7 +539,15 @@ export type DisputeStatus =
   | 'under_review'
   | 'resolved_renter'
   | 'resolved_host'
+  /** PayHold executed a partial refund — neither side won outright. */
+  | 'resolved_split'
   | 'dismissed';
+
+/** How an admin decides a PayHold-backed dispute. PayHold moves the money. */
+export type DisputeResolution = 'release' | 'refund' | 'partial_refund';
+
+/** PayHold's own status for the case behind a dispute. */
+export type PayholdDisputeStatus = 'open' | 'resolved_released' | 'resolved_refunded' | 'resolved_split';
 
 /** A damage/charge claim tied to a booking, resolved by an admin. */
 export interface Dispute {
@@ -552,6 +560,63 @@ export interface Dispute {
   amountRwf: number;
   createdAt: string;
   status: DisputeStatus;
+  /** The PayHold case freezing this booking's payout. Null = local-only. */
+  payholdDisputeId?: string | null;
+  payholdStatus?: PayholdDisputeStatus | null;
+  /**
+   * The decision. Set with `status: 'under_review'` and no `resolvedAt` while it
+   * is recorded but not yet executed by PayHold (e.g. the relay setting is off).
+   */
+  resolution?: DisputeResolution | null;
+  /** partial_refund only — minor units of `currency`. */
+  refundAmountMinor?: number | null;
+  /** The PayHold deal currency every `*Minor` field is in. */
+  currency?: string | null;
+  /** Minor units of `currency`; null means the whole deal is disputed. */
+  disputedAmountMinor?: number | null;
+  resolutionNote?: string | null;
+  /** `autohire-admin:<email>` for a decision made in AutoHire. */
+  decidedBy?: string | null;
+  /** When PayHold executed the decision. */
+  resolvedAt?: string | null;
+  reasonCode?: string | null;
+}
+
+/**
+ * One dispute and the PayHold case behind it, for Admin → Disputes. Every
+ * amount in `payhold` is in MAJOR units of `payhold.currency` (the deal
+ * currency) — the same units `resolvePayholdDispute`'s `refundAmount` takes.
+ * `payhold` is null when no PayHold case backs the dispute.
+ */
+export interface AdminDisputeDetail {
+  dispute: Dispute;
+  payhold: {
+    id: string;
+    status: PayholdDisputeStatus;
+    currency: string;
+    dealAmount: number;
+    /** Null means the whole deal is disputed. */
+    disputedAmount: number | null;
+    reasonCode: string | null;
+    raisedBy: 'buyer' | 'seller';
+    offers: {
+      id: string;
+      kind: string;
+      status: string;
+      amount: number | null;
+      offeredBy: 'buyer' | 'seller';
+      createdAt: string;
+    }[];
+    evidence: {
+      id: string;
+      kind: string;
+      description: string;
+      reference: string | null;
+      uploadedBy: 'buyer' | 'seller';
+      createdAt: string;
+    }[];
+    timeline: { at: string; event: string; actor: string; detail: string }[];
+  } | null;
 }
 
 // ---------------------------------------------------------------------------

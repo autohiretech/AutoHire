@@ -3,7 +3,9 @@ import type {
   AppNotification,
   Booking,
   Conversation,
+  AdminDisputeDetail,
   Dispute,
+  DisputeResolution,
   DisputeStatus,
   Flag,
   Host,
@@ -2447,9 +2449,57 @@ export const supabaseClient = {
       await run(sb().from('disputes').select('*').order('created_at', { ascending: false })),
     );
   },
+  /**
+   * Set a dispute's status locally. For disputes with NO PayHold case behind
+   * them only — a PayHold-backed one is decided with `resolvePayholdDispute`,
+   * which is what actually moves the held money.
+   */
   async resolveDispute(id: string, status: DisputeStatus) {
     const row = await run(sb().from('disputes').update({ status }).eq('id', id).select('*').maybeSingle());
     return mapRow<Dispute>(row);
+  },
+  /**
+   * One dispute with its PayHold case — offers, evidence, timeline — for the
+   * admin. Amounts in `payhold` are major units of `payhold.currency`.
+   */
+  async getAdminDispute(id: string): Promise<AdminDisputeDetail> {
+    const { data, error } = await getSupabase().functions.invoke(
+      `payhold-dispute?id=${encodeURIComponent(id)}`,
+      { method: 'GET' },
+    );
+    if (error) throw await fnError(error);
+    const payload = data as Partial<AdminDisputeDetail> & { error?: string };
+    if (payload?.error || !payload?.dispute) {
+      throw new Error(payload?.error ?? 'Could not load the dispute.');
+    }
+    return { dispute: payload.dispute, payhold: payload.payhold ?? null };
+  },
+  /**
+   * Decide a PayHold-backed dispute. The decision is saved on the dispute first,
+   * then relayed to PayHold, which moves the money; `retry: true` relays the
+   * saved decision again and sends nothing else. `refundAmount` (partial_refund
+   * only) is major units of the PayHold deal currency.
+   *
+   * `not_trusted_yet`: the decision is saved, but PayHold's
+   * `dispute_decision_relay` setting is off — retry once it is on. Any other
+   * failure throws with the server's message.
+   */
+  async resolvePayholdDispute(
+    input:
+      | { disputeId: string; resolution: DisputeResolution; refundAmount?: number; note: string }
+      | { disputeId: string; retry: true },
+  ): Promise<{ outcome: 'resolved'; dispute: Dispute } | { outcome: 'not_trusted_yet'; dispute: Dispute }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-dispute', {
+      body: { action: 'resolve', ...input },
+    });
+    if (error) throw await fnError(error);
+    const payload = data as { outcome?: string; dispute?: Dispute; error?: string };
+    if (payload?.error || !payload?.dispute) {
+      throw new Error(payload?.error ?? 'Could not resolve the dispute.');
+    }
+    if (payload.outcome === 'resolved') return { outcome: 'resolved', dispute: payload.dispute };
+    if (payload.outcome === 'not_trusted_yet') return { outcome: 'not_trusted_yet', dispute: payload.dispute };
+    throw new Error('Could not resolve the dispute.');
   },
   async getAdminStats(): Promise<AdminStats> {
     const [bookingRows, payoutRows, listings, hosts, flagsOpen, disputesOpen] = await Promise.all([

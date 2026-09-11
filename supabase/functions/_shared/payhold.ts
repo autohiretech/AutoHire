@@ -1241,14 +1241,236 @@ export function collectionOptionsFor(country: string): Promise<CollectionOptions
 
 export type DisputeSide = 'buyer' | 'seller';
 
+/** PayHold's four case states. Everything but `open` is a decision that moved money. */
+export type PayholdDisputeStatus = 'open' | 'resolved_released' | 'resolved_refunded' | 'resolved_split';
+
+/** How an admin decides a case — the `resolution` PayHold's resolve takes. */
+export type DisputeResolution = 'release' | 'refund' | 'partial_refund';
+
+/** AutoHire's own `dispute_status` enum (migration 077 added `resolved_split`). */
+export type LocalDisputeStatus =
+  | 'open'
+  | 'under_review'
+  | 'resolved_renter'
+  | 'resolved_host'
+  | 'resolved_split'
+  | 'dismissed';
+
+/** One case, as `GET /disputes` lists it. Amounts are minor units of the deal currency. */
+export interface Dispute {
+  id: string;
+  deal_id: string;
+  raised_by: DisputeSide;
+  raised_by_actor: string | null;
+  reason: string;
+  reason_code: string | null;
+  /** Null means the whole deal is disputed — not zero. */
+  disputed_amount: number | null;
+  status: PayholdDisputeStatus;
+  opened_at: string;
+  resolved_at: string | null;
+  resolution_note: string | null;
+  decided_by: string | null;
+  /** Embedded on list rows. */
+  evidence?: DisputeEvidence[];
+}
+
+export interface DisputeOffer {
+  id: string;
+  dispute_id: string;
+  deal_id: string;
+  offered_by: DisputeSide;
+  offered_by_actor: string | null;
+  kind: string;
+  /** Minor units; set on `partial_refund` offers only. */
+  amount: number | null;
+  extend_to: string | null;
+  note: string | null;
+  status: string;
+  expires_at: string | null;
+  created_at: string;
+  responded_at: string | null;
+  responded_by_actor: string | null;
+}
+
+export interface DisputeEvidence {
+  id: string;
+  dispute_id: string;
+  deal_id: string;
+  uploaded_by: DisputeSide;
+  uploaded_by_actor: string | null;
+  kind: string;
+  description: string;
+  /** Where the file lives. PayHold stores no bytes. */
+  storage_ref: string | null;
+  captured_at: string | null;
+  created_at: string;
+}
+
+/** One row of PayHold's `dispute_timeline` RPC. */
+export interface DisputeTimelineEntry {
+  at: string;
+  kind: string;
+  actor: string | null;
+  side: DisputeSide | null;
+  summary: string | null;
+  details: Record<string, unknown> | null;
+}
+
+/** The full case — what `GET /disputes/:id` and `POST /disputes/:id/resolve` return. */
+export interface DisputeCase extends Dispute {
+  offers: DisputeOffer[];
+  evidence: DisputeEvidence[];
+  timeline: DisputeTimelineEntry[];
+  open_offer?: DisputeOffer | null;
+  responds_by?: string | null;
+}
+
+/** One case with its offers, evidence and timeline. */
+export function getDispute(id: string): Promise<DisputeCase> {
+  return call(`/disputes/${encodeURIComponent(id)}`, { method: 'GET' });
+}
+
+/**
+ * This tenant's cases, newest first, optionally narrowed to one deal.
+ *
+ * The filters are re-applied here and not taken on trust — the same lesson as
+ * `findSellerByExternalUserId`. A PayHold that ignored `deal_id` would answer
+ * with every case the tenant has, and picking row zero of that would attach
+ * somebody else's dispute to this booking.
+ */
+export async function listDisputes(
+  opts: { dealId?: string; status?: string; limit?: number } = {},
+): Promise<Dispute[]> {
+  const params = new URLSearchParams();
+  if (opts.dealId) params.set('deal_id', opts.dealId);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+
+  const { disputes } = await call<{ disputes: Dispute[] }>(`/disputes${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+  });
+  const statuses = opts.status ? opts.status.split(',') : null;
+  return (disputes ?? []).filter(
+    (d) => (!opts.dealId || d.deal_id === opts.dealId) && (!statuses || statuses.includes(d.status)),
+  );
+}
+
+/**
+ * Relay an AutoHire admin's decision on a case. PayHold executes it — release,
+ * refund, or the split — inside its own transaction.
+ *
+ * PayHold refuses this with a 422 until the account owner turns on
+ * `dispute_decision_relay` in PayHold Settings (`isDisputeRelayOff`). It answers
+ * 200 with the case when it is already resolved the same way, and 409 when it
+ * was resolved differently (`isDisputeAlreadyResolved`).
+ *
+ * `refundAmount` is minor units and is sent for `partial_refund` only; a split
+ * without one is refused here rather than reaching PayHold as "refund null".
+ * `decidedBy` names the person — callers take it from a server-side session.
+ */
+export function resolveDispute(
+  id: string,
+  input: { resolution: DisputeResolution; note: string; refundAmount?: number; decidedBy: string },
+): Promise<DisputeCase> {
+  if (
+    input.resolution === 'partial_refund' &&
+    !(Number.isInteger(input.refundAmount) && (input.refundAmount as number) > 0)
+  ) {
+    return Promise.reject(
+      new PayHoldError(
+        'A partial refund needs a positive whole refund amount in minor units.',
+        400,
+        'policy_violation',
+      ),
+    );
+  }
+  return call(`/disputes/${encodeURIComponent(id)}/resolve`, {
+    method: 'POST',
+    body: {
+      resolution: input.resolution,
+      note: input.note,
+      decided_by: input.decidedBy,
+      ...(input.resolution === 'partial_refund' ? { refund_amount: input.refundAmount } : {}),
+    },
+  });
+}
+
+/**
+ * PayHold declining a relayed decision because `dispute_decision_relay` is off.
+ * Matched loosely — any 422 whose code or message mentions the relay or a
+ * setting — because the exact code is PayHold's to choose. Designed behaviour,
+ * reported as "not trusted yet" and never retried automatically.
+ */
+export function isDisputeRelayOff(e: unknown): boolean {
+  if (!(e instanceof PayHoldError) || e.status !== 422) return false;
+  return /relay|setting/i.test(`${e.code ?? ''} ${e.message}`);
+}
+
+/** PayHold saying the case was already decided — differently from what we sent. */
+export function isDisputeAlreadyResolved(e: unknown): boolean {
+  if (!(e instanceof PayHoldError) || e.status !== 409) return false;
+  return /already[\s_-]*(been\s+)?resolved|already[\s_-]*decided/i.test(`${e.code ?? ''} ${e.message}`);
+}
+
+export function isResolvedPayholdStatus(status: unknown): status is Exclude<PayholdDisputeStatus, 'open'> {
+  return status === 'resolved_released' || status === 'resolved_refunded' || status === 'resolved_split';
+}
+
+/**
+ * PayHold's case status in AutoHire's words. Released money went to the host,
+ * refunded money to the renter, a split is its own outcome. An open case stays
+ * `under_review` locally when an admin already has it there — PayHold has no
+ * word for "somebody is looking at this".
+ */
+export function localDisputeStatus(
+  payholdStatus: string,
+  current?: string | null,
+): LocalDisputeStatus {
+  switch (payholdStatus) {
+    case 'resolved_released':
+      return 'resolved_host';
+    case 'resolved_refunded':
+      return 'resolved_renter';
+    case 'resolved_split':
+      return 'resolved_split';
+    case 'open':
+      return current === 'under_review' ? 'under_review' : 'open';
+    default:
+      // A status PayHold added after this was written. Leave ours alone rather
+      // than guess which party it favours.
+      return (current as LocalDisputeStatus | null | undefined) ?? 'open';
+  }
+}
+
+/** The decision a resolved status records. Null while the case is open. */
+export function resolutionForPayholdStatus(status: unknown): DisputeResolution | null {
+  switch (status) {
+    case 'resolved_released':
+      return 'release';
+    case 'resolved_refunded':
+      return 'refund';
+    case 'resolved_split':
+      return 'partial_refund';
+    default:
+      return null;
+  }
+}
+
+/** Is a case open on this deal right now? A refund must not route around one. */
+export async function hasOpenDisputeOnDeal(dealId: string): Promise<boolean> {
+  const open = await listDisputes({ dealId, status: 'open', limit: 5 });
+  return open.length > 0;
+}
+
 /**
  * Open a case in PayHold's Resolution Center. Opening one freezes the payout on
  * that deal — that freeze is the reason to mirror AutoHire's disputes here at
  * all, rather than only tracking them locally.
  *
- * Note PayHold refuses `resolve` from an API key: deciding a case is a person's
- * judgement made in their dashboard, not something AutoHire's server can do on
- * its own behalf. Resolutions therefore travel back to us by webhook.
+ * Deciding it happens in AutoHire's admin: `payhold-dispute` records the
+ * decision and relays it with `resolveDispute`, and PayHold moves the money.
  */
 export function openDispute(input: {
   dealId: string;

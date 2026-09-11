@@ -30,6 +30,11 @@ import {
   type Deal,
   type WebhookEvent,
 } from '../_shared/payhold.ts';
+import {
+  mirrorDisputeOpened,
+  mirrorDisputeResolved,
+  supabaseDisputeStore,
+} from '../_shared/dispute-mirror.ts';
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -306,30 +311,38 @@ Deno.serve(async (req: Request) => {
 
       // A case was opened in PayHold's Resolution Center — by either side, or
       // by an operator there. Payouts on this deal are frozen on their side;
-      // mirroring it here is what makes it visible in AutoHire.
+      // mirroring it here is what makes it visible in AutoHire, and it is
+      // decided from Admin → Disputes.
+      //
+      // The case is read back from PayHold (`_shared/dispute-mirror.ts`): the
+      // payload is `{dispute_id, raised_by, reason, reason_code,
+      // disputed_amount}` now and was `{}` before, and in neither case is it
+      // trusted for more than which case to look at.
       case 'dispute.opened': {
         const booking = await bookingFor(admin, deal.id);
-        if (booking) {
-          const existing = await admin
-            .from('disputes')
-            .select('id')
-            .eq('booking_id', booking.id)
-            .maybeSingle();
-          if (!existing.data) {
-            await admin.from('disputes').insert({
-              id: `dsp-${Date.now()}`,
-              booking_id: booking.id,
-              raised_by: booking.renter_id,
-              against: booking.host_id,
-              reason: String(event.data?.reason ?? 'Opened in PayHold'),
-              amount_rwf: booking.total_rwf,
-              created_at: new Date().toISOString(),
-              status: 'open',
-              payhold_dispute_id: String(event.data?.dispute_id ?? ''),
-            });
-          }
-        }
-        return json({ received: true, booking: booking?.id ?? null }, 200);
+        const mirrored = booking
+          ? await mirrorDisputeOpened(supabaseDisputeStore(admin), booking, deal, event.data)
+          : null;
+        return json({ received: true, booking: booking?.id ?? null, dispute: mirrored }, 200);
+      }
+
+      // A decision executed — relayed from AutoHire's admin, or made by a
+      // person in PayHold. Status and decision are read from PayHold's case.
+      // `deal.dispute_resolved` is the legacy event (it calls a split
+      // `refund`); it only applies while the row is not already resolved.
+      case 'dispute.resolved':
+      case 'deal.dispute_resolved': {
+        const booking = await bookingFor(admin, deal.id);
+        const mirrored = booking
+          ? await mirrorDisputeResolved(
+            supabaseDisputeStore(admin),
+            booking,
+            deal,
+            event.data,
+            event.event === 'deal.dispute_resolved',
+          )
+          : null;
+        return json({ received: true, booking: booking?.id ?? null, dispute: mirrored }, 200);
       }
 
       // Everything else is observable on PayHold's side and changes nothing
