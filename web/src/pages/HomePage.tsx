@@ -731,8 +731,13 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
           )}
         </div>
 
-        {/* Thumbnails — the other featured cars (desktop only) */}
-        <div className="hidden grid-cols-2 grid-rows-2 gap-1 md:grid">
+        {/* Thumbnails — the other featured cars (desktop only). Photos are
+            absolutely positioned so they fill a tile without sizing it: an
+            in-flow `h-full` <img> falls back to its natural aspect ratio in a
+            grid row, which grew this column past the hero's fixed height on
+            wide screens and left a blank band under the hero photo. Same fix
+            as CarDetailPage's gallery. */}
+        <div className="hidden min-h-0 grid-cols-2 grid-rows-2 gap-1 md:grid">
           {others.map((o) => {
             const idx = items.indexOf(o);
             return (
@@ -740,13 +745,13 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
                 key={o.id}
                 type="button"
                 onClick={() => setI(idx)}
-                className="group relative overflow-hidden"
+                className="group relative min-h-0 overflow-hidden"
                 aria-label={`Show ${o.title}`}
               >
                 <Img
                   src={o.photos[0]}
                   alt={o.title}
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
                 <span className="absolute inset-x-0 bottom-0 line-clamp-1 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1 pt-4 text-left text-caption font-medium text-white">
                   {o.title}
