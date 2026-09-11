@@ -836,17 +836,51 @@ export interface PayholdRefund {
   message: string;
 }
 
+/**
+ * Money for one currency on Admin → Overview.
+ *
+ * Booking and payout amounts are stored in the CAR's own currency
+ * (`listings.price_currency`) even though their columns end in `_rwf` — the
+ * names predate multi-country listings, and `payhold-create-deal` prices a
+ * Dubai car in AED. So the overview keeps one of these per currency and never
+ * adds two currencies together.
+ */
+export interface AdminMoneyByCurrency {
+  currency: string;
+  /** Bookings that were paid (including partly refunded ones). */
+  paidBookings: number;
+  /** What renters paid for those bookings, AutoHire's fee included. */
+  gross: number;
+  /** AutoHire's service fee on those bookings. */
+  revenue: number;
+  /** Paid, and still held until the trip is over. */
+  held: number;
+  /** Totals of fully refunded bookings. */
+  refunded: number;
+  payoutsPaid: number;
+  /** Scheduled, processing or failed payouts: owed to hosts, not yet sent. */
+  payoutsDue: number;
+}
+
 /** Platform-wide figures for the admin reporting view. */
-export interface AdminStats {
-  grossRwf: number;
-  revenueRwf: number;
-  payoutsPaidRwf: number;
-  payoutsDueRwf: number;
-  bookings: number;
+export interface AdminOverview {
+  /** One entry per currency with any paid, refunded or payout activity. */
+  money: AdminMoneyByCurrency[];
+  bookings: {
+    total: number;
+    paid: number;
+    awaitingPayment: number;
+    refunded: number;
+    upcoming: number;
+    onTrip: number;
+    completed: number;
+    cancelled: number;
+  };
+  people: { users: number; renters: number; hosts: number; admins: number };
   listings: number;
-  hosts: number;
   openFlags: number;
   openDisputes: number;
+  failedPayouts: number;
 }
 
 // ----------------------------------------------------------------------------

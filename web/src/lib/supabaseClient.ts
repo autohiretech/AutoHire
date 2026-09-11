@@ -1,5 +1,6 @@
 import type {
-  AdminStats,
+  AdminMoneyByCurrency,
+  AdminOverview,
   AppNotification,
   Booking,
   Conversation,
@@ -2582,29 +2583,147 @@ export const supabaseClient = {
     if (payload.outcome === 'not_trusted_yet') return { outcome: 'not_trusted_yet', dispute: payload.dispute };
     throw new Error('Could not resolve the dispute.');
   },
-  async getAdminStats(): Promise<AdminStats> {
-    const [bookingRows, payoutRows, listings, hosts, flagsOpen, disputesOpen] = await Promise.all([
-      run(sb().from('bookings').select('service_fee_rwf, total_rwf')),
-      run(sb().from('payouts').select('amount_rwf, status')),
-      sb().from('listings').select('id', { count: 'exact', head: true }),
-      sb().from('public_profiles').select('id', { count: 'exact', head: true }).not('owner_type', 'is', null),
-      sb().from('flags').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-      sb().from('disputes').select('id', { count: 'exact', head: true }).in('status', ['open', 'under_review']),
-    ]);
-    const sum = (rows: Record<string, unknown>[], key: string) =>
-      rows.reduce((s, r) => s + Number(r[key] ?? 0), 0);
-    const payouts = (payoutRows ?? []) as Record<string, unknown>[];
-    const bookingsArr = (bookingRows ?? []) as Record<string, unknown>[];
+  /**
+   * Platform figures for Admin → Overview.
+   *
+   * Every booking and payout amount is in the CAR's currency — the `_rwf`
+   * columns predate multi-country listings — so money is grouped by the
+   * listing's `price_currency` (the booking's `charge_currency` when the
+   * listing is gone) and never summed across currencies. The previous version
+   * added AED, CNY and RWF amounts together and printed the result as RWF, and
+   * counted unpaid bookings as revenue.
+   *
+   * Rows are read in pages: PostgREST caps a response at 1,000 rows, which
+   * would otherwise quietly under-report once the platform has more bookings.
+   */
+  async getAdminOverview(): Promise<AdminOverview> {
+    type Rows = Record<string, unknown>[];
+    const readAll = async (
+      page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+    ): Promise<Rows> => {
+      const out: Rows = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await page(from, from + 999);
+        if (error) throw new Error(error.message);
+        const rows = (data ?? []) as Rows;
+        out.push(...rows);
+        if (rows.length < 1000) return out;
+      }
+    };
+    const count = (
+      builder: PromiseLike<{ count: number | null; error: { message: string } | null }>,
+    ) =>
+      builder.then(({ count: n, error }) => {
+        if (error) throw new Error(error.message);
+        return n ?? 0;
+      });
+    // An embedded many-to-one comes back as an object, but be tolerant of an array.
+    const one = (v: unknown) => (Array.isArray(v) ? v[0] : v) as Record<string, unknown> | undefined;
+    const currencyOf = (listing: unknown, chargeCurrency: unknown) =>
+      String(one(listing)?.price_currency ?? chargeCurrency ?? 'RWF').trim().toUpperCase();
+
+    const [bookingRows, payoutRows, listings, users, renters, hosts, admins, flagsOpen, disputesOpen] =
+      await Promise.all([
+        readAll((from, to) =>
+          sb()
+            .from('bookings')
+            .select('payment_status, hold_status, state, charge_currency, service_fee_rwf, total_rwf, listing:listings(price_currency)')
+            .order('id')
+            .range(from, to),
+        ),
+        readAll((from, to) =>
+          sb()
+            .from('payouts')
+            .select('amount_rwf, status, booking:bookings(charge_currency, listing:listings(price_currency))')
+            .order('id')
+            .range(from, to),
+        ),
+        count(sb().from('listings').select('id', { count: 'exact', head: true })),
+        count(sb().from('public_profiles').select('id', { count: 'exact', head: true })),
+        count(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('role', 'renter')),
+        count(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('role', 'owner')),
+        count(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')),
+        count(sb().from('flags').select('id', { count: 'exact', head: true }).eq('status', 'open')),
+        count(sb().from('disputes').select('id', { count: 'exact', head: true }).in('status', ['open', 'under_review'])),
+      ]);
+
+    const money = new Map<string, AdminMoneyByCurrency>();
+    const bucket = (currency: string) => {
+      let m = money.get(currency);
+      if (!m) {
+        m = { currency, paidBookings: 0, gross: 0, revenue: 0, held: 0, refunded: 0, payoutsPaid: 0, payoutsDue: 0 };
+        money.set(currency, m);
+      }
+      return m;
+    };
+
+    const bookings: AdminOverview['bookings'] = {
+      total: bookingRows.length,
+      paid: 0,
+      awaitingPayment: 0,
+      refunded: 0,
+      upcoming: 0,
+      onTrip: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+    for (const b of bookingRows) {
+      const total = Number(b.total_rwf ?? 0);
+      const payment = String(b.payment_status);
+      if (payment === 'paid' || payment === 'partially_refunded') {
+        const m = bucket(currencyOf(b.listing, b.charge_currency));
+        m.paidBookings += 1;
+        m.gross += total;
+        m.revenue += Number(b.service_fee_rwf ?? 0);
+        if (b.hold_status === 'held') m.held += total;
+        bookings.paid += 1;
+      } else if (payment === 'refunded') {
+        bucket(currencyOf(b.listing, b.charge_currency)).refunded += total;
+        bookings.refunded += 1;
+      } else {
+        bookings.awaitingPayment += 1;
+      }
+      switch (b.state) {
+        case 'requested':
+        case 'confirmed':
+          bookings.upcoming += 1;
+          break;
+        case 'pickup':
+        case 'active':
+        case 'return':
+          bookings.onTrip += 1;
+          break;
+        case 'completed':
+          bookings.completed += 1;
+          break;
+        case 'cancelled':
+        case 'declined':
+          bookings.cancelled += 1;
+          break;
+      }
+    }
+
+    let failedPayouts = 0;
+    for (const p of payoutRows) {
+      const booking = one(p.booking);
+      const m = bucket(currencyOf(booking?.listing, booking?.charge_currency));
+      const amount = Number(p.amount_rwf ?? 0);
+      if (p.status === 'paid') {
+        m.payoutsPaid += amount;
+      } else {
+        m.payoutsDue += amount;
+        if (p.status === 'failed') failedPayouts += 1;
+      }
+    }
+
     return {
-      grossRwf: sum(bookingsArr, 'total_rwf'),
-      revenueRwf: sum(bookingsArr, 'service_fee_rwf'),
-      payoutsPaidRwf: sum(payouts.filter((p) => p.status === 'paid'), 'amount_rwf'),
-      payoutsDueRwf: sum(payouts.filter((p) => p.status !== 'paid'), 'amount_rwf'),
-      bookings: (bookingRows as unknown[]).length,
-      listings: listings.count ?? 0,
-      hosts: hosts.count ?? 0,
-      openFlags: flagsOpen.count ?? 0,
-      openDisputes: disputesOpen.count ?? 0,
+      money: [...money.values()].sort((a, b) => b.gross - a.gross || a.currency.localeCompare(b.currency)),
+      bookings,
+      people: { users, renters, hosts, admins },
+      listings,
+      openFlags: flagsOpen,
+      openDisputes: disputesOpen,
+      failedPayouts,
     };
   },
 

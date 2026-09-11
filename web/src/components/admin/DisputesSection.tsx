@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp, FileText, Handshake, History, RefreshCw, Scale 
 import type { AdminDisputeDetail, Dispute, DisputeResolution } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { formatDate, timeAgo } from '@/lib/format';
-import { formatMoney, isCurrencyCode } from '@/lib/currency';
+import { formatMoney, formatMoneyMinor, isCurrencyCode } from '@/lib/currency';
 import { DISPUTE_STATUS_META } from '@/lib/admin';
 import { cn } from '@/lib/cn';
 import { Badge, Button, Card, CardBody, CardHeader, Chip, ConfirmDialog, Input, Label, Skeleton, toast } from '@/components/ui';
@@ -31,6 +31,18 @@ function money(amount: number | null | undefined, currency: string | null | unde
   if (amount == null) return '—';
   if (currency && isCurrencyCode(currency)) return formatMoney(amount, currency);
   return `${amount.toLocaleString()}${currency ? ` ${currency}` : ''}`;
+}
+
+/**
+ * The amount claimed, in the currency it is actually in. `amount_rwf` holds
+ * the booking's own currency despite its name (the car's `price_currency`), so
+ * printing it as RWF was wrong for every non-Rwandan car. A PayHold-backed
+ * dispute knows the exact disputed amount in minor units of its deal currency;
+ * otherwise the stored amount is shown in that currency when known.
+ */
+function claimAmount(d: Dispute): string {
+  if (d.disputedAmountMinor != null && d.currency) return formatMoneyMinor(d.disputedAmountMinor, d.currency);
+  return money(d.amountRwf, d.currency ?? 'RWF');
 }
 
 const NOT_TRUSTED_COPY =
@@ -106,7 +118,7 @@ function DisputeRow({ dispute: d, nameOf }: { dispute: Dispute; nameOf: (id: str
             {nameOf(d.raisedBy)} vs {nameOf(d.against)}
           </span>
           <span className="tabular block truncate text-caption text-[var(--color-content-subtle)]">
-            {money(d.amountRwf, 'RWF')} claim · opened {timeAgo(d.createdAt)} · booking {d.bookingId}
+            {claimAmount(d)} claim · opened {timeAgo(d.createdAt)} · booking {d.bookingId}
           </span>
         </span>
         {!d.payholdDisputeId && <Badge tone="neutral">No PayHold payment</Badge>}
