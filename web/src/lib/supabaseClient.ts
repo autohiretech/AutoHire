@@ -12,6 +12,8 @@ import type {
   Host,
   CarCategory,
   HostEarnings,
+  HostPayoutAccount,
+  PayoutAccountVerifyOutcome,
   Listing,
   Message,
   ModerationStatus,
@@ -1159,6 +1161,66 @@ export const supabaseClient = {
     });
     if (error) throw await fnError(error);
     return data as PayholdVerificationSync;
+  },
+
+  /**
+   * A host's payout account as PayHold holds it, for Admin → KYC review.
+   * Admin only. `account` is null with a `reason` when there is nothing to
+   * verify: no PayHold seller yet, or a seller with no payout account.
+   */
+  async getHostPayoutAccount(
+    profileId: string,
+  ): Promise<{ account: HostPayoutAccount | null; reason?: 'not_registered' | 'no_destination' }> {
+    const { data, error } = await getSupabase().functions.invoke(
+      `payhold-verify-destination?profileId=${encodeURIComponent(profileId)}`,
+      { method: 'GET' },
+    );
+    if (error) throw await fnError(error);
+    const payload = data as {
+      account?: HostPayoutAccount | null;
+      reason?: 'not_registered' | 'no_destination';
+      error?: string;
+    } | null;
+    if (payload?.error) throw new Error(payload.error);
+    const account = payload?.account ?? null;
+    return payload?.reason ? { account, reason: payload.reason } : { account };
+  },
+
+  /**
+   * Verify or un-verify a host's payout account in PayHold. Admin only.
+   *
+   * Sends only the profile and the direction: the Edge Function re-reads the
+   * live account itself and names the admin from the session, so a stale
+   * screen cannot verify an account it was not showing. `changed` means the
+   * host replaced the account meanwhile — `account` is the new one, unverified,
+   * to check again. `not_trusted_yet` means PayHold's relay is off and nothing
+   * changed. Verifying does not end the security hold; it runs out on its own.
+   */
+  async setHostPayoutAccountVerified(
+    profileId: string,
+    verified: boolean,
+  ): Promise<{ outcome: PayoutAccountVerifyOutcome; account: HostPayoutAccount | null }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-verify-destination', {
+      body: { profileId, verified },
+    });
+    if (error) throw await fnError(error);
+    const payload = data as {
+      outcome?: PayoutAccountVerifyOutcome;
+      account?: HostPayoutAccount | null;
+      error?: string;
+    } | null;
+    const outcomes: PayoutAccountVerifyOutcome[] = [
+      'verified',
+      'unverified',
+      'not_trusted_yet',
+      'not_registered',
+      'no_destination',
+      'changed',
+    ];
+    if (payload?.error || !payload?.outcome || !outcomes.includes(payload.outcome)) {
+      throw new Error(payload?.error ?? 'Could not update the payout account.');
+    }
+    return { outcome: payload.outcome, account: payload.account ?? null };
   },
 
   async startStripeConnectOnboarding(): Promise<{ url: string }> {

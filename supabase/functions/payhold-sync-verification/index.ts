@@ -16,13 +16,18 @@
 // status. The client never gets to say which way. See `sync.ts` for why that
 // is the right shape and what it means after a partial approval.
 //
-// PayHold will refuse the relay with 422 until the account owner turns on
-// verification relay in PayHold Settings — deliberately, so that a tenant's
-// API key cannot verify its own sellers by default. That is reported as
-// `payhold: 'not_trusted_yet'`, the AutoHire decision stands, and nothing
-// retries. Verification is also NOT payability: a PayHold-verified host is
-// still unpayable while their payout destination is unverified or inside its
-// security hold, which is a separate gate this function does not touch.
+// AutoHire's admin is the only place a host is verified. PayHold's own
+// dashboard answers 409 `verification_owned_by_platform` while its
+// `platform_owns_verification` setting is on (the default), and its
+// auto-verify no longer verifies. The relay names the admin who decided —
+// `verified_by = autohire-admin:<profile id>`, from this session.
+//
+// If relay is off PayHold answers 422 `verification_relay_off`. That is
+// reported as `payhold: 'not_trusted_yet'`, the AutoHire decision stands, and
+// nothing retries. Verification is also NOT payability: a PayHold-verified host
+// is still unpayable while their payout account is unverified or inside its
+// security hold — a separate gate, verified through `payhold-verify-destination`,
+// and a hold that expires on its own timer.
 //
 // Request:  POST { profileId }            — admin session required
 // Response: { profileId, verification, verified, payhold, sellerId, … }
@@ -34,7 +39,7 @@
 // Deploy:   supabase functions deploy payhold-sync-verification
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { payholdConfigured } from '../_shared/payhold.ts';
+import { autohireAdminActor, payholdConfigured } from '../_shared/payhold.ts';
 import { relayVerification } from './sync.ts';
 
 const cors = {
@@ -94,12 +99,17 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (!profile) return json({ error: 'Profile not found.' }, 404);
 
+    // Who decided: the admin in this session, as a profile id — never a field
+    // of the request, and never an email, since PayHold stores it.
+    const verifiedBy = autohireAdminActor(uid);
+
     const result = await relayVerification(
       {
         id: profile.id as string,
         verification: (profile.verification as string | null) ?? 'unverified',
         payhold_seller_id: (profile.payhold_seller_id as string | null) ?? null,
       },
+      verifiedBy,
       {
         writeSellerLink: async (id, sellerId) => {
           const { error } = await admin

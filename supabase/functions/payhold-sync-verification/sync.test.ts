@@ -11,14 +11,19 @@ Deno.env.set('PAYHOLD_API_KEY', 'test-key');
 const { relayVerification } = await import('./sync.ts');
 
 /**
- * The relay tells PayHold what `profiles.verification` stores, and reports
- * PayHold's answer without ever making the AutoHire decision look failed.
+ * The relay tells PayHold what `profiles.verification` stores, names the admin
+ * who decided, and reports PayHold's answer without ever making the AutoHire
+ * decision look failed.
  *
- * Everything here runs over a stubbed `fetch`, because the two things most
- * worth pinning are wire-level: that `verified` is sent explicitly (PayHold
- * reads a missing field as `true`, so an un-verify that dropped the body would
- * verify instead), and which 404 licenses repairing a stale seller link.
+ * Everything here runs over a stubbed `fetch`, because the things most worth
+ * pinning are wire-level: that `verified` is sent explicitly (PayHold reads a
+ * missing field as `true`, so an un-verify that dropped the body would verify
+ * instead), that `verified_by` travels with it, and which 404 licenses
+ * repairing a stale seller link.
  */
+
+/** What `index.ts` builds from the admin's session. */
+const ADMIN = 'autohire-admin:profile-admin-1';
 
 type Reply = { status: number; body: unknown };
 
@@ -55,7 +60,12 @@ function stubPayhold(routes: {
 }
 
 const ok = (id: string): Reply => ({ status: 200, body: { id, external_user_id: 'p1' } });
-const relayRefused: Reply = {
+const relayOff: Reply = {
+  status: 422,
+  body: { error: { code: 'verification_relay_off', message: 'Seller verification relay is off for this account' } },
+};
+/** The PayHold before `platform_owns_verification`. */
+const legacyRelayRefused: Reply = {
   status: 422,
   body: {
     error: {
@@ -87,6 +97,7 @@ Deno.test('a person with no PayHold seller is left alone, and nothing is sent', 
   try {
     const r = await relayVerification(
       { id: 'p1', verification: 'verified', payhold_seller_id: null },
+      ADMIN,
       links().deps,
     );
     assertEquals(r.payhold, 'not_registered');
@@ -96,16 +107,17 @@ Deno.test('a person with no PayHold seller is left alone, and nothing is sent', 
   }
 });
 
-Deno.test('a verified person is relayed as verified: true', async () => {
+Deno.test('a verified person is relayed as verified: true, named by the admin who decided', async () => {
   const { calls, restore } = stubPayhold({ verify: ok });
   try {
     const r = await relayVerification(
       { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_1' },
+      ADMIN,
       links().deps,
     );
     assertEquals(r.payhold, 'verified');
     assertEquals(calls[0].path, '/sellers/sel_1/verify');
-    assertEquals(calls[0].body, { verified: true });
+    assertEquals(calls[0].body, { verified: true, verified_by: ADMIN });
   } finally {
     restore();
   }
@@ -119,21 +131,54 @@ Deno.test('anything short of verified is sent as an explicit false, never an emp
     try {
       const r = await relayVerification(
         { id: 'p1', verification, payhold_seller_id: 'sel_1' },
+        ADMIN,
         links().deps,
       );
       assertEquals(r.payhold, 'unverified', verification);
-      assertEquals(calls[0].body, { verified: false }, verification);
+      assertEquals(calls[0].body, { verified: false, verified_by: ADMIN }, verification);
     } finally {
       restore();
     }
   }
 });
 
-Deno.test('relay switched off in PayHold reads as not trusted yet, and is not retried', async () => {
-  const { calls, restore } = stubPayhold({ verify: () => relayRefused });
+Deno.test('a relay with no verifier sends nothing and is reported as failed', async () => {
+  // PayHold requires `verified_by`; so does the client, before the round trip.
+  const { calls, restore } = stubPayhold({ verify: ok });
   try {
     const r = await relayVerification(
       { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_1' },
+      '  ',
+      links().deps,
+    );
+    assertEquals(r.payhold, 'failed');
+    assertEquals(calls.length, 0);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test('relay switched off in PayHold reads as not trusted yet, and is not retried', async () => {
+  const { calls, restore } = stubPayhold({ verify: () => relayOff });
+  try {
+    const r = await relayVerification(
+      { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_1' },
+      ADMIN,
+      links().deps,
+    );
+    assertEquals(r.payhold, 'not_trusted_yet');
+    assertEquals(calls.length, 1);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test('the old PayHold refusal wording still reads as not trusted yet during the deploy window', async () => {
+  const { calls, restore } = stubPayhold({ verify: () => legacyRelayRefused });
+  try {
+    const r = await relayVerification(
+      { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_1' },
+      ADMIN,
       links().deps,
     );
     assertEquals(r.payhold, 'not_trusted_yet');
@@ -145,7 +190,8 @@ Deno.test('relay switched off in PayHold reads as not trusted yet, and is not re
 
 Deno.test('a different policy refusal is a failure, not "turn on a setting"', async () => {
   // `policy_violation` also means a duplicate handle or an unroutable
-  // destination. Only the person's-decision wording means relay is off.
+  // destination. Only `verification_relay_off` (or the old person's-decision
+  // wording) means relay is off.
   const { restore } = stubPayhold({
     verify: () => ({
       status: 422,
@@ -155,6 +201,7 @@ Deno.test('a different policy refusal is a failure, not "turn on a setting"', as
   try {
     const r = await relayVerification(
       { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_1' },
+      ADMIN,
       links().deps,
     );
     assertEquals(r.payhold, 'failed');
@@ -175,6 +222,7 @@ Deno.test('a vanished seller is re-linked by handle, then relayed', async () => 
   try {
     const r = await relayVerification(
       { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_old' },
+      ADMIN,
       deps,
     );
     assertEquals(r.payhold, 'verified');
@@ -182,6 +230,7 @@ Deno.test('a vanished seller is re-linked by handle, then relayed', async () => 
     assertEquals(r.sellerId, 'sel_new');
     assertEquals(written, [{ profileId: 'p1', sellerId: 'sel_new' }]);
     assertEquals(calls.at(-1)?.path, '/sellers/sel_new/verify');
+    assertEquals(calls.at(-1)?.body, { verified: true, verified_by: ADMIN });
   } finally {
     restore();
   }
@@ -196,6 +245,7 @@ Deno.test('a vanished seller with nobody under the handle clears the link', asyn
   try {
     const r = await relayVerification(
       { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_old' },
+      ADMIN,
       deps,
     );
     assertEquals(r.payhold, 'not_registered');
@@ -219,6 +269,7 @@ Deno.test('a route 404 is a failure and never unlinks anyone', async () => {
   try {
     const r = await relayVerification(
       { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_1' },
+      ADMIN,
       deps,
     );
     assertEquals(r.payhold, 'failed');
@@ -235,6 +286,7 @@ Deno.test('PayHold being down is reported, not thrown', async () => {
   try {
     const r = await relayVerification(
       { id: 'p1', verification: 'verified', payhold_seller_id: 'sel_1' },
+      ADMIN,
       links().deps,
     );
     assertEquals(r.payhold, 'failed');

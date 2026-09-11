@@ -33,6 +33,7 @@ import {
   sellerCapabilities,
   sellerDestinations,
 } from '../_shared/payhold.ts';
+import { reconcilePayoutStatus as reconcileStatus } from '../_shared/payout-status.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
@@ -48,46 +49,27 @@ function json(body: unknown, status: number): Response {
 }
 
 /**
- * Keep `profiles.payout_status` honest against what PayHold actually says.
- *
- * The column is written only twice: `payout_status: 'pending'` the moment a
- * destination is saved, and `payout_status: 'active'` in the same request IF
- * `sellerCapabilities` already says yes at that instant. Nothing writes it
- * again after that. A destination verified later — someone clicking Verify
- * in PayHold's dashboard, the tenant's `seller_auto_verify` flipping on, the
- * §5.1 security hold simply expiring — moves PayHold's own answer to
- * `can_receive_payouts: true` without any request from AutoHire, and nothing
- * was listening: PayHold's `verify_seller_destination` writes an audit row,
- * not a webhook. So a host who verified minutes ago still read "Verifying —
- * being checked" indefinitely, on every screen that trusted the column
- * instead of asking again.
- *
- * This is the asking again. Called wherever this function already has a
- * fresh `can_receive_payouts` in hand, so it costs nothing extra to check —
- * only a write when the two disagree. Reconciled in both directions:
- * PayHold revoking capability (a chargeback, a destination un-verified) must
- * un-stick a host from a stale "Active" exactly as much as the reverse.
- *
- * Never touches `'none'` — a host with no destination on file has nothing
- * here to reconcile, and caps is never asked for one (`sellerId` gates every
- * call site above this).
+ * Keep `profiles.payout_status` honest against what PayHold actually says —
+ * see `_shared/payout-status.ts`, which `payhold-verify-destination` shares.
+ * Called wherever this function already has a fresh `can_receive_payouts` in
+ * hand. Returning the derived value either way means the response this host
+ * is looking at is never the stale one.
  */
-async function reconcilePayoutStatus(
+function reconcilePayoutStatus(
   admin: SupabaseClient,
   uid: string,
   currentStatus: string | null,
   canReceivePayouts: boolean,
 ): Promise<string | null> {
-  if (currentStatus === 'none' || currentStatus === null) return currentStatus;
-  const derived = canReceivePayouts ? 'active' : 'pending';
-  if (derived === currentStatus) return currentStatus;
-  const { error } = await admin.from('profiles').update({ payout_status: derived }).eq('id', uid);
-  // A failed write is not this request's problem to surface — the caller
-  // already has a correct answer to show for RIGHT NOW; the column catches
-  // up next time anything asks. Returning the derived value either way means
-  // the response this host is looking at is never the one that's wrong.
-  if (error) console.error('reconcilePayoutStatus: write failed', { uid, error: error.message });
-  return derived;
+  return reconcileStatus(
+    currentStatus,
+    canReceivePayouts,
+    async (status) => {
+      const { error } = await admin.from('profiles').update({ payout_status: status }).eq('id', uid);
+      if (error) throw new Error(error.message);
+    },
+    { uid },
+  );
 }
 
 /** PayHold speaks snake_case; `PayoutDestination` in the app is camelCase. */

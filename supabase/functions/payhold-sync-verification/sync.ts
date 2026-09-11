@@ -8,6 +8,12 @@
 // again after a failure, and it means a stale or hostile browser cannot tell
 // PayHold something the database does not.
 //
+// Who decided travels with it: `verified_by = autohire-admin:<admin profile
+// id>`, built by `index.ts` from the session — never from the request. PayHold
+// requires it, and it is the only verifier PayHold will now accept for our
+// sellers: its own dashboard and auto-verify no longer verify them
+// (`platform_owns_verification`).
+//
 // Two consequences, both correct:
 //
 //   • Approving ONE document (`DocumentRow` → `reviewVerificationDocument`)
@@ -35,9 +41,9 @@ import {
  *   unverified       PayHold's seller is now not verified (relayed `false`).
  *   not_registered   This host has no PayHold seller; nothing was sent. Not
  *                    an error — most people in the review queue are renters.
- *   not_trusted_yet  PayHold refused the API key because the account owner
- *                    has not turned on verification relay in PayHold Settings.
- *                    Designed behaviour, never retried from here.
+ *   not_trusted_yet  PayHold refused the API key because verification relay is
+ *                    off (422 `verification_relay_off`). Designed behaviour,
+ *                    never retried from here.
  *   failed           Anything else — PayHold unreachable, a 5xx, a refusal
  *                    with a different meaning. `error` carries the words.
  *
@@ -81,8 +87,13 @@ export interface SyncDeps {
   writeSellerLink: (profileId: string, sellerId: string | null) => Promise<void>;
 }
 
+/**
+ * `verifiedBy` is the caller's — `autohire-admin:<profile id>`, from the session
+ * in `index.ts`. Nothing the client sends can name a verifier.
+ */
 export async function relayVerification(
   profile: StoredProfile,
+  verifiedBy: string,
   deps: SyncDeps,
 ): Promise<SyncResult> {
   const verified = profile.verification === 'verified';
@@ -95,11 +106,11 @@ export async function relayVerification(
 
   const attempt = async (id: string): Promise<SyncResult> => {
     try {
-      await setSellerVerified(id, verified);
+      await setSellerVerified(id, verified, verifiedBy);
       return { ...base, payhold: verified ? 'verified' : 'unverified', sellerId: id };
     } catch (e) {
-      // The owner has not turned relay on. Not retried — nothing on our side
-      // changes the answer; a person in PayHold's Settings does.
+      // Relay is off. Not retried — nothing on our side changes the answer;
+      // a person in PayHold's Settings does.
       if (isVerificationRelayRefused(e)) {
         return { ...base, payhold: 'not_trusted_yet', sellerId: id };
       }

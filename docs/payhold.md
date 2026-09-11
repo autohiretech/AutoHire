@@ -93,6 +93,9 @@ What "Send it now" actually does, from `request_withdrawal`:
 | [`payhold-stripe-connect`](../supabase/functions/payhold-stripe-connect/index.ts) | Starts (POST) and polls (GET) Stripe Connect onboarding — the destination `stripe_connect` needs and a host cannot type in. See "Stripe Connect onboarding" below. |
 | [`payhold-dispute`](../supabase/functions/payhold-dispute/index.ts) | Raise a case in PayHold — this is what freezes the payout. Admins: read a case in full, and decide it ([`admin.ts`](../supabase/functions/payhold-dispute/admin.ts) — record, then relay). |
 | [`_shared/dispute-mirror.ts`](../supabase/functions/_shared/dispute-mirror.ts) | PayHold case → `disputes` row, shared by the webhook and `payhold-dispute`. |
+| [`payhold-sync-verification`](../supabase/functions/payhold-sync-verification/index.ts) | Admin: relay a host's stored verification to PayHold, naming the admin. |
+| [`payhold-verify-destination`](../supabase/functions/payhold-verify-destination/index.ts) | Admin: read a host's live payout account, and verify or un-verify it in PayHold ([`account.ts`](../supabase/functions/payhold-verify-destination/account.ts)). See "Verification is decided in AutoHire's admin". |
+| [`_shared/payout-status.ts`](../supabase/functions/_shared/payout-status.ts) | Reconciles `profiles.payout_status` with PayHold's `can_receive_payouts`; shared by `payhold-seller` and `payhold-verify-destination`. |
 | [migration 077](../supabase/migrations/20260911000077_admin_dispute_decisions.sql) | `resolved_split`; the decision columns on `disputes`; a trigger refusing non-service-role writes to them. |
 | [`payhold-refund`](../supabase/functions/payhold-refund/index.ts) | Send the renter's money back, in full or in part. |
 | [`EarningsPage`](../web/src/pages/EarningsPage.tsx) | `/earnings` — totals, trip-by-trip stages, fee breakdown, withdraw. |
@@ -114,10 +117,12 @@ What "Send it now" actually does, from `request_withdrawal`:
 | `POST /deals/:id/refund` | `refundDeal` | `payhold-refund` |
 | `POST /sellers` | `createSeller` | `payhold-register-seller` — the first destination; `payhold-ensure-seller` — no destination, at role change |
 | `POST /sellers/:id/active` | `setSellerActive` | `payhold-ensure-seller` (sets true, incl. reactivating), `payhold-deactivate-seller` (sets false) |
+| `POST /sellers/:id/verify` | `setSellerVerified` | `payhold-sync-verification` — an admin's decision about the person, relayed with `verified_by` |
 | `POST /sellers/:id/destinations` | `addSellerDestination` | `payhold-register-seller` — every later one |
-| `GET /sellers/:id/capabilities` | `sellerCapabilities` | `payhold-seller`, `payhold-register-seller`, `payhold-balance` |
+| `POST /sellers/:id/destinations/:destinationId/verify` | `setDestinationVerified` | `payhold-verify-destination` — an admin's decision about the payout account, relayed with `verified_by` |
+| `GET /sellers/:id/capabilities` | `sellerCapabilities` | `payhold-seller`, `payhold-register-seller`, `payhold-balance`, `payhold-verify-destination` |
 | `GET /sellers/:id/balance` | `sellerBalance` | `payhold-balance` |
-| `GET /sellers/:id/destinations` | `sellerDestinations` | `payhold-seller`, `payhold-earnings` |
+| `GET /sellers/:id/destinations` | `sellerDestinations` | `payhold-seller`, `payhold-earnings`, `payhold-verify-destination` |
 | `GET /payment-options` | `paymentOptions` | `payhold-payment-options` — tenant-wide, cached |
 | `POST /sellers/:id/withdraw` | `withdraw` | `payhold-balance` |
 | `GET /payouts` | `listPayouts` | `payhold-earnings` — tenant-wide, filtered to the seller locally |
@@ -189,6 +194,60 @@ Resolutions also arrive by webhook — `dispute.resolved` (and the legacy
 the row is resolved) — which covers a case decided in PayHold's dashboard. The
 webhook reads the outcome from `GET /disputes/:id`, never from the payload.
 
+### Verification is decided in AutoHire's admin; PayHold records it
+
+**A host is verified from AutoHire's admin, and so is their payout account —
+nowhere else.** PayHold's own dashboard no longer verifies AutoHire's sellers or
+their destinations, and neither does its auto-verify. The PayHold tenant setting
+**`platform_owns_verification`** (default **on**) enforces that: while it is on,
+a person in PayHold's dashboard who verifies or un-verifies a seller or a
+destination gets **409 `verification_owned_by_platform`**, and the only writer is
+AutoHire's API key relaying an admin's decision.
+
+Two relays. Both are admin-session only (`profiles.role = 'admin'`, checked
+server-side, 403 otherwise), and both name the admin as
+`verified_by = autohire-admin:<admin profile id>` — taken from the session,
+never from the request, never an email:
+
+| Decision about | AutoHire function | PayHold call | PayHold refusal → outcome |
+|---|---|---|---|
+| The person | `payhold-sync-verification` POST `{profileId}` — relays the **stored** `profiles.verification` | `POST /v1/sellers/:id/verify` `{verified, verified_by}` | 422 `verification_relay_off` → `not_trusted_yet` |
+| The payout account | `payhold-verify-destination` POST `{profileId, verified}` | `POST /v1/sellers/:id/destinations/:destinationId/verify` `{verified, verified_by}` | 422 `destination_relay_off` → `not_trusted_yet`; 409 `destination_archived` → `changed`; 404 → re-read |
+
+PayHold requires `verified_by`: non-empty, at most 200 characters, and never
+starting with `api_key:` (that names a credential, not a person).
+`_shared/payhold.ts` refuses a bad one before the round trip. `verified` is always
+sent explicitly, because PayHold reads a missing one as `true`.
+
+**The payout account is read server-side every time.**
+`GET payhold-verify-destination?profileId=` returns `{ account, reason? }`: the
+seller's one live destination (`is_primary`, else the first live row) as a
+`HostPayoutAccount`, or `reason: 'not_registered' | 'no_destination'`. The POST
+re-reads it and verifies *that* one. A destination id in the body is ignored, so
+an admin can only act on the account PayHold is paying now. If the host replaced
+it between the admin opening it and deciding, PayHold answers
+`destination_archived` and the outcome is `changed`, with the new account —
+unverified, for the admin to check again. A relayed verification comes back
+with `reported_verifier` (`autohire-admin:<id>`), and the admin view shows
+`verifierName`, looked up from `profiles.full_name` server-side. After a
+successful call the host's `profiles.payout_status` is reconciled against
+`GET /sellers/:id/capabilities` (`_shared/payout-status.ts`, the rule
+`payhold-seller` also uses), so their Verifying badge moves without waiting for
+another read. Both relays re-link a stale `payhold_seller_id` by
+`external_user_id`, or clear it — the same repair the sibling functions make.
+
+**Verifying does not end the security hold.** §5.1's hold on a new destination
+expires on its own timer, and nothing AutoHire can send with its API key ends it
+early. A verified account inside its hold is still not paid until
+`securityHoldUntil` passes, and the admin view shows that time.
+
+**The deploy window.** Until PayHold's change is live, the old PayHold refuses an
+API key on the destination route whatever the settings (422 `policy_violation`,
+or a 401/403), and refuses a seller relay with a 422 whose message says "a
+person's decision". `isDestinationRelayOff` and `isVerificationRelayRefused`
+match the exact new codes first and read those old refusals as `not_trusted_yet`
+too. The fallbacks are marked for removal once PayHold is deployed.
+
 **AutoHire's own routes** — what the app and its hosts call:
 
 | Route | Method | Who | Does |
@@ -210,6 +269,9 @@ webhook reads the outcome from `GET /disputes/:id`, never from the payload.
 | `payhold-dispute` | POST | renter or host | Raises a case — **freezes the payout** |
 | `payhold-dispute` | POST `{action:'resolve'}` | admin | Records the decision, relays the recorded one to PayHold (`retry: true` re-relays it). `resolved` or `not_trusted_yet` |
 | `payhold-refund` | POST | host (own bookings) or admin | Refunds the renter, full or partial. Refused while the booking is under dispute |
+| `payhold-sync-verification` | POST `{profileId}` | admin | Relays the stored `profiles.verification` to PayHold with `verified_by`. `verified`, `unverified`, `not_registered`, `not_trusted_yet` or `failed` |
+| `payhold-verify-destination?profileId=` | GET | admin | The host's live payout account as PayHold holds it: `{ account, reason? }` |
+| `payhold-verify-destination` | POST `{profileId, verified}` | admin | Re-reads that account and relays the decision with `verified_by`. `verified`, `unverified`, `not_trusted_yet`, `not_registered`, `no_destination` or `changed` |
 | `payhold-webhook` | POST | PayHold's server | Signed events → bookings, refunds, disputes |
 
 Every one of these takes the side, the seller id and the party from the

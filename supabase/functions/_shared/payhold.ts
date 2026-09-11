@@ -235,6 +235,15 @@ export interface SellerDestination {
   verified_at: string | null;
   /** A freshly added destination is frozen for a window — §5.1's takeover guard. */
   security_hold_until: string | null;
+  /**
+   * On a verification relayed by the platform: the person it reported
+   * (`autohire-admin:<profile id>` from AutoHire), with `verifier_source`
+   * `platform_reported`. Absent on older rows and older PayHolds.
+   */
+  reported_verifier?: string | null;
+  verifier_source?: string | null;
+  /** Only with `?include=archived`. A live destination has none. */
+  archived_at?: string | null;
 }
 
 /** One payout PayHold has scheduled, sent, or stopped. */
@@ -673,39 +682,152 @@ export function setSellerActive(id: string, active: boolean): Promise<Seller> {
 }
 
 /**
- * Relay an admin's verification decision about a host to PayHold — §12's
- * "the identity check came back", stated seller by seller.
+ * Prefix on a verifier or decider name for a person in AutoHire's admin; the
+ * rest is their `profiles.id`. A profile id and never a name or an email,
+ * because PayHold stores it and both parties of a deal can read it back.
+ */
+export const AUTOHIRE_ADMIN_ACTOR_PREFIX = 'autohire-admin:';
+
+/** `autohire-admin:<profile id>` — callers pass the id from a server-side session. */
+export function autohireAdminActor(profileId: string): string {
+  return `${AUTOHIRE_ADMIN_ACTOR_PREFIX}${profileId}`;
+}
+
+/** The profile id inside an `autohire-admin:` name, or null for any other actor. */
+export function autohireAdminProfileId(actor: string | null | undefined): string | null {
+  if (typeof actor !== 'string' || !actor.startsWith(AUTOHIRE_ADMIN_ACTOR_PREFIX)) return null;
+  return actor.slice(AUTOHIRE_ADMIN_ACTOR_PREFIX.length).trim() || null;
+}
+
+/**
+ * PayHold's rule for `verified_by`, checked before the round trip: required,
+ * at most 200 characters, and never an `api_key:` name — that reports a
+ * credential, not a person. Also refuses a non-boolean `verified`, because
+ * PayHold reads a missing one as `true`.
+ */
+function verificationRefusal(verified: unknown, verifiedBy: unknown): PayHoldError | null {
+  if (typeof verified !== 'boolean') {
+    return new PayHoldError('verified must be true or false.', 400, 'invalid_request');
+  }
+  const by = typeof verifiedBy === 'string' ? verifiedBy.trim() : '';
+  if (!by) {
+    return new PayHoldError('verified_by must name the person who decided.', 400, 'invalid_request');
+  }
+  if (by.length > 200) {
+    return new PayHoldError('verified_by must be at most 200 characters.', 400, 'invalid_request');
+  }
+  if (/^api_key:/i.test(by)) {
+    return new PayHoldError('verified_by must name a person, not an API key.', 400, 'invalid_request');
+  }
+  return null;
+}
+
+/**
+ * Relay an AutoHire admin's verification decision about a host to PayHold —
+ * §12's "the identity check came back", stated seller by seller.
  *
- * This is an attestation, not a fact about our roster, so PayHold treats it
- * differently from `setSellerActive`: an API key is refused with a 422
- * `policy_violation` ("Verifying a seller is a person's decision …") until the
- * account owner turns on verification relay in PayHold's Settings. That
- * refusal is PayHold working as designed, not a fault — callers map it to
- * "not trusted yet" and never retry it (`isVerificationRelayRefused`).
+ * **Verification comes only from AutoHire's admin.** PayHold's tenant setting
+ * `platform_owns_verification` (default on) makes its own dashboard answer a
+ * person there with 409 `verification_owned_by_platform`, and its auto-verify
+ * no longer verifies — so this relay is the one writer. When relay is off
+ * PayHold answers 422 `verification_relay_off` (`isVerificationRelayRefused`),
+ * which callers report as "not trusted yet" and never retry.
+ *
+ * `verifiedBy` names the person — `autohire-admin:<profile id>`, from the
+ * caller's server-side session, never from a request body. PayHold requires
+ * it; a missing or malformed one is refused here without a request.
  *
  * `verified` is always sent explicitly. PayHold reads a missing field as
- * `true`, so an un-verify that forgot the body would verify instead.
- *
- * Both directions go through the same gate: with relay off, `false` is refused
- * exactly as `true` is.
+ * `true`, so an un-verify that forgot the body would verify instead. Both
+ * directions go through the same gate.
  */
-export function setSellerVerified(id: string, verified: boolean): Promise<Seller> {
+export function setSellerVerified(
+  id: string,
+  verified: boolean,
+  verifiedBy: string,
+): Promise<Seller> {
+  const refused = verificationRefusal(verified, verifiedBy);
+  if (refused) return Promise.reject(refused);
   return call(`/sellers/${encodeURIComponent(id)}/verify`, {
     method: 'POST',
-    body: { verified },
+    body: { verified, verified_by: verifiedBy.trim() },
   });
 }
 
 /**
- * PayHold's refusal to take a verification over an API key while the tenant
- * has not turned relay on. A 422 `policy_violation` whose message says this is
- * a person's decision — matched on both the status and the words, because
- * `policy_violation` is also the code for a duplicate handle on `createSeller`
- * and an unroutable destination, none of which mean "turn on a setting".
+ * PayHold's refusal to take a seller verification over an API key while relay
+ * is off: 422 with the code `verification_relay_off`, matched on the code first.
+ *
+ * LEGACY — remove the wording fallback once PayHold's
+ * `platform_owns_verification` change is deployed. The PayHold before it
+ * answered a 422 `policy_violation` saying this is "a person's decision"; it is
+ * matched on the status and both words, because `policy_violation` is also the
+ * code for a duplicate handle on `createSeller` and an unroutable destination,
+ * none of which mean "turn on a setting".
  */
 export function isVerificationRelayRefused(e: unknown): boolean {
   if (!(e instanceof PayHoldError) || e.status !== 422) return false;
+  if (e.code === 'verification_relay_off') return true;
   return /person/i.test(e.message) && /decision/i.test(e.message);
+}
+
+/**
+ * Relay an AutoHire admin's decision about a host's payout account — §5.1's
+ * "this account belongs to them" — for the seller's one live destination.
+ *
+ * Same shape and same rules as `setSellerVerified`: `verified` always sent,
+ * `verifiedBy` from a server-side session. PayHold accepts an API key here
+ * only while `platform_owns_verification` is on; otherwise 422
+ * `destination_relay_off` (`isDestinationRelayOff`). A replaced destination is
+ * 409 `destination_archived` (`isDestinationArchived`); an unknown one is 404.
+ *
+ * **It does not end the security hold**, and nothing an API key can send does:
+ * the hold expires on its own timer. A verified destination inside its hold is
+ * still not paid until `security_hold_until` passes.
+ *
+ * Callers take `destinationId` from their own fresh `sellerDestinations` read,
+ * never from a client.
+ */
+export function setDestinationVerified(
+  sellerId: string,
+  destinationId: string,
+  verified: boolean,
+  verifiedBy: string,
+): Promise<SellerDestination> {
+  if (!sellerId?.trim() || !destinationId?.trim()) {
+    return Promise.reject(
+      new PayHoldError('A seller id and a destination id are required.', 400, 'invalid_request'),
+    );
+  }
+  const refused = verificationRefusal(verified, verifiedBy);
+  if (refused) return Promise.reject(refused);
+  return call(
+    `/sellers/${encodeURIComponent(sellerId)}/destinations/${encodeURIComponent(destinationId)}/verify`,
+    { method: 'POST', body: { verified, verified_by: verifiedBy.trim() } },
+  );
+}
+
+/**
+ * PayHold declining a relayed destination verification: 422 with the code
+ * `destination_relay_off`, matched exactly first.
+ *
+ * LEGACY — remove the fallback once PayHold's `platform_owns_verification`
+ * change is deployed. The PayHold before it refused an API key on this route
+ * whatever the settings: 422 `policy_violation` ("Verifying a payout
+ * destination is a person's decision …"), or a 401/403. During the deploy
+ * window that is the same fact — AutoHire is not trusted to verify yet — so it
+ * reads the same. Only meaningful for an error from `setDestinationVerified`:
+ * a 409 or 404 never matches.
+ */
+export function isDestinationRelayOff(e: unknown): boolean {
+  if (!(e instanceof PayHoldError)) return false;
+  if (e.status === 422 && e.code === 'destination_relay_off') return true;
+  return e.status === 401 || e.status === 403 || e.code === 'policy_violation';
+}
+
+/** The destination was replaced (archived) — it can no longer be verified. */
+export function isDestinationArchived(e: unknown): boolean {
+  return e instanceof PayHoldError && e.status === 409 && e.code === 'destination_archived';
 }
 
 /**

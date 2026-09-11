@@ -770,6 +770,53 @@ export interface PayoutDestination {
   securityHoldUntil: string | null;
 }
 
+/**
+ * A host's payout account — the one live PayHold destination their money is
+ * sent to — as Admin → KYC review sees it (`payhold-verify-destination`).
+ *
+ * Verified from AutoHire's admin only; PayHold's own dashboard and auto-verify
+ * no longer verify it. Verifying does not end `securityHoldUntil`: the hold
+ * expires on its own timer, and the account is not paid until it does.
+ */
+export interface HostPayoutAccount {
+  destinationId: string;
+  sellerId: string;
+  /** A mask, never the number. */
+  maskedDestination: string;
+  /** PayHold's rail — `flutterwave_momo`, `flutterwave_bank`, `stripe_connect`, `paypal`. */
+  payoutProvider: string;
+  method: 'momo' | 'bank' | 'card' | 'paypal' | 'stripe' | string;
+  country: string;
+  payoutCurrency: string;
+  label: string | null;
+  /** Null until verified. */
+  verifiedAt: string | null;
+  /** §5.1's hold. Runs out on its own, verified or not. */
+  securityHoldUntil: string | null;
+  /** Who PayHold was told decided — `autohire-admin:<profile id>` when relayed from here. */
+  reportedVerifier: string | null;
+  /** That admin's name, resolved server-side. Null for any other verifier. */
+  verifierName: string | null;
+}
+
+/**
+ * What verifying a payout account came back with.
+ *
+ *   verified / unverified  PayHold took it.
+ *   not_trusted_yet        PayHold's destination relay is off — nothing changed.
+ *   not_registered         No PayHold seller for this host; nothing was sent.
+ *   no_destination         A seller with no payout account; nothing was sent.
+ *   changed                The account was replaced while you looked; `account`
+ *                          is the new, unverified one — check it again.
+ */
+export type PayoutAccountVerifyOutcome =
+  | 'verified'
+  | 'unverified'
+  | 'not_trusted_yet'
+  | 'not_registered'
+  | 'no_destination'
+  | 'changed';
+
 /** Not `EarningsPage` — that name is the React route component. */
 export interface HostEarnings {
   sellerId: string | null;
