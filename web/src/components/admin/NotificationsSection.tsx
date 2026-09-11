@@ -116,9 +116,12 @@ function Composer() {
   const [customLink, setCustomLink] = useState('');
   const [confirming, setConfirming] = useState(false);
 
+  // The country filter is hidden while picking people by name, so the counts on
+  // the audience cards must not quietly stay narrowed to a country you can't see.
+  const sizeCountry = audience === 'people' ? '' : country;
   const sizes = useQuery({
-    queryKey: ['notifyAudienceSizes', country],
-    queryFn: () => client.notifyAudienceSizes(country || null),
+    queryKey: ['notifyAudienceSizes', sizeCountry],
+    queryFn: () => client.notifyAudienceSizes(sizeCountry || null),
   });
   const countries = useQuery({ queryKey: ['notifyCountries'], queryFn: () => client.notifyCountries() });
 
@@ -189,7 +192,7 @@ function Composer() {
           <legend className="mb-2 text-body-sm font-semibold text-[var(--color-content)]">
             1. Who should get it?
           </legend>
-          <div role="radiogroup" aria-label="Audience" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div role="radiogroup" aria-label="Audience" className="grid grid-cols-2 gap-2 lg:grid-cols-3">
             {AUDIENCES.map((a) => {
               const Icon = a.icon;
               const selected = audience === a.key;
@@ -202,7 +205,7 @@ function Composer() {
                   aria-checked={selected}
                   onClick={() => setAudience(a.key)}
                   className={cn(
-                    'flex items-start gap-3 rounded-[var(--radius-control)] border p-3 text-left transition-colors',
+                    'flex items-start gap-2.5 rounded-[var(--radius-control)] border p-2.5 text-left transition-colors sm:gap-3 sm:p-3',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-on)]',
                     selected
                       ? 'border-[var(--color-accent-on)] bg-[color-mix(in_srgb,var(--color-accent-on)_8%,transparent)]'
@@ -220,8 +223,8 @@ function Composer() {
                     <Icon size={18} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-body-sm font-semibold text-[var(--color-content)]">
+                    <span className="flex items-start justify-between gap-2">
+                      <span className="text-body-sm font-semibold leading-tight text-[var(--color-content)]">
                         {a.label}
                       </span>
                       {a.key !== 'people' && sizes.isLoading ? (
@@ -232,7 +235,7 @@ function Composer() {
                         </span>
                       ) : null}
                     </span>
-                    <span className="mt-0.5 block text-caption text-[var(--color-content-muted)]">{a.hint}</span>
+                    <span className="mt-0.5 hidden text-caption text-[var(--color-content-muted)] sm:block">{a.hint}</span>
                   </span>
                 </button>
               );
