@@ -2640,8 +2640,16 @@ export const supabaseClient = {
         ),
         count(sb().from('listings').select('id', { count: 'exact', head: true })),
         count(sb().from('public_profiles').select('id', { count: 'exact', head: true })),
-        count(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('role', 'renter')),
-        count(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('role', 'owner')),
+        // A host is an account with host details (`owner_type` set) — the rule
+        // `listHosts` and Admin → Notifications use — not `role = 'owner'`, which
+        // misses people who set up hosting without their role changing. Admins
+        // are counted once, as admins, so hosts + renters + admins = all.
+        count(
+          sb().from('public_profiles').select('id', { count: 'exact', head: true }).is('owner_type', null).neq('role', 'admin'),
+        ),
+        count(
+          sb().from('public_profiles').select('id', { count: 'exact', head: true }).not('owner_type', 'is', null).neq('role', 'admin'),
+        ),
         count(sb().from('public_profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')),
         count(sb().from('flags').select('id', { count: 'exact', head: true }).eq('status', 'open')),
         count(sb().from('disputes').select('id', { count: 'exact', head: true }).in('status', ['open', 'under_review'])),
