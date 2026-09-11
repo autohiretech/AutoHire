@@ -91,30 +91,31 @@
   --color-line-strong: #d8e0dd;
 
   /* ── Type ──────────────────────────────────────────────────────────────
-     Two families, each doing one job. Archivo is a grotesque with enough
-     width and weight to hold a headline without going italic or coloured for
-     emphasis. Manrope is geometric and stays legible at 12–14px, which is
-     most of a marketplace UI. Inter was neither — it was the default.
+     One neutral grotesque in two cuts, for the restrained, engineered look
+     of Tesla's site (Universal Sans) and X (Chirp) — both licensed faces we
+     cannot serve, so Inter stands in. Inter Tight sets headlines at 600
+     with tight spacing: serious, not shouty. Inter keeps body text legible
+     at 12–14px, which is most of a marketplace UI.
 
      Sizes follow Uber Base's structure: a constrained set (no arbitrary
      `text-[13px]`), line-height ≈ size × 1.45 snapped to the 4px grid, and a
      bias toward the larger option, because these screens are read one-handed,
      outdoors, on a phone. */
-  --font-display: 'Archivo', ui-sans-serif, system-ui, sans-serif;
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
 
   --text-display: 2.5rem;
   --text-display--line-height: 3rem;
-  --text-display--font-weight: 800;
+  --text-display--font-weight: 600;
   --text-h1: 2rem;
   --text-h1--line-height: 2.5rem;
-  --text-h1--font-weight: 700;
+  --text-h1--font-weight: 600;
   --text-h2: 1.5rem;
   --text-h2--line-height: 2rem;
-  --text-h2--font-weight: 700;
+  --text-h2--font-weight: 600;
   --text-h3: 1.25rem;
   --text-h3--line-height: 1.75rem;
-  --text-h3--font-weight: 700;
+  --text-h3--font-weight: 600;
   --text-h4: 1.0625rem;
   --text-h4--line-height: 1.5rem;
   --text-h4--font-weight: 600;
