@@ -306,6 +306,11 @@ export class PayHoldError extends Error {
     readonly status: number,
     /** PayHold's own code: not_found, invalid_state, policy_violation, … */
     readonly code?: string,
+    /**
+     * Anything else PayHold put in `error` beside `code` and `message` — e.g.
+     * `dispute_already_resolved` carries the stored outcome as `dispute`.
+     */
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'PayHoldError';
@@ -366,11 +371,18 @@ async function call<T>(path: string, init: { method: string; body?: unknown }): 
   }
 
   if (!res.ok) {
-    const e = parsed as { error?: { code?: string; message?: string }; message?: string };
+    const e = parsed as {
+      error?: { code?: string; message?: string } & Record<string, unknown>;
+      message?: string;
+    };
+    const { code: _code, message: _message, ...details } = e?.error && typeof e.error === 'object'
+      ? e.error
+      : {};
     throw new PayHoldError(
       e?.error?.message ?? e?.message ?? `PayHold returned ${res.status}.`,
       res.status,
       e?.error?.code,
+      Object.keys(details).length > 0 ? details : undefined,
     );
   }
   return parsed as T;
@@ -1270,7 +1282,19 @@ export interface Dispute {
   opened_at: string;
   resolved_at: string | null;
   resolution_note: string | null;
+  /**
+   * WHO MADE THE CALL on PayHold's side. For a decision relayed over an API key
+   * (PayHold `fc8eed1`) this is the credential, `api_key:<label>` — the person
+   * AutoHire named is `reported_decider`. Never copy this into AutoHire's row
+   * directly; `deciderFor` in `dispute-mirror.ts` decides which to keep.
+   */
   decided_by: string | null;
+  /** `platform_reported` for a relayed decision; `person` / `both_parties` for PayHold's own. */
+  decider_source?: 'person' | 'both_parties' | 'platform_reported' | null;
+  /** The decider the platform named when relaying — set only with `platform_reported`. */
+  reported_decider?: string | null;
+  /** A split's executed refund, minor units of the deal currency. */
+  resolution_refund_amount?: number | null;
   /** Embedded on list rows. */
   evidence?: DisputeEvidence[];
 }
@@ -1398,14 +1422,16 @@ export function resolveDispute(
 }
 
 /**
- * PayHold declining a relayed decision because `dispute_decision_relay` is off.
- * Matched loosely — any 422 whose code or message mentions the relay or a
- * setting — because the exact code is PayHold's to choose. Designed behaviour,
- * reported as "not trusted yet" and never retried automatically.
+ * PayHold declining a relayed decision because `dispute_decision_relay` is off:
+ * HTTP 422 with the code `dispute_relay_off`, and nothing else (PayHold
+ * `fc8eed1`). Matched on the code alone — a conflict-of-interest refusal is also
+ * a 422 and its words may well mention the setting, but it is PayHold saying no
+ * to this decision, and reading it as "waiting on a setting" would park a
+ * decision that can never execute. Reported as "not trusted yet", never retried
+ * automatically.
  */
 export function isDisputeRelayOff(e: unknown): boolean {
-  if (!(e instanceof PayHoldError) || e.status !== 422) return false;
-  return /relay|setting/i.test(`${e.code ?? ''} ${e.message}`);
+  return e instanceof PayHoldError && e.status === 422 && e.code === 'dispute_relay_off';
 }
 
 /** PayHold saying the case was already decided — differently from what we sent. */

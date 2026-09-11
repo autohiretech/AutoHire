@@ -141,17 +141,24 @@ Deno.test('resolved statuses name their decision; open names none', () => {
 // Refusal matchers
 // ---------------------------------------------------------------------------
 
-Deno.test('relay-off is any 422 that mentions the relay or a setting, by code or words', () => {
+Deno.test('relay-off is a 422 with the code dispute_relay_off, and nothing else', () => {
   assertEquals(isDisputeRelayOff(new PayHoldError('Turn it on first', 422, 'dispute_relay_off')), true);
+  // Words are not a code. A refusal that merely mentions the setting — or a
+  // conflict-of-interest refusal — is PayHold saying no to this decision, and
+  // reading it as "waiting on a setting" would park it forever.
   assertEquals(
     isDisputeRelayOff(
       new PayHoldError('Deciding disputes by API key needs the dispute_decision_relay setting', 422, 'policy_violation'),
     ),
-    true,
+    false,
+  );
+  assertEquals(
+    isDisputeRelayOff(new PayHoldError('The decider is a party to this deal; check your relay settings', 422, 'conflict_of_interest')),
+    false,
   );
   assertEquals(isDisputeRelayOff(new PayHoldError('refund_amount exceeds the deal', 422, 'policy_violation')), false);
   assertEquals(isDisputeRelayOff(new PayHoldError('relay is off', 409, 'dispute_relay_off')), false);
-  assertEquals(isDisputeRelayOff(new Error('relay setting')), false);
+  assertEquals(isDisputeRelayOff(new Error('dispute_relay_off')), false);
 });
 
 Deno.test('already-resolved is a 409 that says so', () => {
@@ -519,6 +526,136 @@ Deno.test('PayHold unreachable while mirroring throws, so the webhook 500s and P
   }));
   try {
     await assertRejects(() => mirrorDisputeOpened(store, booking, deal, { dispute_id: 'ph-1' }));
+  } finally {
+    restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Who decided — PayHold fc8eed1 returns the credential as decided_by
+// ---------------------------------------------------------------------------
+
+const { deciderFor } = await import('../dispute-mirror.ts');
+
+Deno.test('a platform-reported decision takes the name the platform reported, not the credential', () => {
+  assertEquals(
+    deciderFor({
+      decided_by: 'api_key:autohire',
+      reported_decider: 'autohire-admin:profile-admin-1',
+      decider_source: 'platform_reported',
+    }, null),
+    'autohire-admin:profile-admin-1',
+  );
+});
+
+Deno.test('a credential never replaces the AutoHire admin already recorded', () => {
+  // A PayHold answer with no reported decider (or an older shape) still must
+  // not turn "decided by our admin" into "decided by an API key".
+  assertEquals(
+    deciderFor({ decided_by: 'api_key:autohire', reported_decider: null, decider_source: null }, 'autohire-admin:profile-admin-1'),
+    'autohire-admin:profile-admin-1',
+  );
+  assertEquals(
+    deciderFor({ decided_by: 'api_key:autohire', reported_decider: null, decider_source: 'person' }, 'staff:jo'),
+    'staff:jo',
+  );
+  // With nobody recorded, the credential is better than nothing.
+  assertEquals(deciderFor({ decided_by: 'api_key:autohire' }, null), 'api_key:autohire');
+});
+
+Deno.test('a person in PayHold\'s dashboard is recorded as PayHold names them', () => {
+  assertEquals(deciderFor({ decided_by: 'staff:jo@payhold.test', decider_source: 'person' }, null), 'staff:jo@payhold.test');
+  assertEquals(deciderFor({ decided_by: 'both-parties', decider_source: 'both_parties' }, null), 'both-parties');
+  // A person deciding in PayHold overrides a decision recorded here but never executed.
+  assertEquals(
+    deciderFor({ decided_by: 'staff:jo@payhold.test', decider_source: 'person' }, 'autohire-admin:profile-admin-1'),
+    'staff:jo@payhold.test',
+  );
+  // No decider at all leaves the row alone.
+  assertEquals(deciderFor({ decided_by: null }, 'autohire-admin:profile-admin-1'), 'autohire-admin:profile-admin-1');
+});
+
+Deno.test('dispute.resolved for a relayed decision keeps autohire-admin and the executed split amount', async () => {
+  const { store, rows } = memoryStore([
+    row({
+      id: 'dsp-1',
+      booking_id: 'bk-1',
+      payhold_dispute_id: 'ph-1',
+      status: 'under_review',
+      resolution: 'partial_refund',
+      refund_amount_minor: 2500,
+      currency: 'USD',
+      decided_by: 'autohire-admin:profile-admin-1',
+    }),
+  ]);
+  const { restore } = stubPayhold(casesRoute([
+    phCase({
+      status: 'resolved_split',
+      resolved_at: '2026-09-05T12:00:00Z',
+      decided_by: 'api_key:autohire',
+      reported_decider: 'autohire-admin:profile-admin-1',
+      decider_source: 'platform_reported',
+      resolution_refund_amount: 2400,
+    }),
+  ]));
+  try {
+    await mirrorDisputeResolved(store, booking, deal, { dispute_id: 'ph-1' }, false);
+    const r = rows.get('dsp-1')!;
+    assertEquals(r.decided_by, 'autohire-admin:profile-admin-1');
+    // PayHold's executed amount wins over the recorded one — it is what moved.
+    assertEquals(r.refund_amount_minor, 2400);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test('a split\'s resolution_refund_amount fills the refund before the ledger does', async () => {
+  const { store, rows } = memoryStore([
+    row({ id: 'dsp-1', booking_id: 'bk-1', payhold_dispute_id: 'ph-1' }),
+  ]);
+  const { restore } = stubPayhold(casesRoute([
+    phCase({
+      status: 'resolved_split',
+      resolved_at: '2026-09-05T12:00:00Z',
+      decided_by: 'staff:jo@payhold.test',
+      decider_source: 'person',
+      resolution_refund_amount: 1800,
+    }),
+  ]));
+  try {
+    const withLedger = {
+      ...deal,
+      amounts: {
+        currency: 'USD', buyer_paid: 20000, platform_fee: 0, provider_fee: 0, tax: 0,
+        reserve: 0, refunded: 5000, paid_out: 0, seller_net: 15000,
+      },
+    };
+    await mirrorDisputeResolved(store, booking, withLedger, { dispute_id: 'ph-1' }, false);
+    const r = rows.get('dsp-1')!;
+    assertEquals(r.refund_amount_minor, 1800);
+    assertEquals(r.decided_by, 'staff:jo@payhold.test');
+  } finally {
+    restore();
+  }
+});
+
+Deno.test('a 409 carries its dispute on the error, for callers that need the stored outcome', async () => {
+  const { restore } = stubPayhold(() => ({
+    status: 409,
+    body: {
+      error: {
+        code: 'dispute_already_resolved',
+        message: 'Already resolved differently.',
+        dispute: { id: 'ph-1', status: 'resolved_refunded', decider_source: 'platform_reported' },
+      },
+    },
+  }));
+  try {
+    const e = await assertRejects(() =>
+      resolveDispute('ph-1', { resolution: 'release', note: 'x', decidedBy: 'autohire-admin:profile-admin-1' })
+    ) as InstanceType<typeof PayHoldError>;
+    assertEquals(e.code, 'dispute_already_resolved');
+    assertEquals((e.details?.dispute as { status: string }).status, 'resolved_refunded');
   } finally {
     restore();
   }

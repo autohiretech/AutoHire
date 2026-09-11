@@ -208,19 +208,56 @@ export function mirrorPatch(
 
   const decided = resolutionForPayholdStatus(ph.status);
   if (decided) {
+    // What PayHold executed beats what we recorded, which beats the ledger.
+    const executedAmount = Number(ph.resolution_refund_amount ?? 0) > 0
+      ? Number(ph.resolution_refund_amount)
+      : null;
     const keptAmount = decided === 'partial_refund' && row?.resolution === 'partial_refund' &&
         row.refund_amount_minor != null
       ? Number(row.refund_amount_minor)
       : null;
     patch.resolution = decided;
     patch.refund_amount_minor = decided === 'partial_refund'
-      ? keptAmount ?? (ctx.refundedMinor && ctx.refundedMinor > 0 ? ctx.refundedMinor : null)
+      ? executedAmount ?? keptAmount ??
+        (ctx.refundedMinor && ctx.refundedMinor > 0 ? ctx.refundedMinor : null)
       : null;
     patch.resolution_note = ph.resolution_note ?? row?.resolution_note ?? null;
-    patch.decided_by = ph.decided_by ?? row?.decided_by ?? null;
+    patch.decided_by = deciderFor(ph, row?.decided_by ?? null);
     patch.resolved_at = ph.resolved_at ?? row?.resolved_at ?? ctx.now ?? new Date().toISOString();
   }
   return patch;
+}
+
+/**
+ * Who decided, as the row should say it — the one rule every write of
+ * `decided_by` from a PayHold case goes through (webhook, `getDispute`, and a
+ * 409's `dispute` body).
+ *
+ * Since PayHold `fc8eed1`, a decision relayed over an API key comes back with
+ * `decided_by = 'api_key:<label>'` — the CREDENTIAL — and the name the platform
+ * reported as `reported_decider`, marked `decider_source: 'platform_reported'`.
+ * So:
+ *
+ *   • platform_reported → `reported_decider` (our own `autohire-admin:<id>`).
+ *   • otherwise         → `decided_by` (a PayHold dashboard person, or
+ *                         `both-parties`).
+ *   • a credential never replaces a person: an `api_key:` value is not allowed
+ *     to overwrite an existing decider that is not itself a credential — above
+ *     all the `autohire-admin:` one recorded when the admin decided.
+ */
+export function deciderFor(
+  ph: Pick<PayholdDispute, 'decided_by' | 'reported_decider' | 'decider_source'>,
+  existing: string | null,
+): string | null {
+  const reported = ph.decider_source === 'platform_reported'
+    ? String(ph.reported_decider ?? '').trim()
+    : '';
+  const candidate = reported || String(ph.decided_by ?? '').trim();
+  if (!candidate) return existing;
+  if (candidate.startsWith('api_key:') && existing && !existing.startsWith('api_key:')) {
+    return existing;
+  }
+  return candidate;
 }
 
 // ---------------------------------------------------------------------------

@@ -157,14 +157,26 @@ note:
 
 PayHold only takes a decision over an API key while the tenant setting
 **`dispute_decision_relay`** is on (PayHold Settings, owner only). Until then
-it answers 422 and `payhold-dispute` returns `outcome: 'not_trusted_yet'` —
-the decision stays recorded, the money stays frozen, and a retry sends it once
-the setting is on. Other outcomes:
+it answers **422 with the code `dispute_relay_off`** — matched on that code
+alone — and `payhold-dispute` returns `outcome: 'not_trusted_yet'`: the
+decision stays recorded, the money stays frozen, and a retry sends it once the
+setting is on. Any other 422 (a conflict-of-interest refusal, a bad amount) is
+PayHold refusing the decision, not waiting on a setting. Other outcomes:
 
 | PayHold says | Row | Admin sees |
 |---|---|---|
-| 409 resolved differently | refreshed from `GET /disputes/:id` | the conflict, `409 dispute_already_resolved` |
+| 409 `dispute_already_resolved` (resolved differently) | refreshed from `GET /disputes/:id`, else from the `dispute` the 409 carries | the conflict, `409 dispute_already_resolved` |
 | 400/404/409/422 refusing the decision | decision **cleared** — nothing moved | PayHold's reason; decide again |
+
+**Who decided, on PayHold's side.** A relayed decision is stored by PayHold
+with `decided_by = api_key:<label>` — the credential that made the call — and
+the name AutoHire sent as `reported_decider`, with
+`decider_source: 'platform_reported'` (`person` and `both_parties` are the
+dashboard's). AutoHire's row keeps `reported_decider` for a platform-reported
+decision and `decided_by` otherwise, and never lets an `api_key:` credential
+overwrite a person already recorded (`deciderFor` in
+`_shared/dispute-mirror.ts`). A split's executed amount comes back as
+`resolution_refund_amount` and fills `refund_amount_minor`.
 | 5xx / unreachable | decision kept | "saved — retry it" (502) |
 
 `payhold-refund` refuses a booking with a dispute open locally or on PayHold

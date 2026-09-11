@@ -80,12 +80,17 @@ function payhold(opts: {
       if (opts.resolve) {
         reply = opts.resolve(body);
       } else {
+        // As PayHold `fc8eed1` answers a relayed decision: `decided_by` is the
+        // credential, and the name we sent comes back as `reported_decider`.
         current = {
           ...current,
           status: resolvedAs[body.resolution],
           resolved_at: '2026-09-06T09:00:00Z',
           resolution_note: body.note,
-          decided_by: body.decided_by,
+          decided_by: 'api_key:autohire',
+          reported_decider: body.decided_by,
+          decider_source: 'platform_reported',
+          resolution_refund_amount: body.refund_amount ?? null,
         };
         reply = { status: 200, body: current };
       }
@@ -676,4 +681,130 @@ Deno.test('a profile lookup that fails reads as no name rather than failing the 
   };
   const out = await adminDisputeDetail('dsp-1', deps);
   assertEquals(out.decidedByName, null);
+});
+
+// ---------------------------------------------------------------------------
+// PayHold fc8eed1: credential as decided_by, exact relay-off code
+// ---------------------------------------------------------------------------
+
+Deno.test('a relayed decision keeps the admin as decider, though PayHold records the API key', async () => {
+  const { deps, rows } = setup();
+  const ph = payhold(); // answers decided_by: 'api_key:autohire', reported_decider: <what we sent>
+  try {
+    const out = await resolveAdminDispute(
+      { disputeId: 'dsp-1', resolution: 'partial_refund', refundAmount: 25, note: 'Quarter of the repair.' },
+      ADMIN,
+      deps,
+    );
+    assertEquals(out.outcome, 'resolved');
+    const r = rows.get('dsp-1')!;
+    assertEquals(r.decided_by, ADMIN);
+    assertEquals(r.refund_amount_minor, 2500);
+    assertEquals(out.dispute.decidedBy, ADMIN);
+
+    const detail = await adminDisputeDetail('dsp-1', deps);
+    assertEquals(detail.decidedByName, 'Ops Admin');
+  } finally {
+    ph.restore();
+  }
+});
+
+Deno.test('a 422 with any code but dispute_relay_off is a refusal, not "waiting on a setting"', async () => {
+  const { deps, rows } = setup();
+  const ph = payhold({
+    resolve: () => ({
+      status: 422,
+      body: {
+        error: {
+          code: 'conflict_of_interest',
+          message: 'The reported decider is a party to this deal; relay settings do not change that.',
+        },
+      },
+    }),
+  });
+  try {
+    const e = await refusal(() =>
+      resolveAdminDispute({ disputeId: 'dsp-1', resolution: 'refund', note: 'x' }, ADMIN, deps)
+    );
+    assertEquals(e.code, 'payhold_refused');
+    assertEquals(e.status, 422);
+    assertEquals(rows.get('dsp-1')!.resolution, null);
+  } finally {
+    ph.restore();
+  }
+});
+
+Deno.test('a 409 dispute_already_resolved is mirrored from the dispute it carries when the re-read lags', async () => {
+  const { deps, rows } = setup();
+  const ph = payhold({
+    // PayHold's GET still reads `open` (the stub never changes it); the 409
+    // body is the only place the outcome is.
+    resolve: () => ({
+      status: 409,
+      body: {
+        error: {
+          code: 'dispute_already_resolved',
+          message: 'This dispute was already resolved as a refund.',
+          dispute: {
+            id: 'ph-1',
+            status: 'resolved_refunded',
+            resolution: 'refund',
+            refund_amount: null,
+            resolved_at: '2026-09-06T08:00:00Z',
+            decided_by: 'api_key:autohire',
+            reported_decider: 'autohire-admin:profile-first',
+            decider_source: 'platform_reported',
+          },
+        },
+      },
+    }),
+  });
+  try {
+    const e = await refusal(() =>
+      resolveAdminDispute({ disputeId: 'dsp-1', resolution: 'release', note: 'x' }, ADMIN, deps)
+    );
+    assertEquals(e.code, 'dispute_already_resolved');
+    const r = rows.get('dsp-1')!;
+    assertEquals(r.status, 'resolved_renter');
+    assertEquals(r.resolution, 'refund');
+    assertEquals(r.resolved_at, '2026-09-06T08:00:00Z');
+    assertEquals(r.decided_by, 'autohire-admin:profile-first');
+    // The body carries no reason code or disputed amount; the row's stand.
+    assertEquals(r.reason_code, null);
+    assertEquals(r.disputed_amount_minor, null);
+  } finally {
+    ph.restore();
+  }
+});
+
+Deno.test('a 409 body naming only the API key does not replace the admin who decided', async () => {
+  const { deps, rows } = setup();
+  const ph = payhold({
+    resolve: () => ({
+      status: 409,
+      body: {
+        error: {
+          code: 'dispute_already_resolved',
+          message: 'Resolved differently.',
+          dispute: {
+            id: 'ph-1',
+            status: 'resolved_released',
+            resolution: 'release',
+            refund_amount: null,
+            resolved_at: '2026-09-06T08:00:00Z',
+            decided_by: 'api_key:autohire',
+            reported_decider: null,
+            decider_source: null,
+          },
+        },
+      },
+    }),
+  });
+  try {
+    await refusal(() => resolveAdminDispute({ disputeId: 'dsp-1', resolution: 'refund', note: 'x' }, ADMIN, deps));
+    assertEquals(rows.get('dsp-1')!.decided_by, ADMIN);
+    assertEquals(rows.get('dsp-1')!.status, 'resolved_host');
+  } finally {
+    ph.restore();
+  }
 });

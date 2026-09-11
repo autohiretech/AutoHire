@@ -33,6 +33,7 @@ import {
   payholdConfigured,
   resolveDispute,
   toMinorUnits,
+  type Dispute as PayholdDispute,
   type DisputeCase,
   type DisputeResolution,
 } from '../_shared/payhold.ts';
@@ -220,6 +221,37 @@ export async function adminDisputeDetail(localId: string, deps: AdminDeps) {
 // ---------------------------------------------------------------------------
 // POST { action: 'resolve' } — record, then relay
 // ---------------------------------------------------------------------------
+
+/**
+ * The outcome a 409 `dispute_already_resolved` carries in `error.dispute`
+ * (`{id, status, resolution, refund_amount, resolved_at, decided_by,
+ * reported_decider, decider_source}`), as a case `mirrorPatch` can take — the
+ * fallback when the re-read fails or still shows the case open. It holds the
+ * decision and nothing else, so the reason code, disputed amount and note are
+ * carried over from the row instead of being wiped.
+ */
+function caseFromConflict(e: PayHoldError, row: DisputeRow): PayholdDispute | null {
+  const d = e.details?.dispute as Record<string, unknown> | undefined;
+  if (!d || typeof d !== 'object' || !isResolvedPayholdStatus(d.status)) return null;
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+  return {
+    id: text(d.id) ?? row.payhold_dispute_id ?? '',
+    deal_id: '',
+    raised_by: 'buyer', // not read by mirrorPatch
+    raised_by_actor: null,
+    reason: row.reason,
+    reason_code: row.reason_code,
+    disputed_amount: row.disputed_amount_minor,
+    status: d.status,
+    opened_at: row.created_at,
+    resolved_at: text(d.resolved_at),
+    resolution_note: null,
+    decided_by: text(d.decided_by),
+    reported_decider: text(d.reported_decider),
+    decider_source: text(d.decider_source) as PayholdDispute['decider_source'],
+    resolution_refund_amount: typeof d.refund_amount === 'number' ? d.refund_amount : null,
+  };
+}
 
 export interface ResolveResult {
   outcome: 'resolved' | 'not_trusted_yet';
@@ -438,7 +470,9 @@ export async function resolveAdminDispute(
     if (e instanceof PayHoldError && e.status === 409) {
       // Resolved already — the contract's `dispute_already_resolved`, or any
       // other 409 that turns out to mean the same. PayHold says what happened.
-      const fresh = await getDispute(payholdId).catch(() => null);
+      // The case as PayHold now reads, else the outcome the 409 itself carries.
+      let fresh: PayholdDispute | null = await getDispute(payholdId).catch(() => null);
+      if (!fresh || !isResolvedPayholdStatus(fresh.status)) fresh = caseFromConflict(e, row) ?? fresh;
       if (fresh && isResolvedPayholdStatus(fresh.status)) {
         const before = row;
         row = await deps.store.update(row.id, mirrorPatch(fresh, row, ctx));

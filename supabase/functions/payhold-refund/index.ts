@@ -36,11 +36,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   PayHoldError,
-  hasOpenDisputeOnDeal,
   payholdConfigured,
   refundDeal,
   toMinorUnits,
 } from '../_shared/payhold.ts';
+import { disputeRefundGuard } from './guard.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
@@ -131,46 +131,24 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'This booking has already been refunded.', code: 'already_refunded' }, 409);
     }
 
-    // Not while a dispute is open. A refund here would move the renter's money
-    // on one person's say-so while a case about that same money is waiting on
-    // a decision — and the decision, when it comes, moves money too. Disputed
-    // money moves once, through Admin → Disputes (`payhold-dispute`). Both
-    // records are checked, because either can know before the other does: a
-    // case opened in PayHold reaches `disputes` only when its webhook lands.
-    const { data: activeDisputes, error: disputeErr } = await admin
-      .from('disputes')
-      .select('id')
-      .eq('booking_id', booking.id)
-      .in('status', ['open', 'under_review'])
-      .limit(1);
-    if (disputeErr) return json({ error: disputeErr.message }, 500);
-
-    let underDispute = (activeDisputes ?? []).length > 0;
-    if (!underDispute) {
-      try {
-        underDispute = await hasOpenDisputeOnDeal(booking.payhold_deal_id as string);
-      } catch (e) {
-        // Fail closed: not knowing whether the money is under dispute is not
-        // permission to move it.
-        return json(
-          {
-            error: 'Could not check PayHold for an open dispute on this booking, so no refund was sent. Try again shortly.',
-            code: 'dispute_check_failed',
-            detail: e instanceof Error ? e.message : String(e),
-          },
-          502,
-        );
-      }
-    }
-    if (underDispute) {
-      return json(
-        {
-          error: 'This booking is under dispute — decide it in Admin → Disputes.',
-          code: 'under_dispute',
+    // Not while a dispute is open, locally or in PayHold — disputed money moves
+    // once, through Admin → Disputes. Fails closed. See `guard.ts`.
+    const refusal = await disputeRefundGuard(
+      { id: booking.id as string, payhold_deal_id: booking.payhold_deal_id as string },
+      {
+        hasActiveLocalDispute: async (id) => {
+          const { data, error } = await admin
+            .from('disputes')
+            .select('id')
+            .eq('booking_id', id)
+            .in('status', ['open', 'under_review'])
+            .limit(1);
+          if (error) throw new Error(error.message);
+          return (data ?? []).length > 0;
         },
-        409,
-      );
-    }
+      },
+    );
+    if (refusal) return json(refusal.body, refusal.status);
 
     const currency = (booking.charge_currency as string | null) ?? 'RWF';
 
