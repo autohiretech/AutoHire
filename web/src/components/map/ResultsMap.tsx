@@ -492,6 +492,15 @@ function ClusteredMarkers({
   // compact card at the same window size. `resize` fires on rotation too.
   const [boxWidth, setBoxWidth] = useState(() => map.getSize().x);
   useMapEvent('resize', () => setBoxWidth(map.getSize().x));
+  // Leaflet reports the container's size, which on a map that mounts before
+  // its layout settles is whatever the box measured mid-flight — a phone can
+  // land on the desktop card and only correct itself on the first rotation.
+  // One re-read after the browser has laid out, which is a no-op when the
+  // first read was already right.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setBoxWidth(map.getSize().x));
+    return () => cancelAnimationFrame(id);
+  }, [map]);
   const compact = boxWidth < 480;
   const card = compact ? { w: CARD_W_SM, h: CARD_H_SM } : { w: CARD_W, h: CARD_H };
 
