@@ -37,3 +37,12 @@ verify_jwt = false
 # nothing early.
 [functions.payhold-auto-verify-payouts]
 verify_jwt = false
+
+# PayHold's server posts signed events here with no JWT — the signature IS the
+# authentication (PayHold-Signature: t=…,v1=… over "t.body", verified inside the
+# function against PAYHOLD_WEBHOOK_SECRET). This was only ever set by passing
+# --no-verify-jwt at deploy time, so every redeploy depended on somebody
+# remembering; a plain `functions deploy payhold-webhook` would have re-enabled
+# the gateway check and 401'd every delivery. Declared here instead.
+[functions.payhold-webhook]
+verify_jwt = false
