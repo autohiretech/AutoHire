@@ -118,19 +118,24 @@ const STAGES: Record<
  * where they are not.
  *
  * `payoutStatus` is already on the wire, so this needs nothing new from
- * PayHold. `holdReason` — the rail's own sentence, set only when a transfer
- * was actually refused or no route exists — wins where it exists, because it
- * is more specific than anything derivable from a status and is already
- * written for a car owner rather than an integrator.
+ * PayHold.
+ *
+ * **`holdReason` is deliberately not used.** It carries the rail's own words,
+ * and the first version of this preferred it on the grounds that it is more
+ * specific. A live payout settled that: a host was shown "PayPal: User
+ * business error. (Batch with given sender_batch_id already exists)" in red on
+ * their own earnings page. It is more specific and it is addressed to an
+ * integrator — `payhold-backend/CLAUDE.md` is explicit that a host has not
+ * seen the call their app made and cannot act on its vocabulary. The rail's
+ * text still reaches the people who can use it, on PayHold's own Payouts
+ * screen, which is where an operator already reads it.
  *
  * The rule those sentences follow is `payhold-backend/CLAUDE.md`'s: name the
  * fact, then the action they can take. Never the mechanism — a host has not
  * seen `screen_payout` and cannot act on it — and never blame, because in four
  * of these five the hold is ours.
  */
-function holdSentence(payoutStatus: string | null, holdReason: string | null): string {
-  if (holdReason) return holdReason;
-
+function holdSentence(payoutStatus: string | null): string {
   switch (payoutStatus) {
     case 'held_for_review':
       // A risk rule or a person stopped it, and only a person releases it
@@ -143,7 +148,11 @@ function holdSentence(payoutStatus: string | null, holdReason: string | null): s
     case 'blocked':
       return 'We cannot send this to your payout method at the moment. Nothing is lost — it stays yours, and we are sorting out the route.';
     case 'failed':
-      return 'The last attempt to send this did not go through. We try again automatically, and the money stays yours in the meantime.';
+      // Deliberately no promise of an automatic retry. Whether one comes
+      // depends on the tenant's `payout_mode`, which this screen does not
+      // know — and in `wallet` nothing retries until the host asks. Naming
+      // the button is true either way, and it is the thing they can do.
+      return 'The last attempt to send this did not go through. Your money is safe — use “Send it now” to try again.';
     case 'frozen':
       // A tenant-wide reconciliation freeze. Ours entirely; a host reading
       // "frozen" would reasonably assume it was about them.
@@ -235,25 +244,6 @@ export function EarningsPage() {
   const balances = w?.balances ?? [];
   const withdrawable = w?.withdrawable ?? [];
   const trips = earnings.data?.trips ?? [];
-  // The real reason a payout is stuck, not just a count of them. It was
-  // already on each trip row (`holdReason`, shown in Trip by trip) — this is
-  // the same data, surfaced where "5 blocked" otherwise reads as a dead end.
-  // A provider's own rejection ("Flutterwave: enable IP Whitelisting…") is
-  // an infrastructure fix, not something re-verifying a seller or retrying
-  // again will ever change, and a host has no way to know that without
-  // seeing the sentence itself.
-  const stuckReasons = [
-    ...new Set(
-      trips
-        // Only the rail's OWN sentence belongs in a danger Notice — the
-        // IP-whitelist case this was written for. The status-derived
-        // sentences `holdSentence` produces are on each trip's own row
-        // instead: a routine first-payout review reading "nothing for you to
-        // do" would contradict itself rendered in red at the top of the page.
-        .filter((t) => t.stage === 'on_hold' && t.holdReason)
-        .map((t) => t.holdReason as string),
-    ),
-  ];
   const destinations = earnings.data?.destinations ?? [];
 
   // A host has one destination — the one PayHold pays. PayHold keeps exactly
@@ -723,16 +713,6 @@ export function EarningsPage() {
                         .join(' · ')}
                     </p>
                   )}
-                  {/* The provider's own sentence, not a paraphrase of it — a
-                      host reading "IP Whitelisting" knows this is nothing
-                      they did, where a generic "payment failed" would send
-                      them straight back to re-checking their own number. A
-                      stuck payout is exactly the state `Notice` exists for. */}
-                  {stuckReasons.map((reason) => (
-                    <Notice key={reason} tone="danger" className="mt-2 max-w-sm py-2 text-caption">
-                      {reason}
-                    </Notice>
-                  ))}
                   {/* One destination, so nothing to pick — just say where it's
                       going, because "send it now" should never be the first
                       time a host finds out. */}
@@ -948,7 +928,7 @@ function TripRow({ trip }: { trip: EarningTrip }) {
 
         <p className="text-caption text-[var(--color-content-muted)]">
           {trip.stage === 'on_hold'
-            ? holdSentence(trip.payoutStatus, trip.holdReason)
+            ? holdSentence(trip.payoutStatus)
             : stage.hint}
           {/* The date is the part a host is really after — "clearing" without
               "until when" is the same as not knowing. */}
