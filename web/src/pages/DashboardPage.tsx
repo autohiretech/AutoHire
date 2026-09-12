@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PayoutSetupModal } from '@/pages/PayoutSetupPage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -333,6 +333,18 @@ export function DashboardPage() {
     setSelectedId(listings[0].id);
   }, [listings, selectedId, twoPane]);
 
+  // On one pane, opening a car has to move the screen to it. The detail
+  // renders BELOW the header, the composer and the stats, so tapping a row
+  // swapped the panes far off-screen and the host was left looking at the
+  // same view they started on — reported, fairly, as "if I click I don't see
+  // details". On two panes the detail is already beside the list and nothing
+  // should jump.
+  const detailRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (twoPane || !selectedId) return;
+    detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [selectedId, twoPane]);
+
   const selected = listings.find((l) => l.id === selectedId) ?? null;
 
   // Quick-filter tile content, built once and reused at two sizes: full-size
@@ -407,7 +419,7 @@ export function DashboardPage() {
       {/* Header — plain surface. The only accent on this screen's chrome is
           the "Add a listing" button itself; a tinted band behind it would be
           a large surface wearing the brand hue for no reason. */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className={cn('flex flex-wrap items-center justify-between gap-3', selected && 'hidden lg:flex')}>
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
             <LayoutDashboard size={20} />
@@ -428,7 +440,11 @@ export function DashboardPage() {
 
       {host && <ReconnectPayouts host={host} />}
       {host && <SetupChecklist host={host} listingCount={listings.length} />}
-      {host && <HostBroadcastComposer />}
+      {host && (
+        <div className={cn(selected && 'hidden lg:block')}>
+          <HostBroadcastComposer />
+        </div>
+      )}
 
       {/* Quick-filter tiles — counts a host scans and taps, not a wall of big
           numbers. Weight and a state chip carry the signal; no per-metric hue.
@@ -439,18 +455,18 @@ export function DashboardPage() {
           road, money) are things a host checks, not acts on, so they follow
           in one dense row underneath. From `sm` up there's room for all six
           at one weight, so the two phone-only rows hand off to a single grid. */}
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:hidden">
+      <div className={cn('mt-5 grid grid-cols-2 gap-2 sm:hidden', selected && 'hidden')}>
         <StatCard {...requestsStat} />
         <StatCard {...overdueStat} />
       </div>
-      <div className="mt-2 grid grid-cols-4 gap-1.5 sm:hidden">
+      <div className={cn('mt-2 grid grid-cols-4 gap-1.5 sm:hidden', selected && 'hidden')}>
         <StatCard {...vehiclesStat} compact />
         <StatCard {...tripStat} compact />
         <StatCard {...earnedStat} compact />
         <StatCard {...payoutsStat} compact />
       </div>
 
-      <div className="mt-5 hidden gap-2 sm:grid sm:grid-cols-3 lg:grid-cols-6">
+      <div className={cn('mt-5 hidden gap-2 sm:grid sm:grid-cols-3 lg:grid-cols-6', selected && 'sm:hidden lg:grid')}>
         <StatCard {...vehiclesStat} />
         <StatCard {...requestsStat} />
         <StatCard {...tripStat} />
@@ -460,7 +476,7 @@ export function DashboardPage() {
       </div>
 
       {/* View toggle — segmented Chip pair, same control as the Trips filter. */}
-      <div className="mt-6 flex gap-2">
+      <div className={cn('mt-6 flex gap-2', selected && 'hidden lg:flex')}>
         {(['cars', 'payouts'] as View[]).map((v) => (
           <Chip key={v} selected={view === v} onClick={() => setView(v)}>
             {v === 'cars' ? 'Fleet' : 'Payouts'}
@@ -585,6 +601,7 @@ export function DashboardPage() {
           {/* Car detail — sticks alongside the list and scrolls internally, so
               picking a different car never means re-scrolling the page to see it. */}
           <div
+            ref={detailRef}
             className={cn(
               !selected && 'hidden lg:block',
               'min-w-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain',
