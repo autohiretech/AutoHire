@@ -223,6 +223,19 @@ function ThreadView({ thread }: { thread: AdminSupportThread }) {
       <Card className="p-4 sm:p-5">
         {messages.isLoading ? (
           <div className="flex justify-center py-6"><Spinner size={18} /></div>
+        ) : messages.isError ? (
+          // A failed read used to render as an empty conversation, which reads
+          // as "they never wrote anything" — the opposite of what happened.
+          <p className="py-6 text-center text-body-sm text-[var(--color-danger-500)]">
+            Couldn&apos;t load this conversation.{' '}
+            <button type="button" className="underline" onClick={() => void messages.refetch()}>
+              Try again
+            </button>
+          </p>
+        ) : (messages.data ?? []).length === 0 ? (
+          <p className="py-6 text-center text-body-sm text-[var(--color-content-muted)]">
+            No messages in this conversation yet.
+          </p>
         ) : (
           <ol className="space-y-3">
             {(messages.data ?? []).map((m) => (
