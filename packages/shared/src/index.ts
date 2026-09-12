@@ -97,6 +97,40 @@ export interface KycMetrics {
   decisions7d: number;
 }
 
+/** One message in a person's conversation with AutoHire's admins. */
+export interface SupportMessage {
+  id: ID;
+  /** True when an admin wrote it, false when the person did. */
+  fromAdmin: boolean;
+  body: string;
+  createdAt: string; // ISO
+}
+
+/** The person's own conversation with AutoHire, as they see it. */
+export interface SupportThread {
+  id: ID;
+  subject: string;
+  status: 'open' | 'closed';
+  messages: SupportMessage[];
+}
+
+/** One conversation in the admin inbox, with the person it belongs to. */
+export interface AdminSupportThread {
+  id: ID;
+  profileId: ID;
+  fullName: string;
+  email: string;
+  avatarUrl?: string;
+  subject: string;
+  status: 'open' | 'closed';
+  lastMessageAt: string; // ISO
+  lastMessagePreview: string;
+  /** False when the person spoke last — i.e. it is waiting on an admin. */
+  lastFromAdmin: boolean;
+  unreadForAdmin: number;
+  messageCount: number;
+}
+
 /** A page of results plus the total match count, for scalable admin lists. */
 export interface Page<T> {
   items: T[];

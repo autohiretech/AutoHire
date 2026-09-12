@@ -37,6 +37,7 @@ import { DisputesSection } from '@/components/admin/DisputesSection';
 import { NotificationsSection } from '@/components/admin/NotificationsSection';
 import { KycReviewSection, PersonVerification } from '@/components/admin/KycReviewSection';
 import { OverviewSection } from '@/components/admin/OverviewSection';
+import { MessagesSection } from '@/components/admin/MessagesSection';
 
 /**
  * Admin panel: overview, KYC review + activity, moderation, and disputes.
@@ -88,14 +89,12 @@ export function AdminPage() {
         )}
         {tab === 'disputes' && <DisputesSection nameOf={nameOf} />}
         {tab === 'notifications' && <NotificationsSection />}
+        {tab === 'messages' && <MessagesSection />}
       </div>
     </section>
   );
 }
 
-/** Placeholder for the Overview tab — the two `Stat` tile grids (Marketplace,
-    KYC verification) plus the electric-fleet card, sized to match so nothing
-    jumps once `adminStats`/`kycMetrics` land. */
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------

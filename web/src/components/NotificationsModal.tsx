@@ -324,6 +324,96 @@ function NotificationDetail({
           {action.label} <ArrowRight size={16} />
         </Button>
       )}
+
+      {n.kind === 'admin_message' && <SupportReply subject={n.title} shownBody={n.body} />}
+    </div>
+  );
+}
+
+/**
+ * The other half of an admin message: what was said since, and a box to answer.
+ *
+ * A message from AutoHire used to be a leaflet — "send a clearer photo of your
+ * licence" with nowhere to say "here it is" or "which one?". The reply lives
+ * here, where the message is read, rather than behind a link to somewhere
+ * else; the renter↔host chat can't carry it, since every conversation there
+ * belongs to a car.
+ *
+ * Earlier replies are shown above the box so the person can see the thread
+ * they are continuing, and the newest message is the one they just opened.
+ */
+function SupportReply({ subject, shownBody }: { subject: string; shownBody: string }) {
+  const queryClient = useQueryClient();
+  const [body, setBody] = useState('');
+  const thread = useQuery({ queryKey: ['supportThread'], queryFn: () => client.getMySupportThread() });
+  const send = useMutation({
+    mutationFn: () => client.sendSupportReply(body.trim(), subject),
+    onSuccess: () => {
+      setBody('');
+      void queryClient.invalidateQueries({ queryKey: ['supportThread'] });
+    },
+  });
+
+  // The message being read is already on screen above, in full, so repeating it
+  // in the thread would have the reader wondering whether they were sent the
+  // same thing twice. Everything else in the conversation stays.
+  const history = (thread.data?.messages ?? [])
+    .filter((m) => m.body.trim() !== shownBody.trim())
+    .slice(-6);
+
+  return (
+    <div className="mt-6 border-t border-[var(--color-line)] pt-4">
+      <p className="text-caption font-semibold uppercase tracking-wide text-[var(--color-content-subtle)]">
+        Reply to AutoHire
+      </p>
+
+      {history.length > 0 && (
+        <ol className="mt-3 space-y-2">
+          {history.map((m) => (
+            <li
+              key={m.id}
+              className={cn(
+                'max-w-[85%] rounded-[var(--radius-card)] px-3 py-2 text-body-sm',
+                m.fromAdmin
+                  ? 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]'
+                  : 'ml-auto bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]',
+              )}
+            >
+              <p className="whitespace-pre-line">{m.body}</p>
+              <p
+                className={cn(
+                  'mt-0.5 text-caption',
+                  m.fromAdmin ? 'text-[var(--color-content-subtle)]' : 'text-[var(--color-accent-contrast)]/70',
+                )}
+              >
+                {m.fromAdmin ? 'AutoHire' : 'You'} · {timeAgo(m.createdAt)}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        rows={3}
+        maxLength={2000}
+        placeholder="Write your reply…"
+        className="mt-3 w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3.5 py-2.5 text-body-sm text-[var(--color-content)] placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] focus:outline-none"
+      />
+      {send.isError && (
+        <p className="mt-1 text-caption text-[var(--color-danger-500)]">
+          {send.error instanceof Error ? send.error.message : "Couldn't send that."}
+        </p>
+      )}
+      <div className="mt-2 flex items-center gap-3">
+        <Button size="sm" disabled={!body.trim() || send.isPending} onClick={() => send.mutate()}>
+          {send.isPending ? 'Sending…' : 'Send reply'}
+        </Button>
+        {send.isSuccess && !body && (
+          <span className="text-caption text-[var(--color-content-subtle)]">Sent — an admin will see it.</span>
+        )}
+      </div>
     </div>
   );
 }

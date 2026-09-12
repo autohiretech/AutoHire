@@ -9,6 +9,7 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  MessagesSquare,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -33,7 +34,8 @@ export type AdminSection =
   | 'verification'
   | 'activity'
   | 'moderation'
-  | 'disputes';
+  | 'disputes'
+  | 'messages';
 
 interface NavItem {
   key: AdminSection;
@@ -93,6 +95,13 @@ export const ADMIN_NAV: { heading: string | null; items: NavItem[] }[] = [
         icon: Flag,
         description: 'Listings and people reported by the community.',
       },
+      {
+        key: 'messages',
+        path: '/messages',
+        label: 'Messages',
+        icon: MessagesSquare,
+        description: 'Conversations with people — anything they sent back is waiting here.',
+      },
     ],
   },
   {
@@ -145,7 +154,9 @@ function useQueueCounts(): Partial<Record<AdminSection, number>> {
   const flags = useQuery({ queryKey: ['flags'], queryFn: () => client.listFlags() });
   const disputes = useQuery({ queryKey: ['disputes'], queryFn: () => client.listDisputes() });
   const kyc = useQuery({ queryKey: ['kycMetrics'], queryFn: () => client.getKycMetrics() });
+  const support = useQuery({ queryKey: ['supportWaiting'], queryFn: () => client.countSupportWaiting() });
   return {
+    messages: support.data || undefined,
     verification: kyc.data?.pendingDocs || undefined,
     moderation: (flags.data ?? []).filter((f) => f.status === 'open').length || undefined,
     disputes:

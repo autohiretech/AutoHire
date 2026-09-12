@@ -1,6 +1,7 @@
 import type {
   AdminMoneyByCurrency,
   AdminOverview,
+  AdminSupportThread,
   AppNotification,
   Booking,
   Conversation,
@@ -37,6 +38,8 @@ import type {
   KycOwner,
   KycProfile,
   Page,
+  SupportMessage,
+  SupportThread,
   ElectricQuota,
   AdminUser,
   AdminAction,
@@ -2398,6 +2401,100 @@ export const supabaseClient = {
   /** Suspend or reinstate a user (admin only). */
   async setUserSuspended(profileId: string, suspended: boolean): Promise<void> {
     await run(sb().rpc('admin_set_suspended', { p_profile_id: profileId, p_suspended: suspended }));
+  },
+  // --- Support conversations --------------------------------------------
+  /**
+   * The signed-in person's conversation with AutoHire.
+   *
+   * `my_support_thread` returns the thread flattened against its messages (one
+   * row per message, or a single row with no message when the thread is
+   * empty), because a Postgres function cannot return a nested array. Reading
+   * it clears their unread count server-side.
+   */
+  async getMySupportThread(): Promise<SupportThread | null> {
+    const rows = (await run(sb().rpc('my_support_thread'))) as Record<string, unknown>[] | null;
+    const list = rows ?? [];
+    if (list.length === 0) return null;
+    const first = list[0];
+    return {
+      id: first.id as string,
+      subject: first.subject as string,
+      status: first.status as SupportThread['status'],
+      messages: list
+        .filter((r) => r.message_id)
+        .map((r) => ({
+          id: r.message_id as string,
+          fromAdmin: Boolean(r.from_admin),
+          body: r.body as string,
+          createdAt: r.created_at as string,
+        })),
+    };
+  },
+  /** Reply to AutoHire, starting the conversation if there isn't one yet. */
+  async sendSupportReply(body: string, subject?: string): Promise<string> {
+    return (await run(
+      sb().rpc('my_support_reply', { p_body: body, p_subject: subject ?? null }),
+    )) as string;
+  },
+  /** The admin inbox: conversations waiting on a reply first (admin only). */
+  async listSupportThreads(opts: {
+    scope?: 'open' | 'all';
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  } = {}): Promise<Page<AdminSupportThread>> {
+    const page = opts.page ?? 0;
+    const pageSize = opts.pageSize ?? 20;
+    const rows = (await run(
+      sb().rpc('admin_support_threads', {
+        p_scope: opts.scope ?? 'open',
+        p_search: opts.search?.trim() ?? '',
+        p_limit: pageSize,
+        p_offset: page * pageSize,
+      }),
+    )) as Record<string, unknown>[] | null;
+    const list = rows ?? [];
+    return {
+      total: list.length ? Number(list[0].total_count ?? 0) : 0,
+      items: list.map((r) => ({
+        id: r.id as string,
+        profileId: r.profile_id as string,
+        fullName: r.full_name as string,
+        email: r.email as string,
+        avatarUrl: (r.avatar_url as string) ?? undefined,
+        subject: r.subject as string,
+        status: r.status as AdminSupportThread['status'],
+        lastMessageAt: r.last_message_at as string,
+        lastMessagePreview: (r.last_message_preview as string) ?? '',
+        lastFromAdmin: Boolean(r.last_from_admin),
+        unreadForAdmin: Number(r.unread_for_admin ?? 0),
+        messageCount: Number(r.message_count ?? 0),
+      })),
+    };
+  },
+  /** One conversation, oldest message first. Reading marks it read (admin only). */
+  async listSupportMessages(threadId: string): Promise<SupportMessage[]> {
+    const rows = (await run(
+      sb().rpc('admin_support_messages', { p_thread_id: threadId }),
+    )) as Record<string, unknown>[] | null;
+    return (rows ?? []).map((r) => ({
+      id: r.id as string,
+      fromAdmin: Boolean(r.from_admin),
+      body: r.body as string,
+      createdAt: r.created_at as string,
+    }));
+  },
+  /** Reply to a person; they get the same notification any admin message sends. */
+  async replyToSupportThread(threadId: string, body: string): Promise<void> {
+    await run(sb().rpc('admin_support_reply', { p_thread_id: threadId, p_body: body }));
+  },
+  /** Close a conversation, or reopen it (admin only). */
+  async setSupportThreadClosed(threadId: string, closed: boolean): Promise<void> {
+    await run(sb().rpc('admin_support_close', { p_thread_id: threadId, p_closed: closed }));
+  },
+  /** How many conversations are waiting on an admin — the sidebar count. */
+  async countSupportWaiting(): Promise<number> {
+    return Number((await run(sb().rpc('admin_support_waiting'))) ?? 0);
   },
   /** Send a message (delivered as a notification) to a user (admin only). */
   async sendUserMessage(profileId: string, title: string, body: string): Promise<void> {
