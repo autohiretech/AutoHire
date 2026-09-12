@@ -105,6 +105,55 @@ const STAGES: Record<
 };
 
 /**
+ * Why this payout stopped, in a sentence written for the host.
+ *
+ * `STAGE.on_hold.hint` is one string and `stageFor` funnels five different
+ * payout statuses into it — `held_for_review`, `needs_verification`,
+ * `blocked`, `failed` and `frozen` — so a host read "Something stopped this
+ * payout." whichever of them it was. They end in completely different ways:
+ * one waits on a named person here, one waits on the host, one waits on a
+ * route or a dispute, one is being retried on a ledger, and one is an account
+ * freeze that has nothing to do with them. A single sentence covering all five
+ * tells them nothing and implies they might be at fault in the four cases
+ * where they are not.
+ *
+ * `payoutStatus` is already on the wire, so this needs nothing new from
+ * PayHold. `holdReason` — the rail's own sentence, set only when a transfer
+ * was actually refused or no route exists — wins where it exists, because it
+ * is more specific than anything derivable from a status and is already
+ * written for a car owner rather than an integrator.
+ *
+ * The rule those sentences follow is `payhold-backend/CLAUDE.md`'s: name the
+ * fact, then the action they can take. Never the mechanism — a host has not
+ * seen `screen_payout` and cannot act on it — and never blame, because in four
+ * of these five the hold is ours.
+ */
+function holdSentence(payoutStatus: string | null, holdReason: string | null): string {
+  if (holdReason) return holdReason;
+
+  switch (payoutStatus) {
+    case 'held_for_review':
+      // A risk rule or a person stopped it, and only a person releases it
+      // (invariant 11). There is genuinely nothing for the host to do, and
+      // saying so is kinder than a sentence that reads like a request.
+      return "We're checking this payout before it goes out. Nothing for you to do — it is normal for a first payout, and we will be in touch if we need anything.";
+    case 'needs_verification':
+      // The one case where the host can act, so it is the one that asks.
+      return 'We need to confirm your payout details before this can be sent. Check the payout method above, and we will take it from there.';
+    case 'blocked':
+      return 'We cannot send this to your payout method at the moment. Nothing is lost — it stays yours, and we are sorting out the route.';
+    case 'failed':
+      return 'The last attempt to send this did not go through. We try again automatically, and the money stays yours in the meantime.';
+    case 'frozen':
+      // A tenant-wide reconciliation freeze. Ours entirely; a host reading
+      // "frozen" would reasonably assume it was about them.
+      return 'Payouts are paused while we check our books. This is on our side, not yours, and your money is unaffected.';
+    default:
+      return 'Something stopped this payout. We are looking into it.';
+  }
+}
+
+/**
  * A host's money: the totals, every trip that made them, and where it goes.
  *
  * Everything is read live from PayHold, which owns the ledger. AutoHire keeps no
@@ -196,6 +245,11 @@ export function EarningsPage() {
   const stuckReasons = [
     ...new Set(
       trips
+        // Only the rail's OWN sentence belongs in a danger Notice — the
+        // IP-whitelist case this was written for. The status-derived
+        // sentences `holdSentence` produces are on each trip's own row
+        // instead: a routine first-payout review reading "nothing for you to
+        // do" would contradict itself rendered in red at the top of the page.
         .filter((t) => t.stage === 'on_hold' && t.holdReason)
         .map((t) => t.holdReason as string),
     ),
@@ -287,13 +341,40 @@ export function EarningsPage() {
             </div>
           </div>
 
-          {balanceForCurrency ? (
+          {/* The figure and its label have to come from the same question, and
+              for a while they did not. This read `balanceForCurrency.available`
+              — the wallet's own cleared figure, in the currency the renter was
+              charged — under the label "Available to send", which is
+              `seller_withdrawable`'s question and a different number in a
+              different currency on any cross-border trip. A host saw
+              "AVAILABLE TO SEND RF 405,347" here above "Ready to send to your
+              account RF 0" in the card below, both true of their own source and
+              flatly contradictory on one screen.
+
+              So the hero now reads the withdrawable figure: the same source,
+              currency and moment as the card, which is the only way the two
+              cannot disagree. `available` keeps its place in "Your money"
+              below, where it is labelled as the wallet's and belongs.
+
+              With no withdrawable row there is no payout destination and
+              nothing can be sent from anywhere, so the honest hero is a zero
+              rather than the wallet's figure wearing this label. */}
+          {withdrawableForCurrency ? (
             <div className="text-right">
               <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
                 Available to send
               </p>
               <p className="tabular mt-0.5 text-display leading-tight text-[var(--color-content)]">
-                {money(balanceForCurrency.available, balanceForCurrency.currency)}
+                {money(withdrawableForCurrency.availableAmount, withdrawableForCurrency.currency)}
+              </p>
+            </div>
+          ) : balanceForCurrency ? (
+            <div className="text-right">
+              <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
+                Available to send
+              </p>
+              <p className="tabular mt-0.5 text-display leading-tight text-[var(--color-content)]">
+                {money(0, balanceForCurrency.currency)}
               </p>
             </div>
           ) : (
@@ -842,7 +923,9 @@ function TripRow({ trip }: { trip: EarningTrip }) {
         </div>
 
         <p className="text-caption text-[var(--color-content-muted)]">
-          {stage.hint}
+          {trip.stage === 'on_hold'
+            ? holdSentence(trip.payoutStatus, trip.holdReason)
+            : stage.hint}
           {/* The date is the part a host is really after — "clearing" without
               "until when" is the same as not knowing. */}
           {trip.stage === 'clearing' && trip.availableAt && (
@@ -851,12 +934,6 @@ function TripRow({ trip }: { trip: EarningTrip }) {
           {trip.stage === 'paid' && trip.paidAt && <> Sent {formatDate(trip.paidAt)}.</>}
         </p>
 
-        {trip.stage === 'on_hold' && trip.holdReason && (
-          <p className="flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-danger-tint)] p-2 text-caption text-[var(--color-danger-500)]">
-            <ShieldAlert size={13} className="mt-0.5 shrink-0" />
-            {trip.holdReason}
-          </p>
-        )}
 
         {/* AutoHire's own figure, not PayHold's — an hourly trip that ran over
             its deposit, or a daily one returned more than 2 hours late.
