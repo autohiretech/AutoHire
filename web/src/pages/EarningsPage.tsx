@@ -697,6 +697,16 @@ export function EarningsPage() {
                     {withdrawableForCurrency.requestedCount > 0 &&
                       ` · ${withdrawableForCurrency.requestedCount} already on the way`}
                   </p>
+                  {/* The figure first, then the reason. A count on its own —
+                      "1 on hold" above a balance of nothing — tells a host
+                      something is wrong and not how much of their money it is,
+                      which is the question they came to the page with. */}
+                  {withdrawableForCurrency.stuckAmount > 0 && (
+                    <p className="tabular mt-1.5 text-body-sm font-semibold text-[var(--color-warn-500)]">
+                      {money(withdrawableForCurrency.stuckAmount, withdrawableForCurrency.currency)}{' '}
+                      not moving yet
+                    </p>
+                  )}
                   {(withdrawableForCurrency.heldCount > 0 ||
                     withdrawableForCurrency.needsVerificationCount > 0 ||
                     withdrawableForCurrency.blockedCount > 0) && (

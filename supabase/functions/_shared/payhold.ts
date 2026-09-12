@@ -217,6 +217,9 @@ export interface Withdrawable {
   held_count: number;
   needs_verification_count: number;
   blocked_count: number;
+  /** How much is stopped, whatever stopped it. The counts above say why. */
+  stuck_amount: number;
+  stuck_count: number;
   paid_amount: number;
   paid_count: number;
 }

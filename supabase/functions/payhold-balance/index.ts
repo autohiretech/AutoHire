@@ -204,6 +204,8 @@ Deno.serve(async (req: Request) => {
           heldCount: w.held_count,
           needsVerificationCount: w.needs_verification_count,
           blockedCount: w.blocked_count,
+          stuckAmount: w.stuck_amount ?? 0,
+          stuckCount: w.stuck_count ?? 0,
           paidAmount: w.paid_amount,
           paidCount: w.paid_count,
         })),

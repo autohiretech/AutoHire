@@ -712,6 +712,15 @@ export interface PayholdWithdrawable {
   heldCount: number;
   needsVerificationCount: number;
   blockedCount: number;
+  /**
+   * How much is stopped, whatever stopped it — the counts above say why.
+   *
+   * Without it a host whose transfer was refused read zero everywhere while
+   * the money sat owed to them: `failed` belonged to no bucket at all, so a
+   * real balance rendered as a confidently blank screen.
+   */
+  stuckAmount: number;
+  stuckCount: number;
   paidAmount: number;
   paidCount: number;
 }
