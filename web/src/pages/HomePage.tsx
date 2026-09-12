@@ -44,18 +44,25 @@ import { citiesFor } from '@/lib/cities';
 const PAGE_SIZE = 36;
 
 /**
- * Listing grid: 2 / 3 fixed columns. A short final row leaves empty cells rather
- * than stretching its cards — under flex `grow` a row of one card blew up to full
- * width and no longer matched the cards above it.
+ * Listing grid: two columns on a phone, and above that as many columns as fit
+ * at a card width that follows the viewport (`.listing-grid` in `index.css`).
+ * A short final row leaves empty cells rather than stretching its cards — under
+ * flex `grow` a row of one card blew up to full width and no longer matched the
+ * cards above it.
  *
- * Three across at the widest, not four.
- *
- * A fourth column buys one more car per row and costs every car the photo that
- * sells it — at four the image is small enough that a RAV4 and a Land Cruiser
- * look alike. Three keeps the picture large enough to tell them apart, and the
- * grid runs longer instead of denser.
+ * **This revises "three across at the widest, not four", and the reason is that
+ * the column count was never the thing that mattered.** That rule was written to
+ * keep the photo large enough to tell a RAV4 from a Land Cruiser, which is a
+ * claim about the card's own width — and three fixed columns in a 1500px
+ * container is a 480px card, wider than the 320px the rails were deliberately
+ * tuned to and think is plenty. Fixing the count instead of the width also meant
+ * the card grew without limit as the screen did, and was drawn half again as
+ * large again on any display the operating system scales. Now the width is held
+ * between 16rem and 20rem and the count falls out of it: four across on a
+ * desktop at ~360px, three on a laptop, two on a phone, and the photo never
+ * drops below the size that argument was defending.
  */
-const CARD_GRID = 'grid grid-cols-2 gap-5 lg:grid-cols-3';
+const CARD_GRID = 'listing-grid grid grid-cols-2 gap-5';
 
 /**
  * The browse state we remember (per session) so clicking into a car and
@@ -618,10 +625,13 @@ function ListingRail({
           {Array.from({ length: 4 }, (_, i) => (
             // Bumped from 240px (`sm:w-60`) — six-plus cards fit across a
             // wide screen at that width, which read as cramped rather than a
-            // deliberate row. 288–320px is four to five per row instead.
-            // Mobile widens to 75% so one card reads clearly with a peek of
-            // the next, rather than two nearly fitting at 68%.
-            <div key={i} className="w-[75%] shrink-0 sm:w-72 md:w-80">
+            // deliberate row. The ceiling is still that 320px; the difference
+            // is that it is now a ceiling rather than a fixed width, so a
+            // 1280px viewport (which is what a 1920px Windows laptop at 150%
+            // scaling reports) gets a proportionally smaller card instead of
+            // the same one drawn half again as large. Mobile keeps 75% so one
+            // card reads clearly with a peek of the next.
+            <div key={i} className="w-[75%] shrink-0 sm:w-[clamp(16rem,20vw,20rem)]">
               <ListingCardSkeleton />
             </div>
           ))}
@@ -629,7 +639,7 @@ function ListingRail({
       ) : (
         <div className="relative -mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(listings ?? []).slice(0, 12).map((listing) => (
-            <div key={listing.id} className="w-[75%] shrink-0 sm:w-72 md:w-80">
+            <div key={listing.id} className="w-[75%] shrink-0 sm:w-[clamp(16rem,20vw,20rem)]">
               <ListingCard listing={listing} />
             </div>
           ))}

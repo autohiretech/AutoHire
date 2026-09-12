@@ -473,3 +473,29 @@ h4 {
   outline: 2px solid var(--color-accent-on);
   outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------------------
+   Listing cards size against the viewport, not against a fixed pixel count
+   --------------------------------------------------------------------------- */
+
+/* A card pinned at 320px is 320 physical pixels on an unscaled Linux desktop
+   and 480 on a Windows laptop at 150% display scaling — same CSS, same build,
+   half again as large, which is what "so big on some computers" turned out to
+   mean. The browser cannot be asked which it is: `devicePixelRatio` cannot
+   tell a scaled OS from a Retina screen from somebody who enlarged their text
+   on purpose.
+
+   What a scaled display does report honestly is a narrower viewport — 1920
+   physical at 150% arrives as 1280 CSS pixels. So a width expressed as a share
+   of the viewport lands at nearly the same physical size on both machines,
+   which a fixed pixel width never can.
+
+   `clamp` keeps the ends sane: never below 16rem, where the photo stops
+   selling the car, and never above 20rem, which is the width the rails were
+   already tuned to on a wide screen. Both bounds are rem, so a reader who
+   zooms still moves them. */
+@media (min-width: 640px) {
+  .listing-grid {
+    grid-template-columns: repeat(auto-fill, minmax(clamp(16rem, 20vw, 20rem), 1fr));
+  }
+}
