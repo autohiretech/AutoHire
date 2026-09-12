@@ -111,6 +111,8 @@ export interface SupportThread {
   id: ID;
   subject: string;
   status: 'open' | 'closed';
+  /** Messages from AutoHire the person hasn't opened yet. */
+  unreadForUser: number;
   messages: SupportMessage[];
 }
 

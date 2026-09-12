@@ -16,6 +16,7 @@ import {
   CornerUpLeft,
   Download,
   FileText,
+  LifeBuoy,
   MessageSquare,
   Paperclip,
   Search,
@@ -24,7 +25,13 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { Conversation, Host, Message, UserProfile } from '@autohire/shared';
+import type {
+  Conversation,
+  Host,
+  Message,
+  SupportThread as SupportThreadType,
+  UserProfile,
+} from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
@@ -116,6 +123,22 @@ export function MessagesPage() {
   }, [conversations, profiles, search, me?.id]);
 
   const selected = conversations?.find((c) => c.id === id);
+  // The conversation with AutoHire itself. `false` means "do not mark it
+  // read": drawing a row in this list is not reading it, and the unread dot
+  // has to survive the list rendering (migration 087).
+  const supportQuery = useQuery({
+    queryKey: ['supportThread', 'list'],
+    queryFn: () => client.getMySupportThread(false),
+  });
+  const support = supportQuery.data ?? null;
+  const isSupport = id === 'support';
+  const supportLast = support?.messages.at(-1);
+  // Shown even with nothing in it, so someone with a question has somewhere
+  // to ask rather than having to wait to be written to first.
+  const supportMatchesSearch =
+    search.trim() === '' ||
+    'autohire'.includes(search.trim().toLowerCase()) ||
+    (supportLast?.body ?? '').toLowerCase().includes(search.trim().toLowerCase());
 
   return (
     // Edge to edge on a phone — a card with a 12px gutter and a border cost a
@@ -164,6 +187,47 @@ export function MessagesPage() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
+            {/* AutoHire sits above the hosts and never scrolls away with
+                them: it is the one conversation the person cannot start by
+                finding a car, and the one an admin's message lands in. */}
+            {supportMatchesSearch && (
+              <ul>
+                <li>
+                  <Link
+                    to="/messages/support"
+                    className={cn(
+                      'flex items-center gap-3 border-b border-[var(--color-line)] px-4 py-3 transition-colors',
+                      isSupport ? 'bg-[var(--color-surface-sunken)]' : 'hover:bg-[var(--color-surface-sunken)]',
+                    )}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
+                      <LifeBuoy size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium text-[var(--color-content)]">AutoHire</span>
+                        {supportLast && (
+                          <span className="shrink-0 text-caption text-[var(--color-content-subtle)]">
+                            {timeAgo(supportLast.createdAt)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="block truncate text-caption text-[var(--color-content-muted)]">
+                        {supportLast
+                          ? `${supportLast.fromAdmin ? '' : 'You: '}${supportLast.body}`
+                          : 'Questions about your account, verification or a booking'}
+                      </span>
+                    </span>
+                    {(support?.unreadForUser ?? 0) > 0 && (
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-[var(--radius-pill)] bg-[var(--color-accent-on)]"
+                        aria-label="Unread"
+                      />
+                    )}
+                  </Link>
+                </li>
+              </ul>
+            )}
             {isLoading ? (
               <ConversationListSkeleton />
             ) : filtered.length > 0 ? (
@@ -184,7 +248,7 @@ export function MessagesPage() {
               </ul>
             ) : (
               <p className="p-6 text-body-sm text-[var(--color-content-muted)]">
-                {search ? 'No conversations match.' : 'No conversations yet.'}
+                {search ? 'No conversations match.' : 'No conversations with hosts yet.'}
               </p>
             )}
           </div>
@@ -208,7 +272,13 @@ export function MessagesPage() {
               : undefined
           }
         >
-          {selected ? (
+          {isSupport ? (
+            <SupportThread
+              thread={support}
+              loading={supportQuery.isLoading}
+              viewportHeight={phoneThread ? viewport.height : undefined}
+            />
+          ) : selected ? (
             <Thread
               conversation={selected}
               party={partyOf(selected)}
@@ -248,6 +318,175 @@ function ConversationListSkeleton() {
 /** Alternating bubble-shaped blocks — narrower ones right-aligned for "mine",
  * left-aligned for "theirs" — standing in for a loading thread above the
  * composer, which stays rendered throughout. */
+/**
+ * The conversation with AutoHire itself.
+ *
+ * An admin messaging someone used to be a leaflet: they read it in the bell
+ * and had nowhere to answer. It belongs here, beside the hosts they already
+ * talk to, because that is where a person looks for "who wrote to me". The
+ * bell keeps its own reply box as a shortcut into this same thread — neither
+ * is the only way in.
+ *
+ * Deliberately plainer than `Thread`: no attachments, reactions or replies to
+ * a specific message. This is a support conversation with one counterparty,
+ * and every one of those affordances would need an admin-side equivalent that
+ * does not exist. The phone keyboard handling is the same, though — the
+ * composer sits on the keyboard rather than under it.
+ */
+function SupportThread({
+  thread,
+  loading,
+  viewportHeight,
+}: {
+  thread: SupportThreadType | null;
+  loading: boolean;
+  /** The visible height on a phone; changes when the keyboard opens or closes. */
+  viewportHeight?: number;
+}) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Opening it IS reading it, which is the difference between this call and
+  // the list's (migration 087). The list's copy is refreshed after, so the
+  // unread dot clears there too.
+  const opened = useQuery({
+    queryKey: ['supportThread', 'open'],
+    queryFn: () => client.getMySupportThread(true),
+  });
+  const shown = opened.data ?? thread;
+  const messages = shown?.messages ?? [];
+
+  const send = useMutation({
+    mutationFn: (body: string) => client.sendSupportReply(body),
+    onSuccess: () => {
+      setDraft('');
+      void queryClient.invalidateQueries({ queryKey: ['supportThread'] });
+      inputRef.current?.focus();
+    },
+  });
+
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: ['supportThread', 'list'] });
+  }, [opened.data, queryClient]);
+
+  // New messages, and the keyboard opening, both keep the latest in view.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [messages.length, viewportHeight]);
+
+  function onSend(e: FormEvent) {
+    e.preventDefault();
+    const body = draft.trim();
+    if (!body || send.isPending) return;
+    send.mutate(body);
+  }
+
+  return (
+    <>
+      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--color-line)] px-4 py-2 md:py-3">
+        <Link
+          to="/messages"
+          className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] md:hidden"
+          aria-label="Back to conversations"
+        >
+          <ArrowLeft size={20} />
+        </Link>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
+          <LifeBuoy size={17} />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-medium text-[var(--color-content)]">AutoHire</p>
+          <p className="truncate text-caption text-[var(--color-content-muted)]">
+            {shown ? shown.subject : 'Ask us anything about your account'}
+          </p>
+        </div>
+      </div>
+
+      <div
+        ref={scrollRef}
+        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain bg-[var(--color-surface)] p-4"
+        {...(loading && !shown ? { 'aria-busy': 'true', 'aria-label': 'Loading' } : {})}
+      >
+        {loading && !shown ? (
+          <ThreadSkeleton />
+        ) : messages.length === 0 ? (
+          <div className="m-auto max-w-xs text-center">
+            <LifeBuoy size={26} className="mx-auto text-[var(--color-content-subtle)]" />
+            <p className="mt-2 text-body-sm font-medium text-[var(--color-content)]">
+              No messages yet
+            </p>
+            <p className="mt-1 text-caption text-[var(--color-content-muted)]">
+              Write to us about your account, your documents or a booking. An admin answers here.
+            </p>
+          </div>
+        ) : (
+          messages.map((m) => (
+            <div
+              key={m.id}
+              className={cn(
+                'max-w-[78%] rounded-[var(--radius-card)] px-3.5 py-2',
+                m.fromAdmin
+                  ? 'self-start bg-[var(--color-surface-raised)] text-[var(--color-content)]'
+                  : 'self-end bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]',
+              )}
+            >
+              <p className="whitespace-pre-line text-body-sm">{m.body}</p>
+              <p
+                className={cn(
+                  'mt-0.5 text-caption',
+                  m.fromAdmin ? 'text-[var(--color-content-subtle)]' : 'text-[var(--color-accent-contrast)]/70',
+                )}
+              >
+                {m.fromAdmin ? 'AutoHire' : 'You'} · {timeAgo(m.createdAt)}
+              </p>
+            </div>
+          ))
+        )}
+      </div>
+
+      {send.isError && (
+        <p className="border-t border-[var(--color-line)] px-4 py-1.5 text-body-sm text-[var(--color-danger-500)]">
+          {send.error instanceof Error ? send.error.message : "Couldn't send that."}
+        </p>
+      )}
+
+      <form
+        onSubmit={onSend}
+        className="flex shrink-0 items-end gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface-raised)] px-3 py-2 md:p-3"
+      >
+        <textarea
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
+          rows={1}
+          maxLength={2000}
+          placeholder="Message AutoHire…"
+          // 16px on phones, same reason as the search field above: iOS zooms
+          // into anything smaller and never zooms back out.
+          className="max-h-32 min-h-11 flex-1 resize-none rounded-[var(--radius-card)] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-3.5 py-2.5 text-base text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] md:text-body-sm"
+        />
+        <button
+          type="submit"
+          onPointerDown={(e) => e.preventDefault()}
+          disabled={!draft.trim() || send.isPending}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
+          aria-label="Send"
+        >
+          <Send size={18} />
+        </button>
+      </form>
+    </>
+  );
+}
+
 function ThreadSkeleton() {
   const bubbles: { mine: boolean; w: string }[] = [
     { mine: false, w: 'w-44' },

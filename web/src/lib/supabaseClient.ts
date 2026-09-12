@@ -2411,8 +2411,10 @@ export const supabaseClient = {
    * empty), because a Postgres function cannot return a nested array. Reading
    * it clears their unread count server-side.
    */
-  async getMySupportThread(): Promise<SupportThread | null> {
-    const rows = (await run(sb().rpc('my_support_thread'))) as Record<string, unknown>[] | null;
+  async getMySupportThread(markRead = true): Promise<SupportThread | null> {
+    const rows = (await run(
+      sb().rpc('my_support_thread', { p_mark_read: markRead }),
+    )) as Record<string, unknown>[] | null;
     const list = rows ?? [];
     if (list.length === 0) return null;
     const first = list[0];
@@ -2420,6 +2422,7 @@ export const supabaseClient = {
       id: first.id as string,
       subject: first.subject as string,
       status: first.status as SupportThread['status'],
+      unreadForUser: Number(first.unread_for_user ?? 0),
       messages: list
         .filter((r) => r.message_id)
         .map((r) => ({
