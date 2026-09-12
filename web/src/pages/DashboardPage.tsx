@@ -4,11 +4,11 @@ import { PayoutSetupModal } from '@/pages/PayoutSetupPage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   Banknote,
   Car,
   CheckCircle2,
-  ChevronLeft,
   Circle,
   ExternalLink,
   Inbox,
@@ -310,19 +310,86 @@ export function DashboardPage() {
 
   const selected = listings.find((l) => l.id === selectedId) ?? null;
 
+  // Quick-filter tile content, built once and reused at two sizes: full-size
+  // for the two things a host must decide on right now, and again (once
+  // full-size, once dense) for the four that report status rather than ask
+  // for a decision. Keeping the numbers here, not inline twice, is what keeps
+  // the phone and desktop layouts from drifting apart.
+  const vehiclesStat = {
+    icon: Car,
+    label: 'Vehicles',
+    value: `${listings.length}`,
+    note: listings.length ? `${indicators.available} available` : undefined,
+    onClick: () => focusFilter('all'),
+    active: view === 'cars' && filter === 'all',
+  };
+  const requestsStat = {
+    icon: Inbox,
+    label: 'Requests',
+    value: `${stats.pending}`,
+    note: indicators.newRequests
+      ? `${indicators.newRequests} new this week`
+      : stats.pending
+        ? 'Awaiting your reply'
+        : 'All caught up',
+    noteTone: (stats.pending ? 'info' : 'muted') as NoteTone,
+    onClick: () => focusFilter('requests'),
+    active: view === 'cars' && filter === 'requests',
+  };
+  const tripStat = {
+    icon: Navigation,
+    label: 'On trip',
+    value: `${stats.active}`,
+    note: indicators.dueSoon
+      ? `${indicators.dueSoon} due back soon`
+      : stats.active
+        ? 'All on schedule'
+        : 'None active',
+    noteTone: (indicators.dueSoon ? 'warn' : 'muted') as NoteTone,
+    onClick: () => focusFilter('trip'),
+    active: view === 'cars' && filter === 'trip',
+  };
+  const overdueStat = {
+    icon: AlertTriangle,
+    label: 'Overdue',
+    value: `${overdueTotal}`,
+    note: overdueTotal ? 'Needs action' : 'All returned on time',
+    noteTone: (overdueTotal ? 'danger' : 'muted') as NoteTone,
+    onClick: () => focusFilter('overdue'),
+    active: view === 'cars' && filter === 'overdue',
+  };
+  const earnedStat = {
+    icon: Banknote,
+    label: 'Earned',
+    value: formatTotals(stats.earned, fallbackCurrency),
+    note: `${stats.completed} completed trip${stats.completed === 1 ? '' : 's'}`,
+  };
+  const payoutsStat = {
+    icon: Wallet,
+    label: 'Payouts due',
+    value: formatTotals(scheduledTotals, fallbackCurrency),
+    note: scheduledTotals.some((t) => t.amount > 0)
+      ? indicators.nextPayoutDays != null
+        ? `Next in ${indicators.nextPayoutDays}d`
+        : 'Scheduled'
+      : 'Nothing scheduled',
+    onClick: () => setView('payouts'),
+    active: view === 'payouts',
+  };
+
   return (
     <section className="mx-auto max-w-[1500px] px-4 py-6 sm:py-8">
       {/* Header — plain surface. The only accent on this screen's chrome is
           the "Add a listing" button itself; a tinted band behind it would be
           a large surface wearing the brand hue for no reason. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
             <LayoutDashboard size={20} />
           </span>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-h2 text-[var(--color-content)]">Host dashboard</h1>
-            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
+            <p className="mt-0.5 truncate text-body-sm text-[var(--color-content-muted)]">
               {host ? host.businessName ?? host.fullName : 'Loading…'}
             </p>
           </div>
@@ -339,75 +406,32 @@ export function DashboardPage() {
       {host && <HostBroadcastComposer />}
 
       {/* Quick-filter tiles — counts a host scans and taps, not a wall of big
-          numbers. Weight and a state chip carry the signal; no per-metric hue. */}
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <StatCard
-          icon={Car}
-          label="Vehicles"
-          value={`${listings.length}`}
-          note={listings.length ? `${indicators.available} available` : undefined}
-          onClick={() => focusFilter('all')}
-          active={view === 'cars' && filter === 'all'}
-        />
-        <StatCard
-          icon={Inbox}
-          label="Requests"
-          value={`${stats.pending}`}
-          note={
-            indicators.newRequests
-              ? `${indicators.newRequests} new this week`
-              : stats.pending
-                ? 'Awaiting your reply'
-                : 'All caught up'
-          }
-          noteTone={stats.pending ? 'info' : 'muted'}
-          onClick={() => focusFilter('requests')}
-          active={view === 'cars' && filter === 'requests'}
-        />
-        <StatCard
-          icon={Navigation}
-          label="On trip"
-          value={`${stats.active}`}
-          note={
-            indicators.dueSoon
-              ? `${indicators.dueSoon} due back soon`
-              : stats.active
-                ? 'All on schedule'
-                : 'None active'
-          }
-          noteTone={indicators.dueSoon ? 'warn' : 'muted'}
-          onClick={() => focusFilter('trip')}
-          active={view === 'cars' && filter === 'trip'}
-        />
-        <StatCard
-          icon={AlertTriangle}
-          label="Overdue"
-          value={`${overdueTotal}`}
-          note={overdueTotal ? 'Needs action' : 'All returned on time'}
-          noteTone={overdueTotal ? 'danger' : 'muted'}
-          onClick={() => focusFilter('overdue')}
-          active={view === 'cars' && filter === 'overdue'}
-        />
-        <StatCard
-          icon={Banknote}
-          label="Earned"
-          value={formatTotals(stats.earned, fallbackCurrency)}
-          note={`${stats.completed} completed trip${stats.completed === 1 ? '' : 's'}`}
-        />
-        <StatCard
-          icon={Wallet}
-          label="Payouts due"
-          value={formatTotals(scheduledTotals, fallbackCurrency)}
-          note={
-            scheduledTotals.some((t) => t.amount > 0)
-              ? indicators.nextPayoutDays != null
-                ? `Next in ${indicators.nextPayoutDays}d`
-                : 'Scheduled'
-              : 'Nothing scheduled'
-          }
-          onClick={() => setView('payouts')}
-          active={view === 'payouts'}
-        />
+          numbers. Weight and a state chip carry the signal; no per-metric hue.
+
+          On a phone, six equal-weight tiles read as a wall of digits, so only
+          the two a host must actually decide on — new requests, overdue
+          returns — run full size up top. The rest (fleet size, what's on the
+          road, money) are things a host checks, not acts on, so they follow
+          in one dense row underneath. From `sm` up there's room for all six
+          at one weight, so the two phone-only rows hand off to a single grid. */}
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:hidden">
+        <StatCard {...requestsStat} />
+        <StatCard {...overdueStat} />
+      </div>
+      <div className="mt-2 grid grid-cols-4 gap-1.5 sm:hidden">
+        <StatCard {...vehiclesStat} compact />
+        <StatCard {...tripStat} compact />
+        <StatCard {...earnedStat} compact />
+        <StatCard {...payoutsStat} compact />
+      </div>
+
+      <div className="mt-5 hidden gap-2 sm:grid sm:grid-cols-3 lg:grid-cols-6">
+        <StatCard {...vehiclesStat} />
+        <StatCard {...requestsStat} />
+        <StatCard {...tripStat} />
+        <StatCard {...overdueStat} />
+        <StatCard {...earnedStat} />
+        <StatCard {...payoutsStat} />
       </div>
 
       {/* View toggle — segmented Chip pair, same control as the Trips filter. */}
@@ -537,12 +561,15 @@ export function DashboardPage() {
               'lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain',
             )}
           >
+            <button
+              type="button"
+              onClick={() => setSelectedId(null)}
+              className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-body-sm font-medium text-[var(--color-content-muted)] hover:text-[var(--color-content)] lg:hidden"
+            >
+              <ArrowLeft size={16} /> Back to the list
+            </button>
             {selected ? (
-              <CarDetail
-                listing={selected}
-                bookings={bookingsByCar.get(selected.id) ?? []}
-                onBack={() => setSelectedId(null)}
-              />
+              <CarDetail listing={selected} bookings={bookingsByCar.get(selected.id) ?? []} />
             ) : (
               <Card>
                 <CardBody className="flex flex-col items-center gap-2 py-16 text-center text-[var(--color-content-subtle)]">
@@ -573,6 +600,11 @@ const NOTE_COLOR: Record<NoteTone, string> = {
  * secondary line. No per-metric colour — weight carries the number, and the
  * note only takes a semantic colour when it is actually reporting a state.
  * With an `onClick` it filters the fleet below.
+ *
+ * `compact` is the phone-only "check when you have a moment" size used for
+ * the four stats that report status rather than ask for a decision — icon,
+ * number and label only, four to a row, no note (there isn't room for one
+ * without it truncating to nothing useful).
  */
 function StatCard({
   icon: Icon,
@@ -582,6 +614,7 @@ function StatCard({
   noteTone = 'muted',
   onClick,
   active = false,
+  compact = false,
 }: {
   icon: LucideIcon;
   label: string;
@@ -590,7 +623,40 @@ function StatCard({
   noteTone?: NoteTone;
   onClick?: () => void;
   active?: boolean;
+  compact?: boolean;
 }) {
+  if (compact) {
+    const inner = (
+      <>
+        <Icon size={14} className="text-[var(--color-content-muted)]" />
+        <p className="tabular mt-1 w-full truncate text-body-sm font-semibold leading-tight text-[var(--color-content)]">
+          {value}
+        </p>
+        <p className="w-full truncate text-caption font-medium text-[var(--color-content-subtle)]">{label}</p>
+      </>
+    );
+    const base =
+      'flex min-w-0 flex-col items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-1.5 py-2.5 text-center';
+    if (!onClick) {
+      return <div className={base}>{inner}</div>;
+    }
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        aria-label={`${label}: ${value}`}
+        className={cn(
+          base,
+          'min-h-11 transition-colors hover:bg-[var(--color-surface-sunken)]',
+          active && 'border-[var(--color-line-strong)] ring-1 ring-[var(--color-line-strong)]',
+        )}
+      >
+        {inner}
+      </button>
+    );
+  }
+
   const inner = (
     <>
       <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
@@ -874,7 +940,7 @@ function CarListRow({
 }
 
 /** Right pane: the selected car's header, sub-tabs and content. */
-function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: Booking[]; onBack: () => void }) {
+function CarDetail({ listing, bookings }: { listing: Listing; bookings: Booking[] }) {
   const [tab, setTab] = useState<CarTab>('requests');
   const status = carStatusBadge(listing, bookings);
   const s = bookingStats(bookings, (b) => bookingCurrency(b, listing));
@@ -895,13 +961,6 @@ function CarDetail({ listing, bookings, onBack }: { listing: Listing; bookings: 
     <Card>
       <CardBody className="space-y-4">
         {/* Header */}
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)] lg:hidden"
-        >
-          <ChevronLeft size={16} /> Fleet
-        </button>
         <div className="flex items-start gap-3">
           <Img
             src={listing.photos[0]}
@@ -1168,9 +1227,9 @@ function CarManage({ listing }: { listing: Listing }) {
   return (
     <div className="space-y-5 pt-1">
       {/* Full details */}
-      <div className="flex items-center justify-between rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2.5">
+      <div className="flex flex-col gap-2 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-body-sm text-[var(--color-content-muted)]">Photos, specs, location, booking mode…</p>
-        <Link to={`/cars/${listing.id}/edit`}>
+        <Link to={`/cars/${listing.id}/edit`} className="shrink-0">
           <Button variant="outline" size="sm">
             <Pencil size={14} /> Edit car details
           </Button>
@@ -1278,7 +1337,7 @@ function CarManage({ listing }: { listing: Listing }) {
             No blocked dates — available throughout.
           </p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="max-w-48" />
           <Button variant="outline" size="sm" onClick={addBlockedDate} disabled={!newDate || mutation.isPending}>
             <Plus size={15} /> Block date
