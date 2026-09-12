@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, RotateCcw, Search, Send } from 'lucide-react';
 import type { AdminSupportThread } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { formatDate, timeAgo } from '@/lib/format';
+import { formatDate, formatDayLabel, formatTime, timeAgo } from '@/lib/format';
 import { Avatar, Badge, Button, Card, Chip, Input, Skeleton, Spinner, toast } from '@/components/ui';
 
 const PAGE_SIZE = 20;
@@ -164,14 +164,35 @@ export function MessagesSection() {
   );
 }
 
-/** One conversation: every message, then a box to answer it. */
+/**
+ * One conversation, built like the messenger it is rather than a stack of
+ * cards: a fixed header, a scrolling transcript, and a composer pinned to the
+ * bottom. It used to be two cards with the reply box below the messages, so a
+ * long conversation pushed the thing you came here to do off the screen.
+ *
+ * The transcript deliberately matches the renter's own thread in
+ * MessagesPage — same bubble shape, same day pills, same in-bubble clock —
+ * because it is the same conversation seen from the other end, and two
+ * different-looking halves of one exchange is what made this screen feel
+ * unfinished. That includes the colour rule written there: an admin's own
+ * messages are `surface-inverse`, never the brand green. The accent is spent
+ * once per screen, on the send button.
+ */
 function ThreadView({ thread }: { thread: AdminSupportThread }) {
   const qc = useQueryClient();
   const [body, setBody] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
   const messages = useQuery({
     queryKey: ['supportMessages', thread.id],
     queryFn: () => client.listSupportMessages(thread.id),
   });
+  const items = messages.data ?? [];
+
+  // Land on the newest message, the way every messenger does — and again after
+  // sending, so your own reply is what you are looking at.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [items.length, messages.isLoading]);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['supportMessages', thread.id] });
@@ -197,85 +218,164 @@ function ThreadView({ thread }: { thread: AdminSupportThread }) {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't change that."),
   });
 
-  return (
-    <div className="space-y-4">
-      <Card className="p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <Avatar name={thread.fullName} src={thread.avatarUrl} size="md" />
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-h4 text-[var(--color-content)]">{thread.fullName}</h2>
-            <p className="truncate text-body-sm text-[var(--color-content-muted)]">{thread.email}</p>
-            <p className="mt-1 truncate text-caption text-[var(--color-content-subtle)]">
-              {thread.subject} · started {formatDate(thread.lastMessageAt)}
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={setClosed.isPending}
-            onClick={() => setClosed.mutate(thread.status !== 'closed')}
-          >
-            {thread.status === 'closed' ? (<><RotateCcw size={14} /> Reopen</>) : 'Close'}
-          </Button>
-        </div>
-      </Card>
+  // When the conversation actually started, taken from the first message.
+  // The header used to label `lastMessageAt` as "started", which is the one
+  // date it is not — on a live conversation it moves every time someone
+  // writes.
+  const startedAt = items[0]?.createdAt;
 
-      <Card className="p-4 sm:p-5">
+  return (
+    <Card className="flex flex-col overflow-hidden lg:h-[calc(100vh-8rem)]">
+      <div className="flex shrink-0 items-start gap-3 border-b border-[var(--color-line)] p-4 sm:px-5">
+        <Avatar name={thread.fullName} src={thread.avatarUrl} size="md" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h2 className="truncate text-h4 text-[var(--color-content)]">{thread.fullName}</h2>
+            {thread.status === 'closed' && <Badge tone="neutral">Closed</Badge>}
+          </div>
+          <p className="truncate text-body-sm text-[var(--color-content-muted)]">{thread.email}</p>
+          <p className="mt-1 truncate text-caption text-[var(--color-content-subtle)]">
+            {thread.subject}
+            {startedAt ? ` · started ${formatDate(startedAt)}` : ''}
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={setClosed.isPending}
+          onClick={() => setClosed.mutate(thread.status !== 'closed')}
+        >
+          {thread.status === 'closed' ? (<><RotateCcw size={14} /> Reopen</>) : 'Close'}
+        </Button>
+      </div>
+
+      <div
+        ref={scrollRef}
+        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain bg-[var(--color-surface)] p-4 max-lg:max-h-[55svh]"
+      >
         {messages.isLoading ? (
-          <div className="flex justify-center py-6"><Spinner size={18} /></div>
+          <div className="flex flex-1 items-center justify-center py-6"><Spinner size={18} /></div>
         ) : messages.isError ? (
           // A failed read used to render as an empty conversation, which reads
           // as "they never wrote anything" — the opposite of what happened.
-          <p className="py-6 text-center text-body-sm text-[var(--color-danger-500)]">
+          <p className="my-auto text-center text-body-sm text-[var(--color-danger-500)]">
             Couldn&apos;t load this conversation.{' '}
             <button type="button" className="underline" onClick={() => void messages.refetch()}>
               Try again
             </button>
           </p>
-        ) : (messages.data ?? []).length === 0 ? (
-          <p className="py-6 text-center text-body-sm text-[var(--color-content-muted)]">
+        ) : items.length === 0 ? (
+          <p className="my-auto text-center text-body-sm text-[var(--color-content-muted)]">
             No messages in this conversation yet.
           </p>
         ) : (
-          <ol className="space-y-3">
-            {(messages.data ?? []).map((m) => (
-              <li
-                key={m.id}
-                className={cn(
-                  'max-w-[80%] rounded-[var(--radius-card)] px-3.5 py-2.5 text-body-sm',
-                  m.fromAdmin
-                    ? 'ml-auto bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]'
-                    : 'bg-[var(--color-surface-sunken)] text-[var(--color-content)]',
+          // `mt-auto` sits the transcript on the composer when there is not
+          // enough of it to fill the pane. Without it a two-message
+          // conversation hangs at the top of a full-height card with a hole
+          // under it. It is the safe half of this trick: `justify-end` on the
+          // scroller itself makes overflowing content unreachable above the
+          // top edge, whereas an auto margin collapses to nothing as soon as
+          // the list is taller than the pane.
+          <div className="mt-auto flex flex-col gap-1.5">
+          {items.map((m, i) => {
+            const prev = items[i - 1];
+            const newDay =
+              !prev ||
+              new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
+            return (
+              <Fragment key={m.id}>
+                {newDay && (
+                  <div className="my-2 flex justify-center">
+                    <span className="rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] px-2.5 py-0.5 text-caption text-[var(--color-content-muted)]">
+                      {formatDayLabel(m.createdAt)}
+                    </span>
+                  </div>
                 )}
-              >
-                <p className="whitespace-pre-line">{m.body}</p>
-                <p className={cn('mt-1 text-caption', m.fromAdmin ? 'text-[var(--color-accent-contrast)]/70' : 'text-[var(--color-content-subtle)]')}>
-                  {m.fromAdmin ? 'AutoHire' : thread.fullName.split(' ')[0]} · {timeAgo(m.createdAt)}
-                </p>
-              </li>
-            ))}
-          </ol>
-        )}
-
-        <div className="mt-4 border-t border-[var(--color-line)] pt-4">
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={3}
-            maxLength={2000}
-            placeholder={`Reply to ${thread.fullName.split(' ')[0]}…`}
-            className="w-full rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3.5 py-2.5 text-body-sm text-[var(--color-content)] placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] focus:outline-none"
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <Button size="sm" disabled={!body.trim() || reply.isPending} onClick={() => reply.mutate()}>
-              <Send size={14} /> {reply.isPending ? 'Sending…' : 'Send reply'}
-            </Button>
-            <span className="text-caption text-[var(--color-content-subtle)]">
-              Replying reopens a closed conversation.
-            </span>
+                <div
+                  className={cn(
+                    'flex max-w-[78%] flex-col',
+                    m.fromAdmin ? 'items-end self-end' : 'items-start self-start',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'rounded-[var(--radius-card)] px-3.5 py-2 text-body-sm',
+                      m.fromAdmin
+                        ? 'rounded-br-sm bg-[var(--color-surface-inverse)] text-[var(--color-content-inverse)]'
+                        : // A hairline edge, which the renter's own thread does without:
+                          // there the sunken bubble sits on a page that is a
+                          // shade lighter, and here it sits on the transcript's
+                          // own surface. In dark mode those two are close
+                          // enough that an incoming message read as loose text
+                          // with no bubble around it at all.
+                          'rounded-bl-sm border border-[var(--color-line)] bg-[var(--color-surface-sunken)] text-[var(--color-content)]',
+                    )}
+                  >
+                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                    {/* Who said it is answered by which side it sits on, so the
+                        bubble carries a clock and nothing else. Every bubble
+                        used to repeat "AutoHire ·" or the person's first name. */}
+                    <span
+                      className={cn(
+                        'tabular mt-1 flex justify-end text-[10px]',
+                        m.fromAdmin
+                          ? 'text-[var(--color-content-inverse)]/70'
+                          : 'text-[var(--color-content-subtle)]',
+                      )}
+                    >
+                      {formatTime(m.createdAt)}
+                    </span>
+                  </div>
+                </div>
+              </Fragment>
+            );
+          })}
           </div>
-        </div>
-      </Card>
-    </div>
+        )}
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (body.trim() && !reply.isPending) reply.mutate();
+        }}
+        className="flex shrink-0 items-end gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface-raised)] p-3"
+      >
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends, Shift+Enter is a newline — the same contract as the
+            // renter's composer, and what anyone typing in a message box
+            // expects. `isComposing` keeps an IME's Enter out of it.
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
+          rows={1}
+          maxLength={2000}
+          placeholder={`Reply to ${thread.fullName.split(' ')[0]}…`}
+          className="max-h-32 min-h-11 flex-1 resize-none rounded-[var(--radius-card)] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-3.5 py-2.5 text-body-sm text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)]"
+        />
+        <button
+          type="submit"
+          // Keeps focus in the textarea, so sending doesn't dismiss the
+          // keyboard on a touch screen mid-conversation.
+          onPointerDown={(e) => e.preventDefault()}
+          disabled={!body.trim() || reply.isPending}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
+          aria-label={reply.isPending ? 'Sending' : 'Send reply'}
+        >
+          <Send size={18} />
+        </button>
+      </form>
+
+      {thread.status === 'closed' && (
+        <p className="shrink-0 border-t border-[var(--color-line)] bg-[var(--color-surface-raised)] px-3 pb-3 text-caption text-[var(--color-content-subtle)]">
+          Replying reopens this conversation.
+        </p>
+      )}
+    </Card>
   );
 }
