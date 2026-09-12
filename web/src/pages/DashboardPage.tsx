@@ -485,7 +485,11 @@ export function DashboardPage() {
       </div>
 
       {view === 'cars' && !listingsQuery.isLoading && listings.length > 0 && actionItems.length > 0 && (
-        <ActionQueue items={actionItems} listingsById={listingsById} />
+        // The queue is fleet-wide triage; on one pane the open car owns the
+        // screen, so it waits with the rest of the overview chrome.
+        <div className={cn(selected && 'hidden lg:block')}>
+          <ActionQueue items={actionItems} listingsById={listingsById} />
+        </div>
       )}
 
       {view === 'payouts' ? (
@@ -510,7 +514,14 @@ export function DashboardPage() {
       ) : listings.length === 0 ? (
         <EmptyFleet />
       ) : (
-        <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
+        <div
+          className={cn(
+            'grid min-w-0 gap-6 lg:grid-cols-[320px_1fr] lg:items-start',
+            // With the overview hidden above it, a 24px top margin is the only
+            // thing left between the nav and the car — drop it on one pane.
+            selected ? 'lg:mt-6' : 'mt-6',
+          )}
+        >
           {/* Car list — sticks in place on desktop so it stays reachable while
               the detail pane on the right scrolls (mirrors the home page's
               category sidebar). Splits into two panes at `lg` (1024px) rather
