@@ -70,14 +70,11 @@ async function createBooking(admin: SupabaseClient, deal: Deal): Promise<Respons
   // booking is actually written. A role can change between paying and funding.
   const { data: renter } = await admin
     .from('profiles')
-    .select('role, owner_type, verification')
+    .select('role, owner_type')
     .eq('id', uid)
     .single();
   if (renter?.role === 'owner' || renter?.owner_type === 'business') {
     return json({ error: 'Host and company accounts cannot rent.' }, 403);
-  }
-  if (renter?.verification !== 'verified') {
-    return json({ error: 'Renter is not verified.' }, 403);
   }
 
   const { data: listing, error: listErr } = await admin

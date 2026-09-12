@@ -72,8 +72,11 @@ export const VERIFICATION_DOCS: Record<VerificationRole, DocConfig[]> = {
 
 export const VERIFICATION_ROLE_META: Record<VerificationRole, { label: string; blurb: string }> = {
   renter: {
+    // Optional, and said plainly: a renter can book without ever opening this
+    // page, and a declined document costs them nothing on the renting path
+    // (see BookingPage). Promising "so you can book" was the old gate talking.
     label: 'Renter',
-    blurb: 'Confirm your identity so you can book and drive cars.',
+    blurb: 'Optional — verified renters stand out to hosts reviewing a booking request.',
   },
   personalHost: {
     label: 'Personal host',

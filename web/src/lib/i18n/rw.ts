@@ -184,7 +184,6 @@ export const rw: Record<keyof typeof en, string> = {
   'car.pickUpField': 'Aho uyifata',
   'car.addDate': 'Ongeraho itariki',
   'car.returnField': 'Aho uyisubiza',
-  'car.verifyToRent': 'Genzura kugira ngo ukodeshe',
   'car.wontBeChargedYet': 'Ntabwo warishyuzwa ubu',
   'car.depositPlusFee': "Incamake (50%) + amafaranga y'ubuyobozi",
   'car.dueNowLabel': 'Ugomba kwishyura ubu',
@@ -227,16 +226,6 @@ export const rw: Record<keyof typeof en, string> = {
   'booking.hostAccountBefore': "Uri kuri konti y'umukoresha. Kugira ngo ukodeshe imodoka, garuka gukodesha uhereye ku ",
   'booking.hostAccountAfter': '.',
   'booking.backToCar': 'Garuka kuri iyi modoka',
-  'booking.verificationInReview': 'Igenzura riracyakorwa',
-  'booking.verifyToRentTitle': 'Genzura umwirondoro wawe kugira ngo ukodeshe',
-  'booking.verificationInReviewBody':
-    'Turi gusuzuma amakuru yawe. Uzashobora gufata gahunda umwirondoro wawe ukimara kwemerwa.',
-  'booking.verificationRejectedBody':
-    'Umwirondoro wawe wanzwe. Ongera wohereze inyandiko zawe kugira ngo ubashe gukodesha.',
-  'booking.verificationNeededBody':
-    "Kugira ngo bose babe mu mutekano, abakodesha bakora igenzura ry'umwirondoro rimwe mbere ya gahunda yabo ya mbere.",
-  'booking.viewStatus': 'Reba aho bigeze',
-  'booking.verifyNow': 'Genzura ubu',
   'booking.confirmAndPay': 'Emeza kandi wishyure',
   'booking.confirmAndPaySubtitle':
     'Reba imodoka n’amatariki, hanyuma wishyure. Nta kintu kigera kuri nyir\'imodoka kugeza urugendo rurangiye.',
@@ -260,9 +249,9 @@ export const rw: Record<keyof typeof en, string> = {
     "Dubika amafaranga yose kuva igihe ufatiye gahunda. Nyir'imodoka ahabwa amafaranga gusa nyuma yo kwemeza ko imodoka yagarutse.",
   'booking.freeCancellationTitle': 'Guhagarika ubuntu',
   'booking.freeCancellationBody': en['booking.freeCancellationBody'],
-  'booking.verifiedPeopleTitle': 'Abantu bagenzuwe gusa',
+  'booking.verifiedPeopleTitle': "Abantu nyakuri, basuzumwa",
   'booking.verifiedPeopleBody':
-    "Abakodesha bose banyura mu igenzura ry'umwirondoro mbere yo gufata gahunda, kandi ba nyir'imodoka bagenzurwa nyuma ya buri rugendo.",
+    "Ba nyir'imodoka n'abakodesha bagira amanota n'ibitekerezo bigaragara nyuma ya buri rugendo, kandi inyandiko z'umwirondoro zishobora kugenzurwa impande zombi.",
   'booking.topRatedHostBadge': "Umukoresha w'ikirenga",
   'booking.yourTrip': 'Urugendo rwawe',
   'booking.change': 'Hindura',
@@ -382,9 +371,6 @@ export const rw: Record<keyof typeof en, string> = {
   'checkout.cantTakePaymentNow': 'Ntidushobora kwakira ubwishyu bw’uru rugendo ubu',
   'checkout.temporaryTryAgain': 'Nta kintu cyishyuwe kandi imodoka iracyaboneka. Ibi akenshi biba by’igihe gito — ongera ugerageze mu kanya.',
   'checkout.starting': 'Biratangira…',
-  'car.verificationPending': "Umwirondoro wawe uracyasuzumwa — uzashobora gukodesha nyuma yo kwemerwa.",
-  'car.verificationRejected': 'Umwirondoro wawe wanzwe. Ongera wohereze kugira ngo ubashe gukodesha.',
-  'car.verificationNeeded': 'Genzura umwirondoro wawe kugira ngo ukodeshe — igenzura ryihuse rikorwa rimwe.',
 
   // --- Account ------------------------------------------------------------
   'account.title': 'Konti',

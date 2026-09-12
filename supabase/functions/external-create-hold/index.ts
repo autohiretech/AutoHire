@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
     // host-only, and only a verified identity may rent.
     const { data: profile } = await admin
       .from('profiles')
-      .select('role, owner_type, verification, country, payment_ref')
+      .select('role, owner_type, country, payment_ref')
       .eq('id', uid)
       .single();
     if (profile?.owner_type === 'business') {
@@ -76,9 +76,6 @@ Deno.serve(async (req: Request) => {
     }
     if (profile?.role === 'owner') {
       return json({ error: 'Host accounts cannot rent — they can only view cars.' }, 403);
-    }
-    if (profile?.verification !== 'verified') {
-      return json({ error: 'Verify your identity before renting.', code: 'verification_required' }, 403);
     }
 
     const { data: listing, error: listErr } = await admin

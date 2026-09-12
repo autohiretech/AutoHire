@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
     // and view listings but never book one. Refuse before a charge is created.
     const { data: profile } = await admin
       .from('profiles')
-      .select('role, owner_type, verification')
+      .select('role, owner_type')
       .eq('id', uid)
       .single();
     if (profile?.owner_type === 'business') {
@@ -79,11 +79,6 @@ Deno.serve(async (req: Request) => {
     }
     if (profile?.role === 'owner') {
       return json({ error: 'Host accounts cannot rent — they can only view cars.' }, 403);
-    }
-    // Block unverified renters BEFORE any charge is created, so an unverified
-    // renter can never be charged only to be refused at confirm-booking.
-    if (profile?.verification !== 'verified') {
-      return json({ error: 'Verify your identity before renting.', code: 'verification_required' }, 403);
     }
 
     const { data: listing, error: listErr } = await admin

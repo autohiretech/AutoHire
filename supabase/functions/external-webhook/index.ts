@@ -82,14 +82,11 @@ Deno.serve(async (req: Request) => {
     // Hosts and companies are host-only — never turn their hold into a booking.
     const { data: renter } = await admin
       .from('profiles')
-      .select('role, owner_type, verification')
+      .select('role, owner_type')
       .eq('id', uid)
       .single();
     if (renter?.role === 'owner' || renter?.owner_type === 'business') {
       return json({ error: 'Host and company accounts cannot rent — they can only view cars.' }, 403);
-    }
-    if (renter?.verification !== 'verified') {
-      return json({ error: 'Renter is not verified.' }, 403);
     }
 
     const { data: listing, error: listErr } = await admin

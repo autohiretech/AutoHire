@@ -83,16 +83,15 @@ export function BookingPage() {
   const canRent = useCanRent();
   const isCompany = useIsBusinessHost();
   // `isLoading` matters as much as the data here. Every gate below this point
-  // — canRent, isCompany, and the verification check — reads the same profile,
-  // and each one defaults OPEN while it is in flight: `useCanRent` returns
-  // true for a missing profile (lib/account.ts), and the verification guard is
-  // `me && …`, so it simply does not fire yet. Rendering the checkout during
-  // that window put a live Pay button in front of hosts, company accounts and
-  // unverified renters for as long as the profile took to arrive, then yanked
-  // it away. The server and PayHold both refuse those payments, so nothing
-  // could actually be charged — but being offered a button that is about to
-  // vanish is exactly the "click without anything" this page was reported for.
-  const { data: me, isLoading: meLoading } = useCurrentUser();
+  // — canRent and isCompany — reads the same profile, and each one defaults
+  // OPEN while it is in flight: `useCanRent` returns true for a missing
+  // profile (lib/account.ts). Rendering the checkout during that window put a
+  // live Pay button in front of hosts and company accounts for as long as the
+  // profile took to arrive, then yanked it away. The server and PayHold both
+  // refuse those payments, so nothing could actually be charged — but being
+  // offered a button that is about to vanish is exactly the "click without
+  // anything" this page was reported for.
+  const { isLoading: meLoading } = useCurrentUser();
 
   const picked = location.state as
     | { startDate?: string; endDate?: string; pickupTime?: string; estimatedHours?: number }
@@ -226,38 +225,22 @@ export function BookingPage() {
     );
   }
 
-  // Only identity-verified renters can rent. The car detail page blocks earlier,
-  // but this guards a direct link to the checkout, and the server enforces it too.
-  if (me && me.verification !== 'verified') {
-    const underReview = me.verification === 'pending';
-    return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-          <ShieldCheck size={22} />
-        </span>
-        <p className="mt-4 font-semibold text-[var(--color-content)]">
-          {underReview ? t('booking.verificationInReview') : t('booking.verifyToRentTitle')}
-        </p>
-        <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
-          {underReview
-            ? t('booking.verificationInReviewBody')
-            : me.verification === 'rejected'
-              ? t('booking.verificationRejectedBody')
-              : t('booking.verificationNeededBody')}
-        </p>
-        <Link to="/verification" className="mt-5 inline-block">
-          <Button size="lg">
-            <ShieldCheck size={16} /> {underReview ? t('booking.viewStatus') : t('booking.verifyNow')}
-          </Button>
-        </Link>
-        <div>
-          <Link to={`/cars/${id}`} className="mt-3 inline-block text-body-sm text-brand-600 hover:underline">
-            {t('booking.backToCar')}
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  // Identity verification is deliberately NOT a condition of renting.
+  //
+  // It used to be: an unverified, pending or rejected renter hit a wall here
+  // and on the car page, and seven Edge Functions refused the booking behind
+  // them. The rejection case is what made that untenable — a renter whose
+  // document was declined (a blurred photo, an expired licence, a name that
+  // didn't match) lost the ability to rent at all until they resubmitted and
+  // an admin got to it. Verification is a signal now, not a gate: it still
+  // exists, hosts still see it on a booking request (RequesterModal) and can
+  // decline on it, and a request-to-book car still needs the host's yes.
+  //
+  // Anything reintroducing a `verification !== 'verified'` refusal on the
+  // renting path — here, on the car page, or in confirm-booking,
+  // create-payment-intent, flutterwave-collect, external-create-hold,
+  // external-webhook, payhold-create-deal or payhold-webhook — is undoing a
+  // deliberate product decision, not fixing an oversight.
 
   const today = todayISO();
   const inMaintenance = listing.status === 'maintenance';

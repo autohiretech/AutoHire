@@ -228,21 +228,9 @@ export function CarDetailPage() {
   const cur: CurrencyCode = isCurrencyCode(listing.priceCurrency) ? listing.priceCurrency : 'RWF';
   const money = (n: number) => formatMoney(n, cur);
 
-  // Renters must be identity-verified before they can rent. Guests (no `me`) fall
-  // through to the normal flow, which routes them to sign in first.
-  const needsVerification = canRent && !!me && me.verification !== 'verified';
-  const verifNotice = needsVerification
-    ? me!.verification === 'pending'
-      ? t('car.verificationPending')
-      : me!.verification === 'rejected'
-        ? t('car.verificationRejected')
-        : t('car.verificationNeeded')
-    : null;
-
   const goToCalendar = () => calendarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const reserve = () => {
     if (!canRent) return;
-    if (needsVerification) return navigate('/verification');
     if (!datesChosen) return goToCalendar();
     navigate(`/cars/${listing.id}/book`, {
       state: isHourlyListing
@@ -256,13 +244,14 @@ export function CarDetailPage() {
     });
   };
 
-  const reserveLabel = needsVerification
-    ? t('car.verifyToRent')
-    : datesChosen
-      ? instant
-        ? t('car.reserve')
-        : t('car.requestToBook')
-      : t('car.chooseDates');
+  // Identity verification is not a condition of renting — see BookingPage for
+  // the whole story — so nothing about the renter's own verification state
+  // reaches this button any more.
+  const reserveLabel = datesChosen
+    ? instant
+      ? t('car.reserve')
+      : t('car.requestToBook')
+    : t('car.chooseDates');
 
   const subtitle = [`${listing.year} ${listing.make}`, listing.model].filter(Boolean).join(' ');
 
@@ -771,15 +760,9 @@ export function CarDetailPage() {
                   <Button className="w-full" size="lg" onClick={reserve}>
                     {reserveLabel}
                   </Button>
-                  {verifNotice ? (
-                    <Notice tone={me?.verification === 'rejected' ? 'danger' : 'warn'} className="text-caption">
-                      {verifNotice}
-                    </Notice>
-                  ) : (
-                    <p className="text-center text-caption text-[var(--color-content-subtle)]">
-                      {t('car.wontBeChargedYet')}
-                    </p>
-                  )}
+                  <p className="text-center text-caption text-[var(--color-content-subtle)]">
+                    {t('car.wontBeChargedYet')}
+                  </p>
 
                   {datesChosen && isHourlyListing && (
                     <div className="space-y-2 border-t border-[var(--color-line)] pt-3 text-body-sm">
