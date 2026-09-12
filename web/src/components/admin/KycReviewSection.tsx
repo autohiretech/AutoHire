@@ -147,6 +147,7 @@ export function KycReviewSection() {
   return (
     <div className="space-y-4">
       <AutoApproveSwitch />
+      <PayoutAutoVerifySwitch />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
         {/* Queue */}
@@ -329,6 +330,62 @@ export function KycReviewSection() {
  * Used by the review queue and by Admin → Users, so a decision works the same
  * way wherever an admin makes it.
  */
+/**
+ * Verify the host's payout account along with the host, when the platform
+ * setting says so.
+ *
+ * Being verified and being payable are two separate checks — PayHold will not
+ * pay a destination nobody has verified — and the second one lives in a card
+ * further down the page that is easy to leave for later, so a verified host
+ * ends up waiting on a decision nobody remembers to make. This closes that gap
+ * without hiding it: the toast says what happened, the card still names who
+ * verified the account, and an admin who would rather look at each one first
+ * turns the setting off.
+ *
+ * It never writes a local "verified" flag. It calls the same
+ * `payhold-verify-destination` the button calls, so AutoHire and PayHold can't
+ * end up disagreeing about an account — that split is what broke payouts here
+ * before.
+ */
+function useAutoVerifyPayout(person: KycPerson) {
+  const qc = useQueryClient();
+  const { data: on } = useQuery({
+    queryKey: ['payoutAutoVerify'],
+    queryFn: () => client.getPayoutAutoVerify(),
+  });
+  const isHost = person.ownerType != null && person.role !== 'admin';
+
+  return async function autoVerifyPayout() {
+    if (!on || !isHost) return;
+    try {
+      const current = await client.getHostPayoutAccount(person.id);
+      // Nothing saved to verify, or an admin already verified it by hand.
+      if (!current.account || current.account.verifiedAt) return;
+      const r = await client.setHostPayoutAccountVerified(person.id, true);
+      qc.setQueryData(['hostPayoutAccount', person.id], { account: r.account });
+      switch (r.outcome) {
+        case 'verified':
+          toast.success('Their payout account was verified too.');
+          break;
+        case 'changed':
+          toast.info('They changed their payout account just now, so it was left unverified. Check it below.');
+          break;
+        case 'not_trusted_yet':
+          toast.info(
+            "Their payout account wasn't verified: PayHold isn't set to take payout-account checks from AutoHire yet.",
+          );
+          break;
+        default:
+          break;
+      }
+    } catch (e) {
+      toast.error(
+        `The person is verified, but their payout account couldn't be${e instanceof Error ? `: ${e.message}` : '.'} Use the button below.`,
+      );
+    }
+  };
+}
+
 export function PersonVerification({
   person,
   shortcuts = false,
@@ -343,6 +400,7 @@ export function PersonVerification({
   onNext?: () => void;
 }) {
   const qc = useQueryClient();
+  const autoVerifyPayout = useAutoVerifyPayout(person);
   const docsQuery = useQuery({
     queryKey: ['profileDocs', person.id],
     queryFn: () => client.listVerificationsForProfile(person.id),
@@ -374,7 +432,17 @@ export function PersonVerification({
       );
       // Approving one document only verifies the person once every required
       // one is approved; until then PayHold is told "not verified", quietly.
-      void relayVerificationToPayhold(person.id, { quietUnlessVerified: v.status === 'verified' });
+      // The payout account follows that relay rather than racing it: PayHold
+      // should hear "this person is verified" before "so is where their money
+      // goes". `byType` is this render's data, so the document just decided is
+      // counted from the decision itself.
+      const completesAccount =
+        v.status === 'verified' &&
+        required.every((t) => t === v.doc.type || byType.get(t)?.status === 'verified');
+      void (async () => {
+        await relayVerificationToPayhold(person.id, { quietUnlessVerified: v.status === 'verified' });
+        if (completesAccount) await autoVerifyPayout();
+      })();
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't save that decision."),
   });
@@ -808,6 +876,7 @@ function RejectForm({
  */
 function AccountDecision({ person }: { person: KycPerson }) {
   const qc = useQueryClient();
+  const autoVerifyPayout = useAutoVerifyPayout(person);
   const [pending, setPending] = useState<VerificationStatus | null>(null);
   const [note, setNote] = useState('');
 
@@ -820,7 +889,10 @@ function AccountDecision({ person }: { person: KycPerson }) {
       setPending(null);
       setNote('');
       toast.success(`${person.fullName} is now ${VERIFICATION_META[status].label.toLowerCase()}.`);
-      void relayVerificationToPayhold(person.id);
+      void (async () => {
+        await relayVerificationToPayhold(person.id);
+        if (status === 'verified') await autoVerifyPayout();
+      })();
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't change the status."),
   });
@@ -1175,6 +1247,49 @@ function PersonHistory({ profileId }: { profileId: string }) {
   );
 }
 
+/** One platform setting as a row with a switch. */
+function SettingSwitch({
+  title,
+  description,
+  on,
+  disabled,
+  onToggle,
+}: {
+  title: string;
+  description: string;
+  on: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Card className="flex items-center gap-3 px-4 py-3 sm:px-5">
+      <div className="min-w-0 flex-1">
+        <p className="text-body-sm font-medium text-[var(--color-content)]">{title}</p>
+        <p className="text-caption text-[var(--color-content-subtle)]">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={title}
+        disabled={disabled}
+        onClick={onToggle}
+        className={cn(
+          'relative h-6 w-11 shrink-0 rounded-[var(--radius-pill)] transition-colors disabled:opacity-50',
+          on ? 'bg-[var(--color-accent-on)]' : 'bg-[var(--color-line-strong)]',
+        )}
+      >
+        <span
+          className={cn(
+            'absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
+            on ? 'translate-x-[22px]' : 'translate-x-0.5',
+          )}
+        />
+      </button>
+    </Card>
+  );
+}
+
 /** Platform switch: verify new submissions instantly, or hold them for review. */
 function AutoApproveSwitch() {
   const qc = useQueryClient();
@@ -1192,34 +1307,51 @@ function AutoApproveSwitch() {
   });
 
   return (
-    <Card className="flex items-center gap-3 px-4 py-3 sm:px-5">
-      <div className="min-w-0 flex-1">
-        <p className="text-body-sm font-medium text-[var(--color-content)]">Approve new documents automatically</p>
-        <p className="text-caption text-[var(--color-content-subtle)]">
-          {on
-            ? 'On — uploads are approved the moment they arrive. Turn off to review each one here.'
-            : 'Off — every upload waits in this queue for a decision.'}
-        </p>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={!!on}
-        aria-label="Approve new documents automatically"
-        disabled={isLoading || toggle.isPending}
-        onClick={() => toggle.mutate(!on)}
-        className={cn(
-          'relative h-6 w-11 shrink-0 rounded-[var(--radius-pill)] transition-colors disabled:opacity-50',
-          on ? 'bg-[var(--color-accent-on)]' : 'bg-[var(--color-line-strong)]',
-        )}
-      >
-        <span
-          className={cn(
-            'absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-            on ? 'translate-x-[22px]' : 'translate-x-0.5',
-          )}
-        />
-      </button>
-    </Card>
+    <SettingSwitch
+      title="Approve new documents automatically"
+      description={
+        on
+          ? 'On — uploads are approved the moment they arrive. Turn off to review each one here.'
+          : 'Off — every upload waits in this queue for a decision.'
+      }
+      on={!!on}
+      disabled={isLoading || toggle.isPending}
+      onToggle={() => toggle.mutate(!on)}
+    />
+  );
+}
+
+/** Platform switch: verifying a host also verifies where their money goes. */
+function PayoutAutoVerifySwitch() {
+  const qc = useQueryClient();
+  const { data: on, isLoading } = useQuery({
+    queryKey: ['payoutAutoVerify'],
+    queryFn: () => client.getPayoutAutoVerify(),
+  });
+  const toggle = useMutation({
+    mutationFn: (next: boolean) => client.setPayoutAutoVerify(next),
+    onSuccess: (_r, next) => {
+      qc.invalidateQueries({ queryKey: ['payoutAutoVerify'] });
+      toast.success(
+        next
+          ? 'Verifying a host now verifies their payout account too.'
+          : 'Payout accounts now wait for you to verify each one.',
+      );
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't change the setting."),
+  });
+
+  return (
+    <SettingSwitch
+      title="Verify payout accounts with the host"
+      description={
+        on
+          ? "On — verifying someone also tells PayHold their payout account is checked. PayHold's own security hold still applies."
+          : 'Off — verify each payout account yourself, under Payout account.'
+      }
+      on={!!on}
+      disabled={isLoading || toggle.isPending}
+      onToggle={() => toggle.mutate(!on)}
+    />
   );
 }

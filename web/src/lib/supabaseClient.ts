@@ -2305,6 +2305,23 @@ export const supabaseClient = {
   async setKycAutoApprove(on: boolean): Promise<void> {
     await run(sb().rpc('admin_set_kyc_auto_approve', { p_on: on }));
   },
+  /**
+   * Whether verifying a host also verifies their PayHold payout account.
+   *
+   * Two separate checks stand between a verified host and being paid, and the
+   * second one is easy to forget — so by default AutoHire makes it for the
+   * admin. Off means each payout account is verified by hand in the review.
+   */
+  async getPayoutAutoVerify(): Promise<boolean> {
+    const row = await run(
+      sb().from('app_settings').select('payout_auto_verify').eq('id', 1).maybeSingle(),
+    );
+    return Boolean((row as { payout_auto_verify?: boolean } | null)?.payout_auto_verify);
+  },
+  /** Turn automatic payout-account verification on/off (admin only). */
+  async setPayoutAutoVerify(on: boolean): Promise<void> {
+    await run(sb().rpc('admin_set_payout_auto_verify', { p_on: on }));
+  },
   /** Current electric-car quota + whether a non-electric car may be listed now. */
   async getElectricQuota(): Promise<ElectricQuota> {
     const rows = (await run(sb().rpc('electric_quota_status'))) as Record<string, unknown>[] | null;
