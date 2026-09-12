@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   Clock,
+  Megaphone,
   MessageSquare,
   ShieldCheck,
   Star,
@@ -26,6 +27,7 @@ const KIND_ICON: Record<NotificationKind, React.ReactNode> = {
   return_reminder: <Clock size={18} />,
   payout_alert: <Banknote size={18} />,
   message: <MessageSquare size={18} />,
+  admin_message: <Megaphone size={18} />,
   verification: <ShieldCheck size={18} />,
   watchlist: <Star size={18} />,
 };
@@ -36,6 +38,7 @@ const KIND_LABEL: Record<NotificationKind, string> = {
   return_reminder: 'Return reminder',
   payout_alert: 'Payout',
   message: 'Message',
+  admin_message: 'From AutoHire',
   verification: 'Verification',
   watchlist: 'Watchlist',
 };
@@ -58,6 +61,10 @@ function actionFor(n: AppNotification, isHost: boolean): { to: string; label: st
   switch (n.kind) {
     case 'message':
       return { to: '/messages', label: 'Open messages' };
+    // An admin's own words, with nowhere else to send the reader: a broadcast
+    // that is about something carries its own `link` (handled above).
+    case 'admin_message':
+      return null;
     case 'verification':
       return { to: '/verification', label: 'Go to verification' };
     case 'payout_alert':

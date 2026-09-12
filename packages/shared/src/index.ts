@@ -493,6 +493,10 @@ export type NotificationKind =
   | 'return_reminder'
   | 'payout_alert'
   | 'message'
+  /** Something an admin sent: a direct message, a warning, or a broadcast.
+   * Separate from `message`, which is a new CHAT message and is deliberately
+   * left out of the in-app list because chat carries its own unread badge. */
+  | 'admin_message'
   | 'verification'
   /** A watched car became bookable again. */
   | 'watchlist';
