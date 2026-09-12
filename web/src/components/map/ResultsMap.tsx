@@ -1,6 +1,7 @@
-import { Marker, MapContainer, TileLayer, Tooltip, useMap, useMapEvent } from 'react-leaflet';
-import { useEffect, useMemo, useState } from 'react';
-import { Layers, Star } from 'lucide-react';
+import { Marker, MapContainer, Popup, TileLayer, Tooltip, useMap, useMapEvent } from 'react-leaflet';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Layers, Star, ZoomIn } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import { cn } from '@/lib/cn';
 import { formatMoney } from '@/lib/currency';
@@ -22,13 +23,30 @@ const SATELLITE_ATTR =
 
 type Plottable = Listing & { lat: number; lng: number };
 
+/** Marker HTML is a raw string handed to Leaflet, not JSX, so anything
+ * interpolated into it has to be escaped by hand — a car titled
+ * `Fendt "Vario" e100` would otherwise close the attribute it sits in. */
+function esc(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /**
  * A price-bubble marker, built as a Leaflet `DivIcon` rather than the default
  * pin — nothing like this existed before this component; `LocationMap` only
  * ever draws the default single marker. `active` mirrors the list's hover
  * state, same green/white swap `ListingCard`'s own `isActive` ring uses.
+ *
+ * `spotlit` is the middle tier between this and a full card: a match the
+ * assistant is actually answering with, which didn't have room for its card
+ * at this zoom (see `placeMarkers`). It keeps the accent colouring so the
+ * renter can still tell it apart from the rest of the result set, and grows
+ * into its card as soon as zooming gives it the space.
  */
-function priceIcon(label: string, active: boolean): L.DivIcon {
+function priceIcon(label: string, active: boolean, spotlit = false): L.DivIcon {
   return L.divIcon({
     className: '',
     html: `<div class="${
@@ -36,35 +54,76 @@ function priceIcon(label: string, active: boolean): L.DivIcon {
         'whitespace-nowrap rounded-[var(--radius-pill)] border px-2.5 py-1 text-caption font-semibold shadow-[var(--shadow-float)] transition-colors',
         active
           ? 'border-[var(--color-accent-on)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]'
-          : 'border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] text-[var(--color-content)] hover:border-[var(--color-accent-on)]',
+          : spotlit
+            ? 'border-[var(--color-accent-on)] bg-[var(--color-surface-raised)] text-[var(--color-accent-on)]'
+            : 'border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] text-[var(--color-content)] hover:border-[var(--color-accent-on)]',
       )
-    }">${label}</div>`,
+    }">${esc(label)}</div>`,
     iconSize: undefined,
     iconAnchor: [20, 14],
   });
 }
 
-/** The AI assistant's own picks get their actual photo on the map, in a
- * brand-ringed circle, instead of a plain price pill — so a renter scanning
- * the map after asking for something can immediately spot which pins are
- * the ones the assistant actually meant, not just the whole result set. */
-function photoIcon(photoUrl: string): L.DivIcon {
-  // A rounded rectangle, not a circle — a car photo cropped into a circle
-  // loses the car; the rectangle keeps enough of the shot to actually
-  // recognize it at a glance.
-  const width = 60;
-  const height = 44;
+/** Card-marker geometry, in screen pixels. `placeMarkers` reserves this much
+ * room per card before it agrees to draw one, so cards never overlap each
+ * other; the pill numbers do the same job one tier down. */
+const CARD_W = 208;
+const CARD_H = 56;
+const PILL_W = 74;
+const PILL_H = 26;
+/** Breathing room between two placed markers — touching boxes read as one
+ * smeared object even when they technically don't overlap. */
+const GUTTER = 6;
+
+/**
+ * The assistant's own matches get a **card** on the map, not a pin: photo,
+ * name, price and rating, the same four things the list card leads with.
+ *
+ * A price bubble answers "how much is the thing here"; after asking for "a
+ * tractor for cultivating" the renter's question is "which ones are these",
+ * and a number badge can't answer that — the whole result set arrived as
+ * anonymous clusters and the cars were only visible by looking away from the
+ * map, at the list. So the answers themselves sit on the map now.
+ */
+function cardIcon(listing: Plottable, active: boolean, extras: number): L.DivIcon {
+  const price = listingHeadlinePrice(listing);
+  const amount = formatMoney(price.amount, listing.priceCurrency);
+  const rating = listing.ratingAvg ? listing.ratingAvg.toFixed(1) : '—';
   // Demo listings store photos as a loremflickr.com/<w>/<h>/<keyword>?lock=<n>
   // *descriptor*, never a fetchable URL — resolvePhoto deterministically maps
   // it to a real, working CDN photo (see web/src/lib/images.ts). This is raw
   // HTML for Leaflet, not JSX, so it can't use the <Img> component the rest
   // of the app relies on for this same resolution — has to happen here.
-  const resolved = resolvePhoto(photoUrl);
+  const photo = listing.photos[0] ? resolvePhoto(listing.photos[0]) : null;
+  const thumb = photo
+    ? `<img src="${esc(photo)}" alt="" class="h-11 w-14 shrink-0 rounded-[var(--radius-control)] object-cover" />`
+    : '';
+  // "+5" — the cars sharing this spot that the card is standing in for. A
+  // depot with six machines on one coordinate is one marker however far you
+  // zoom, so the marker has to admit to the other five rather than quietly
+  // hide them behind the one it drew.
+  const more =
+    extras > 0
+      ? `<span class="absolute -right-1.5 -top-1.5 rounded-[var(--radius-pill)] border-2 border-[var(--color-surface-raised)] bg-[var(--color-accent-on)] px-1.5 text-[10px] font-bold leading-4 text-[var(--color-accent-contrast)]">+${extras}</span>`
+      : '';
   return L.divIcon({
     className: '',
-    html: `<div style="width:${width}px;height:${height}px" class="overflow-hidden rounded-[var(--radius-card)] border-[3px] border-[var(--color-accent-on)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)] ring-2 ring-[var(--color-surface-raised)]"><img src="${resolved}" class="h-full w-full object-cover" /></div>`,
-    iconSize: [width, height],
-    iconAnchor: [width / 2, height / 2],
+    html: `<div style="width:${CARD_W}px" class="${
+      cn(
+        'relative flex items-center gap-2 rounded-[var(--radius-card)] border-2 bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-float)] transition-colors',
+        active
+          ? 'border-[var(--color-accent-on)] ring-2 ring-[var(--color-accent-on)]/30'
+          : 'border-[var(--color-accent-on)]',
+      )
+    }">${more}${thumb}<div class="min-w-0 flex-1">
+        <div class="truncate text-[12px] font-semibold leading-tight text-[var(--color-content)]">${esc(listing.title)}</div>
+        <div class="mt-0.5 flex items-baseline justify-between gap-1">
+          <span class="tabular truncate text-[12px] font-bold text-[var(--color-content)]">${esc(amount)}<span class="text-[10px] font-medium text-[var(--color-content-muted)]"> /${esc(price.unit)}</span></span>
+          <span class="tabular shrink-0 text-[11px] font-medium text-[var(--color-content-muted)]">★ ${esc(rating)}</span>
+        </div>
+      </div></div>`,
+    iconSize: [CARD_W, CARD_H],
+    iconAnchor: [CARD_W / 2, CARD_H / 2],
   });
 }
 
@@ -81,22 +140,182 @@ function clusterIcon(count: number): L.DivIcon {
   });
 }
 
-/** Re-centers/fits the map when the plottable set changes — a fresh search
+/** Leaflet's own popup chrome — white box, 13px/19px margins, a tip, a close
+ * "×" — fights every surface token in the app, so the wrapper is stripped
+ * flat and the card inside owns the entire look. `!` beats the width Leaflet
+ * writes inline on `.leaflet-popup-content` while measuring. */
+const POPUP_RESET = cn(
+  '[&_.leaflet-popup-content-wrapper]:!bg-transparent [&_.leaflet-popup-content-wrapper]:!p-0',
+  '[&_.leaflet-popup-content-wrapper]:!shadow-none [&_.leaflet-popup-content-wrapper]:![border-radius:0]',
+  '[&_.leaflet-popup-content]:!m-0 [&_.leaflet-popup-content]:!w-auto',
+  '[&_.leaflet-popup-tip-container]:!hidden',
+);
+
+/** The full card behind a marker click: everything the list card shows, and
+ * a way through to the car itself. Pins were previously click-dead outside
+ * the assistant's own matches — a price with no way to find out what it was
+ * the price of. */
+function MapCard({ listing }: { listing: Plottable }) {
+  const price = listingHeadlinePrice(listing);
+  return (
+    <div className="w-[240px] overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+      <Link to={`/cars/${listing.id}`} className="block">
+        <Img src={listing.photos[0] ?? ''} alt={listing.title} className="h-[124px] w-full object-cover" />
+      </Link>
+      <div className="p-2.5">
+        <Link
+          to={`/cars/${listing.id}`}
+          className="block truncate text-body-sm font-semibold text-[var(--color-content)] hover:underline"
+        >
+          {listing.title}
+        </Link>
+        <p className="mt-0.5 flex items-center gap-1 text-caption text-[var(--color-content-muted)]">
+          <Star size={11} className="fill-[var(--color-accent-on)] text-[var(--color-accent-on)]" />
+          <span className="tabular">
+            {listing.ratingAvg ? listing.ratingAvg.toFixed(1) : '—'} ({listing.ratingCount})
+          </span>
+          <span className="truncate">· {listing.year}</span>
+        </p>
+        <p className="truncate text-caption text-[var(--color-content-muted)]">{listing.location}</p>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="tabular text-body-sm font-semibold text-[var(--color-content)]">
+            {formatMoney(price.amount, listing.priceCurrency)}
+            <span className="font-normal text-[var(--color-content-muted)]"> / {price.unit}</span>
+          </span>
+          <Link
+            to={`/cars/${listing.id}`}
+            className="shrink-0 rounded-[var(--radius-control)] bg-[var(--color-accent-on)] px-2.5 py-1 text-caption font-semibold text-[var(--color-accent-contrast)]"
+          >
+            View car
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What a cluster opens into. Clicking a count badge used to only ever call
+ * `fitBounds`, which is a dead click for the case that produces most
+ * clusters in this catalogue — several cars at one depot, on coordinates
+ * close enough that no zoom level ever separates them. The badge now says
+ * what it's hiding, and zooming is the secondary action it offers when
+ * zooming would actually achieve something.
+ */
+function ClusterCard({
+  group,
+  onHover,
+  canZoom,
+  onZoom,
+}: {
+  group: Plottable[];
+  onHover: (id: string | null) => void;
+  canZoom: boolean;
+  onZoom: () => void;
+}) {
+  return (
+    <div className="w-[264px] overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-line)] px-3 py-2">
+        <span className="text-caption font-semibold text-[var(--color-content)]">
+          {group.length} cars here
+        </span>
+        {canZoom && (
+          <button
+            type="button"
+            onClick={onZoom}
+            className="flex items-center gap-1 text-caption font-medium text-[var(--color-accent-on)]"
+          >
+            <ZoomIn size={12} />
+            Zoom in
+          </button>
+        )}
+      </div>
+      <div className="max-h-[232px] overflow-y-auto">
+        {group.map((l) => {
+          const price = listingHeadlinePrice(l);
+          return (
+            <Link
+              key={l.id}
+              to={`/cars/${l.id}`}
+              onMouseEnter={() => onHover(l.id)}
+              onMouseLeave={() => onHover(null)}
+              className="flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--color-surface-sunken)]"
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <Img src={l.photos?.[0] ?? ''} alt="" className="h-10 w-12 shrink-0 rounded-[var(--radius-control)] object-cover" />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-caption font-semibold text-[var(--color-content)]">{l.title}</span>
+                  <span className="tabular truncate text-[11px] text-[var(--color-content-muted)]">
+                    ★ {l.ratingAvg ? l.ratingAvg.toFixed(1) : '—'} · {formatMoney(price.amount, l.priceCurrency)} / {price.unit}
+                  </span>
+                </span>
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** The compact hover card a price pill gets — a pill shows a number and
+ * nothing else, so hovering it has to answer "of what". Cards need no such
+ * thing: they already are the answer. */
+function PinTooltip({ listing }: { listing: Plottable }) {
+  return (
+    <Tooltip
+      direction="top"
+      offset={[0, -18]}
+      opacity={1}
+      className="![border-radius:var(--radius-card)] !border-0 !bg-transparent !p-0 !shadow-none"
+    >
+      <div className="w-48 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
+        <Img src={listing.photos[0] ?? ''} alt={listing.title} className="h-24 w-full object-cover" />
+        <div className="p-2">
+          <p className="truncate text-caption font-semibold text-[var(--color-content)]">{listing.title}</p>
+          <p className="truncate text-[11px] text-[var(--color-content-muted)]">{listing.location}</p>
+          <div className="mt-1 flex items-center justify-between">
+            <span className="tabular flex items-center gap-0.5 text-[11px] font-medium text-[var(--color-content-muted)]">
+              <Star size={11} className="fill-[var(--color-accent-on)] text-[var(--color-accent-on)]" />
+              {listing.ratingAvg.toFixed(1)} ({listing.ratingCount})
+            </span>
+            <span className="tabular text-[11px] font-semibold text-[var(--color-content)]">
+              {formatMoney(listingHeadlinePrice(listing).amount, listing.priceCurrency)}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] font-medium text-[var(--color-accent-on)]">Click for details →</p>
+        </div>
+      </div>
+    </Tooltip>
+  );
+}
+
+/**
+ * Re-centers/fits the map when the plottable set changes — a fresh search
  * shouldn't leave the view parked on the previous one's area. Prefers
  * `highlightPoints` when there are any (e.g. the AI assistant's last set of
  * matches) — those are the ones the renter is actually looking at right now,
  * so the map should zoom to where they are rather than staying wide on the
  * full result set they might be buried in. Falls back to `focusPoint` next —
  * a place picked from the pickup search bar, with no picks of its own yet —
- * before finally just fitting whatever's plottable. */
+ * before finally just fitting whatever's plottable.
+ *
+ * `key` is what the effect actually watches. The two arrays are rebuilt on
+ * every render, so depending on them directly re-ran this on every render —
+ * including the ones caused by nothing but hovering a card, which yanked the
+ * map back to the fitted view mid-pan. The key changes only when the set of
+ * plotted cars really does.
+ */
 function FitBounds({
   points,
   highlightPoints,
   focusPoint,
+  fitKey,
 }: {
   points: [number, number][];
   highlightPoints: [number, number][];
   focusPoint: [number, number] | null;
+  fitKey: string;
 }) {
   const map = useMap();
   useEffect(() => {
@@ -104,7 +323,7 @@ function FitBounds({
       if (highlightPoints.length === 1) {
         map.setView(highlightPoints[0], 15);
       } else {
-        map.fitBounds(highlightPoints, { padding: [40, 40], maxZoom: 15 });
+        map.fitBounds(highlightPoints, { padding: [60, 60], maxZoom: 15 });
       }
       return;
     }
@@ -118,18 +337,123 @@ function FitBounds({
       return;
     }
     map.fitBounds(points, { padding: [40, 40], maxZoom: 15 });
-  }, [map, points, highlightPoints, focusPoint]);
+    // Everything the effect reads is derived from `fitKey`; see the note above
+    // for why the arrays themselves can't be the dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, fitKey]);
   return null;
 }
 
+/** One drawn marker and the cars it stands for. `extras` are the ones whose
+ * own marker would have landed on top of this one — they aren't dropped, they
+ * ride along and come back out of the popup. */
+type Placement = {
+  lead: Plottable;
+  /** Card when the lead is one of the assistant's matches and the space was
+   * free; pill otherwise. A placement with extras draws as a count badge
+   * (pill) or a card wearing a "+N" chip. */
+  kind: 'card' | 'pill';
+  extras: Plottable[];
+  x: number;
+  y: number;
+};
+
 /**
- * Groups listings that would land close enough on screen to overlap into a
- * single count badge, and draws individual price pins everywhere else.
- * Clustering runs in screen-pixel space at the map's *current* zoom (via
- * `map.project`), so it only needs to recompute on zoom changes — panning
- * doesn't change how close two points sit to each other on screen. Without
- * this, a popular city (many listings, close coordinates) turns into an
- * unreadable pile of overlapping price bubbles.
+ * Lays the whole result set out in screen space in one priority-ordered pass,
+ * giving each car the biggest marker that still fits: a card for the
+ * assistant's matches, a price pill for the rest, and — for whatever has no
+ * room left at this zoom — a seat inside the nearest marker already placed,
+ * which becomes a count badge or a card with a "+N" chip.
+ *
+ * Doing this in one pass is the point. Placing cards, then pills, then
+ * clustering the remainder independently drew all three on the same
+ * coordinate: a depot's six machines became a card with five invisible badges
+ * stacked underneath it. Nothing is drawn here without first reserving the
+ * pixels it needs, and anything that can't reserve them joins something that
+ * did.
+ */
+function placeAll(
+  plottable: Plottable[],
+  spotlit: Set<string>,
+  project: (lat: number, lng: number) => { x: number; y: number },
+): Placement[] {
+  // The assistant's matches first, then the rest in ranking order.
+  //
+  // Deliberately *not* influenced by what the renter is hovering. Letting the
+  // active car jump the queue re-laid the whole map out on every hover: pins
+  // moved under the cursor, and a marker could change which cars it stood for
+  // between being pointed at and being clicked — click a pill reading
+  // "RF 230,000" and a two-car list opens. Hover is a paint, not a layout:
+  // whichever marker holds the active car lights up where it already is.
+  const order = [...plottable].sort((a, b) => {
+    const rank = (l: Plottable) => (spotlit.has(l.id) ? 0 : 1);
+    return rank(a) - rank(b);
+  });
+
+  const placed: Placement[] = [];
+  const boxes: { x1: number; y1: number; x2: number; y2: number }[] = [];
+
+  const fits = (x: number, y: number, w: number, h: number) => {
+    const box = {
+      x1: x - w / 2 - GUTTER,
+      y1: y - h / 2 - GUTTER,
+      x2: x + w / 2 + GUTTER,
+      y2: y + h / 2 + GUTTER,
+    };
+    const clash = boxes.some(
+      (t) => box.x1 < t.x2 && box.x2 > t.x1 && box.y1 < t.y2 && box.y2 > t.y1,
+    );
+    return clash ? null : box;
+  };
+
+  for (const listing of order) {
+    const { x, y } = project(listing.lat, listing.lng);
+    const wantsCard = spotlit.has(listing.id);
+    const cardBox = wantsCard ? fits(x, y, CARD_W, CARD_H) : null;
+    if (cardBox) {
+      boxes.push(cardBox);
+      placed.push({ lead: listing, kind: 'card', extras: [], x, y });
+      continue;
+    }
+    const pillBox = fits(x, y, PILL_W, PILL_H);
+    if (pillBox) {
+      boxes.push(pillBox);
+      placed.push({ lead: listing, kind: 'pill', extras: [], x, y });
+      continue;
+    }
+    // No room at this zoom — ride along with whichever marker is nearest,
+    // which is one of the markers actually covering this spot.
+    let nearest = placed[0];
+    let best = Infinity;
+    for (const p of placed) {
+      const d = (p.x - x) ** 2 + (p.y - y) ** 2;
+      if (d < best) {
+        best = d;
+        nearest = p;
+      }
+    }
+    if (nearest) nearest.extras.push(listing);
+  }
+  return placed;
+}
+
+/**
+ * Draws the result set at three levels of detail, decided per marker at the
+ * current zoom rather than per result set:
+ *
+ * 1. **Cards** for the assistant's matches (`highlightIds`) that have room —
+ *    photo, name, price, rating, the same four things the list card leads
+ *    with, so an answer can be read off the map instead of beside it.
+ * 2. **Price pills** for everything else that has room, accent-coloured when
+ *    they're a match that couldn't fit its card at this zoom.
+ * 3. **Count badges** wherever cars pile onto one spot — a depot with six
+ *    machines on one coordinate, which no zoom level ever separates.
+ *
+ * Every marker opens into cards on click: one car's, or the list of the ones
+ * sharing its spot. Positions come from `map.project` at the current zoom, so
+ * this only recomputes on zoom — panning doesn't change how close two points
+ * sit to each other on screen — and zooming in promotes markers up the tiers
+ * as space appears, which is what makes the zoom worth doing.
  */
 function ClusteredMarkers({
   plottable,
@@ -142,169 +466,108 @@ function ClusteredMarkers({
   activeId: string | null;
   onHover: (id: string | null) => void;
   highlightIds: string[];
-  onSelect: (listing: Listing) => void;
+  onSelect?: (listing: Listing) => void;
 }) {
   const map = useMap();
   const [zoom, setZoom] = useState(map.getZoom());
   useMapEvent('zoomend', () => setZoom(map.getZoom()));
 
-  // The assistant's own picks never cluster, even when they'd otherwise land
-  // within the pixel threshold of something else — they always get plotted
-  // as their own marker, so "book this one" always has an actual photo pin
-  // to click, not a number badge it happened to get swallowed into. Only the
-  // rest of the result set clusters amongst itself.
-  const highlightedRaw = useMemo(
-    () => plottable.filter((l) => highlightIds.includes(l.id)),
-    [plottable, highlightIds],
-  );
-  // Not clustering them doesn't mean leaving them stacked, though — two
-  // listings that share (near enough) the same coordinate would otherwise
-  // paint their photo markers directly on top of each other, an unreadable
-  // pile instead of one badge. Nudges each collision outward along a
-  // golden-angle spiral (the same trick map libraries use for "spiderfying"
-  // coincident pins) so every real photo stays visible and clickable, just
-  // offset instead of hidden under the one on top.
-  const highlighted = useMemo(() => {
-    const thresholdPx = 50;
-    const placedPoints: ReturnType<typeof map.project>[] = [];
-    return highlightedRaw.map((listing) => {
-      const raw = map.project([listing.lat, listing.lng], zoom);
-      const collisions = placedPoints.filter((p) => p.distanceTo(raw) < thresholdPx).length;
-      let point = raw;
-      if (collisions > 0) {
-        const angle = collisions * 2.4; // golden angle (radians) — even spread, no two ever align
-        const radius = 26 * Math.sqrt(collisions);
-        point = L.point(raw.x + radius * Math.cos(angle), raw.y + radius * Math.sin(angle));
-      }
-      placedPoints.push(point);
-      const { lat, lng } = map.unproject(point, zoom);
-      return { listing, lat, lng };
-    });
-  }, [highlightedRaw, zoom, map]);
-  const clusterable = useMemo(
-    () => plottable.filter((l) => !highlightIds.includes(l.id)),
-    [plottable, highlightIds],
+  const project = useCallback(
+    (lat: number, lng: number) => map.project([lat, lng], zoom),
+    [map, zoom],
   );
 
-  const groups = useMemo(() => {
-    // Single-linkage clustering by on-screen pixel distance, not a fixed
-    // grid — a grid mis-splits two points that straddle a cell boundary
-    // even though they're a few pixels apart, which still left overlapping
-    // pills in practice. Union-find over pairwise distances doesn't have
-    // that edge case; result sets here are small (a page of search results)
-    // so the O(n²) pass is cheap.
-    const thresholdPx = 46;
-    const points = clusterable.map((listing) => map.project([listing.lat, listing.lng], zoom));
-    const parent = clusterable.map((_, i) => i);
-    function find(i: number): number {
-      while (parent[i] !== i) {
-        parent[i] = parent[parent[i]];
-        i = parent[i];
-      }
-      return i;
-    }
-    for (let i = 0; i < points.length; i++) {
-      for (let j = i + 1; j < points.length; j++) {
-        const dx = points[i].x - points[j].x;
-        const dy = points[i].y - points[j].y;
-        if (dx * dx + dy * dy < thresholdPx * thresholdPx) {
-          const ri = find(i);
-          const rj = find(j);
-          if (ri !== rj) parent[ri] = rj;
-        }
-      }
-    }
-    const buckets = new Map<number, Plottable[]>();
-    clusterable.forEach((listing, i) => {
-      const root = find(i);
-      const bucket = buckets.get(root);
-      if (bucket) bucket.push(listing);
-      else buckets.set(root, [listing]);
-    });
-    return [...buckets.values()];
-  }, [clusterable, zoom, map]);
+  const spotlit = useMemo(() => new Set(highlightIds), [highlightIds]);
+  const placements = useMemo(
+    () => placeAll(plottable, spotlit, project),
+    [plottable, spotlit, project],
+  );
+
+  const maxZoom = map.getMaxZoom();
 
   return (
     <>
-      {highlighted.map(({ listing, lat, lng }) => (
-        <Marker
-          key={listing.id}
-          position={[lat, lng]}
-          // A listing without a photo yet (host never uploaded one) can't
-          // get a photo pin — falls back to the normal price pill, still
-          // clickable, rather than an icon with a broken image in it.
-          icon={
-            listing.photos[0]
-              ? photoIcon(listing.photos[0])
-              : priceIcon(formatMoney(listingHeadlinePrice(listing).amount, listing.priceCurrency), true)
-          }
-          eventHandlers={{
-            mouseover: () => onHover(listing.id),
-            mouseout: () => onHover(null),
-            click: () => onSelect(listing),
-          }}
-        >
-          <Tooltip
-            direction="top"
-            offset={[0, -24]}
-            opacity={1}
-            className="![border-radius:var(--radius-card)] !border-0 !bg-transparent !p-0 !shadow-none"
-          >
-            <div className="w-48 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-float)]">
-              <Img
-                src={listing.photos[0]}
-                alt={listing.title}
-                className="h-24 w-full object-cover"
-              />
-              <div className="p-2">
-                <p className="truncate text-caption font-semibold text-[var(--color-content)]">{listing.title}</p>
-                <p className="truncate text-[11px] text-[var(--color-content-muted)]">{listing.location}</p>
-                <div className="mt-1 flex items-center justify-between">
-                  <span className="tabular flex items-center gap-0.5 text-[11px] font-medium text-[var(--color-content-muted)]">
-                    <Star size={11} className="fill-[var(--color-accent-on)] text-[var(--color-accent-on)]" />
-                    {listing.ratingAvg.toFixed(1)} ({listing.ratingCount})
-                  </span>
-                  <span className="tabular text-[11px] font-semibold text-[var(--color-content)]">
-                    {formatMoney(listingHeadlinePrice(listing).amount, listing.priceCurrency)}
-                  </span>
-                </div>
-                <p className="mt-1 text-[11px] font-medium text-[var(--color-accent-on)]">Click for details →</p>
-              </div>
-            </div>
-          </Tooltip>
-        </Marker>
-      ))}
-      {groups.map((group) => {
-        if (group.length === 1) {
-          const listing = group[0];
-          const price = listingHeadlinePrice(listing);
-          const label = formatMoney(price.amount, listing.priceCurrency);
-          return (
-            <Marker
-              key={listing.id}
-              position={[listing.lat, listing.lng]}
-              icon={priceIcon(label, listing.id === activeId)}
-              eventHandlers={{
-                mouseover: () => onHover(listing.id),
-                mouseout: () => onHover(null),
-              }}
-            />
-          );
-        }
+      {placements.map((placement) => {
+        const { lead, kind, extras } = placement;
+        const group = [lead, ...extras];
+        const price = listingHeadlinePrice(lead);
+        const label = formatMoney(price.amount, lead.priceCurrency);
+        const isActive = group.some((l) => l.id === activeId);
 
-        const lat = group.reduce((sum, l) => sum + l.lat, 0) / group.length;
-        const lng = group.reduce((sum, l) => sum + l.lng, 0) / group.length;
+        // A pill standing for several cars is the familiar count badge; a
+        // card says it with a "+N" chip instead, because the card itself is
+        // still worth showing.
+        const icon =
+          kind === 'card'
+            ? cardIcon(lead, isActive, extras.length)
+            : extras.length > 0
+              ? clusterIcon(group.length)
+              : priceIcon(label, isActive, spotlit.has(lead.id));
+
+        // Zooming only helps when the group actually spreads out further in.
+        // Several cars at one depot share a coordinate to the metre and never
+        // separate however far you go — offering "zoom in" there sends the
+        // renter down a hole with the same badge at the bottom.
+        const spreadAtMaxZoom = (() => {
+          if (extras.length === 0) return 0;
+          const pts = group.map((l) => map.project([l.lat, l.lng], maxZoom));
+          let span = 0;
+          for (let i = 0; i < pts.length; i++) {
+            for (let j = i + 1; j < pts.length; j++) {
+              span = Math.max(span, pts[i].distanceTo(pts[j]));
+            }
+          }
+          return span;
+        })();
         const bounds = L.latLngBounds(group.map((l): [number, number] => [l.lat, l.lng]));
 
         return (
           <Marker
-            key={`cluster-${group.map((l) => l.id).join('-')}`}
-            position={[lat, lng]}
-            icon={clusterIcon(group.length)}
+            key={lead.id}
+            position={[lead.lat, lead.lng]}
+            icon={icon}
+            // A card is a wide object; whichever marker the renter is
+            // pointing at has to sit above its neighbours, not under them.
+            zIndexOffset={isActive ? 1000 : kind === 'card' ? 500 : 0}
             eventHandlers={{
-              click: () => map.fitBounds(bounds, { padding: [60, 60], maxZoom: zoom + 3 }),
+              mouseover: () => onHover(lead.id),
+              mouseout: () => onHover(null),
+              click: () => onSelect?.(lead),
+              // Clicking a pin means the cursor is on it, so its hover card
+              // would otherwise sit there beside the popup saying a quieter
+              // version of the same thing.
+              popupopen: (e) => e.target.closeTooltip(),
             }}
-          />
+          >
+            {/* A pill shows a number and nothing else, so hovering it has to
+                answer "of what". Cards need no such thing — they already are
+                the answer — and a badge's hover would be a lie about which
+                of its cars it described. */}
+            {kind === 'pill' && extras.length === 0 && <PinTooltip listing={lead} />}
+            <Popup
+              closeButton={false}
+              offset={[0, kind === 'card' ? -30 : -16]}
+              className={POPUP_RESET}
+              autoPanPadding={[24, 24]}
+            >
+              {extras.length > 0 ? (
+                <ClusterCard
+                  group={group}
+                  onHover={onHover}
+                  canZoom={zoom < maxZoom && spreadAtMaxZoom > PILL_W}
+                  onZoom={() => {
+                    map.closePopup();
+                    map.fitBounds(bounds, {
+                      padding: [60, 60],
+                      maxZoom: Math.min(maxZoom, zoom + 3),
+                    });
+                  }}
+                />
+              ) : (
+                <MapCard listing={lead} />
+              )}
+            </Popup>
+          </Marker>
         );
       })}
     </>
@@ -332,12 +595,12 @@ export function ResultsMap({
   listings: Listing[];
   activeId: string | null;
   onHover: (id: string | null) => void;
-  /** Cars to mark as selected regardless of hover — e.g. the AI assistant's
-   * last set of matches. */
+  /** Cars to draw as full cards rather than price pins — e.g. the ones the
+   * assistant is answering with. */
   highlightIds?: string[];
-  /** Clicking one of the highlighted (photo) markers — starts a booking
-   * request for it in the assistant. No-op if omitted, e.g. on a page that
-   * doesn't have the assistant wired up. */
+  /** Clicking a marker's card — starts a booking request for it in the
+   * assistant. Omitted on pages with no assistant wired up, where the card
+   * offers a link to the car's own page instead. */
   onSelect?: (listing: Listing) => void;
   /** A place picked from the pickup search bar's autocomplete — pans/zooms
    * the map there. Only takes effect when there's nothing more specific
@@ -354,6 +617,10 @@ export function ResultsMap({
     .filter((l) => highlightIds.includes(l.id))
     .map((l) => [l.lat, l.lng]);
   const center = points[0] ?? [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng];
+  // Identity of the *set*, not of the arrays — see FitBounds.
+  const fitKey = `${plottable.map((l) => l.id).join(',')}|${highlightIds.join(',')}|${
+    focusPoint ? `${focusPoint.lat},${focusPoint.lng}` : ''
+  }`;
 
   return (
     <div className={cn('relative h-full w-full', className)}>
@@ -375,13 +642,14 @@ export function ResultsMap({
           points={points}
           highlightPoints={highlightPoints}
           focusPoint={focusPoint ? [focusPoint.lat, focusPoint.lng] : null}
+          fitKey={fitKey}
         />
         <ClusteredMarkers
           plottable={plottable}
           activeId={activeId}
           onHover={onHover}
           highlightIds={highlightIds}
-          onSelect={onSelect ?? (() => {})}
+          onSelect={onSelect}
         />
       </MapContainer>
     </div>

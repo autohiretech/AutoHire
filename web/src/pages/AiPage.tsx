@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
@@ -42,6 +42,28 @@ const SHEET_HEIGHT: Record<SheetDetent, string> = {
  * three hundred cards sideways; the ones worth seeing are at the front,
  * and "List" opens the full set. */
 const RAIL_MAX = 30;
+
+/**
+ * How many results the map draws as cards rather than price pins.
+ *
+ * The map is where a research answer lands, and until now it landed as
+ * anonymous count badges: ask for "a tractor for cultivating", get a
+ * sentence, a list off to the side, and a map of green circles with numbers
+ * in them. `highlightIds` — the mechanism for drawing a result as its own
+ * photo card — was only ever fed by the agent's `highlight` action, and no
+ * tool on the server has ever emitted one, so in practice it was always
+ * empty and the card path never ran.
+ *
+ * So the top of the ranking is spotlit by default: whatever the current
+ * filters put first is what the assistant is answering with, and those are
+ * the cars the map shows as cards. An explicit `highlight` from the agent
+ * still wins outright when one ever arrives.
+ *
+ * The cap is about how much of the ranking is worth carrying, not how many
+ * cards fit on screen — ResultsMap decides that per marker at the current
+ * zoom, and demotes what doesn't fit to a pin or a cluster.
+ */
+const SPOTLIGHT_MAX = 24;
 
 /** The renter's saved coordinate as distance-ranking filters, or nothing at
  * all when they never set one — never a stand-in city, and never a fresh
@@ -275,6 +297,17 @@ function RenterAiPage() {
     setSheetDetent('half');
   }
 
+  // The assistant's explicit picks when it ever sends any, else the head of
+  // the current ranking — see SPOTLIGHT_MAX. Filtered to what the current
+  // result set actually contains, so a highlight left over from a previous
+  // turn can't keep pointing at cars that are no longer on the map.
+  const spotlightIds = useMemo(() => {
+    const ids = new Set(results.map((l) => l.id));
+    const explicit = highlightIds.filter((id) => ids.has(id));
+    if (explicit.length > 0) return explicit;
+    return results.slice(0, SPOTLIGHT_MAX).map((l) => l.id);
+  }, [results, highlightIds]);
+
   // Measures the field dock's actual rendered height (it grows when a line
   // or chip row appears) so the mobile results sheet can sit flush above it
   // instead of a hand-picked pixel guess that would either leave a gap or —
@@ -328,7 +361,7 @@ function RenterAiPage() {
           listings={results}
           activeId={activeId}
           onHover={setActiveId}
-          highlightIds={highlightIds}
+          highlightIds={spotlightIds}
           onSelect={onMarkerSelect}
           focusPoint={null}
         />
