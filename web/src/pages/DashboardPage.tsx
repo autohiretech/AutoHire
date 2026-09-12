@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import type { Booking, Host, Listing, Payout } from '@autohire/shared';
 import { client } from '@/lib/client';
+import { useMatchMedia } from '@/lib/useVisualViewport';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/format';
 import { bookingCurrency, formatAmount, formatTotals, sumByCurrency } from '@/lib/money';
@@ -295,18 +296,33 @@ export function DashboardPage() {
   // result is visible. Mirrors the `lg:` split in the JSX below — a tablet in
   // portrait is too narrow for a 320px rail + detail pane, so it stays single-pane
   // alongside phones and only real desktop/landscape-tablet widths split.
+  // Read reactively, not once at mount. The auto-select below used to test
+  // `window.matchMedia` inside an effect that ran a single time, so a window
+  // that was wide when the fleet loaded and narrow afterwards — a rotation, a
+  // resize, a phone-width frame that laid out wide for one paint — left a car
+  // selected with no list behind it. A host then landed inside one vehicle and
+  // had to find "back" to reach their own fleet, which is the wrong first
+  // screen and was reported as exactly that.
+  const twoPane = useMatchMedia('(min-width: 1024px)');
+
   const focusFilter = (next: CarFilter) => {
     setView('cars');
     setFilter(next);
-    if (!window.matchMedia('(min-width: 1024px)').matches) setSelectedId(null);
+    if (!twoPane) setSelectedId(null);
   };
 
-  // Auto-select the first car once there's room for a detail pane; below that,
-  // keep the list visible until the host taps a car.
+  // Auto-select the first car only where there is room to show it beside the
+  // list. Narrow means the list IS the screen, so nothing is selected until
+  // the host taps a car — and dropping below the breakpoint returns them to
+  // the list rather than stranding them in a detail pane.
   useEffect(() => {
+    if (!twoPane) {
+      setSelectedId(null);
+      return;
+    }
     if (selectedId || listings.length === 0) return;
-    if (window.matchMedia('(min-width: 1024px)').matches) setSelectedId(listings[0].id);
-  }, [listings, selectedId]);
+    setSelectedId(listings[0].id);
+  }, [listings, selectedId, twoPane]);
 
   const selected = listings.find((l) => l.id === selectedId) ?? null;
 
@@ -566,7 +582,8 @@ export function DashboardPage() {
               onClick={() => setSelectedId(null)}
               className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-body-sm font-medium text-[var(--color-content-muted)] hover:text-[var(--color-content)] lg:hidden"
             >
-              <ArrowLeft size={16} /> Back to the list
+              <ArrowLeft size={16} />{' '}
+              {listings.length > 0 ? `Back to your ${listings.length} cars` : 'Back to the list'}
             </button>
             {selected ? (
               <CarDetail listing={selected} bookings={bookingsByCar.get(selected.id) ?? []} />
