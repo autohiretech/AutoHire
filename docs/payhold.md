@@ -95,6 +95,7 @@ What "Send it now" actually does, from `request_withdrawal`:
 | [`_shared/dispute-mirror.ts`](../supabase/functions/_shared/dispute-mirror.ts) | PayHold case → `disputes` row, shared by the webhook and `payhold-dispute`. |
 | [`payhold-sync-verification`](../supabase/functions/payhold-sync-verification/index.ts) | Admin: relay a host's stored verification to PayHold, naming the admin. |
 | [`payhold-verify-destination`](../supabase/functions/payhold-verify-destination/index.ts) | Admin: read a host's live payout account, and verify or un-verify it in PayHold ([`account.ts`](../supabase/functions/payhold-verify-destination/account.ts)). See "Verification is decided in AutoHire's admin". |
+| [`payhold-auto-verify-payouts`](../supabase/functions/payhold-auto-verify-payouts/index.ts) | The hourly sweep behind the standing wait: a payout account nobody verified within `app_settings.payout_auto_verify_after_hours` is verified in PayHold ([`sweep.ts`](../supabase/functions/payhold-auto-verify-payouts/sweep.ts)). No JWT — pg_cron calls it (migration 083). |
 | [`_shared/payout-status.ts`](../supabase/functions/_shared/payout-status.ts) | Reconciles `profiles.payout_status` with PayHold's `can_receive_payouts`; shared by `payhold-seller` and `payhold-verify-destination`. |
 | [migration 077](../supabase/migrations/20260911000077_admin_dispute_decisions.sql) | `resolved_split`; the decision columns on `disputes`; a trigger refusing non-service-role writes to them. |
 | [`payhold-refund`](../supabase/functions/payhold-refund/index.ts) | Send the renter's money back, in full or in part. |
@@ -241,6 +242,37 @@ expires on its own timer, and nothing AutoHire can send with its API key ends it
 early. A verified account inside its hold is still not paid until
 `securityHoldUntil` passes, and the admin view shows that time.
 
+**Two settings decide when the admin's decision is made for them.** Both are on
+`app_settings`, both are real PayHold calls rather than local flags, and neither
+touches the security hold:
+
+| Setting | Migration | What it does |
+|---|---|---|
+| `payout_auto_verify` (default on) | 081 | Verifying a person also verifies their payout account, in the same breath — the second check stops being forgotten while somebody is being reviewed. |
+| `payout_auto_verify_after_hours` (default 72) | 083 | A payout account that has been on file this long, with no admin verifying or rejecting it, is verified anyway. 0 turns it off. |
+
+The wait exists for the case the first setting cannot reach: a host verified
+months ago changes their MoMo number, PayHold archives the old destination, the
+new one arrives unverified, and nothing tells anybody — the host's earnings just
+stop. `payhold-auto-verify-payouts` sweeps hourly (pg_cron, migration 083) over
+hosts who are `verification = 'verified'`, not suspended, and
+`payout_status = 'pending'`, reads each seller's live destination from PayHold,
+and verifies the ones whose `created_at` is older than the wait. It can never
+verify a *person*, it leaves a destination with no `created_at` for an admin, and
+it stops the whole run the moment PayHold answers `destination_relay_off`.
+
+Its `verified_by` is **`autohire-auto-verify:<hours>h`**, never an admin's name:
+PayHold stores the reported verifier as the person the platform says checked it,
+and nobody checked this one. The admin card reads that back as "Verified on its
+own after 3 days", and shows an unverified account's own deadline ("Verifies on
+its own on 14 Sept, 12:20"). The host is told through `create_notification`
+(`payout_alert` → `/earnings`), because this is the one verification with no
+person on either side of it and nothing else would say so.
+
+Because the sweep's clock is inside it, the endpoint needs no key: calling it
+early verifies nothing early, and a second call inside five minutes does nothing
+(`payout_auto_verify_last_run_at`).
+
 **The deploy window.** Until PayHold's change is live, the old PayHold refuses an
 API key on the destination route whatever the settings (422 `policy_violation`,
 or a 401/403), and refuses a seller relay with a 422 whose message says "a
@@ -272,6 +304,7 @@ too. The fallbacks are marked for removal once PayHold is deployed.
 | `payhold-sync-verification` | POST `{profileId}` | admin | Relays the stored `profiles.verification` to PayHold with `verified_by`. `verified`, `unverified`, `not_registered`, `not_trusted_yet` or `failed` |
 | `payhold-verify-destination?profileId=` | GET | admin | The host's live payout account as PayHold holds it: `{ account, reason? }` |
 | `payhold-verify-destination` | POST `{profileId, verified}` | admin | Re-reads that account and relays the decision with `verified_by`. `verified`, `unverified`, `not_trusted_yet`, `not_registered`, `no_destination` or `changed` |
+| `payhold-auto-verify-payouts` | GET/POST | pg_cron (no JWT) | Verifies payout accounts past `payout_auto_verify_after_hours`. Answers with counters only |
 | `payhold-webhook` | POST | PayHold's server | Signed events → bookings, refunds, disputes |
 
 Every one of these takes the side, the seller id and the party from the

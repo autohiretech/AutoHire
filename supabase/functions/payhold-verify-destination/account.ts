@@ -41,6 +41,7 @@ import {
   isDestinationArchived,
   isDestinationRelayOff,
   isSellerGone,
+  liveDestination,
   payholdConfigured,
   sellerCapabilities,
   sellerDestinations,
@@ -61,6 +62,8 @@ export interface HostPayoutAccount {
   label: string | null;
   verifiedAt: string | null;
   securityHoldUntil: string | null;
+  /** When the host saved it — what the automatic verification counts from. */
+  createdAt: string | null;
   reportedVerifier: string | null;
   verifierName: string | null;
 }
@@ -128,15 +131,8 @@ export function methodForRail(rail: string | null | undefined): string {
   return METHOD_BY_RAIL[rail] ?? rail;
 }
 
-/** The destination money goes to: a live row — the primary if one is marked, else the first. */
-export function liveDestination(
-  destinations: SellerDestination[] | null | undefined,
-): SellerDestination | null {
-  const live = (Array.isArray(destinations) ? destinations : []).filter(
-    (d) => d && typeof d.id === 'string' && d.id && !d.archived_at,
-  );
-  return live.find((d) => d.is_primary) ?? live[0] ?? null;
-}
+/** `liveDestination` moved to `_shared/payhold.ts` — the sweep reads it too. */
+export { liveDestination };
 
 async function toAccount(
   sellerId: string,
@@ -159,6 +155,7 @@ async function toAccount(
     label: d.label ?? null,
     verifiedAt: d.verified_at ?? null,
     securityHoldUntil: d.security_hold_until ?? null,
+    createdAt: d.created_at ?? null,
     reportedVerifier,
     verifierName: name?.trim() || null,
   };

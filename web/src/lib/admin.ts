@@ -138,3 +138,43 @@ export async function relayVerificationToPayhold(
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// The standing wait on a payout account
+// ---------------------------------------------------------------------------
+//
+// `app_settings.payout_auto_verify_after_hours` (migration 083). Stored in
+// hours because an admin may want either unit — 4 hours or 14 days — and one
+// column has to hold both. These are the two directions that conversion goes.
+
+/** Whole days when it divides evenly, hours otherwise: "3 days", "36 hours". */
+export function formatWait(hours: number): string {
+  const h = Math.max(0, Math.round(hours));
+  if (h === 0) return 'no wait';
+  if (h % 24 === 0) {
+    const d = h / 24;
+    return `${d} ${d === 1 ? 'day' : 'days'}`;
+  }
+  return `${h} ${h === 1 ? 'hour' : 'hours'}`;
+}
+
+/** The wait as an admin edits it: a number and the largest unit that keeps it whole. */
+export function splitWait(hours: number): { amount: number; unit: 'hours' | 'days' } {
+  const h = Math.max(0, Math.round(hours));
+  return h > 0 && h % 24 === 0 ? { amount: h / 24, unit: 'days' } : { amount: h, unit: 'hours' };
+}
+
+/**
+ * The wait inside an `autohire-auto-verify:<hours>h` verifier, or null when a
+ * person decided.
+ *
+ * PayHold stores whoever AutoHire reported as the verifier. An automatic
+ * verification reports the rule rather than borrowing an admin's name — nobody
+ * looked, and the card must not suggest anybody did.
+ */
+export function autoVerifiedAfterHours(reportedVerifier: string | null | undefined): number | null {
+  const prefix = 'autohire-auto-verify:';
+  if (typeof reportedVerifier !== 'string' || !reportedVerifier.startsWith(prefix)) return null;
+  const n = Number.parseInt(reportedVerifier.slice(prefix.length).replace(/h$/i, ''), 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}

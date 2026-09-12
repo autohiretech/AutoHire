@@ -36,6 +36,7 @@ function dest(overrides: Json = {}): Json {
     is_backup: false,
     verified_at: null,
     security_hold_until: '2026-09-12T10:00:00Z',
+    created_at: '2026-09-09T10:00:00Z',
     ...overrides,
   };
 }
@@ -226,6 +227,7 @@ Deno.test('the account is the live primary, and a relayed verifier is named from
       label: 'Mobile money · ••••4242',
       verifiedAt: '2026-09-10T09:00:00Z',
       securityHoldUntil: '2026-09-12T10:00:00Z',
+      createdAt: '2026-09-09T10:00:00Z',
       reportedVerifier: 'autohire-admin:admin-2',
       verifierName: 'Second Admin',
     });

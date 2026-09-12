@@ -30,3 +30,10 @@ verify_jwt = false
 # unauthenticated CORS preflight (OPTIONS) is rejected with 401.
 [functions.ai-agent]
 verify_jwt = false
+
+# The payout auto-verify sweep — called by pg_cron (migration 083), not a
+# signed-in user, so the gateway JWT check is off. It takes no input, answers
+# with counts and no names, and its clock is inside: calling it early verifies
+# nothing early.
+[functions.payhold-auto-verify-payouts]
+verify_jwt = false

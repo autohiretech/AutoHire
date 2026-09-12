@@ -36,10 +36,13 @@ import {
   REJECTION_REASONS,
   VERIFICATION_META,
   accountKindLabel,
+  autoVerifiedAfterHours,
+  formatWait,
   relayVerificationToPayhold,
   requiredDocTypes,
+  splitWait,
 } from '@/lib/admin';
-import { Avatar, Badge, Button, Card, Chip, ConfirmDialog, Input, Skeleton, Spinner, toast } from '@/components/ui';
+import { Avatar, Badge, Button, Card, Chip, ConfirmDialog, Input, Select, Skeleton, Spinner, toast } from '@/components/ui';
 
 const PAGE_SIZE = 20;
 
@@ -148,6 +151,7 @@ export function KycReviewSection() {
     <div className="space-y-4">
       <AutoApproveSwitch />
       <PayoutAutoVerifySwitch />
+      <PayoutAutoVerifyAfterCard />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
         {/* Queue */}
@@ -1000,6 +1004,24 @@ function holdEnds(account: HostPayoutAccount | null | undefined): Date | null {
 }
 
 /**
+ * When the standing wait will verify this account on its own, or null when it
+ * will not: the wait is off, the account is already verified, or PayHold gave
+ * no `createdAt` to count from (an older PayHold — those wait for an admin).
+ *
+ * A time in the past means the next hourly sweep takes it.
+ */
+function autoVerifiesAt(
+  account: HostPayoutAccount | null | undefined,
+  afterHours: number | undefined,
+): Date | null {
+  if (!account || account.verifiedAt || !account.createdAt) return null;
+  if (!afterHours || afterHours <= 0) return null;
+  const created = new Date(account.createdAt);
+  if (Number.isNaN(created.getTime())) return null;
+  return new Date(created.getTime() + afterHours * 3_600_000);
+}
+
+/**
  * The host's payout account, and the one check that decides whether PayHold
  * may pay it. Verification is AutoHire's alone: PayHold no longer verifies
  * sellers or accounts itself, it carries out this decision.
@@ -1016,8 +1038,15 @@ function PayoutAccountCard({ person }: { person: KycPerson }) {
     queryKey: ['hostPayoutAccount', person.id],
     queryFn: () => client.getHostPayoutAccount(person.id),
   });
+  const { data: autoAfterHours } = useQuery({
+    queryKey: ['payoutAutoVerifyAfter'],
+    queryFn: () => client.getPayoutAutoVerifyAfterHours(),
+  });
   const account = query.data?.account ?? null;
   const hold = holdEnds(account);
+  const autoAt = autoVerifiesAt(account, autoAfterHours);
+  // Who verified it: an admin (a name), or the standing wait (how long it was).
+  const autoVerifiedAfter = autoVerifiedAfterHours(account?.reportedVerifier);
 
   const decide = useMutation({
     mutationFn: (verified: boolean) => client.setHostPayoutAccountVerified(person.id, verified),
@@ -1105,9 +1134,18 @@ function PayoutAccountCard({ person }: { person: KycPerson }) {
               </div>
               {account.verifiedAt && (
                 <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
-                  {account.verifierName
-                    ? `Verified by ${account.verifierName} · ${timeAgo(account.verifiedAt)}`
-                    : `Verified ${timeAgo(account.verifiedAt)}`}
+                  {autoVerifiedAfter !== null
+                    ? `Verified on its own after ${formatWait(autoVerifiedAfter)} · ${timeAgo(account.verifiedAt)}`
+                    : account.verifierName
+                      ? `Verified by ${account.verifierName} · ${timeAgo(account.verifiedAt)}`
+                      : `Verified ${timeAgo(account.verifiedAt)}`}
+                </p>
+              )}
+              {autoAt && (
+                <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
+                  {autoAt > new Date()
+                    ? `Verifies on its own on ${holdTime(autoAt)} unless you decide first.`
+                    : 'Waiting to be verified on its own — the next sweep takes it, within the hour.'}
                 </p>
               )}
               {hold && (
@@ -1318,6 +1356,125 @@ function AutoApproveSwitch() {
       disabled={isLoading || toggle.isPending}
       onToggle={() => toggle.mutate(!on)}
     />
+  );
+}
+
+/**
+ * Platform setting: how long a payout account may sit unverified before
+ * AutoHire verifies it anyway.
+ *
+ * The switch above only reaches accounts that exist while somebody is being
+ * reviewed. The account that actually stops earnings is the one a long-verified
+ * host changes months later: PayHold archives the old destination, the new one
+ * arrives unverified, payouts stop, and nothing here says so. This is the
+ * standing instruction for that — a wait, then it goes through.
+ *
+ * Hours under the hood; the unit is only how it reads. Setting it to Off
+ * (0 hours) means every account waits for an admin, which is what it was before
+ * this existed.
+ */
+function PayoutAutoVerifyAfterCard() {
+  const qc = useQueryClient();
+  const { data: hours, isLoading } = useQuery({
+    queryKey: ['payoutAutoVerifyAfter'],
+    queryFn: () => client.getPayoutAutoVerifyAfterHours(),
+  });
+  // What the admin is typing, until it is saved. `undefined` means "whatever
+  // the server says", so a fresh load and a discarded edit both show the truth.
+  const [draft, setDraft] = useState<{ amount: string; unit: 'hours' | 'days' } | null>(null);
+
+  const saved = splitWait(hours ?? 0);
+  const editing = draft ?? { amount: String(saved.amount), unit: saved.unit };
+  const on = (hours ?? 0) > 0;
+
+  const save = useMutation({
+    mutationFn: (next: number) => client.setPayoutAutoVerifyAfterHours(next),
+    onSuccess: (_r, next) => {
+      qc.setQueryData(['payoutAutoVerifyAfter'], next);
+      qc.invalidateQueries({ queryKey: ['payoutAutoVerifyAfter'] });
+      setDraft(null);
+      toast.success(
+        next > 0
+          ? `Payout accounts verify themselves after ${formatWait(next)} if nobody has.`
+          : 'Payout accounts now wait for an admin, however long that takes.',
+      );
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't change the wait."),
+  });
+
+  const typed = Number.parseInt(editing.amount, 10);
+  const nextHours = Number.isFinite(typed) && typed > 0
+    ? typed * (editing.unit === 'days' ? 24 : 1)
+    : 0;
+  const valid = Number.isFinite(typed) && typed > 0 && nextHours <= 8760;
+  const changed = nextHours !== (hours ?? 0);
+
+  return (
+    <Card className="px-4 py-3 sm:px-5">
+      {/* Stacked on a phone: the controls are five elements wide and would
+          otherwise squeeze the sentence into one word per line. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-body-sm font-medium text-[var(--color-content)]">
+            Verify a payout account on its own after a wait
+          </p>
+          <p className="text-caption text-[var(--color-content-subtle)]">
+            {isLoading
+              ? 'Loading…'
+              : on
+                ? `On — a verified host's payout account is verified ${formatWait(hours ?? 0)} after they save it, if no admin got there first. Until it is, PayHold holds their earnings.`
+                : "Off — a payout account waits for an admin. A host who changes their number after being verified isn't paid until someone here verifies the new one."}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
+          <Input
+            type="number"
+            min={1}
+            max={editing.unit === 'days' ? 365 : 8760}
+            inputMode="numeric"
+            aria-label="How long to wait"
+            value={editing.amount}
+            disabled={isLoading || save.isPending}
+            onChange={(e) => setDraft({ ...editing, amount: e.target.value })}
+            className="tabular w-20"
+          />
+          <Select
+            aria-label="Hours or days"
+            value={editing.unit}
+            disabled={isLoading || save.isPending}
+            onChange={(e) => setDraft({ ...editing, unit: e.target.value as 'hours' | 'days' })}
+            className="w-auto"
+          >
+            <option value="hours">hours</option>
+            <option value="days">days</option>
+          </Select>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!valid || !changed || save.isPending}
+            onClick={() => save.mutate(nextHours)}
+          >
+            Save
+          </Button>
+          {on && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={save.isPending}
+              onClick={() => save.mutate(0)}
+            >
+              Turn off
+            </Button>
+          )}
+        </div>
+      </div>
+      {!valid && changed && (
+        <p className="mt-1.5 text-caption text-[var(--color-content-subtle)]">
+          Enter a whole number of hours or days, up to a year. Use Turn off to stop it entirely.
+        </p>
+      )}
+    </Card>
   );
 }
 

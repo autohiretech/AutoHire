@@ -797,7 +797,16 @@ export interface HostPayoutAccount {
   verifiedAt: string | null;
   /** §5.1's hold. Runs out on its own, verified or not. */
   securityHoldUntil: string | null;
-  /** Who PayHold was told decided — `autohire-admin:<profile id>` when relayed from here. */
+  /**
+   * When the host saved this account. What
+   * `app_settings.payout_auto_verify_after_hours` counts from — null on an
+   * older PayHold, which is why that wait never applies to those.
+   */
+  createdAt: string | null;
+  /**
+   * Who PayHold was told decided — `autohire-admin:<profile id>` when an admin
+   * relayed it, `autohire-auto-verify:<hours>h` when the standing wait did.
+   */
   reportedVerifier: string | null;
   /** That admin's name, resolved server-side. Null for any other verifier. */
   verifierName: string | null;

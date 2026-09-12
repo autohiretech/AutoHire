@@ -244,6 +244,11 @@ export interface SellerDestination {
   verifier_source?: string | null;
   /** Only with `?include=archived`. A live destination has none. */
   archived_at?: string | null;
+  /**
+   * When the host saved this account. The clock the automatic verification
+   * runs on — see `autohireAutoVerifyActor`. Absent on an older PayHold.
+   */
+  created_at?: string | null;
 }
 
 /** One payout PayHold has scheduled, sent, or stopped. */
@@ -697,6 +702,46 @@ export function autohireAdminActor(profileId: string): string {
 export function autohireAdminProfileId(actor: string | null | undefined): string | null {
   if (typeof actor !== 'string' || !actor.startsWith(AUTOHIRE_ADMIN_ACTOR_PREFIX)) return null;
   return actor.slice(AUTOHIRE_ADMIN_ACTOR_PREFIX.length).trim() || null;
+}
+
+/**
+ * The destination money actually goes to: a live row — the primary if one is
+ * marked, else the first. A seller has one live destination (PayHold archives
+ * the previous one on every add), so this is a tie-break for old rows rather
+ * than a choice.
+ */
+export function liveDestination(
+  destinations: SellerDestination[] | null | undefined,
+): SellerDestination | null {
+  const live = (Array.isArray(destinations) ? destinations : []).filter(
+    (d) => d && typeof d.id === 'string' && d.id && !d.archived_at,
+  );
+  return live.find((d) => d.is_primary) ?? live[0] ?? null;
+}
+
+/**
+ * The verifier on an automatic verification — the standing rule in
+ * `app_settings.payout_auto_verify_after_hours`, not a person.
+ *
+ * PayHold stores whatever is sent as `reported_verifier` and its column means
+ * "the person the platform says checked this", so an automatic decision must
+ * not borrow an admin's name: the whole point of the audit row is that nobody
+ * looked. The wait is carried in the name — `autohire-auto-verify:72h` — so
+ * PayHold's log, and the card in Admin → Verification, both say which rule let
+ * it through and how long it had waited.
+ */
+export const AUTOHIRE_AUTO_VERIFY_ACTOR_PREFIX = 'autohire-auto-verify:';
+
+/** `autohire-auto-verify:<hours>h` for the configured wait. */
+export function autohireAutoVerifyActor(hours: number): string {
+  return `${AUTOHIRE_AUTO_VERIFY_ACTOR_PREFIX}${Math.max(0, Math.round(hours))}h`;
+}
+
+/** The wait inside an `autohire-auto-verify:` name, or null for any other actor. */
+export function autohireAutoVerifyHours(actor: string | null | undefined): number | null {
+  if (typeof actor !== 'string' || !actor.startsWith(AUTOHIRE_AUTO_VERIFY_ACTOR_PREFIX)) return null;
+  const n = Number.parseInt(actor.slice(AUTOHIRE_AUTO_VERIFY_ACTOR_PREFIX.length).replace(/h$/i, ''), 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 /**

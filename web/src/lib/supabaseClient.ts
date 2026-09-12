@@ -2322,6 +2322,33 @@ export const supabaseClient = {
   async setPayoutAutoVerify(on: boolean): Promise<void> {
     await run(sb().rpc('admin_set_payout_auto_verify', { p_on: on }));
   },
+  /**
+   * How long a payout account may sit unverified before AutoHire verifies it
+   * anyway. Hours; 0 means never — every account waits for an admin.
+   *
+   * The setting above only reaches accounts that exist while someone is being
+   * reviewed. This one reaches the account a verified host changes months
+   * later, which is the one that silently stops their earnings: PayHold will
+   * not pay a destination nobody has verified, and nothing tells an admin a new
+   * one has appeared. The sweep is the `payhold-auto-verify-payouts` function,
+   * hourly; PayHold's own security hold is untouched either way.
+   */
+  async getPayoutAutoVerifyAfterHours(): Promise<number> {
+    const row = await run(
+      sb()
+        .from('app_settings')
+        .select('payout_auto_verify_after_hours, payout_auto_verify_last_run_at')
+        .eq('id', 1)
+        .maybeSingle(),
+    );
+    return Number(
+      (row as { payout_auto_verify_after_hours?: number } | null)?.payout_auto_verify_after_hours ?? 0,
+    );
+  },
+  /** Set that wait, in hours — 0 turns it off. Admin only. */
+  async setPayoutAutoVerifyAfterHours(hours: number): Promise<void> {
+    await run(sb().rpc('admin_set_payout_auto_verify_after', { p_hours: Math.round(hours) }));
+  },
   /** Current electric-car quota + whether a non-electric car may be listed now. */
   async getElectricQuota(): Promise<ElectricQuota> {
     const rows = (await run(sb().rpc('electric_quota_status'))) as Record<string, unknown>[] | null;
