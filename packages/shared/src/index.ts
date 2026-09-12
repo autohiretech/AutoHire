@@ -227,7 +227,12 @@ export interface UserProfile {
   phone: string; // Rwandan MSISDN, e.g. +2507...
   role: UserRole;
   joinedAt: string; // ISO date
+  /** The account's real status — what hosts and payouts read. An admin can set
+   * it by hand, in which case it stops following the documents. */
   verification: VerificationStatus;
+  /** True when an admin set `verification` themselves; document changes then
+   * stop recomputing it until the override is cleared. */
+  verificationOverride?: boolean;
   ratingAvg?: number; // 0..5
   ratingCount?: number;
   /** Host payout method — how they get paid. Absent/`'none'` until they add one. */

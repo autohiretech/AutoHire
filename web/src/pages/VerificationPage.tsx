@@ -12,7 +12,7 @@ import {
 import type { Host, UserProfile, VerificationDocument, VerificationStatus } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { formatDate } from '@/lib/format';
+import { formatDate, timeAgo } from '@/lib/format';
 import {
   VERIFICATION_DOCS,
   VERIFICATION_ROLE_META,
@@ -47,6 +47,16 @@ const BANNER_TEXT: Record<VerificationStatus, string> = {
   rejected: 'One or more documents need attention. See below.',
 };
 
+/** What to say when a reviewer decided the status themselves. "Upload your
+ * documents" is wrong for someone whose documents are all approved and whose
+ * account was still set back by hand. */
+const ADMIN_BANNER_TEXT: Record<VerificationStatus, string> = {
+  unverified: 'A reviewer set your account to not verified.',
+  pending: 'A reviewer is looking at your account.',
+  verified: "You're verified — a reviewer approved your account.",
+  rejected: 'A reviewer did not approve your verification.',
+};
+
 export function VerificationPage() {
   const { data: profileData } = useCurrentUser();
   const profile = profileData as (UserProfile & Partial<Host>) | undefined;
@@ -61,7 +71,23 @@ export function VerificationPage() {
   const configs = VERIFICATION_DOCS[role];
   const docsByType = new Map((documents ?? []).map((d) => [d.type, d]));
   const statuses = configs.map((c) => docsByType.get(c.type)?.status ?? 'unverified');
-  const overall = overallStatus(statuses);
+  const fromDocuments = overallStatus(statuses);
+  // The account's own status is the answer, not this page's arithmetic over
+  // the documents. They agree until a reviewer decides otherwise — and then
+  // this page used to keep saying "You're fully verified" to someone an admin
+  // had just marked unverified, because every document still said verified.
+  // The decision is the fact; the documents are how it is usually reached.
+  const overall = profile?.verification ?? fromDocuments;
+  const decidedByAdmin = profile?.verificationOverride === true;
+
+  // Why, in the reviewer's own words. An account-level decision leaves its
+  // note nowhere else — a document's rejection note belongs to the document.
+  const { data: events } = useQuery({
+    queryKey: ['myVerificationEvents'],
+    queryFn: () => client.listMyVerificationEvents(),
+    enabled: decidedByAdmin,
+  });
+  const decision = (events ?? []).find((e) => !e.documentId);
 
   return (
     <section className="mx-auto max-w-2xl px-4 py-8 sm:py-10">
@@ -93,7 +119,24 @@ export function VerificationPage() {
               the user's attention, so it leads. */}
           <Notice tone={NOTICE_TONE[overall]}>
             {STATUS_ICON[overall]}
-            <p className="font-medium">{BANNER_TEXT[overall]}</p>
+            <div className="min-w-0">
+              <p className="font-medium">
+                {decidedByAdmin ? ADMIN_BANNER_TEXT[overall] : BANNER_TEXT[overall]}
+              </p>
+              {/* Said plainly, because otherwise the page contradicts itself:
+                  every document reads "Verified" and the account does not. */}
+              {decidedByAdmin && (
+                <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
+                  A reviewer set this{decision?.createdAt ? ` ${timeAgo(decision.createdAt)}` : ''}, so it no
+                  longer follows your documents.
+                </p>
+              )}
+              {decidedByAdmin && decision?.note && (
+                <p className="mt-2 rounded-[var(--radius-control)] bg-[var(--color-surface-raised)] px-3 py-2 text-body-sm text-[var(--color-content)]">
+                  “{decision.note}”
+                </p>
+              )}
+            </div>
           </Notice>
 
           <ListGroup label="Documents">

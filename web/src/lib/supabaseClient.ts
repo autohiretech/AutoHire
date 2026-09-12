@@ -2163,6 +2163,28 @@ export const supabaseClient = {
   },
 
   // --- Verification ------------------------------------------------------
+  /**
+   * The signed-in person's own verification history — what was decided about
+   * them, when, and why.
+   *
+   * The page that shows it needs the reviewer's reason for a decision made
+   * about the ACCOUNT (an admin setting the status by hand), which lives
+   * nowhere else: a document's own rejection note is on the document, but an
+   * account-level decision leaves only this row. RLS already limits this table
+   * to your own profile (migration 032).
+   */
+  async listMyVerificationEvents(limit = 10): Promise<VerificationEvent[]> {
+    return mapRows<VerificationEvent>(
+      await run(
+        sb()
+          .from('verification_events')
+          .select('*')
+          .eq('profile_id', me())
+          .order('created_at', { ascending: false })
+          .limit(limit),
+      ),
+    );
+  },
   async listVerificationDocuments(): Promise<VerificationDocument[]> {
     return mapRows<VerificationDocument>(
       await run(sb().from('verification_documents').select('*').eq('profile_id', me())),
