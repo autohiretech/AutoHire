@@ -315,12 +315,21 @@ export function DashboardPage() {
   // list. Narrow means the list IS the screen, so nothing is selected until
   // the host taps a car — and dropping below the breakpoint returns them to
   // the list rather than stranding them in a detail pane.
+  // Two effects, deliberately, because they answer different questions and
+  // merging them broke the screen: a single effect that cleared the selection
+  // whenever `!twoPane` re-ran on every change of `selectedId`, so tapping a
+  // car set it and the effect wiped it on the very next render. The detail
+  // pane could not be opened on a phone at all.
+  //
+  // Leaving the two-pane width returns to the list — once, on the transition.
   useEffect(() => {
-    if (!twoPane) {
-      setSelectedId(null);
-      return;
-    }
-    if (selectedId || listings.length === 0) return;
+    if (!twoPane) setSelectedId(null);
+  }, [twoPane]);
+
+  // And where there is room for a detail pane, open the first car so the right
+  // half is never an empty panel.
+  useEffect(() => {
+    if (!twoPane || selectedId || listings.length === 0) return;
     setSelectedId(listings[0].id);
   }, [listings, selectedId, twoPane]);
 
@@ -485,7 +494,7 @@ export function DashboardPage() {
       ) : listings.length === 0 ? (
         <EmptyFleet />
       ) : (
-        <div className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
+        <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
           {/* Car list — sticks in place on desktop so it stays reachable while
               the detail pane on the right scrolls (mirrors the home page's
               category sidebar). Splits into two panes at `lg` (1024px) rather
@@ -495,7 +504,11 @@ export function DashboardPage() {
           <aside
             className={cn(
               selected && 'hidden lg:block',
-              'lg:sticky lg:top-20 lg:flex lg:max-h-[calc(100vh-6rem)] lg:flex-col',
+              // `min-w-0`: a grid item sizes to `min-width: auto` by default, so
+              // one long car title widened this track to 517px inside a 388px
+              // phone and the row was clipped — the price scrolled out of sight
+              // entirely with no scrollbar to say so.
+              'min-w-0 lg:sticky lg:top-20 lg:flex lg:max-h-[calc(100vh-6rem)] lg:flex-col',
             )}
           >
             {/* The search bar stays visible while the list scrolls, at every
@@ -574,7 +587,7 @@ export function DashboardPage() {
           <div
             className={cn(
               !selected && 'hidden lg:block',
-              'lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain',
+              'min-w-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain',
             )}
           >
             <button
