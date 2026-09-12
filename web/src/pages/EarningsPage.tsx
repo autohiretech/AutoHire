@@ -312,7 +312,31 @@ export function EarningsPage() {
     ? activeCurrency!
     : (shownBalances[0]?.currency ?? null);
   const balanceForCurrency = shownBalances.find((b) => b.currency === currency) ?? null;
-  const withdrawableForCurrency = withdrawable.find((d) => d.currency === currency) ?? null;
+
+  /**
+   * What a withdrawal would move — and deliberately NOT keyed off the wallet
+   * chip above.
+   *
+   * These are two questions in two currencies by design: the wallet is in what
+   * the renter was charged, `seller_withdrawable` is in the host's own payout
+   * currency, and on any cross-border trip those are a different number in a
+   * different currency. Keying both off one selected currency worked only
+   * while they happened to coincide, and it failed the moment they stopped:
+   * a host paid RWF who moved to a USD PayPal account had a wallet chip
+   * reading RWF, a withdrawable row reading USD, no match — so the "Ready to
+   * send" card and the one button that can send money vanished from the page
+   * entirely, leaving them no way to be paid at all.
+   *
+   * So it resolves in its own right: the selected currency when there is a row
+   * for it (the ordinary same-currency case, unchanged), otherwise the row in
+   * the currency the host's destination actually pays in, otherwise the single
+   * row when there is only one. A host with money to withdraw always has the
+   * control to withdraw it.
+   */
+  const withdrawableForCurrency = withdrawable.find((d) => d.currency === currency) ??
+    withdrawable.find((d) => d.currency === primary?.payoutCurrency) ??
+    (withdrawable.length === 1 ? withdrawable[0] : null) ??
+    null;
 
   return (
     <section className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
