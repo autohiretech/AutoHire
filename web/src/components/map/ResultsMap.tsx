@@ -69,6 +69,16 @@ function priceIcon(label: string, active: boolean, spotlit = false): L.DivIcon {
  * other; the pill numbers do the same job one tier down. */
 const CARD_W = 208;
 const CARD_H = 56;
+/**
+ * The phone-sized card. A 208px card is more than half the width of a 390px
+ * screen, so two of them never fit side by side and the collision pass
+ * demoted almost every match to a price pill — the map answered "how much"
+ * on exactly the screen where the list is hardest to glance at. The compact
+ * card keeps what identifies a car (photo, name, price) and drops the rating
+ * and the /unit suffix, which are the parts the popup repeats anyway.
+ */
+const CARD_W_SM = 150;
+const CARD_H_SM = 46;
 const PILL_W = 74;
 const PILL_H = 26;
 /** Breathing room between two placed markers — touching boxes read as one
@@ -85,7 +95,7 @@ const GUTTER = 6;
  * anonymous clusters and the cars were only visible by looking away from the
  * map, at the list. So the answers themselves sit on the map now.
  */
-function cardIcon(listing: Plottable, active: boolean, extras: number): L.DivIcon {
+function cardIcon(listing: Plottable, active: boolean, extras: number, compact = false): L.DivIcon {
   const price = listingHeadlinePrice(listing);
   const amount = formatMoney(price.amount, listing.priceCurrency);
   const rating = listing.ratingAvg ? listing.ratingAvg.toFixed(1) : '—';
@@ -95,8 +105,9 @@ function cardIcon(listing: Plottable, active: boolean, extras: number): L.DivIco
   // HTML for Leaflet, not JSX, so it can't use the <Img> component the rest
   // of the app relies on for this same resolution — has to happen here.
   const photo = listing.photos[0] ? resolvePhoto(listing.photos[0]) : null;
+  const thumbSize = compact ? 'h-9 w-11' : 'h-11 w-14';
   const thumb = photo
-    ? `<img src="${esc(photo)}" alt="" class="h-11 w-14 shrink-0 rounded-[var(--radius-control)] object-cover" />`
+    ? `<img src="${esc(photo)}" alt="" class="${thumbSize} shrink-0 rounded-[var(--radius-control)] object-cover" />`
     : '';
   // "+5" — the cars sharing this spot that the card is standing in for. A
   // depot with six machines on one coordinate is one marker however far you
@@ -106,9 +117,11 @@ function cardIcon(listing: Plottable, active: boolean, extras: number): L.DivIco
     extras > 0
       ? `<span class="absolute -right-1.5 -top-1.5 rounded-[var(--radius-pill)] border-2 border-[var(--color-surface-raised)] bg-[var(--color-accent-on)] px-1.5 text-[10px] font-bold leading-4 text-[var(--color-accent-contrast)]">+${extras}</span>`
       : '';
+  const w = compact ? CARD_W_SM : CARD_W;
+  const h = compact ? CARD_H_SM : CARD_H;
   return L.divIcon({
     className: '',
-    html: `<div style="width:${CARD_W}px" class="${
+    html: `<div style="width:${w}px" class="${
       cn(
         'relative flex items-center gap-2 rounded-[var(--radius-card)] border-2 bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-float)] transition-colors',
         active
@@ -118,12 +131,14 @@ function cardIcon(listing: Plottable, active: boolean, extras: number): L.DivIco
     }">${more}${thumb}<div class="min-w-0 flex-1">
         <div class="truncate text-[12px] font-semibold leading-tight text-[var(--color-content)]">${esc(listing.title)}</div>
         <div class="mt-0.5 flex items-baseline justify-between gap-1">
-          <span class="tabular truncate text-[12px] font-bold text-[var(--color-content)]">${esc(amount)}<span class="text-[10px] font-medium text-[var(--color-content-muted)]"> /${esc(price.unit)}</span></span>
-          <span class="tabular shrink-0 text-[11px] font-medium text-[var(--color-content-muted)]">★ ${esc(rating)}</span>
+          <span class="tabular truncate text-[12px] font-bold text-[var(--color-content)]">${esc(amount)}${
+            compact ? '' : `<span class="text-[10px] font-medium text-[var(--color-content-muted)]"> /${esc(price.unit)}</span>`
+          }</span>
+          ${compact ? '' : `<span class="tabular shrink-0 text-[11px] font-medium text-[var(--color-content-muted)]">★ ${esc(rating)}</span>`}
         </div>
       </div></div>`,
-    iconSize: [CARD_W, CARD_H],
-    iconAnchor: [CARD_W / 2, CARD_H / 2],
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h / 2],
   });
 }
 
@@ -376,6 +391,7 @@ function placeAll(
   plottable: Plottable[],
   spotlit: Set<string>,
   project: (lat: number, lng: number) => { x: number; y: number },
+  card: { w: number; h: number },
 ): Placement[] {
   // The assistant's matches first, then the rest in ranking order.
   //
@@ -409,7 +425,7 @@ function placeAll(
   for (const listing of order) {
     const { x, y } = project(listing.lat, listing.lng);
     const wantsCard = spotlit.has(listing.id);
-    const cardBox = wantsCard ? fits(x, y, CARD_W, CARD_H) : null;
+    const cardBox = wantsCard ? fits(x, y, card.w, card.h) : null;
     if (cardBox) {
       boxes.push(cardBox);
       placed.push({ lead: listing, kind: 'card', extras: [], x, y });
@@ -471,6 +487,13 @@ function ClusteredMarkers({
   const map = useMap();
   const [zoom, setZoom] = useState(map.getZoom());
   useMapEvent('zoomend', () => setZoom(map.getZoom()));
+  // Phone or desktop is a property of the map's own box, not the window: on
+  // /ai the map is full-bleed, but a future half-width map would want the
+  // compact card at the same window size. `resize` fires on rotation too.
+  const [boxWidth, setBoxWidth] = useState(() => map.getSize().x);
+  useMapEvent('resize', () => setBoxWidth(map.getSize().x));
+  const compact = boxWidth < 480;
+  const card = compact ? { w: CARD_W_SM, h: CARD_H_SM } : { w: CARD_W, h: CARD_H };
 
   const project = useCallback(
     (lat: number, lng: number) => map.project([lat, lng], zoom),
@@ -479,8 +502,8 @@ function ClusteredMarkers({
 
   const spotlit = useMemo(() => new Set(highlightIds), [highlightIds]);
   const placements = useMemo(
-    () => placeAll(plottable, spotlit, project),
-    [plottable, spotlit, project],
+    () => placeAll(plottable, spotlit, project, card),
+    [plottable, spotlit, project, card.w, card.h],
   );
 
   const maxZoom = map.getMaxZoom();
@@ -499,7 +522,7 @@ function ClusteredMarkers({
         // still worth showing.
         const icon =
           kind === 'card'
-            ? cardIcon(lead, isActive, extras.length)
+            ? cardIcon(lead, isActive, extras.length, compact)
             : extras.length > 0
               ? clusterIcon(group.length)
               : priceIcon(label, isActive, spotlit.has(lead.id));
@@ -546,7 +569,7 @@ function ClusteredMarkers({
             {kind === 'pill' && extras.length === 0 && <PinTooltip listing={lead} />}
             <Popup
               closeButton={false}
-              offset={[0, kind === 'card' ? -30 : -16]}
+              offset={[0, kind === 'card' ? (compact ? -25 : -30) : -16]}
               className={POPUP_RESET}
               autoPanPadding={[24, 24]}
             >

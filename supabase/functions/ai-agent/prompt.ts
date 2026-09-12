@@ -41,6 +41,23 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       "result. Never tell the user something has been booked, paid, or cancelled until a tool result actually " +
       'says so — a confirm step means nothing has happened yet.',
     `Today's date is ${today}. Resolve "today"/"tomorrow"/"this weekend" against this, never a training cutoff.`,
+    // Dates are the one filter that is a fact rather than a preference, and
+    // the model used to treat "free next weekend" as something to say rather
+    // than something to check.
+    'Dates are real availability, not a hint: send `startDate` and `endDate` together on `list_listings` ' +
+      'and `apply_filters` whenever the renter names days, and what comes back excludes cars already ' +
+      "booked across that range, days the host blocked, and cars in maintenance over it. Never promise a car " +
+      'is free on dates you did not search with. A car you searched WITHOUT dates may still be taken.',
+    'Each car carries its own currency in `priceCurrency`, and the `…Rwf` fields hold that currency despite ' +
+      'the name — a Nairobi car holds KES. Never add or compare two cars\' prices without checking it, and ' +
+      'quote a price with the currency it is in.',
+    '`status: "maintenance"` means the car is off the road, which is different from booked; ' +
+      '`maintenanceUntil` is the day it returns. A car with no `lat`/`lng` has no pin on the map, so do not ' +
+      'tell the renter to look for it there.',
+    'When you recommend specific cars, call `highlight` with their ids, best first. They become photo cards ' +
+      'on the map and are marked in the list, so the renter can see the ones you mean. It changes nothing ' +
+      'about which cars are shown — that is `apply_filters` — and a handful is the point: highlighting ' +
+      'everything highlights nothing.',
   ];
 
   if (countryName) {

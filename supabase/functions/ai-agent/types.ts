@@ -52,11 +52,26 @@ export interface ListingSummary {
   model: string;
   city: string;
   country: string;
+  seats: number;
+  transmission: Transmission;
+  fuel: FuelType;
   pricingMode: PricingMode;
+  /** Despite the name, the car's OWN currency — a Nairobi car holds KES here.
+   * Never compare or add two listings' prices without checking
+   * `priceCurrency` first. */
   pricePerDayRwf: number | null;
   pricePerHourRwf: number | null;
   priceCurrency: string;
   ratingAvg?: number;
+  ratingCount?: number;
+  /** 'maintenance' means off the road, not booked. `maintenanceUntil` is the
+   * day it comes back; null with that status means open-ended. */
+  status: ListingStatus;
+  maintenanceUntil?: string | null;
+  /** Null for a host who never used the map picker — such a car has no pin on
+   * the map, so don't promise the renter one. */
+  lat?: number | null;
+  lng?: number | null;
   hostId: string;
 }
 

@@ -53,6 +53,7 @@ export const applyFiltersTool: ToolDef<
     category?: string;
     ownerType?: string;
     transmission?: string;
+    fuel?: string;
     minSeats?: number;
     maxPriceRwf?: number;
     startDate?: string;
@@ -94,6 +95,10 @@ export const applyFiltersTool: ToolDef<
       category: { type: 'string', enum: CATEGORIES },
       ownerType: { type: 'string', enum: ['individual', 'business'] },
       transmission: { type: 'string', enum: ['automatic', 'manual'] },
+      // list_listings has always had this and the browse filter bar shows it,
+      // so without it here the model could FIND electric cars and then not
+      // show the renter the filter it had just searched on.
+      fuel: { type: 'string', enum: ['petrol', 'diesel', 'electric', 'hybrid'] },
       minSeats: { type: 'integer' },
       maxPriceRwf: { type: 'integer' },
       startDate: {
@@ -169,4 +174,59 @@ export const applyFiltersTool: ToolDef<
   },
 };
 
-export const ACTION_TOOLS: ToolDef[] = [navigateTool, applyFiltersTool];
+/** Cars the model is pointing at — drawn as photo cards on the map and marked
+ * in the list, without changing which cars are shown. */
+export interface HighlightAction {
+  type: 'highlight';
+  ids: string[];
+}
+
+/**
+ * Point at specific cars.
+ *
+ * The map already draws a highlighted car as a photo card rather than a price
+ * pill, and the list marks it — `ResearchField` has applied this action since
+ * it was written. Nothing ever sent one, so the model could name three cars in
+ * prose while the map treated them like every other result. Naming them here
+ * is what makes "this one, and these two if you want a bigger boot" visible.
+ *
+ * Highlighting is not filtering: everything the renter was looking at stays on
+ * screen. Use `apply_filters` to change WHAT is shown and this to say which of
+ * it you mean.
+ */
+export const highlightTool: ToolDef<{ listingIds: string[] }, { action: HighlightAction }> = {
+  name: 'highlight',
+  description:
+    'Point at specific cars you are recommending — they become photo cards on the map and are marked in ' +
+    'the list, while everything else stays visible. Send the ids you just named in your answer, best first, ' +
+    'at most a handful. This does not filter: to change which cars are shown, use apply_filters. Send an ' +
+    'empty list to stop pointing at anything.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      listingIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Listing ids from a search you just ran, in the order you would recommend them.',
+      },
+    },
+    required: ['listingIds'],
+  },
+  scope: 'any',
+  effect: 'write',
+  summary: (input) =>
+    input.listingIds.length === 0
+      ? 'Clearing the highlight'
+      : `Pointing at ${input.listingIds.length} car${input.listingIds.length === 1 ? '' : 's'}`,
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async run(_ctx, input) {
+    // Capped and de-duplicated: the map draws each of these as a card, and a
+    // model that highlights its whole result set turns the map back into the
+    // unreadable wall of cards the tiers exist to prevent.
+    const ids = [...new Set(input.listingIds)].slice(0, 8);
+    const action: HighlightAction = { type: 'highlight', ids };
+    return { action };
+  },
+};
+
+export const ACTION_TOOLS: ToolDef[] = [navigateTool, applyFiltersTool, highlightTool];
