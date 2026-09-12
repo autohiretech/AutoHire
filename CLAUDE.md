@@ -78,6 +78,18 @@ the admin site on its old build. The marketplace itself must contain no
 admin code — `App.tsx` forwards `/admin` to the admin origin — so a string
 unique to `AdminPage.tsx` should appear in `dist-admin/` and never in `dist/`.
 
+**Both projects share the data layer, so both need rebuilding.** A change to
+`web/src/lib/supabaseClient.ts` or `packages/shared/src/index.ts` is in the
+admin bundle as surely as the marketplace one, whoever it was written for.
+"Not admin-facing" and "not in the admin bundle" are different things, and
+this repo has separated them twice: an admin site left behind on an older
+shared client looks fine until the day one of those methods changes shape.
+
+Deploy to make an artifact match its sources, not to make two deployment
+hashes match each other. If a rebuild emits the file the project is already
+serving — compare the `assets/*.js` name, they are content-hashed — there is
+nothing to ship and the deploy is pure churn.
+
 **Leave `ALLOWED_ORIGIN` unset.** Every Edge Function answers
 `Access-Control-Allow-Origin` with `Deno.env.get('ALLOWED_ORIGIN') ?? '*'`,
 so the second origin already works. Setting it to either origin breaks the
