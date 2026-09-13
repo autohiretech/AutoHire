@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Clock,
   Coins,
+  HelpCircle,
   Hourglass,
   ListOrdered,
   Lock,
@@ -207,6 +208,23 @@ const STAGES: Record<
     tone: 'red',
   },
   cancelled: { label: 'Cancelled', hint: 'No money moved.', icon: XCircle, tone: 'ink' },
+};
+
+/**
+ * `trip.stage` crosses a repo boundary — computed server-side in
+ * `payhold-earnings`, typed client-side as `EarningStage` — and the two have
+ * already drifted once (a value neither the type nor this map declares). A
+ * page rendering someone's money is the wrong place to let an unrecognized
+ * value throw: `STAGES[trip.stage]` used to be read directly and a mismatch
+ * took the whole page down to blank with no error boundary, which is worse
+ * for a host checking their earnings than an honest "we don't recognize
+ * this" row.
+ */
+const UNKNOWN_STAGE = {
+  label: 'Status unavailable',
+  hint: "We couldn't read this trip's status — try refreshing the page.",
+  icon: HelpCircle,
+  tone: 'ink' as const,
 };
 
 /**
@@ -1125,7 +1143,7 @@ const STAGE_COLOR: Record<'ink' | 'amber' | 'emerald' | 'red', string> = {
 /** One trip: what it earned, where that money is, and when it lands. */
 function TripRow({ trip, payoutLabel }: { trip: EarningTrip; payoutLabel: string }) {
   const [open, setOpen] = useState(false);
-  const stage = STAGES[trip.stage];
+  const stage = STAGES[trip.stage] ?? UNKNOWN_STAGE;
   const Icon = stage.icon;
 
   // What will actually leave, once there is a payout to leave. Only used once
