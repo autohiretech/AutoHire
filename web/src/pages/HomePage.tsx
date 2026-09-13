@@ -261,6 +261,21 @@ export function HomePage() {
    */
   const searching = queryText.trim().length > 0;
 
+  /**
+   * Has the renter narrowed the page at all — typed, or picked a chip?
+   *
+   * The rails answer fixed questions (electric cars, two cities, this week's
+   * featured) and none of them answers a filter. Leaving them up while a
+   * filter is on meant clicking "SUV" changed nothing a renter could see: the
+   * grid below did filter, correctly, but it sat under three rails and a
+   * slideshow that carried on showing the same cars. Reported as "if they are
+   * clicked they don't work", which is exactly what it looks like.
+   *
+   * `topRanked` counts too — it reorders the same grid and is no more visible
+   * from the top of the page than the others.
+   */
+  const filtering = searching || !!filters.category || !!filters.fuel || topRanked;
+
   function setFilter<K extends keyof ListingFilters>(key: K, value: ListingFilters[K]) {
     setFilters((prev) => {
       const next = { ...prev };
@@ -287,8 +302,8 @@ export function HomePage() {
    * page under the renter's thumb while they were still typing.
    */
   useEffect(() => {
-    if (searching) scrollToResults();
-  }, [searching]);
+    if (filtering) scrollToResults();
+  }, [filtering]);
 
   // The server already filtered and ranked — flatten every page fetched so far.
   const results = infiniteData?.pages.flatMap((p) => p.items) ?? [];
@@ -545,7 +560,7 @@ export function HomePage() {
             of the page carried on showing the same cars, and the one car that
             matched was four screens down: it worked, and it did not look like
             it worked, which for a search box is the same thing. */}
-        {!searching && (
+        {!filtering && (
         <div className="mt-2">
           <ListingRail
             title={`Electric cars in ${country.name}`}
@@ -573,7 +588,7 @@ export function HomePage() {
         )}
 
         {/* Featured slideshow — a rotating BaT-style hero (auto every 3s) ─── */}
-        {!searching && (featured?.length ?? 0) > 0 && (
+        {!filtering && (featured?.length ?? 0) > 0 && (
           <div className="mt-2">
             <h2 className="mb-3 text-h3">{t('home.featured')}</h2>
             <FeaturedSlideshow listings={featured ?? []} />
@@ -582,7 +597,7 @@ export function HomePage() {
 
         {/* Full results grid — the categories rail + electric/top-ranked
             chips filter this. */}
-        <section className={cn('min-w-0', searching ? 'mt-6' : 'mt-8')}>
+        <section className={cn('min-w-0', filtering ? 'mt-6' : 'mt-8')}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             {/* A result set someone typed is not a recommendation, and calling
                 it one reads as the page ignoring them. Quoting it back is also
