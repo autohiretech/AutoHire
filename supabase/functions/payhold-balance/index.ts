@@ -208,6 +208,13 @@ Deno.serve(async (req: Request) => {
           stuckCount: w.stuck_count ?? 0,
           paidAmount: w.paid_amount,
           paidCount: w.paid_count,
+          // What the rail last said, and when. Nullish-coalesced rather than
+          // assumed: a PayHold that has not shipped the columns yet answers
+          // with the fields absent, and a host must see "no word yet" rather
+          // than a page that fails to render.
+          railStatus: w.rail_status ?? null,
+          railStatusAt: w.rail_status_at ?? null,
+          stuckSince: w.stuck_since ?? null,
         })),
         canReceivePayouts: caps?.can_receive_payouts ?? false,
         kycStatus: caps?.kyc_status ?? 'pending',

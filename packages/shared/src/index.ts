@@ -723,6 +723,20 @@ export interface PayholdWithdrawable {
   stuckCount: number;
   paidAmount: number;
   paidCount: number;
+  /**
+   * Where the rail says the money is, in the rail's own words — "batch
+   * PENDING, item UNCLAIMED". Null when nothing has polled yet.
+   *
+   * `pending` on its own is a decision, not an explanation, and it can stay
+   * true for days: a payout sat with PayPal for twenty-six hours while the
+   * dispatcher asked every five minutes and this page could only say "not
+   * moving yet". Displayed verbatim and never matched on.
+   */
+  railStatus: string | null;
+  /** When the rail last answered. Also what proves something is still asking. */
+  railStatusAt: string | null;
+  /** When the oldest stopped payout should have gone — what a host counts days from. */
+  stuckSince: string | null;
 }
 
 export interface PayholdWallet {
@@ -795,6 +809,20 @@ export interface EarningTrip {
   paidAt: string | null;
   holdReason: string | null;
   payoutStatus: string | null;
+  /**
+   * The payout leg of the same trip: what will actually leave, in the host's
+   * own payout currency, once PayHold has converted `net`.
+   *
+   * Both halves are needed to show an exchange at all. `net` is in what the
+   * renter was charged (RWF on a Kigali car) and this is in what the host is
+   * paid (USD on a PayPal account) — the same money, twice, and the rate
+   * between them is the one thing a host asking "why is my RF 405,347 worth
+   * $282.37" is actually asking about. Null until a payout row exists.
+   */
+  payoutAmount: number | null;
+  payoutCurrency: string | null;
+  /** What the rail last said about this one trip's transfer. */
+  railStatus: string | null;
   rentalType: BookingRentalType;
   /**
    * AutoHire's own figure, in WHOLE units of `currency` — unlike gross/net/etc

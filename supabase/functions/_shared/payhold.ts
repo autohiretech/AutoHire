@@ -222,6 +222,14 @@ export interface Withdrawable {
   stuck_count: number;
   paid_amount: number;
   paid_count: number;
+  /**
+   * Where the rail says the money is and when it last said so, and how long
+   * the oldest stopped payout has been stopped. Optional: a PayHold deployed
+   * before these columns existed simply omits them.
+   */
+  rail_status?: string | null;
+  rail_status_at?: string | null;
+  stuck_since?: string | null;
 }
 
 /** Where a host's money can be sent. A seller may have more than one. */
@@ -275,6 +283,14 @@ export interface Payout {
   paid_at: string | null;
   failure_reason: string | null;
   attempts: number;
+  /**
+   * Where the rail last said this transfer is, in the rail's own words —
+   * "batch PENDING, item UNCLAIMED". Optional because a PayHold deployed
+   * before the field existed simply does not send it, and a host reading
+   * "no word from PayPal yet" is a better answer than a broken page.
+   */
+  rail_status?: string | null;
+  rail_status_at?: string | null;
 }
 
 /** Per-deal money, every figure separately — PayHold derives these from its ledger. */

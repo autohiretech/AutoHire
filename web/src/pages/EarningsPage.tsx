@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
   Banknote,
   CheckCircle2,
   Clock,
@@ -22,8 +23,8 @@ import {
 import type { EarningStage, EarningTrip, PayholdBalance } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { formatMoney, formatMoneyMinor } from '@/lib/currency';
-import { formatDate } from '@/lib/format';
+import { formatMoney, formatMoneyMinor, majorUnits } from '@/lib/currency';
+import { formatDate, timeAgo } from '@/lib/format';
 import { PAYOUT_METHOD_ICON } from '@/lib/payments';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
@@ -40,6 +41,91 @@ import {
 } from '@/components/ui';
 
 const money = formatMoneyMinor;
+
+/**
+ * The same money, twice, and the rate between the two.
+ *
+ * A host earning on a Kigali car and paid into a USD account has a wallet in
+ * RWF and a payout in USD, and until now the page showed the first, showed the
+ * second, and said nothing about the arithmetic joining them — so "RF 405,347
+ * available" sat above "$282.37" with no way to tell whether that was a fair
+ * conversion, a fee, or a bug.
+ *
+ * **The rate is realised, not quoted.** It is what actually happened, derived
+ * from the two figures printed either side of it — sum of what the trips were
+ * charged over sum of what their payouts move. A rate fetched fresh from
+ * anywhere would be a different number from the one that produced these two,
+ * and a host checking our arithmetic with a calculator would find us wrong.
+ * PayHold locks a rate per trip at funding, so across several trips this is an
+ * average and says so.
+ */
+function exchangeLegs(trips: EarningTrip[]): {
+  from: string;
+  to: string;
+  fromAmount: number;
+  toAmount: number;
+  trips: number;
+}[] {
+  const pairs = new Map<string, { from: string; to: string; fromAmount: number; toAmount: number; trips: number }>();
+
+  for (const t of trips) {
+    // Only trips whose money has actually been converted: both legs present,
+    // and genuinely two currencies. A same-currency payout is not an exchange
+    // and a row saying "1 RWF = 1 RWF" is noise.
+    if (t.net == null || t.payoutAmount == null || !t.payoutCurrency) continue;
+    if (t.payoutCurrency === t.currency) continue;
+
+    const key = `${t.currency}->${t.payoutCurrency}`;
+    const row = pairs.get(key) ?? {
+      from: t.currency,
+      to: t.payoutCurrency,
+      fromAmount: 0,
+      toAmount: 0,
+      trips: 0,
+    };
+    row.fromAmount += t.net;
+    row.toAmount += t.payoutAmount;
+    row.trips += 1;
+    pairs.set(key, row);
+  }
+
+  return [...pairs.values()].filter((r) => r.fromAmount > 0 && r.toAmount > 0);
+}
+
+/** One currency pair, as a row a host can check with a calculator. */
+function ExchangeRow({
+  leg,
+}: {
+  leg: { from: string; to: string; fromAmount: number; toAmount: number; trips: number };
+}) {
+  // Minor units cancel in the ratio only when both currencies have the same
+  // exponent, which RWF (0) and USD (2) do not — so the rate is computed from
+  // major units, the same units it is quoted in.
+  const rate = majorUnits(leg.fromAmount, leg.from) / majorUnits(leg.toAmount, leg.to);
+
+  return (
+    <div className="rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="tabular text-body font-semibold text-[var(--color-content)]">
+          {money(leg.fromAmount, leg.from)}
+        </span>
+        <ArrowRight size={14} className="shrink-0 text-[var(--color-content-subtle)]" />
+        <span className="tabular text-body font-semibold text-[var(--color-content)]">
+          {money(leg.toAmount, leg.to)}
+        </span>
+      </div>
+      <p className="tabular mt-1 text-caption text-[var(--color-content-muted)]">
+        1 {leg.to} ={' '}
+        {rate.toLocaleString(undefined, { maximumFractionDigits: rate >= 100 ? 2 : 4 })} {leg.from}
+        {' · '}
+        {leg.trips === 1
+          ? 'locked when the trip released'
+          : `average across ${leg.trips} trips, each locked when it released`}
+      </p>
+    </div>
+  );
+}
+
 
 /**
  * Every stage a host's money passes through, in order, each said plainly.
@@ -323,6 +409,11 @@ export function EarningsPage() {
    * row when there is only one. A host with money to withdraw always has the
    * control to withdraw it.
    */
+  // Every currency pair the host's own money has actually crossed. Derived
+  // from trips rather than from balances: a balance knows one side of a
+  // conversion and a trip knows both, which is what makes the rate checkable.
+  const legs = exchangeLegs(trips);
+
   const withdrawableForCurrency = withdrawable.find((d) => d.currency === currency) ??
     withdrawable.find((d) => d.currency === primary?.payoutCurrency) ??
     (withdrawable.length === 1 ? withdrawable[0] : null) ??
@@ -664,13 +755,33 @@ export function EarningsPage() {
                     it's actually true of this card, so a host who only ever
                     sees their own payout currency never sees a sentence about
                     conversion that doesn't apply to them. */}
-                {primary && balanceForCurrency.currency !== primary.payoutCurrency && (
-                  <p className="mt-4 flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2 text-caption text-[var(--color-content-muted)]">
-                    <Coins size={13} className="mt-0.5 shrink-0 text-[var(--color-content-subtle)]" />
-                    Converts to {primary.payoutCurrency} — what {primary.label ?? 'your payout method'}{' '}
-                    actually pays in — the moment each trip releases.
-                  </p>
+                {/* The exchange, not a sentence about one.
+                    This used to read "Converts to USD — the moment each trip
+                    releases", which told a host the mechanism and left them to
+                    wonder what their RF 405,347 was actually worth. The two
+                    figures and the rate between them are the answer, and they
+                    are the host's own realised numbers rather than a quote:
+                    what the trips were charged, what their payouts move. */}
+                {legs.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="flex items-center gap-1.5 text-caption font-medium text-[var(--color-content-muted)]">
+                      <Coins size={13} className="shrink-0 text-[var(--color-content-subtle)]" />
+                      Converted for {primary?.label ?? 'your payout account'}
+                    </p>
+                    {legs.map((leg) => (
+                      <ExchangeRow key={`${leg.from}-${leg.to}`} leg={leg} />
+                    ))}
+                  </div>
                 )}
+                {legs.length === 0 && primary &&
+                  balanceForCurrency.currency !== primary.payoutCurrency && (
+                    <p className="mt-4 flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2 text-caption text-[var(--color-content-muted)]">
+                      <Coins size={13} className="mt-0.5 shrink-0 text-[var(--color-content-subtle)]" />
+                      Converts to {primary.payoutCurrency} — what {primary.label ?? 'your payout method'}{' '}
+                      actually pays in — the moment each trip releases. Nothing has
+                      converted yet, so there is no rate to show.
+                    </p>
+                  )}
               </CardBody>
             </Card>
           )}
@@ -705,6 +816,28 @@ export function EarningsPage() {
                     <p className="tabular mt-1.5 text-body-sm font-semibold text-[var(--color-warn-500)]">
                       {money(withdrawableForCurrency.stuckAmount, withdrawableForCurrency.currency)}{' '}
                       not moving yet
+                    </p>
+                  )}
+                  {/* What the rail itself says, in its own words.
+                      "Not moving yet" with nothing under it is where this page
+                      left a host for twenty-six hours while PayPal held their
+                      $282.37: the dispatcher was asking every five minutes and
+                      the answer went nowhere. It is shown verbatim — PayPal's
+                      "batch PENDING, item UNCLAIMED", Flutterwave's
+                      "Insufficient funds in wallet" — because a rail's own
+                      sentence is more use than our paraphrase of it, and the
+                      timestamp is the part that says somebody is still asking
+                      rather than that the job died. */}
+                  {withdrawableForCurrency.railStatus && (
+                    <p className="mt-1 text-caption text-[var(--color-content-muted)]">
+                      {primary?.label ?? 'The payout rail'} says: {withdrawableForCurrency.railStatus}
+                      {withdrawableForCurrency.railStatusAt &&
+                        ` · last checked ${timeAgo(withdrawableForCurrency.railStatusAt)}`}
+                    </p>
+                  )}
+                  {withdrawableForCurrency.stuckSince && (
+                    <p className="mt-1 text-caption text-[var(--color-content-muted)]">
+                      Due since {formatDate(withdrawableForCurrency.stuckSince)}
                     </p>
                   )}
                   {(withdrawableForCurrency.heldCount > 0 ||

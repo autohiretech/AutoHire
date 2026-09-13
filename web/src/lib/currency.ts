@@ -49,6 +49,20 @@ export function formatMoneyMinor(minor: number, code: string): string {
 }
 
 /**
+ * The same conversion as a number rather than a string, for arithmetic that
+ * has to happen in major units.
+ *
+ * An exchange rate is the case this exists for: minor units cancel in a ratio
+ * only when both currencies share an exponent, and RWF (0) and USD (2) do not
+ * — dividing the two minor figures would report a rate a hundred times out.
+ * Exported so that arithmetic reads `ZERO_DECIMAL_MINOR` here rather than
+ * keeping its own list, which is how two lists drift apart.
+ */
+export function majorUnits(minor: number, code: string): number {
+  return ZERO_DECIMAL_MINOR.has(code.toUpperCase()) ? minor : minor / 100;
+}
+
+/**
  * Format an amount in the given currency, e.g. `formatMoney(45000, 'RWF')` →
  * "RWF 45,000", `formatMoney(1200, 'CNY')` → "CN¥ 1,200". Daily rental prices
  * are whole numbers, so converted estimates round to 0 decimals by default;

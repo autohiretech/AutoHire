@@ -284,6 +284,15 @@ Deno.serve(async (req: Request) => {
         holdReason: payout?.failure_reason ?? null,
         payoutStatus: payout?.status ?? null,
 
+        // The payout leg — the same money in the currency it will actually
+        // leave in. `net` above is what the renter was charged; on any
+        // cross-border trip that is a different number in a different
+        // currency, and showing only one of them is what makes a host ask why
+        // their RF 405,347 is worth $282.37.
+        payoutAmount: payout?.amount ?? null,
+        payoutCurrency: payout?.currency ?? null,
+        railStatus: payout?.rail_status ?? null,
+
         // AutoHire's own figure, in whole units — never converted through
         // toMinorUnits, never PayHold's. See EarningTrip's comment.
         rentalType: (b.rental_type as string) === 'hourly' ? 'hourly' : 'daily',
