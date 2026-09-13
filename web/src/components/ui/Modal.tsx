@@ -66,7 +66,16 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
           //
           // `dvh` rather than `vh` so a phone's collapsing address bar does
           // not leave the last control under the browser chrome.
-          'animate-sheet-in relative z-10 flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-[var(--radius-sheet)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-sheet)] sm:animate-popover-in sm:max-h-[88dvh] sm:rounded-[var(--radius-sheet)] sm:shadow-[var(--shadow-float)]',
+          // **The ring is what holds the dialog together in dark mode.**
+          // Elevation here is carried by a shadow, and a shadow is a darker
+          // version of the ground — which on a near-black page is the ground.
+          // Under the scrim the page reads as pure black and the panel, one
+          // step lighter, loses its edge entirely: the dialog stops looking
+          // like an object and becomes text floating in a void. In light mode
+          // the same hairline is a soft edge against the scrim, which is what
+          // the shadow was already implying. One line, both themes, no palette
+          // change.
+          'animate-sheet-in relative z-10 flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-[var(--radius-sheet)] bg-[var(--color-surface-overlay)] ring-1 ring-[var(--color-line-strong)] shadow-[var(--shadow-sheet)] sm:animate-popover-in sm:max-h-[88dvh] sm:rounded-[var(--radius-sheet)] sm:shadow-[var(--shadow-float)]',
           className,
         )}
       >

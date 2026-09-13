@@ -4,8 +4,11 @@ import {
   ConnectAccountOnboarding,
   ConnectComponentsProvider,
 } from '@stripe/react-connect-js';
+import type { LoadError, StepChange } from '@stripe/connect-js';
 
 import { client } from '@/lib/client';
+import { stripeConnectAppearance, STRIPE_CONNECT_FONTS } from '@/lib/stripeAppearance';
+import { useMatchMedia } from '@/lib/useVisualViewport';
 import { Button, Notice, Spinner } from '@/components/ui';
 
 /**
@@ -32,13 +35,17 @@ import { Button, Notice, Spinner } from '@/components/ui';
  * account behind it changes — the same "never keep a copy of somebody else's
  * data" failure that the payout table has been punished for twice today.
  *
- * **The Stripe sign-in popup is expected.** These are Express accounts, which
- * is a deliberate choice: suppressing that popup requires
- * `disable_stripe_user_authentication`, which is only available where
- * `controller.requirement_collection` is `application`, and that moves
- * negative-balance liability onto PayHold and is irreversible per account. So
- * one popup during first-time setup is the design, and the copy below says so
- * rather than letting it read as something going wrong.
+ * **The Stripe sign-in popup depends on the account, and is no longer the
+ * default.** PayHold now mints accounts whose requirements it collects itself,
+ * which is the only configuration where Stripe permits
+ * `disable_stripe_user_authentication` — so for those, onboarding finishes
+ * here, code step included. Accounts created before that are Express and still
+ * get the window: `controller.stripe_dashboard.type` is fixed when an account
+ * is created and there is no migrating an existing one. PayHold answers which
+ * kind this is on the session, and the copy below follows that answer rather
+ * than assuming either way. It assumes the window when nobody has said,
+ * because bracing a host for an interruption that does not come is a much
+ * smaller failure than the reverse.
  *
  * ## What this is not
  *
@@ -65,6 +72,24 @@ export function StripeConnectOnboarding({
   }, []);
 
   const [publishableKey, setPublishableKey] = useState<string | null>(null);
+  /**
+   * Whether Stripe still interrupts with its own window near the end.
+   *
+   * Starts true, because that is the truthful default for an account we have
+   * not asked about yet and for any older PayHold that does not answer. It
+   * only ever becomes false on a real answer.
+   */
+  const [authPopup, setAuthPopup] = useState(true);
+  /**
+   * Whether Stripe's iframe has actually put something on the screen.
+   *
+   * Mounting the component is not the same as the host seeing a form, and the
+   * gap between them is a dialog with two sentences, a way out, and nothing to
+   * fill in — which reads as "there is nothing here" rather than "this is
+   * still loading". `onStepChange` fires when Stripe enters a step, including
+   * the first, so it is the earliest honest signal that the form exists.
+   */
+  const [painted, setPainted] = useState(false);
 
   // One session up front, only to learn the publishable key — `loadConnectAndInitialize`
   // needs it before it can ask for a secret of its own. The secret from this
@@ -75,8 +100,10 @@ export function StripeConnectOnboarding({
     let cancelled = false;
     client
       .payholdConnectSession()
-      .then(({ publishableKey: key }: { publishableKey: string }) => {
-        if (!cancelled) setPublishableKey(key);
+      .then(({ publishableKey: key, authPopup: popup }) => {
+        if (cancelled) return;
+        setPublishableKey(key);
+        setAuthPopup(popup);
       })
       .catch((e: unknown) => {
         if (!cancelled) {
@@ -95,7 +122,16 @@ export function StripeConnectOnboarding({
   const connectInstance = useMemo(() => {
     if (!publishableKey) return null;
     try {
-      return loadConnectAndInitialize({ publishableKey, fetchClientSecret });
+      return loadConnectAndInitialize({
+        publishableKey,
+        fetchClientSecret,
+        // Read at mount from the live theme — see `stripeAppearance`. Not in
+        // the dependency list: a theme change updates the instance below
+        // rather than building a second one, because re-initialising throws
+        // the half-finished form away along with it.
+        appearance: stripeConnectAppearance(),
+        fonts: STRIPE_CONNECT_FONTS,
+      });
     } catch {
       // Stripe's own docs rule embedded components out inside mobile and
       // desktop webviews, and AutoHire ships as a PWA — so this is a real
@@ -104,6 +140,16 @@ export function StripeConnectOnboarding({
       return null;
     }
   }, [publishableKey, fetchClientSecret]);
+
+  // The OS theme can change while the form is open — at sunset, on a phone
+  // that schedules it — and Stripe's iframe does not hear `prefers-color-scheme`
+  // on our behalf. `update` re-themes in place; re-initialising would discard
+  // whatever the host had typed.
+  const dark = useMatchMedia('(prefers-color-scheme: dark)');
+  useEffect(() => {
+    if (!connectInstance) return;
+    connectInstance.update({ appearance: stripeConnectAppearance() });
+  }, [connectInstance, dark]);
 
   if (failed) {
     return (
@@ -134,17 +180,51 @@ export function StripeConnectOnboarding({
 
   return (
     <div className="space-y-3">
-      {/* Said before it happens, not after. An unexplained Stripe popup in the
-          middle of entering bank details reads as something going wrong. */}
-      <p className="text-caption text-[var(--color-content-muted)]">
-        Near the end, Stripe opens its own window to text you a code and confirm
-        it's you. That step belongs to Stripe and can't happen in here — finish
-        it and you'll come straight back. Your details go to them, never
-        through us.
-      </p>
-      <ConnectComponentsProvider connectInstance={connectInstance}>
-        <ConnectAccountOnboarding onExit={onExit} />
-      </ConnectComponentsProvider>
+      {/* Said before it happens, not after — but only where it happens. An
+          unexplained Stripe window mid-way through entering bank details reads
+          as something going wrong; a warning about a window that never opens
+          is its own small lie, and it is the one a host remembers when they
+          were braced for an interruption that never came. PayHold says which
+          kind of account this is; see `authPopup`. */}
+      {authPopup ? (
+        <p className="text-caption text-[var(--color-content-muted)]">
+          Near the end, Stripe opens its own window to text you a code and
+          confirm it's you. That step belongs to Stripe and can't happen in
+          here — finish it and you'll come straight back. Your details go to
+          them, never through us.
+        </p>
+      ) : (
+        <p className="text-caption text-[var(--color-content-muted)]">
+          This all happens here — you won't be sent to another site. Your
+          details go straight to Stripe, never through us.
+        </p>
+      )}
+      {/* Reserves the height the form will take, so the dialog does not open
+          collapsed and then jump to full size once Stripe paints — and so the
+          spinner has somewhere to be. Stripe's own background is opaque (see
+          `colorBackground` in `stripeAppearance`), so the form covers this the
+          moment it exists, whether or not `onStepChange` ever fires. */}
+      <div className="relative min-h-[20rem]">
+        {!painted && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Spinner />
+          </div>
+        )}
+        <ConnectComponentsProvider connectInstance={connectInstance}>
+          <ConnectAccountOnboarding
+            onExit={onExit}
+            onStepChange={(_: StepChange) => setPainted(true)}
+            // **A load failure has to say so.** Without this, Stripe failing
+            // to load is indistinguishable from Stripe having nothing to ask:
+            // the same dialog, the same two sentences, no form and no error.
+            // The host's only clue was the button offering them a way out of
+            // something they could not see going wrong.
+            onLoadError={({ error }: LoadError) =>
+              setFailed(error?.message || "Stripe's onboarding couldn't load.")
+            }
+          />
+        </ConnectComponentsProvider>
+      </div>
       <Button variant="outline" className="w-full" onClick={onFallback}>
         Continue on Stripe's page instead
       </Button>

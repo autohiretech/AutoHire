@@ -82,6 +82,16 @@
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
   --color-surface-sunken: #f5f8f7;
+  /* A fourth depth, and the exception the three-depth rule earns.
+     `raised` is a card lying ON the page; this is a panel floating ABOVE it —
+     a dialog, and whatever a dialog hosts. In light mode there is nothing to
+     say: white is already the top, and a shadow does the floating. In dark
+     mode a shadow cannot, because a shadow is a darker ground and the ground
+     is already near-black, so elevation has to be carried by the surface
+     getting lighter. Without this the payout dialog was one step off pure
+     black with an invisible shadow, and a host reported not being able to see
+     what they were filling in. */
+  --color-surface-overlay: #ffffff;
   --color-surface-inverse: #141a18;
   --color-content: #141a18;
   --color-content-muted: #4e5b57;
@@ -230,6 +240,7 @@
     --color-surface: #0d1211;
     --color-surface-raised: #171e1c;
     --color-surface-sunken: #090d0c;
+    --color-surface-overlay: #1f2724;
     --color-surface-inverse: #f5f8f7;
     --color-content: #f2f6f5;
     --color-content-muted: #a9b6b2;
@@ -256,6 +267,7 @@
   --color-surface: #0d1211;
   --color-surface-raised: #171e1c;
   --color-surface-sunken: #090d0c;
+  --color-surface-overlay: #1f2724;
   --color-surface-inverse: #f5f8f7;
   --color-content: #f2f6f5;
   --color-content-muted: #a9b6b2;

@@ -69,7 +69,11 @@ export function Sheet({
     <div
       className={cn(
         'absolute inset-x-0 bottom-0 z-20 flex flex-col',
-        'rounded-t-[var(--radius-sheet)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-sheet)]',
+        // `overlay`, not `raised`, and for the same reason `Modal` uses it: a
+        // sheet floats above the page, and in dark mode the shadow that was
+        // saying so is invisible against a near-black ground. See the token's
+        // note in `index.css`.
+        'rounded-t-[var(--radius-sheet)] bg-[var(--color-surface-overlay)] shadow-[var(--shadow-sheet)]',
         !dragging && 'transition-[height] duration-300 ease-[var(--ease-sheet)]',
         detentClass[detent],
         className,

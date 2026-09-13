@@ -1129,6 +1129,20 @@ export interface ConnectSession {
    * the payout table.
    */
   publishable_key: string;
+  /**
+   * Whether Stripe will still open its own window near the end of onboarding
+   * to text the host a code.
+   *
+   * False for accounts PayHold mints now — it collects their requirements
+   * itself, which is the one configuration where Stripe allows that step to be
+   * turned off. True for every account created before that, because
+   * `controller.stripe_dashboard.type` is fixed when an account is created and
+   * there is no migrating an existing one.
+   *
+   * Optional on the wire: an older PayHold does not send it, and `undefined`
+   * has to read as "assume the window", which is what those deployments do.
+   */
+  stripe_auth_popup?: boolean;
 }
 
 /**

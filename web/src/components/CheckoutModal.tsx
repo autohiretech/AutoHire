@@ -18,6 +18,8 @@ import {
 import { Button, Input, Label, Modal, Notice, Skeleton } from '@/components/ui';
 import { MethodMarks } from '@/components/PaymentBrands';
 import { getStripeFor } from '@/lib/stripe';
+import { stripeElementsAppearance } from '@/lib/stripeAppearance';
+import { useMatchMedia } from '@/lib/useVisualViewport';
 import { formatMoneyMinor } from '@/lib/currency';
 import { client } from '@/lib/client';
 import { useT, type TranslationKey } from '@/lib/i18n';
@@ -733,6 +735,10 @@ export function CheckoutModal({
   onPaid?: (bookingId: string) => void;
 }) {
   const t = useT();
+  // Not read directly — it is the signal that the palette moved, which is what
+  // re-themes the Payment Element below. The colours themselves come from the
+  // stylesheet.
+  const dark = useMatchMedia('(prefers-color-scheme: dark)');
   const [methods, setMethods] = useState<CheckoutMethod[] | null>(null);
   /**
    * What PayHold will actually charge — its `presentment_amount` /
@@ -935,14 +941,18 @@ export function CheckoutModal({
       options: {
         clientSecret: action.client_secret,
         // Their fields, our palette — which is the whole point of an Element
-        // over a hosted page.
-        appearance: {
-          theme: 'stripe' as const,
-          variables: { colorPrimary: '#0f766e', borderRadius: '10px' },
-        },
+        // over a hosted page. Read from the live theme rather than written out
+        // here: the hardcoded pair this replaces named a teal that is in no
+        // token file, and pinned the light theme onto every renter paying
+        // after dark.
+        appearance: stripeElementsAppearance(),
       },
     };
-  }, [action]);
+    // `dark` belongs here and the client secret does not move with it:
+    // react-stripe-js hands an options change to `elements.update`, which
+    // re-themes a mounted Element in place. Only `clientSecret` would remount
+    // it, and that is the value this memo exists to hold still.
+  }, [action, dark]);
 
   function apply(next: NextAction | undefined, link: string | undefined) {
     const url = link || paymentLink;

@@ -1124,6 +1124,11 @@ export const supabaseClient = {
     accountId: string;
     clientSecret: string;
     publishableKey: string;
+    /**
+     * Whether Stripe still opens its own window at the end to text a code.
+     * See `stripe_auth_popup` in the Edge Function's `ConnectSession`.
+     */
+    authPopup: boolean;
   }> {
     const { data, error } = await getSupabase().functions.invoke(
       'payhold-stripe-connect?action=session',
@@ -1134,6 +1139,7 @@ export const supabaseClient = {
       account_id?: string;
       client_secret?: string;
       publishable_key?: string;
+      stripe_auth_popup?: boolean;
       error?: string;
     };
     if (payload?.error || !payload?.client_secret || !payload?.publishable_key) {
@@ -1143,6 +1149,11 @@ export const supabaseClient = {
       accountId: payload.account_id ?? '',
       clientSecret: payload.client_secret,
       publishableKey: payload.publishable_key,
+      // Absent means an older PayHold, which only ever minted the accounts
+      // that do open the window. Defaulting the other way would have the app
+      // promise a host that nothing will interrupt them, seconds before
+      // something does.
+      authPopup: payload.stripe_auth_popup !== false,
     };
   },
 
