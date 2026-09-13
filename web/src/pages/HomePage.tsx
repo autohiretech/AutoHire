@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   Leaf,
   PlusCircle,
+  Search,
   ShieldCheck,
   Star,
   TrendingUp,
@@ -22,7 +23,7 @@ import { useT } from '@/lib/i18n';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
 import { CAR_CATEGORIES } from '@/lib/categories';
-import { Badge, Chip, ChipRow } from '@/components/ui';
+import { Badge, Chip, ChipRow, Input } from '@/components/ui';
 import { SearchBar } from '@/components/research/SearchBar';
 import { ListingCardSkeleton } from '@/components/skeletons';
 import { ListingCard } from '@/components/ListingCard';
@@ -226,6 +227,29 @@ export function HomePage() {
       ),
     [],
   );
+
+  /**
+   * The typed-in search under the category chips.
+   *
+   * Held separately from `filters.query` and pushed across on a delay. The
+   * results grid is a server query keyed on the whole filter object, so
+   * writing every keystroke straight into it would fire a request per letter
+   * and make the grid flicker through six partial answers on the way to one
+   * real one. The input stays instant; the fetch waits until typing stops.
+   */
+  const [queryText, setQueryText] = useState(filters.query ?? '');
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((prev) => {
+        const next = { ...prev };
+        const trimmed = queryText.trim();
+        if (trimmed) next.query = trimmed;
+        else delete next.query;
+        return next;
+      });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [queryText]);
 
   function setFilter<K extends keyof ListingFilters>(key: K, value: ListingFilters[K]) {
     setFilters((prev) => {
@@ -461,6 +485,30 @@ export function HomePage() {
             );
           })}
         </ChipRow>
+
+        {/* Typed search, under the chips and deliberately small.
+            The hero search above takes a place and dates; it has never taken
+            words, so "Hiace" or "Kigali airport" had nowhere to go and the
+            only way to a specific car was scrolling a row of fifteen
+            categories. Full width on a phone — a field sharing a row with
+            anything at that size is too narrow to read back what you typed —
+            and capped on desktop so it reads as a refinement of the chips
+            above rather than a second hero. */}
+        <div className="relative mt-3 sm:max-w-sm">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
+          />
+          <Input
+            type="search"
+            inputMode="search"
+            placeholder="Search cars by name, make or city"
+            aria-label="Search cars by name, make or city"
+            value={queryText}
+            onChange={(e) => setQueryText(e.target.value)}
+            className="pl-9"
+          />
+        </div>
 
         {/* Rails — cars grouped by a reason, Turo-style, scrolling
             horizontally rather than wrapping into another grid. */}
