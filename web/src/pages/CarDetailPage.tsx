@@ -905,7 +905,13 @@ function PhotoGallery({
     <div className="mt-4">
       {/* Mobile — single swipeable photo */}
       <div className="sm:hidden">
-        <PhotoCarousel photos={photos} alt={title} heightClass="h-64" className="rounded-[var(--radius-card)]" />
+        <PhotoCarousel
+          photos={photos}
+          alt={title}
+          heightClass="h-64"
+          className="rounded-[var(--radius-card)]"
+          fit="contain"
+        />
       </div>
 
       {/* Desktop — one large photo left, two stacked right. Each photo is
@@ -920,13 +926,27 @@ function PhotoGallery({
           <button
             type="button"
             onClick={() => onOpen(0)}
-            className="group relative min-h-0 overflow-hidden rounded-[var(--radius-card)]"
+            // The main photo is what sells the car — it should never crop out
+            // the roofline or the wheels just to fill a wide tile. `contain`
+            // shows it whole, but a 4:3 photo in this ~2:1 tile leaves wide
+            // pillarbox bars; a flat sunken fill there read as dead/broken
+            // space rather than a deliberate frame, so a blurred, scaled copy
+            // of the same photo fills it instead — the same trick Apple
+            // Photos and Spotify use for an image that doesn't match its box.
+            className="group relative min-h-0 overflow-hidden rounded-[var(--radius-card)] bg-[var(--color-surface-sunken)]"
           >
+            <Img
+              src={hero}
+              alt=""
+              aria-hidden="true"
+              loading="eager"
+              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
+            />
             <Img
               src={hero}
               alt={title}
               loading="eager"
-              className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+              className="absolute inset-0 h-full w-full object-contain transition duration-300 group-hover:scale-[1.02]"
             />
           </button>
           <div className="grid min-h-0 grid-rows-2 gap-2">
