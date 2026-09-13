@@ -1250,13 +1250,7 @@ export const supabaseClient = {
   async startPayPalConnect(): Promise<{
     url: string;
     state: string;
-    /**
-     * PayPal's own publishable client id, when PayHold sends it — what lets
-     * the payout screen render PayPal's button in the app instead of opening
-     * a URL we assembled. The same value the checkout already receives to draw
-     * PayPal's payment buttons.
-     */
-    clientId: string | null;
+    /** Which PayPal this sign-in is against, when PayHold says. */
     environment: 'sandbox' | 'live' | null;
   }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-paypal-connect', {
@@ -1266,7 +1260,6 @@ export const supabaseClient = {
     const payload = data as {
       url?: string;
       state?: string;
-      client_id?: string;
       environment?: string;
       error?: string;
     };
@@ -1276,10 +1269,9 @@ export const supabaseClient = {
     return {
       url: payload.url,
       state: payload.state,
-      // Absent on an older PayHold, and absent has to mean "use the URL" —
+      // Absent on an older PayHold, and absent has to mean "say nothing" —
       // never a guess at which PayPal this is, which is provider knowledge no
       // client should be inventing.
-      clientId: payload.client_id ?? null,
       environment: payload.environment === 'live'
         ? 'live'
         : payload.environment === 'sandbox'

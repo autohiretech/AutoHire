@@ -1077,18 +1077,13 @@ export interface PayPalConnectStart {
   /** Checked on the way back. A callback nobody checks accepts any code. */
   state: string;
   /**
-   * What PayPal's own login script needs to draw its button in our page.
+   * Which PayPal the sign-in is against, so the modal can say "this is the
+   * sandbox, use a test account" rather than leaving a host wondering why
+   * their real password is refused.
    *
-   * The same publishable client id PayHold already hands the browser on every
-   * PayPal charge (`wallet_approval` in the checkout's `next_action`), so
-   * connecting an account can be the same in-app experience paying is, rather
-   * than the one flow that bounces a host out to paypal.com.
-   *
-   * **Optional on the wire**: an older PayHold sends neither, and `undefined`
-   * has to read as "use the URL", which is what the payout screen does.
+   * **Optional on the wire**: an older PayHold does not send it, and
+   * `undefined` has to read as "say nothing" rather than as a guess.
    */
-  client_id?: string;
-  /** Which PayPal the button talks to. Sandbox and live are different hosts. */
   environment?: 'sandbox' | 'live';
 }
 
