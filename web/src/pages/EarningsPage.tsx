@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRight,
   Banknote,
   CheckCircle2,
@@ -697,12 +698,34 @@ export function EarningsPage() {
               figures say that only if you do the arithmetic yourself. */}
           {shownBalances.length > 0 && (
             <Card className="mt-4">
-              <CardHeader className="flex items-center justify-between">
-                <h2 className="font-semibold text-[var(--color-content)]">Your money</h2>
-                {shownBalances.length > 1 && (
-                  <span className="text-caption text-[var(--color-content-muted)]">
-                    {shownBalances.length} currencies
-                  </span>
+              <CardHeader className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="font-semibold text-[var(--color-content)]">Your money</h2>
+                  {shownBalances.length > 1 && (
+                    <span className="text-caption text-[var(--color-content-muted)]">
+                      {shownBalances.length} currencies
+                    </span>
+                  )}
+                </div>
+                {/* **The same control "Where you get paid" already has, said
+                    where a host is actually looking when they want it.** That
+                    one is an underlined currency code inside a caption line —
+                    deliberately quiet there, because it sits beside an account
+                    that is already set up. Here the host is looking straight
+                    at a balance and asking what it converts to; a control that
+                    looks like a stray word in a sentence does not read as an
+                    action from this card. Same state, same modal, same
+                    `onPick` — this is a second door onto one decision, not a
+                    second decision. */}
+                {primary && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setChangingCurrency(true)}
+                  >
+                    <ArrowLeftRight size={14} />
+                    Change currency
+                  </Button>
                 )}
               </CardHeader>
               <CardBody className="space-y-6">
