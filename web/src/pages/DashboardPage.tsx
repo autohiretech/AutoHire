@@ -1724,17 +1724,18 @@ function PayoutsView({
     !needle || (carOf(p) ?? '').toLowerCase().includes(needle);
 
   /**
-   * Offered when there is more than one car to tell apart — not past some
-   * number of rows.
+   * Always shown, once there is a list to filter.
    *
-   * The first version gated on `payouts.length > 5`, which was the wrong
-   * question and hid the box from the only host on the platform who has
-   * payouts at all: they have five, across three cars, and a filter is exactly
-   * what five near-identical amounts from three cars needs. Row count says
-   * nothing about whether filtering by car helps; the number of cars does, and
-   * with one car it helps not at all.
+   * This has now been gated twice and both gates were wrong. `payouts.length >
+   * 5` hid it from the only host who had payouts at all — five, across three
+   * cars, which is exactly the case it was built for. `carCount > 1` was a
+   * better rule and still meant a host could not find the control when they
+   * went looking for it, which is its own failure: a filter you have to earn
+   * the right to see reads as a missing feature.
+   *
+   * It costs one row of chrome. The empty state above returns before this, so
+   * a host with no payouts still never sees a filter over nothing.
    */
-  const carCount = new Set(payouts.map((p) => carOf(p)).filter(Boolean)).size;
   // Under PayHold these rows are a local shadow of a ledger it owns. The real
   // answer — what has cleared, what is still holding, when it lands — lives on
   // /earnings, so point there rather than letting a host trust a stale copy.
@@ -1831,20 +1832,18 @@ function PayoutsView({
           <span className="tabular">{formatDate(nextPayout)}</span>.
         </p>
       )}
-      {carCount > 1 && (
-        <div className="relative">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
-          />
-          <Input
-            placeholder="Filter by car"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-      )}
+      <div className="relative">
+        <Search
+          size={16}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
+        />
+        <Input
+          placeholder="Filter by car"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className="pl-9"
+        />
+      </div>
 
       <Group title="Scheduled" items={due.filter(match)} />
       <Group title="Paid" items={paid.filter(match)} />
