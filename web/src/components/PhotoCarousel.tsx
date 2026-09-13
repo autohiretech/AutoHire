@@ -13,17 +13,14 @@ export function PhotoCarousel({
   alt,
   className,
   heightClass = 'h-56',
-  fit = 'cover',
 }: {
   photos: string[];
   alt: string;
   className?: string;
+  /** Sizes the `<img>` — a fixed height (`h-56`) for a compact list row, or
+   * an `aspect-[…]` utility to match the photo's own ratio exactly so
+   * `object-cover` never has anything to crop. */
   heightClass?: string;
-  /** 'contain' shows the whole photo (letterboxed on the sunken background
-   * behind it) instead of cropping it to fill the box. Defaults to 'cover' —
-   * a compact list of many photos (e.g. the admin card grid) reads better
-   * cropped to a uniform shape than with mismatched letterbox bars. */
-  fit?: 'cover' | 'contain';
 }) {
   const [i, setI] = useState(0);
   const touchX = useRef<number | null>(null);
@@ -45,22 +42,7 @@ export function PhotoCarousel({
         touchX.current = null;
       }}
     >
-      {fit === 'contain' && (
-        <Img
-          src={photos[idx]}
-          alt=""
-          aria-hidden="true"
-          className={cn('absolute inset-0 w-full scale-110 object-cover opacity-50 blur-2xl', heightClass)}
-        />
-      )}
-      <Img
-        src={photos[idx]}
-        alt={alt}
-        className={cn(
-          fit === 'contain' ? 'relative w-full object-contain' : 'w-full object-cover',
-          heightClass,
-        )}
-      />
+      <Img src={photos[idx]} alt={alt} className={cn('w-full object-cover', heightClass)} />
 
       {photos.length > 1 && (
         <>

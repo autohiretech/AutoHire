@@ -908,45 +908,34 @@ function PhotoGallery({
         <PhotoCarousel
           photos={photos}
           alt={title}
-          heightClass="h-64"
+          heightClass="aspect-[4/3]"
           className="rounded-[var(--radius-card)]"
-          fit="contain"
         />
       </div>
 
-      {/* Desktop — one large photo left, two stacked right. Each photo is
-          absolutely positioned inside its tile: an in-flow <img> with `h-full`
-          has no definite height to resolve against in a grid row, so it falls
-          back to its natural aspect ratio — an 800×600 photo at 827px wide
-          grew the row to 628px, spilling out of the 420px block and over the
-          title and the booking card. Taken out of flow, the photo can only
-          fill the tile, never size it. */}
+      {/* Desktop — one large photo left, two stacked right. Every stored
+          photo is 4:3 (see lib/images.ts's fixed 800×600 CDN output), so the
+          hero tile is shaped `aspect-[4/3]` to match it exactly rather than
+          picking some other rectangle and cropping or letterboxing the photo
+          to fit — there's no leftover space because the box IS the photo's
+          shape. That aspect-ratio is also what sizes the row: the grid has no
+          `grid-rows-1`/fixed height of its own, so the side column (a sibling
+          in the same row) stretches to whatever height the hero's width
+          implies. `object-cover` on the `<img>` itself is then a formality —
+          box and content already agree — but it's the safer default over
+          `contain` if a real (non-4:3) upload ever lands here. */}
       <div className="relative hidden sm:block">
-        <div className="grid h-[420px] grid-cols-[2fr_1fr] grid-rows-1 gap-2">
+        <div className="grid grid-cols-[2fr_1fr] gap-2">
           <button
             type="button"
             onClick={() => onOpen(0)}
-            // The main photo is what sells the car — it should never crop out
-            // the roofline or the wheels just to fill a wide tile. `contain`
-            // shows it whole, but a 4:3 photo in this ~2:1 tile leaves wide
-            // pillarbox bars; a flat sunken fill there read as dead/broken
-            // space rather than a deliberate frame, so a blurred, scaled copy
-            // of the same photo fills it instead — the same trick Apple
-            // Photos and Spotify use for an image that doesn't match its box.
-            className="group relative min-h-0 overflow-hidden rounded-[var(--radius-card)] bg-[var(--color-surface-sunken)]"
+            className="group relative aspect-[4/3] min-h-0 overflow-hidden rounded-[var(--radius-card)]"
           >
-            <Img
-              src={hero}
-              alt=""
-              aria-hidden="true"
-              loading="eager"
-              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
-            />
             <Img
               src={hero}
               alt={title}
               loading="eager"
-              className="absolute inset-0 h-full w-full object-contain transition duration-300 group-hover:scale-[1.02]"
+              className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
             />
           </button>
           <div className="grid min-h-0 grid-rows-2 gap-2">
