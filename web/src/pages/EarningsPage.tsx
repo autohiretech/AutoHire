@@ -922,7 +922,11 @@ export function EarningsPage() {
             <>
               <div className="space-y-3">
                 {trips.map((t) => (
-                  <TripRow key={t.bookingId} trip={t} />
+                  <TripRow
+                    key={t.bookingId}
+                    trip={t}
+                    payoutLabel={primary?.label ?? primary?.maskedDestination ?? "The payout rail"}
+                  />
                 ))}
               </div>
               {earnings.data?.hasMore && (
@@ -1042,10 +1046,18 @@ const STAGE_COLOR: Record<'ink' | 'amber' | 'emerald' | 'red', string> = {
 };
 
 /** One trip: what it earned, where that money is, and when it lands. */
-function TripRow({ trip }: { trip: EarningTrip }) {
+function TripRow({ trip, payoutLabel }: { trip: EarningTrip; payoutLabel: string }) {
   const [open, setOpen] = useState(false);
   const stage = STAGES[trip.stage];
   const Icon = stage.icon;
+
+  // What will actually leave, once there is a payout to leave. Only used once
+  // the money is in motion: before that the trip is still described in what
+  // the renter was charged, which is the only figure that exists yet.
+  const payoutLeg = (trip.stage === 'sending' || trip.stage === 'paid' || trip.stage === 'on_hold') &&
+      trip.payoutAmount !== null && trip.payoutCurrency
+    ? trip.payoutAmount
+    : null;
 
   return (
     <Card>
@@ -1059,8 +1071,28 @@ function TripRow({ trip }: { trip: EarningTrip }) {
             </p>
           </div>
           <div className="shrink-0 text-right">
-            {trip.net !== null && (
-              <p className="tabular font-bold text-[var(--color-content)]">{money(trip.net, trip.currency)}</p>
+            {/* **Once the money is moving, show what is moving.**
+                `net` is what the renter was charged, in their currency; a
+                cross-border trip is sent in the host's. A row reading
+                "RF 405,347 · Sending · on its way to your account" names a
+                figure that is not on its way anywhere — $282.37 is. So from
+                the moment there is a payout leg, the payout leg is the number,
+                with the charged figure underneath where it stays checkable. */}
+            {payoutLeg !== null ? (
+              <>
+                <p className="tabular font-bold text-[var(--color-content)]">
+                  {money(payoutLeg, trip.payoutCurrency!)}
+                </p>
+                {trip.net !== null && trip.payoutCurrency !== trip.currency && (
+                  <p className="tabular text-caption text-[var(--color-content-muted)]">
+                    from {money(trip.net, trip.currency)}
+                  </p>
+                )}
+              </>
+            ) : (
+              trip.net !== null && (
+                <p className="tabular font-bold text-[var(--color-content)]">{money(trip.net, trip.currency)}</p>
+              )
             )}
             <span className={cn('mt-0.5 inline-flex items-center gap-1 text-caption font-medium', STAGE_COLOR[stage.tone])}>
               <Icon size={13} /> {stage.label}
@@ -1079,6 +1111,18 @@ function TripRow({ trip }: { trip: EarningTrip }) {
           )}
           {trip.stage === 'paid' && trip.paidAt && <> Sent {formatDate(trip.paidAt)}.</>}
         </p>
+
+        {/* **"On its way" is not the whole truth when the rail is holding it.**
+            A payout PayPal accepted and could not deliver reads as `sending`
+            forever, and this page said "on its way to your account" for three
+            of them at once while every one sat unclaimed. The rail's own words
+            are what turn that into something a host can act on — and the host
+            asked exactly this: why are they still sending. */}
+        {trip.railStatus && trip.stage !== 'paid' && (
+          <p className="text-caption text-[var(--color-content-muted)]">
+            {payoutLabel} says: {trip.railStatus}
+          </p>
+        )}
 
 
         {/* AutoHire's own figure, not PayHold's — an hourly trip that ran over
