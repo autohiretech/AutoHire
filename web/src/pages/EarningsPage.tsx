@@ -791,21 +791,52 @@ export function EarningsPage() {
               the page's one accent. A big surface behind it too would be
               exactly the overuse the design system exists to remove; the
               number's size and weight say "this matters" instead. */}
-          {withdrawableForCurrency && (
+          {withdrawableForCurrency && (() => {
+            // Nothing to send, and something already gone: the card is about
+            // the money in flight, not about the zero left behind it.
+            const inFlightLeads = withdrawableForCurrency.availableAmount === 0 &&
+              withdrawableForCurrency.requestedAmount > 0;
+            return (
             <Card className="mt-4">
               <CardBody className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-body-sm text-[var(--color-content-muted)]">Ready to send to your account</p>
+                  {/* **A zero is the wrong headline when the money is moving.**
+                      With everything in flight this card led with "Ready to
+                      send · $0.00" over a disabled button, beside a wallet
+                      reading $1,948.70 available — so it looked like the money
+                      had gone missing and the button was broken. Both figures
+                      were right and the pairing was the lie: nothing is ready
+                      to send precisely BECAUSE it has all been sent.
+                      So when there is nothing available and something is on
+                      its way, the thing on its way is the headline. */}
+                  <p className="text-body-sm text-[var(--color-content-muted)]">
+                    {inFlightLeads ? 'On its way to your account' : 'Ready to send to your account'}
+                  </p>
                   <p className="tabular mt-0.5 text-h1 leading-tight text-[var(--color-content)]">
-                    {money(withdrawableForCurrency.availableAmount, withdrawableForCurrency.currency)}
+                    {money(
+                      inFlightLeads
+                        ? withdrawableForCurrency.requestedAmount
+                        : withdrawableForCurrency.availableAmount,
+                      withdrawableForCurrency.currency,
+                    )}
                   </p>
                   <p className="tabular mt-1.5 text-caption text-[var(--color-content-muted)]">
-                    {withdrawableForCurrency.availableCount} trip
-                    {withdrawableForCurrency.availableCount === 1 ? '' : 's'}
-                    {withdrawableForCurrency.clearingAmount > 0 &&
-                      ` · ${money(withdrawableForCurrency.clearingAmount, withdrawableForCurrency.currency)} still clearing`}
-                    {withdrawableForCurrency.requestedCount > 0 &&
-                      ` · ${withdrawableForCurrency.requestedCount} already on the way`}
+                    {inFlightLeads ? (
+                      <>
+                        {withdrawableForCurrency.requestedCount} trip
+                        {withdrawableForCurrency.requestedCount === 1 ? '' : 's'} with{' '}
+                        {primary?.label ?? 'your payout provider'} — nothing left here to send
+                      </>
+                    ) : (
+                      <>
+                        {withdrawableForCurrency.availableCount} trip
+                        {withdrawableForCurrency.availableCount === 1 ? '' : 's'}
+                        {withdrawableForCurrency.clearingAmount > 0 &&
+                          ` · ${money(withdrawableForCurrency.clearingAmount, withdrawableForCurrency.currency)} still clearing`}
+                        {withdrawableForCurrency.requestedCount > 0 &&
+                          ` · ${withdrawableForCurrency.requestedCount} already on the way`}
+                      </>
+                    )}
                   </p>
                   {/* The figure first, then the reason. A count on its own —
                       "1 on hold" above a balance of nothing — tells a host
@@ -907,7 +938,8 @@ export function EarningsPage() {
                 })()}
               </CardBody>
             </Card>
-          )}
+            );
+          })()}
         </>
       )}
 
