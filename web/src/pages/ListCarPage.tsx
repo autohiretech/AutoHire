@@ -1,7 +1,8 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { cn } from '@/lib/cn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Zap } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Zap } from 'lucide-react';
 import type { CarCategory, FuelType, Transmission } from '@autohire/shared';
 import { client } from '@/lib/client';
 import type { CreateListingInput } from '@/lib/types';
@@ -36,6 +37,35 @@ function toList(raw: string): string[] {
  * Photos are pasted as image URLs for now — Supabase Storage uploads are a
  * separate step. The first listing promotes the account to an individual host.
  */
+/** The stages, in order. Index + 1 is the step number used throughout. */
+const STEPS = ['Vehicle', 'Location', 'Pricing', 'Availability', 'Photos', 'Review'];
+
+/**
+ * One sentence per stage, saying what is being asked for and why.
+ *
+ * The old page had none of this: it showed every field at once and left the
+ * host to infer the purpose of each from its label. A stage can afford a
+ * sentence, and the sentence is most of what makes the form feel easy.
+ */
+const STEP_BLURB = [
+  'What are you renting out? This is what renters search for, so the plainer the better.',
+  'Where does a renter collect it? Drop the pin exactly where you hand over the keys — a listing with no pin never appears on the map.',
+  'What does it cost, and how do renters pay you? You can take online payments, cash at pickup, or both.',
+  'Is it available now? Say so if it is off the road, and when it comes back.',
+  'Photos do most of the renting. The first one is the cover.',
+  'A last look before it goes live. Anything here can still be changed afterwards.',
+];
+
+/** One line of the review summary. */
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-[var(--color-line)] pb-2 last:border-0 last:pb-0">
+      <dt className="shrink-0 text-[var(--color-content-muted)]">{label}</dt>
+      <dd className="truncate text-right font-medium text-[var(--color-content)]">{value}</dd>
+    </div>
+  );
+}
+
 export function ListCarPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -98,6 +128,23 @@ export function ListCarPage() {
   // showing a checklist of everything blank the moment the page loads would
   // just be noise on an empty form.
   const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  /**
+   * Which stage of the listing we are on, and which way we last moved.
+   *
+   * One long page asked a host for thirty things at once and answered none of
+   * them; the form was the whole job, visible all at the same time, and the
+   * only feedback was a greyed-out Publish at the bottom with a list of
+   * everything still wrong. Five stages ask for one thing at a time, say why
+   * each is wanted, and refuse to advance until that stage is actually
+   * answerable — so a mistake is caught on the screen that can fix it.
+   *
+   * `dir` is only for the animation: forward slides in from the right, Back
+   * from the left, which is what makes the movement read as a place you are in
+   * rather than a repaint.
+   */
+  const [step, setStep] = useState(1);
+  const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
 
   async function onPickPhotos(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -231,34 +278,42 @@ export function ListCarPage() {
     },
   });
 
-  // What's stopping Publish, in plain language — shown near the button rather
-  // than leaving a host to guess why it's greyed out.
-  const missing: string[] = [];
-  if (!accountCountry) missing.push('your account country (set it on the Account page)');
-  if (!title.trim()) missing.push('a listing title');
-  if (!make.trim()) missing.push('the make');
-  if (!model.trim()) missing.push('the model');
-  if (!(Number(year) > 1980)) missing.push('a valid year');
-  if (!(Number(seats) > 0)) missing.push(machine ? 'cab seats' : 'seats');
-  if (!location.trim()) missing.push('the pickup area');
+  // What's stopping Publish, in plain language — and WHICH step it belongs to,
+  // so the wizard can say it on the screen that can fix it rather than saving
+  // every complaint for the end. The flat `missing` below is still what the
+  // review step lists; this is the same set with a step attached.
+  const blockers: { step: number; text: string }[] = [];
+  const need = (step: number, text: string) => blockers.push({ step, text });
+
+  if (!accountCountry) need(1, 'your account country (set it on the Account page)');
+  if (!title.trim()) need(1, 'a listing title');
+  if (!make.trim()) need(1, 'the make');
+  if (!model.trim()) need(1, 'the model');
+  if (!(Number(year) > 1980)) need(1, 'a valid year');
+  if (!(Number(seats) > 0)) need(1, machine ? 'cab seats' : 'seats');
+  if (!location.trim()) need(2, 'the pickup area');
   // The text field alone isn't enough to plot on the map — without real
   // coordinates a listing simply never gets a pin (ResultsMap only plots
   // listings that have lat/lng), so a renter searching the map never finds
   // it even though it exists. The map picker (search, click, or drag) is
   // how a host actually sets this; the Google Maps link field stays
   // optional, since it duplicates the same coordinate once entered.
-  if (!coords) missing.push('an exact pickup point on the map');
-  if (pricingMode === 'daily' && !(Number(pricePerDay) > 0)) missing.push('a price per day');
-  if (pricingMode === 'hourly' && !(Number(pricePerHour) > 0)) missing.push('a price per hour');
-  if (pricingMode === 'daily' && !(Number(overageMultiplier) > 0)) missing.push('a late-return rate');
-  if (locationUrl.trim() && !isLikelyUrl(locationUrl)) missing.push('a valid location link');
-  if (!statusValid) missing.push('a back-in-service date');
-  if (blockedNonElectric) missing.push('an electric vehicle — the fleet quota is full for other fuel types');
-  if (photoUrls.length === 0) missing.push('at least one photo');
-  if (uploading) missing.push('the photo upload to finish');
-  if (!acceptsOnline && !acceptsCash) missing.push('a way for renters to pay — online, cash, or both');
+  if (!coords) need(2, 'an exact pickup point on the map');
+  if (pricingMode === 'daily' && !(Number(pricePerDay) > 0)) need(3, 'a price per day');
+  if (pricingMode === 'hourly' && !(Number(pricePerHour) > 0)) need(3, 'a price per hour');
+  if (pricingMode === 'daily' && !(Number(overageMultiplier) > 0)) need(3, 'a late-return rate');
+  if (locationUrl.trim() && !isLikelyUrl(locationUrl)) need(2, 'a valid location link');
+  if (!statusValid) need(4, 'a back-in-service date');
+  if (blockedNonElectric) need(1, 'an electric vehicle — the fleet quota is full for other fuel types');
+  if (photoUrls.length === 0) need(5, 'at least one photo');
+  if (uploading) need(5, 'the photo upload to finish');
+  if (!acceptsOnline && !acceptsCash) need(3, 'a way for renters to pay — online, cash, or both');
 
+  const missing = blockers.map((b) => b.text);
   const valid = missing.length === 0;
+
+  /** What this particular step is still waiting on. */
+  const blockersOn = (n: number) => blockers.filter((b) => b.step === n).map((b) => b.text);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -318,7 +373,69 @@ export function ListCarPage() {
       {editing && existingQuery.isLoading ? (
         <ListCarSkeleton />
       ) : (
-      <form onSubmit={onSubmit} className="mt-6 space-y-6">
+      <form onSubmit={onSubmit} className="mt-6">
+        {/* The map of the job, before the job.
+            A host arriving at a long form cannot tell whether it is five
+            minutes or fifty. Five named stages with the current one marked
+            answers that in one glance, and a finished stage is clickable so
+            going back to fix something is one tap rather than a scroll hunt. */}
+        <ol className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-2">
+          {STEPS.map((label, i) => {
+            const n = i + 1;
+            const done = n < step;
+            const here = n === step;
+            return (
+              <li key={label} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  // Only backwards. Forward is earned by filling the stage in
+                  // — a host who jumps to Photos from stage one has skipped
+                  // the questions the listing cannot exist without, and would
+                  // meet them all again at the end, which is the pile-up this
+                  // redesign exists to remove.
+                  disabled={n > step}
+                  onClick={() => {
+                    setDir('back');
+                    setStep(n);
+                  }}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-[var(--radius-pill)] px-2.5 py-1 text-caption font-medium transition-colors',
+                    here && 'bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]',
+                    done && 'text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]',
+                    !here && !done && 'text-[var(--color-content-subtle)]',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px]',
+                      here
+                        ? 'bg-[var(--color-accent-contrast)]/25'
+                        : done
+                          ? 'bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]'
+                          : 'bg-[var(--color-surface-sunken)]',
+                    )}
+                  >
+                    {done ? <Check size={10} /> : n}
+                  </span>
+                  {label}
+                </button>
+                {n < STEPS.length && (
+                  <ChevronRight size={12} className="text-[var(--color-content-subtle)]" />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+
+        {/* `key={step}` is what replays the animation: React tears the old
+            stage down and mounts the new one, so the CSS runs again. */}
+        <div
+          key={step}
+          className={cn('space-y-6', dir === 'fwd' ? 'animate-step-in' : 'animate-step-back')}
+        >
+        <p className="text-body-sm text-[var(--color-content-muted)]">{STEP_BLURB[step - 1]}</p>
+
+        {step === 1 && (
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-[var(--color-content)]">{machine ? 'The machine' : 'The car'}</h2>
@@ -431,7 +548,9 @@ export function ListCarPage() {
             </div>
           </CardBody>
         </Card>
+        )}
 
+        {step === 2 && (
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-[var(--color-content)]">Location</h2>
@@ -534,7 +653,9 @@ export function ListCarPage() {
             </div>
           </CardBody>
         </Card>
+        )}
 
+        {step === 3 && (
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-[var(--color-content)]">Pricing</h2>
@@ -644,7 +765,9 @@ export function ListCarPage() {
             )}
           </CardBody>
         </Card>
+        )}
 
+        {step === 3 && (
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-[var(--color-content)]">How renters pay</h2>
@@ -684,7 +807,9 @@ export function ListCarPage() {
             </p>
           </CardBody>
         </Card>
+        )}
 
+        {step === 4 && (
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-[var(--color-content)]">Availability</h2>
@@ -725,7 +850,9 @@ export function ListCarPage() {
             )}
           </CardBody>
         </Card>
+        )}
 
+        {step === 5 && (
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-[var(--color-content)]">Photos</h2>
@@ -769,6 +896,7 @@ export function ListCarPage() {
             )}
           </CardBody>
         </Card>
+        )}
 
         {blockedNonElectric && quota && (
           <Notice tone="brand">
@@ -795,30 +923,115 @@ export function ListCarPage() {
           </p>
         )}
 
-        {submitAttempted && missing.length > 0 && (
-          <Notice tone="warn" className="flex-col items-stretch">
-            <p className="font-medium">Before you can publish, you still need:</p>
+        {step === 6 && (
+          <Card>
+            <CardHeader>
+              <h2 className="font-semibold text-[var(--color-content)]">Ready to publish</h2>
+            </CardHeader>
+            <CardBody className="space-y-3">
+              {/* What they are about to publish, in the words a renter will
+                  read it in. The last chance to notice the price is wrong is
+                  cheaper than the first renter noticing. */}
+              <dl className="space-y-2 text-body-sm">
+                <ReviewRow label="Listing" value={title.trim() || '—'} />
+                <ReviewRow
+                  label={machine ? 'Machine' : 'Car'}
+                  value={[make.trim(), model.trim(), year].filter(Boolean).join(' ') || '—'}
+                />
+                <ReviewRow label="Pickup" value={[location.trim(), city].filter(Boolean).join(', ') || '—'} />
+                <ReviewRow
+                  label="Price"
+                  value={
+                    pricingMode === 'daily'
+                      ? `${currency} ${Number(pricePerDay).toLocaleString()} / day`
+                      : `${currency} ${Number(pricePerHour).toLocaleString()} / hour`
+                  }
+                />
+                <ReviewRow
+                  label="Renters pay"
+                  value={
+                    [acceptsOnline ? 'online' : null, acceptsCash ? 'cash on pickup' : null]
+                      .filter(Boolean)
+                      .join(' or ') || '—'
+                  }
+                />
+                <ReviewRow label="Photos" value={`${photoUrls.length}`} />
+              </dl>
+
+              {missing.length > 0 && (
+                <Notice tone="warn" className="flex-col items-stretch">
+                  <p className="font-medium">Before you can publish, you still need:</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                    {missing.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                </Notice>
+              )}
+            </CardBody>
+          </Card>
+        )}
+        </div>
+
+        {/* This stage's own blockers, on this stage. The whole point of the
+            split: a host hears "the pickup point is missing" while looking at
+            the map, not at the end next to a Publish button. */}
+        {submitAttempted && step < 6 && blockersOn(step).length > 0 && (
+          <Notice tone="warn" className="mt-4 flex-col items-stretch">
+            <p className="font-medium">Still needed on this step:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5">
-              {missing.map((m) => (
+              {blockersOn(step).map((m) => (
                 <li key={m}>{m}</li>
               ))}
             </ul>
           </Notice>
         )}
 
-        <div className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => navigate(editing ? `/cars/${editId}` : '/dashboard')}>
-            Cancel
+        <div className="mt-6 flex items-center justify-between gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (step === 1) navigate(editing ? `/cars/${editId}` : '/dashboard');
+              else {
+                setDir('back');
+                setStep((v) => v - 1);
+                setSubmitAttempted(false);
+              }
+            }}
+          >
+            {step === 1 ? 'Cancel' : 'Back'}
           </Button>
-          <Button type="submit" disabled={!valid || mutation.isPending}>
-            {mutation.isPending
-              ? editing
-                ? 'Saving…'
-                : 'Publishing…'
-              : editing
-                ? 'Save changes'
-                : 'Publish listing'}
-          </Button>
+
+          {step < 6 ? (
+            <Button
+              type="button"
+              onClick={() => {
+                // Checked here rather than by disabling the button: a disabled
+                // Next tells a host they cannot continue and never why. This
+                // one always responds, and the answer is the list above it.
+                if (blockersOn(step).length > 0) {
+                  setSubmitAttempted(true);
+                  return;
+                }
+                setDir('fwd');
+                setStep((v) => v + 1);
+                setSubmitAttempted(false);
+              }}
+            >
+              Continue <ChevronRight size={16} />
+            </Button>
+          ) : (
+            <Button type="submit" disabled={!valid || mutation.isPending}>
+              {mutation.isPending
+                ? editing
+                  ? 'Saving…'
+                  : 'Publishing…'
+                : editing
+                  ? 'Save changes'
+                  : 'Publish listing'}
+            </Button>
+          )}
         </div>
       </form>
       )}

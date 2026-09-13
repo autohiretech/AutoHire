@@ -386,7 +386,41 @@
 .animate-chat-in {
   animation: chat-in 0.22s var(--ease-pop);
 }
+/* Stage-to-stage movement in the listing wizard. Directional on purpose: a
+   stage arriving from the right reads as going forward, from the left as going
+   back, which is what makes a multi-step form feel like a place you are moving
+   through rather than a panel being repainted. Short — 0.18s — because it
+   happens on every Continue and anything slower becomes a tax. */
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes step-back {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-step-in {
+  animation: step-in 0.18s var(--ease-pop);
+}
+.animate-step-back {
+  animation: step-back 0.18s var(--ease-pop);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .animate-step-in,
+  .animate-step-back,
   .animate-drawer-in,
   .animate-overlay-in,
   .animate-popover-in,
