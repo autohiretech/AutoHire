@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Car } from 'lucide-react';
+import { BrandMark } from '@/components/BrandMark';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { ADMIN_URL } from '@/lib/siteUrls';
 import { PaymentMethods } from '@/components/marketplace/PaymentMethods';
@@ -50,7 +50,7 @@ export function Footer() {
           <div className="max-w-xs">
             <div className="flex items-center gap-2 font-bold text-[var(--color-content)]">
               <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] bg-brand-600 text-white">
-                <Car size={18} />
+                <BrandMark size={18} />
               </span>
               <span className="text-body-lg">AutoHire</span>
             </div>

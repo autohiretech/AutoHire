@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Download, Share, SquarePlus } from 'lucide-react';
+import { Share, SquarePlus } from 'lucide-react';
 import { Modal, Button } from '@/components/ui';
+import { BrandMark } from '@/components/BrandMark';
 import { usePwaInstall } from '@/lib/usePwaInstall';
 import { useT } from '@/lib/i18n';
 
@@ -58,8 +59,11 @@ export function PwaInstallPrompt() {
   return (
     <Modal open={open} onClose={dismiss} title={t('install.title')}>
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-card)] bg-[var(--color-accent-on)]/10">
-          <Download size={26} className="text-[var(--color-accent-on)]" />
+        {/* The icon that is about to land on their home screen, not a
+            download glyph: an install prompt is a preview of the thing, and
+            this is the same tile the manifest ships. */}
+        <div className="flex h-16 w-16 items-center justify-center rounded-[22%] bg-brand-600 text-white shadow-sm">
+          <BrandMark size={44} />
         </div>
 
         {isIosSafari && !canPromptNatively ? (

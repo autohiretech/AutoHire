@@ -3,7 +3,6 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bell,
-  Car,
   LogOut,
   Menu,
   MessageSquare,
@@ -17,6 +16,7 @@ import {
 import { cn } from '@/lib/cn';
 import { ADMIN_URL } from '@/lib/siteUrls';
 import { Avatar, Button } from '@/components/ui';
+import { BrandMark } from '@/components/BrandMark';
 import { useNotifications } from '@/components/NotificationsProvider';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
 import { CurrencySelector } from '@/components/marketplace/CurrencySelector';
@@ -102,7 +102,7 @@ export function Header() {
           className="flex items-center gap-2 font-display text-body-lg font-extrabold text-[var(--color-content)]"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
-            <Car size={18} />
+            <BrandMark size={18} />
           </span>
           <span>AutoHire</span>
         </Link>

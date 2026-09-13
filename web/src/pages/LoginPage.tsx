@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Building2, Car, User } from 'lucide-react';
+import { Building2, User } from 'lucide-react';
+import { BrandMark } from '@/components/BrandMark';
 import { useAuth, type AccountType } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { normalizePhone } from '@/lib/phone';
@@ -105,7 +106,7 @@ export function LoginPage() {
     <section className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center px-4 py-16 sm:py-20">
       <Link to="/" className="mb-10 flex items-center justify-center gap-2 font-semibold text-[var(--color-content)]">
         <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
-          <Car size={18} />
+          <BrandMark size={20} />
         </span>
         <span className="text-body-lg">AutoHire</span>
       </Link>

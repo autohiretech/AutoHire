@@ -3,7 +3,6 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bell,
-  Car,
   ExternalLink,
   Flag,
   History,
@@ -25,6 +24,7 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { MAIN_URL } from '@/lib/siteUrls';
 import { cn } from '@/lib/cn';
 import { Avatar } from '@/components/ui';
+import { BrandMark } from '@/components/BrandMark';
 import { useScrollLock } from '@/components/ui/Sheet';
 
 export type AdminSection =
@@ -320,7 +320,7 @@ function Brand({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <span className="flex min-w-0 items-center gap-2.5">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
-        <Car size={18} />
+        <BrandMark size={18} />
       </span>
       {!collapsed && (
         <span className="min-w-0 leading-tight">
