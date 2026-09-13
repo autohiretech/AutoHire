@@ -25,6 +25,29 @@ export function PayPalConnectReturnPage() {
   const code = params.get('code');
   const state = params.get('state');
   const denied = params.get('error');
+  /**
+   * **PayPal's own words for why it sent us back empty.**
+   *
+   * This page read `error` to decide what to render and then threw it away,
+   * showing "you came back without connecting an account" for every case —
+   * a cancelled consent screen, a scope the app is not approved for, a
+   * mismatched return URL. That is the same swallowing that made
+   * `RECEIVER_UNCONFIRMED` invisible for a day: the provider said exactly what
+   * was wrong and we replaced it with a guess.
+   *
+   * Every parameter is shown, not just the two named ones, because PayPal has
+   * more than one way of saying no and a redirect carrying something we did
+   * not think to read is precisely the case worth seeing.
+   */
+  const deniedDetail = [
+    params.get('error_description'),
+    denied && `error=${denied}`,
+    ...[...params.entries()]
+      .filter(([k]) => !['error', 'error_description', 'code', 'state'].includes(k))
+      .map(([k, v]) => `${k}=${v}`),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   // The state PayPal was given at the start. A callback that does not check it
   // accepts a code from anywhere, which is the whole reason it is generated.
@@ -76,7 +99,11 @@ export function PayPalConnectReturnPage() {
   useEffect(() => {
     if (code || sent.current) return;
     sent.current = true;
-    reportToOpener({ ok: false, cancelled: true });
+    reportToOpener({
+      ok: false,
+      cancelled: !deniedDetail,
+      message: deniedDetail ? `PayPal said: ${deniedDetail}` : undefined,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
@@ -109,6 +136,11 @@ export function PayPalConnectReturnPage() {
             You came back without connecting an account. Nothing changed — you can try
             again, or type your PayPal address instead.
           </p>
+          {deniedDetail && (
+            <p className="mt-1 break-words text-caption text-[var(--color-content-muted)]">
+              PayPal said: {deniedDetail}
+            </p>
+          )}
         </Notice>
       ) : stateMismatch ? (
         <Notice tone="danger" className="flex-col items-center text-center">

@@ -465,7 +465,11 @@ function PayoutSetupBody({
       setPaypalWaiting(false);
       const payload = data.payload ?? {};
 
-      if (payload.cancelled) return; // They closed PayPal. Nothing to say.
+      // A genuine cancel says nothing; a refusal says what PayPal said. The
+      // popup closes either way, so this card is the only place the reason can
+      // land — and "nothing happened" for a scope the app is not approved for
+      // is how an afternoon goes missing.
+      if (payload.cancelled) return;
       if (payload.ok) {
         const r = payload.result as {
           email: string | null;
