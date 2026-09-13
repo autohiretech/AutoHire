@@ -30,9 +30,40 @@ import { PayPalMark } from '@/components/PaymentBrands';
  * live reference describes assembling the authorization URL with `client_id`,
  * `scope`, `redirect_uri`, `response_type` and `state`, which is exactly what
  * `PayPalProvider.loginUrl` assembles server-side. So the button below is
- * ours, and what makes the window PayPal's mini browser rather than a
- * navigation is that the URL omits `fullPage` — their documented default.
+ * ours. Which of PayPal's two presentations the URL asks for is `sameTab`'s
+ * decision, just below: a desktop gets the mini browser over this modal, a
+ * phone or the installed PWA gets PayPal as a page in this same tab.
  */
+/**
+ * Whether this device has to go to PayPal in the same tab.
+ *
+ * A popup is the right shape on a desktop: the modal underneath keeps the
+ * host's place and the result lands in it. On a phone it is the wrong one, in
+ * two different ways. Installed as a PWA there is no browser chrome for a
+ * second window to open in, so `window.open` is either refused or opens an
+ * external browser the app never hears back from. In a mobile browser the
+ * popup is a whole separate tab, and the host has left AutoHire to sign in —
+ * exactly what this flow exists to avoid. PayPal documents a same-tab
+ * presentation for precisely this (`fullPage=true`): the app itself navigates
+ * to the consent page and PayPal sends that tab back to `/payouts/paypal/return`,
+ * so nothing ever happens outside the app.
+ *
+ * Standalone display mode is the PWA; coarse pointer is a touch device. Either
+ * is enough — a phone in a browser is still a phone.
+ */
+export function sameTab(): boolean {
+  try {
+    if (window.matchMedia('(display-mode: standalone)').matches) return true;
+    if ((navigator as unknown as { standalone?: boolean }).standalone === true) return true;
+    return window.matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/** The return page hands the same-tab outcome back through this key. */
+export const PAYPAL_CONNECT_HANDOFF = 'paypalConnectOutcome';
+
 export function PayPalConnectModal({
   open,
   onClose,
@@ -107,11 +138,22 @@ export function PayPalConnectModal({
   }, [queryClient]);
 
   const start = useMutation({
-    mutationFn: () => client.startPayPalConnect(),
+    mutationFn: () => client.startPayPalConnect({ fullPage: sameTab() }),
     onSuccess: ({ url, state, environment: env }) => {
       sessionStorage.setItem('paypalConnectState', state);
       setEnvironment(env);
       setOutcome(null);
+
+      // A phone or the installed app: the whole tab goes to PayPal and comes
+      // back to the return page, which sends the host on to their payout
+      // settings with the answer. No second window is ever opened, so there
+      // is nothing for a mobile browser to block or a PWA to lose.
+      if (sameTab()) {
+        setWaiting(true);
+        window.location.assign(url);
+        return;
+      }
+
       const popup = window.open(
         url,
         'paypal-connect',
@@ -155,7 +197,7 @@ export function PayPalConnectModal({
 
         {outcome?.ok !== true && (
           <Button className="mt-5 w-full" disabled={busy} onClick={() => start.mutate()}>
-            {start.isPending
+            {start.isPending || (waiting && sameTab())
               ? 'Opening PayPal…'
               : waiting
                 ? 'Waiting for PayPal…'
@@ -168,7 +210,9 @@ export function PayPalConnectModal({
         {waiting && (
           <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-[var(--color-content-subtle)]">
             <Loader2 size={12} className="animate-spin" />
-            Finish signing in to PayPal in the window that opened.
+            {sameTab()
+              ? "Taking you to PayPal — you'll come straight back here."
+              : 'Finish signing in to PayPal in the window that opened.'}
           </p>
         )}
 

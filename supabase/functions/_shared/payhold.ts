@@ -1090,10 +1090,12 @@ export interface PayPalConnectStart {
 export function startPayPalConnect(
   sellerId: string,
   returnUrl: string,
+  /** Ask PayPal for its same-tab page rather than a mini browser — phones and PWAs. */
+  fullPage = false,
 ): Promise<PayPalConnectStart> {
   return call(`/sellers/${encodeURIComponent(sellerId)}/paypal/connect`, {
     method: 'POST',
-    body: { return_url: returnUrl },
+    body: { return_url: returnUrl, full_page: fullPage },
   });
 }
 

@@ -125,7 +125,12 @@ Deno.serve(async (req: Request) => {
     }
 
     if (req.method === 'POST') {
-      const start = await startPayPalConnect(sellerId, returnUrl());
+      // `full_page` is the browser saying it cannot keep a popup — a phone, or
+      // the installed PWA. PayHold then asks PayPal for its same-tab
+      // presentation, and the whole exchange stays inside AutoHire.
+      const body = await req.json().catch(() => ({}));
+      const fullPage = body?.full_page === true;
+      const start = await startPayPalConnect(sellerId, returnUrl(), fullPage);
       return json({ ...start, return_url: returnUrl() }, 200);
     }
 

@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { client } from '@/lib/client';
 import { Button, Notice, Skeleton } from '@/components/ui';
+import { PAYPAL_CONNECT_HANDOFF } from '@/components/PayPalConnectModal';
 
 /**
  * Where PayPal sends a host back after they sign in to connect their account.
@@ -84,7 +85,19 @@ export function PayPalConnectReturnPage() {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       queryClient.invalidateQueries({ queryKey: ['payholdEarnings'] });
       queryClient.invalidateQueries({ queryKey: ['payholdWallet'] });
-      reportToOpener({ ok: true, result });
+      if (reportToOpener({ ok: true, result })) return;
+      // No opener: this tab *is* the app, on a phone or in the installed PWA,
+      // and the host is going back to the payout screen they started from.
+      // The answer travels with them so that screen can show it the way the
+      // popup path shows it inside the modal.
+      try {
+        sessionStorage.setItem(
+          PAYPAL_CONNECT_HANDOFF,
+          JSON.stringify({ ok: true, email: result.email, status: result.status }),
+        );
+      } catch {
+        // Storage refused — the screen simply shows the saved method instead.
+      }
     },
     onError: (err) => {
       reportToOpener({
@@ -186,8 +199,14 @@ export function PayPalConnectReturnPage() {
         </Notice>
       ) : null}
 
-      <Link to="/earnings" className="mt-6 block w-full">
-        <Button className="w-full">Back to earnings</Button>
+      {/* Where they started, first — this page is the same-tab round trip's
+          landing, and a host who tapped Connect on the payout screen expects
+          to be back on it, not somewhere else in the app. */}
+      <Link to="/payouts/setup" className="mt-6 block w-full">
+        <Button className="w-full">Back to payout settings</Button>
+      </Link>
+      <Link to="/earnings" className="mt-2 block w-full">
+        <Button variant="ghost" className="w-full">Back to earnings</Button>
       </Link>
     </section>
   );

@@ -1247,7 +1247,7 @@ export const supabaseClient = {
    * belongs to an unconfirmed account is accepted, reported as a success, held
    * for thirty days and returned, and nothing about it looks wrong until then.
    */
-  async startPayPalConnect(): Promise<{
+  async startPayPalConnect(opts?: { fullPage?: boolean }): Promise<{
     url: string;
     state: string;
     /** Which PayPal this sign-in is against, when PayHold says. */
@@ -1255,6 +1255,9 @@ export const supabaseClient = {
   }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-paypal-connect', {
       method: 'POST',
+      // The device cannot keep a popup, so the whole tab goes to PayPal and
+      // comes back — see `PayPalConnectModal.sameTab`.
+      body: { full_page: opts?.fullPage === true },
     });
     if (error) throw await fnError(error);
     const payload = data as {

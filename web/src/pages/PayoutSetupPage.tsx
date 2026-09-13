@@ -17,7 +17,7 @@ import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { CountryCombobox } from '@/components/CountryCombobox';
 import { StripeConnectOnboarding } from '@/components/StripeConnectOnboarding';
-import { PayPalConnectModal } from '@/components/PayPalConnectModal';
+import { PAYPAL_CONNECT_HANDOFF, PayPalConnectModal } from '@/components/PayPalConnectModal';
 import type { PayPalConnectOutcome } from '@/components/PayPalConnectModal';
 import { cn } from '@/lib/cn';
 import { useCountry } from '@/lib/country';
@@ -454,6 +454,32 @@ function PayoutSetupBody({
    */
   const [paypalOpen, setPaypalOpen] = useState(false);
   const [paypalResult, setPaypalResult] = useState<PayPalConnectOutcome | null>(null);
+
+  // The same-tab round trip lands here. On a phone the whole app went to
+  // PayPal and came back through `/payouts/paypal/return`, which left the
+  // answer in session storage on its way; picking it up makes this screen
+  // show the connected account exactly as the popup path does, and selecting
+  // PayPal is what makes the card that shows it render at all. Read once and
+  // cleared, so a reload later does not re-announce an old result.
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(PAYPAL_CONNECT_HANDOFF);
+      if (raw) sessionStorage.removeItem(PAYPAL_CONNECT_HANDOFF);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as PayPalConnectOutcome;
+      if (parsed && typeof parsed === 'object' && 'ok' in parsed) {
+        setPaypalResult(parsed);
+        setSelected('paypal');
+      }
+    } catch {
+      // A malformed handoff is nobody's to act on.
+    }
+  }, []);
 
   const connectStripe = useMutation({
     mutationFn: () => client.startStripeConnectOnboarding(),
