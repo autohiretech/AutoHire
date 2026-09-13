@@ -94,6 +94,11 @@ export interface SweepResult {
   noAccount: number;
   /** PayHold returned no `created_at`, so the wait cannot be measured. Left for an admin. */
   unknownAge: number;
+  /**
+   * A PayPal account nobody but PayPal can vouch for. Never verified here —
+   * see the guard in the loop.
+   */
+  paypalNotConnected: number;
   /** PayHold refused or was unreachable for this host. Next run tries again. */
   failed: number;
   /** PayHold is not taking payout-account decisions from AutoHire; the sweep stopped. */
@@ -111,6 +116,7 @@ function empty(afterHours: number, reason: SweepSkipReason): SweepResult {
     already: 0,
     noAccount: 0,
     unknownAge: 0,
+    paypalNotConnected: 0,
     failed: 0,
     relayOff: false,
   };
@@ -145,6 +151,7 @@ export async function runAutoVerifySweep(deps: SweepDeps): Promise<SweepResult> 
     already: 0,
     noAccount: 0,
     unknownAge: 0,
+    paypalNotConnected: 0,
     failed: 0,
     relayOff: false,
   };
@@ -174,6 +181,38 @@ export async function runAutoVerifySweep(deps: SweepDeps): Promise<SweepResult> 
           ? Date.parse(destination.security_hold_until) > now.getTime()
           : false;
         if (!held) await settleStatus(host, deps);
+        continue;
+      }
+
+      // **Time on file is not evidence on the PayPal rail, and this is the
+      // one place that was treating it as if it were.**
+      //
+      // The rule above — an account nobody objected to for N hours is an
+      // account — holds for MoMo and bank because those rails answer. A wrong
+      // MTN number fails at the transfer, within minutes, and the money is
+      // still ours. PayPal does not answer: a payout to an address whose
+      // account is unconfirmed is accepted, the batch is reported `SUCCESS`,
+      // the item sits `UNCLAIMED` for thirty days and only then comes back. On
+      // 2026-09-13 three of them totalling USD 2,231.07 were in exactly that
+      // state, against two typed addresses that both looked perfectly correct.
+      // Waiting 72 hours before sending would not have caught either one,
+      // because nothing was there to be caught until the money had gone.
+      //
+      // So a PayPal destination is verified by PayPal or by a person, never by
+      // a clock. `POST /payhold-paypal-connect` returns `verified_account`
+      // straight from PayPal and PayHold verifies the destination on it; an
+      // admin who has other evidence can still verify by hand in the review
+      // screen. What this sweep must not do is let the wait stand in for
+      // either, which is the whole of the hole being closed here.
+      //
+      // Counted rather than silent: a host stuck at `pending` for this reason
+      // has something to do about it, and the run should say how many are.
+      if (destination.payout_provider === 'paypal') {
+        result.paypalNotConnected += 1;
+        console.log(
+          '[payhold-auto-verify-payouts] PayPal account left for PayPal to vouch for',
+          { profileId: host.id, destinationId: destination.id },
+        );
         continue;
       }
 

@@ -1203,7 +1203,8 @@ function PayoutSetupBody({
                     )}
 
                     <p className="mt-2.5 text-caption text-[var(--color-content-subtle)]">
-                      Or type your PayPal address below.
+                      Or type your PayPal address below — an address we can't check with
+                      PayPal waits for a review before your first payment.
                     </p>
                   </div>
                 )}
@@ -1272,7 +1273,25 @@ function PayoutSetupBody({
                     prior experience of this to reason from. A hold nobody
                     mentioned is indistinguishable from a fault. */}
                 {PAYMENTS_PAYHOLD ? (
-                  connected ? (
+                  // **PayPal's wait does not end on its own, and the sentence
+                  // below it says one does.** Every other method is verified
+                  // by a person or, failing that, by having sat on file
+                  // untouched for `payout_auto_verify_after_hours` — which is
+                  // why "we'll tell you how long" is a promise we can keep for
+                  // MoMo and a bank account. A typed PayPal address is now
+                  // outside that: time is not evidence on a rail that accepts
+                  // a payout to an unconfirmed account and returns the money
+                  // thirty days later, so nothing but PayPal's own answer or
+                  // an admin clears it. Telling this host to wait would be
+                  // telling them to wait for something that is not coming.
+                  selected === 'paypal' ? (
+                    <Notice tone="warn">
+                      A typed address can't be checked with PayPal, so this one stays pending
+                      until someone reviews it — your earnings keep building up meanwhile.{' '}
+                      <strong>Connect PayPal above instead</strong> and it's ready straight away:
+                      PayPal tells us then and there whether payments can reach you.
+                    </Notice>
+                  ) : connected ? (
                     <Notice tone="warn">
                       You can have one payout account, so saving this replaces{' '}
                       {me?.payoutLabel ?? 'your current method'} — it won't be paid again. New

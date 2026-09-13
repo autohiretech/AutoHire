@@ -229,9 +229,18 @@ export function payoutProviderFor(method: PayoutMethodType, countryCode: string)
  *     declared-and-disabled rails on PayHold: their `payout_routes` rows carry
  *     no provider, which a check constraint turns into "cannot be enabled", and
  *     PayHold's `payout_provider` enum has only three values — none of them
- *     these. There is no PayPal payout integration on either side of this and
- *     there is not going to be one by accident, so a host who picked one saved
+ *     these. There was no PayPal payout integration on either side of this and
+ *     there was not going to be one by accident, so a host who picked one saved
  *     a destination that could never be paid.
+ *
+ *     **PayPal left that set on 2026-09-10** (`20260910000005`), and this
+ *     paragraph is kept as written because it describes what the fallback used
+ *     to offer rather than what is true now. The other four are unchanged. The
+ *     way to tell which is which is never a comment — it is whether PayHold
+ *     names the method in `payout.methods`, which is why the fallback below
+ *     offers PayPal in no market at all: an approximation reached only when
+ *     PayHold is unreachable has no business guessing at a per-(country,
+ *     currency) route.
  *
  *   • **Card inside Flutterwave's corridors.** Stripe cannot reach a recipient
  *     there and Flutterwave has no card payout at all — the same dead end

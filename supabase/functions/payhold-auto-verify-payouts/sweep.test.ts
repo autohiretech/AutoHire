@@ -173,6 +173,60 @@ Deno.test('the wait is measured from created_at, not from the security hold', as
   }
 });
 
+Deno.test('a PayPal account is never verified by the clock, however long it has waited', async () => {
+  // The failure this closes: a typed PayPal address is accepted by the API,
+  // reported a successful batch, and held unclaimed for thirty days before the
+  // money comes back. No wait catches that, so no wait may stand in for
+  // PayPal's own answer.
+  const ph = payhold({
+    destinations: () => ({
+      status: 200,
+      body: {
+        destinations: [
+          dest({
+            payout_provider: 'paypal',
+            label: 'PayPal · host@example.com',
+            created_at: hoursAgo(5000),
+          }),
+        ],
+      },
+    }),
+  });
+  const h = harness([host()]);
+  try {
+    const r = await runAutoVerifySweep(h.deps);
+    assertEquals([r.verified, r.paypalNotConnected], [0, 1]);
+    assertEquals(ph.calls.some((c) => c.path.endsWith('/verify')), false);
+    // And the host is not told anything went through, because nothing did.
+    assertEquals(h.notices, []);
+  } finally {
+    ph.restore();
+  }
+});
+
+Deno.test('a PayPal account PayPal already vouched for is left verified and reconciled', async () => {
+  // The connect flow verifies on `verified_account`; this must not undo it or
+  // count it as stuck.
+  const ph = payhold({
+    destinations: () => ({
+      status: 200,
+      body: {
+        destinations: [
+          dest({ payout_provider: 'paypal', verified_at: hoursAgo(2), security_hold_until: hoursAgo(1) }),
+        ],
+      },
+    }),
+  });
+  const h = harness([host()]);
+  try {
+    const r = await runAutoVerifySweep(h.deps);
+    assertEquals([r.already, r.paypalNotConnected, r.verified], [1, 0, 0]);
+    assertEquals(ph.calls.some((c) => c.path.endsWith('/capabilities')), true);
+  } finally {
+    ph.restore();
+  }
+});
+
 Deno.test('an account with no created_at is left for an admin', async () => {
   const ph = payhold({
     destinations: () => ({ status: 200, body: { destinations: [dest({ created_at: null })] } }),
