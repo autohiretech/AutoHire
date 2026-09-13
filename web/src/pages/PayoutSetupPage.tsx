@@ -17,6 +17,8 @@ import type { PayoutMethodType, PayoutProvider } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { CountryCombobox } from '@/components/CountryCombobox';
 import { StripeConnectOnboarding } from '@/components/StripeConnectOnboarding';
+import { PayPalConnectModal } from '@/components/PayPalConnectModal';
+import type { PayPalConnectOutcome } from '@/components/PayPalConnectModal';
 import { cn } from '@/lib/cn';
 import { useCountry } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -438,76 +440,20 @@ function PayoutSetupBody({
   });
 
   /**
-   * Log in with PayPal, in a popup, so the host stays inside AutoHire.
+   * Connecting PayPal happens in a modal, the way paying does.
    *
-   * They are mid-way through setting up payouts; sending the whole app out to
-   * paypal.com and back loses their place, their scroll position and any other
-   * field they had filled in. A popup keeps this page exactly where it was and
-   * the result arrives by `postMessage` from `/payouts/paypal/return`.
+   * This used to be a button on the form that called `window.open` on a
+   * consent URL — the host pressed Connect and a window to paypal.com appeared
+   * over a page that still looked like an unfinished form. `CheckoutModal`
+   * does not treat PayPal that way for a renter, and there is no reason the
+   * host side should: `PayPalConnectModal` owns the whole exchange now, and
+   * what is left here is the result, because the card below still has to show
+   * what was connected after the modal closes.
    *
-   * The redirect is still the fallback, because popups get blocked and a
-   * blocked popup must not become a dead button.
+   * PayPal's window is still PayPal's — it refuses to be framed, and should.
    */
-  const [paypalResult, setPaypalResult] = useState<
-    | { ok: true; email: string | null; status: 'ready' | 'unverified_paypal_account' | 'unknown' }
-    | { ok: false; message: string }
-    | null
-  >(null);
-  const [paypalWaiting, setPaypalWaiting] = useState(false);
-
-  useEffect(() => {
-    const onMessage = (e: MessageEvent) => {
-      // Same-origin only: the payload names a payout account.
-      if (e.origin !== window.location.origin) return;
-      const data = e.data as { type?: string; payload?: Record<string, unknown> } | null;
-      if (data?.type !== 'paypal-connect') return;
-
-      setPaypalWaiting(false);
-      const payload = data.payload ?? {};
-
-      // A genuine cancel says nothing; a refusal says what PayPal said. The
-      // popup closes either way, so this card is the only place the reason can
-      // land — and "nothing happened" for a scope the app is not approved for
-      // is how an afternoon goes missing.
-      if (payload.cancelled) return;
-      if (payload.ok) {
-        const r = payload.result as {
-          email: string | null;
-          status: 'ready' | 'unverified_paypal_account' | 'unknown';
-        };
-        setPaypalResult({ ok: true, email: r.email, status: r.status });
-        queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-      } else {
-        setPaypalResult({
-          ok: false,
-          message: String(payload.message ?? 'Could not connect that account.'),
-        });
-      }
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [queryClient]);
-
-  const connectPayPal = useMutation({
-    mutationFn: () => client.startPayPalConnect(),
-    onSuccess: ({ url, state }) => {
-      sessionStorage.setItem('paypalConnectState', state);
-      setPaypalResult(null);
-      const popup = window.open(
-        url,
-        'paypal-connect',
-        'width=500,height=720,menubar=no,toolbar=no,location=no',
-      );
-      if (!popup) {
-        // Blocked. The whole-page redirect still works; the return page
-        // renders standalone when it has no opener to talk to.
-        window.location.href = url;
-        return;
-      }
-      setPaypalWaiting(true);
-      popup.focus();
-    },
-  });
+  const [paypalOpen, setPaypalOpen] = useState(false);
+  const [paypalResult, setPaypalResult] = useState<PayPalConnectOutcome | null>(null);
 
   const connectStripe = useMutation({
     mutationFn: () => client.startStripeConnectOnboarding(),
@@ -1112,7 +1058,11 @@ function PayoutSetupBody({
                     in returns the payer id a payout actually wants plus
                     whether PayPal will let the money land, so the question is
                     answered here instead of a month later. The field stays,
-                    because most hosts know their email and nothing else. */}
+                    because most hosts know their email and nothing else.
+
+                    The exchange itself is `PayPalConnectModal` — the same
+                    shape paying has, rather than a button that throws a window
+                    at paypal.com over a half-filled form. */}
                 {selected === 'paypal' && (
                   <div className="rounded-[var(--radius-control)] border border-[var(--color-line)] p-3">
                     <p className="text-body-sm font-medium text-[var(--color-content)]">
@@ -1126,48 +1076,16 @@ function PayoutSetupBody({
                     <Button
                       type="button"
                       className="mt-2.5 w-full"
-                      disabled={connectPayPal.isPending || paypalWaiting}
-                      onClick={() => connectPayPal.mutate()}
+                      onClick={() => setPaypalOpen(true)}
                     >
-                      {connectPayPal.isPending
-                        ? 'Opening PayPal…'
-                        : paypalWaiting
-                          ? 'Waiting for PayPal…'
-                          : paypalResult?.ok
-                            ? 'Connect a different account'
-                            : 'Connect PayPal'}
+                      {paypalResult?.ok ? 'Connect a different account' : 'Connect PayPal'}
                     </Button>
 
-                    {/* The popup is a separate window and easy to lose behind
-                        this one, so the waiting state says where it went. */}
-                    {paypalWaiting && (
-                      <p className="mt-2 text-caption text-[var(--color-content-muted)]">
-                        Finish signing in to PayPal in the window that opened. This page
-                        updates on its own.
-                      </p>
-                    )}
-
-                    {connectPayPal.isError && (
-                      <p className="mt-2 text-caption text-[var(--color-danger-500)]">
-                        {connectPayPal.error instanceof Error
-                          ? connectPayPal.error.message
-                          : "Couldn't start PayPal sign-in."}
-                      </p>
-                    )}
-
-                    {/* The outcome, in the page they started from — the whole
-                        reason this runs in a popup. `verified_account` is
-                        PayPal's own answer about whether money can reach this
-                        account, which is the one thing a typed address can
-                        never tell us. */}
+                    {/* What the modal came back with, kept on the page after it
+                        closes: this card is where the host looks to see which
+                        account they are being paid into. */}
                     {paypalResult?.ok === true && (
-                      <div
-                        // One plain surface for both outcomes; the icon and
-                        // the sentence carry the difference. A tinted band per
-                        // state is exactly the brand-hue overuse the rest of
-                        // this screen avoids.
-                        className="mt-3 flex items-start gap-2 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2.5"
-                      >
+                      <div className="mt-3 flex items-start gap-2 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2.5">
                         {paypalResult.status === 'ready' ? (
                           <CheckCircle2
                             size={15}
@@ -1337,6 +1255,15 @@ function PayoutSetupBody({
             Back to dashboard
           </Link>
         )}
+
+        {/* Mounted once, outside the form, so PayPal's exchange is not a child
+            of the field it was started from — the modal survives the card
+            re-rendering underneath it while a popup is open. */}
+        <PayPalConnectModal
+          open={paypalOpen}
+          onClose={() => setPaypalOpen(false)}
+          onResult={setPaypalResult}
+        />
       </div>
     </Root>
   );

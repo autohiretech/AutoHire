@@ -1076,6 +1076,20 @@ export interface PayPalConnectStart {
   url: string;
   /** Checked on the way back. A callback nobody checks accepts any code. */
   state: string;
+  /**
+   * What PayPal's own login script needs to draw its button in our page.
+   *
+   * The same publishable client id PayHold already hands the browser on every
+   * PayPal charge (`wallet_approval` in the checkout's `next_action`), so
+   * connecting an account can be the same in-app experience paying is, rather
+   * than the one flow that bounces a host out to paypal.com.
+   *
+   * **Optional on the wire**: an older PayHold sends neither, and `undefined`
+   * has to read as "use the URL", which is what the payout screen does.
+   */
+  client_id?: string;
+  /** Which PayPal the button talks to. Sandbox and live are different hosts. */
+  environment?: 'sandbox' | 'live';
 }
 
 export function startPayPalConnect(

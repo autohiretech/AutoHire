@@ -1247,16 +1247,45 @@ export const supabaseClient = {
    * belongs to an unconfirmed account is accepted, reported as a success, held
    * for thirty days and returned, and nothing about it looks wrong until then.
    */
-  async startPayPalConnect(): Promise<{ url: string; state: string }> {
+  async startPayPalConnect(): Promise<{
+    url: string;
+    state: string;
+    /**
+     * PayPal's own publishable client id, when PayHold sends it — what lets
+     * the payout screen render PayPal's button in the app instead of opening
+     * a URL we assembled. The same value the checkout already receives to draw
+     * PayPal's payment buttons.
+     */
+    clientId: string | null;
+    environment: 'sandbox' | 'live' | null;
+  }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-paypal-connect', {
       method: 'POST',
     });
     if (error) throw await fnError(error);
-    const payload = data as { url?: string; state?: string; error?: string };
+    const payload = data as {
+      url?: string;
+      state?: string;
+      client_id?: string;
+      environment?: string;
+      error?: string;
+    };
     if (payload?.error || !payload?.url || !payload?.state) {
       throw new Error(payload?.error ?? "Couldn't start PayPal sign-in.");
     }
-    return { url: payload.url, state: payload.state };
+    return {
+      url: payload.url,
+      state: payload.state,
+      // Absent on an older PayHold, and absent has to mean "use the URL" —
+      // never a guess at which PayPal this is, which is provider knowledge no
+      // client should be inventing.
+      clientId: payload.client_id ?? null,
+      environment: payload.environment === 'live'
+        ? 'live'
+        : payload.environment === 'sandbox'
+        ? 'sandbox'
+        : null,
+    };
   },
 
   /**
