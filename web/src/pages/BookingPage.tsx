@@ -49,6 +49,7 @@ import {
 } from '@/components/PaymentBrands';
 import { PayholdPayment } from '@/components/PayholdPayment';
 import { Img } from '@/components/Img';
+import { Price } from '@/components/Price';
 import { Avatar, Badge, Button, Card, CardBody, Input, Label, Notice, Select, Skeleton } from '@/components/ui';
 import { useT } from '@/lib/i18n';
 
@@ -434,7 +435,8 @@ export function BookingPage() {
       listingId={id}
       startDate={startDate}
       endDate={endDate}
-      label={money(total)}
+      amount={total}
+      currency={cur}
       instant={instant}
       disabled={!datesValid}
       onBooked={(booking) => {
@@ -1053,7 +1055,8 @@ function CashForm({
   listingId,
   startDate,
   endDate,
-  label,
+  amount,
+  currency,
   instant,
   disabled,
   onBooked,
@@ -1061,7 +1064,14 @@ function CashForm({
   listingId: string;
   startDate: string;
   endDate: string;
-  label: string;
+  /** The estimate, in the listing's own currency — what's actually handed
+   * over. Rendered through `<Price>` so it also shows in whatever currency
+   * the renter has picked in the header, the same as every other price on
+   * the site — nothing here is charged in that currency, cash changes hands
+   * in the listing's own, but a renter comparing options in their own
+   * currency shouldn't have to do the arithmetic themselves. */
+  amount: number;
+  currency: string;
   instant: boolean;
   disabled: boolean;
   onBooked: (booking: { id: string }) => void;
@@ -1088,9 +1098,12 @@ function CashForm({
         no card is needed.
       </p>
       <p className="mt-2 text-body-sm text-[var(--color-content)]">
-        Bring about <span className="font-semibold">{label}</span>. It is an estimate —
-        the final amount is settled with the host at the handoff, and can change if
-        you return the car late or early.
+        Bring about{' '}
+        <span className="font-semibold">
+          <Price amount={amount} currency={currency} showNative />
+        </span>
+        . It is an estimate — the final amount is settled with the host at the
+        handoff, and can change if you return the car late or early.
       </p>
       {error && (
         <Notice tone="danger" className="mt-3">
