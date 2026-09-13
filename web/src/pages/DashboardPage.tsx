@@ -198,6 +198,23 @@ export function DashboardPage() {
     return b ? currencyOfBooking(b) : (listings[0]?.priceCurrency ?? 'RWF');
   };
   const fallbackCurrency = listings[0]?.priceCurrency ?? 'RWF';
+  /**
+   * Which car a payout is for.
+   *
+   * The rows never said. A host with eight cars saw eight identical-looking
+   * amounts and no way to tell which trip any of them came from — and no way to
+   * search, because there was nothing written down to search against.
+   *
+   * Null when the booking is not in the loaded set (an old trip, a filtered
+   * query) — the row then just omits the line rather than inventing a name.
+   */
+  const carOfPayout = (p: Payout): string | null => {
+    const b = bookings.find((x) => x.id === p.bookingId);
+    // `listings.find`, not the `listingsById` map below it — that is declared
+    // further down and this would be reading it before it exists. Same lookup
+    // `currencyOfPayout` just above does, on the same small list.
+    return b ? (listings.find((l) => l.id === b.listingId)?.title ?? null) : null;
+  };
 
   const stats = bookingStats(bookings, currencyOfBooking);
   const overdueTotal = bookings.filter(isOverdue).length;
@@ -499,7 +516,12 @@ export function DashboardPage() {
           ) : payoutsQuery.isError ? (
             <ErrorState onRetry={() => payoutsQuery.refetch()} />
           ) : (
-            <PayoutsView payouts={payouts} currencyOf={currencyOfPayout} fallbackCurrency={fallbackCurrency} />
+            <PayoutsView
+              payouts={payouts}
+              currencyOf={currencyOfPayout}
+              carOf={carOfPayout}
+              fallbackCurrency={fallbackCurrency}
+            />
           )}
         </div>
       ) : listingsQuery.isError || bookingsQuery.isError ? (
@@ -1675,13 +1697,31 @@ function ActionRow({
 function PayoutsView({
   payouts,
   currencyOf,
+  carOf,
   fallbackCurrency,
 }: {
   payouts: Payout[];
   /** A payout is in its booking's car's currency, not RWF. */
   currencyOf: (p: Payout) => string;
+  /** Which car this payout came from, or null when its booking isn't loaded. */
+  carOf: (p: Payout) => string | null;
   fallbackCurrency: string;
 }) {
+  /**
+   * Filter by car name.
+   *
+   * The Fleet view has had a search box since it shipped; this list had none,
+   * and a host with a dozen cars reading a column of amounts had no way to ask
+   * "what did the Hiace earn". Client-side over an already-loaded array, so it
+   * needs no query and no debounce — the totals above it deliberately do NOT
+   * follow the filter, because "Due" is what you are owed altogether and a
+   * number that quietly means "owed, for cars matching hia" is worse than no
+   * number.
+   */
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const match = (p: Payout) =>
+    !needle || (carOf(p) ?? '').toLowerCase().includes(needle);
   // Under PayHold these rows are a local shadow of a ledger it owns. The real
   // answer — what has cleared, what is still holding, when it lands — lives on
   // /earnings, so point there rather than letting a host trust a stale copy.
@@ -1733,13 +1773,21 @@ function PayoutsView({
         <ListGroup>
           {items.map((p) => {
             const status = PAYOUT_STATUS_META[p.status];
+            const car = carOf(p);
             return (
               <div
                 key={p.id}
                 className="flex items-center justify-between gap-3 border-t border-[var(--color-line)] px-4 py-3 first:border-t-0 sm:px-5"
               >
-                <div>
+                <div className="min-w-0">
                   <p className="tabular font-medium text-[var(--color-content)]">{formatAmount(p.amountRwf, currencyOf(p))}</p>
+                  {/* The car, when we know it. Omitted rather than guessed —
+                      an old trip outside the loaded set has no name here, and
+                      "Unknown car" would read as data loss rather than a
+                      window. */}
+                  {car && (
+                    <p className="truncate text-body-sm text-[var(--color-content)]">{car}</p>
+                  )}
                   <p className="text-body-sm text-[var(--color-content-muted)]">
                     {PAYOUT_CHANNEL_LABEL[p.channel]} ·{' '}
                     {p.paidAt ? `Paid ${formatDate(p.paidAt)}` : `Due ${formatDate(p.scheduledFor)}`}
@@ -1770,8 +1818,32 @@ function PayoutsView({
           <span className="tabular">{formatDate(nextPayout)}</span>.
         </p>
       )}
-      <Group title="Scheduled" items={due} />
-      <Group title="Paid" items={paid} />
+      {/* Only worth a search box once there is enough to lose something in.
+          Below that the list IS the answer, and a filter over four rows is a
+          control that costs more attention than it saves. */}
+      {payouts.length > 5 && (
+        <div className="relative">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
+          />
+          <Input
+            placeholder="Filter by car"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      )}
+
+      <Group title="Scheduled" items={due.filter(match)} />
+      <Group title="Paid" items={paid.filter(match)} />
+
+      {needle && !due.some(match) && !paid.some(match) && (
+        <p className="py-6 text-center text-body-sm text-[var(--color-content-muted)]">
+          No payouts from a car matching “{q.trim()}”.
+        </p>
+      )}
     </div>
   );
 }
