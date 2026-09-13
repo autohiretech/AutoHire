@@ -522,6 +522,72 @@ export function createDeal(input: CreateDealInput): Promise<CreateDealResult> {
 }
 
 /**
+ * Record a cash booking with PayHold.
+ *
+ * The money never goes near PayHold and never will — the renter hands the host
+ * notes at the kerb. What PayHold keeps is the record: what this trip was
+ * agreed to be worth, and later (see `settleCashDeal`) what was actually taken.
+ * Without it a host who takes cash has a gap in their earnings history shaped
+ * like every cash trip they ever did, and AutoHire is the only place that
+ * knows those trips happened.
+ *
+ * `payment_method: 'cash'` is not a hint about a rail — it is the thing that
+ * makes this a deal with no rail at all. PayHold opens it as `provider:
+ * 'offline'`, routes nothing, charges nothing, holds nothing and will never
+ * schedule a payout against it.
+ *
+ * There is no checkout link in the response because there is nothing to pay.
+ */
+export function recordCashDeal(input: {
+  sellerId: string;
+  buyerRef: string;
+  description: string;
+  /** The estimate, in minor units of `currency`. */
+  amount: number;
+  currency: string;
+  buyerCountry?: string;
+  /** AutoHire's booking id, carried so the two systems can find each other. */
+  reference: string;
+  expectedCompleteAt?: string;
+}): Promise<{ id: string; status: string; amount: number; currency: string }> {
+  return call('/deals', {
+    method: 'POST',
+    body: {
+      payment_method: 'cash',
+      buyer_ref: input.buyerRef,
+      seller_id: input.sellerId,
+      description: input.description,
+      amount: input.amount,
+      currency: input.currency,
+      ...(input.buyerCountry ? { buyer_country: input.buyerCountry } : {}),
+      expected_complete_at: input.expectedCompleteAt,
+      metadata: { autohire_booking_id: input.reference, settlement: 'cash_on_pickup' },
+    },
+  });
+}
+
+/**
+ * Close a cash deal with what the host says they were actually handed.
+ *
+ * Separate from the estimate on purpose, and PayHold keeps both: a car comes
+ * back a day late, or early, or empty, and the trips where the two numbers
+ * disagree are the only ones anyone ever needs to look at afterwards.
+ *
+ * Zero is a legal answer. It means the renter never paid, which is a fact the
+ * host should be able to state plainly rather than having to describe in a
+ * support thread.
+ */
+export function settleCashDeal(
+  dealId: string,
+  collectedAmount: number,
+): Promise<{ id: string; status: string; collected_amount: number }> {
+  return call(`/deals/${encodeURIComponent(dealId)}/settle-cash`, {
+    method: 'POST',
+    body: { collected_amount: collectedAmount },
+  });
+}
+
+/**
  * Re-read a deal. This is the trust boundary — the webhook's payload says what
  * happened, this says what is true.
  */

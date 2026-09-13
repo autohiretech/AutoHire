@@ -351,6 +351,16 @@ export interface Listing {
   photos: string[];
   features: string[];
   bookingMode: BookingMode;
+  /**
+   * The host takes cash at pickup for this car.
+   *
+   * Renters see a cash option and book without paying anything: no charge, no
+   * hold, no escrow, and no payout afterwards because the host was handed the
+   * money directly. Off unless the host says otherwise — handling cash is
+   * something a person does with their hands, and defaulting it on would
+   * volunteer every host on the platform for it.
+   */
+  acceptsCash: boolean;
   ratingAvg: number;
   ratingCount: number;
   /** ISO dates the owner has blocked for personal use / existing trips. */
@@ -445,10 +455,35 @@ export interface Booking {
    */
   overageCollectionFailed?: boolean;
   overageCollectionFailedReason?: string | null;
-  /** Payment state, owned server-side. A booking only exists once it is 'paid'. */
+  /**
+   * Payment state, owned server-side.
+   *
+   * Was once "a booking only exists once it is 'paid'", and cash on pickup is
+   * the exception that ended that: a cash trip is booked `unpaid` and stays
+   * that way until the host says what they were handed at the handoff.
+   */
   paymentStatus: PaymentStatus;
-  /** Rail that collected this booking — routed from the car's market. */
-  provider?: PayoutProvider;
+  /**
+   * Rail that collected this booking — routed from the car's market.
+   *
+   * `'cash'` is not a rail and that is the point: nothing collected it. The
+   * renter paid the host in person, so there is no hold to release and no
+   * payout to schedule, and the completion trigger skips both.
+   */
+  provider?: PayoutProvider | 'cash';
+  /**
+   * Cash trips: the total quoted when the booking was made. Never changes —
+   * it is what the renter agreed to, and stays readable next to what actually
+   * happened.
+   */
+  cashEstimateRwf?: number | null;
+  /**
+   * Cash trips: what the host reports collecting at the handoff. Zero is a
+   * real answer and means the renter never paid. Null until they say.
+   */
+  cashCollectedRwf?: number | null;
+  /** When the host reported it. Null while a cash trip is still open. */
+  cashCollectedAt?: string | null;
   /** Currency the renter was actually charged in (may differ from the car's price currency). */
   chargeCurrency?: string;
   /** Escrow state: funds are 'held' until the trip, then 'released' to the host. */

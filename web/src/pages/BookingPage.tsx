@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Award,
   BadgeCheck,
+  Banknote,
   Calendar,
   CalendarCheck,
   Cog,
@@ -51,7 +52,7 @@ import { Img } from '@/components/Img';
 import { Avatar, Badge, Button, Card, CardBody, Input, Label, Notice, Select, Skeleton } from '@/components/ui';
 import { useT } from '@/lib/i18n';
 
-type Method = 'card' | 'momo';
+type Method = 'card' | 'momo' | 'cash';
 
 function diffDays(start: string, end: string): number {
   const ms = new Date(end).getTime() - new Date(start).getTime();
@@ -484,6 +485,38 @@ export function BookingPage() {
                   </MethodRow>
                 )}
               </div>
+              )}
+
+              {/* ── Cash on pickup ────────────────────────────────────────
+                  Outside the rail branches above, and deliberately: this is not
+                  a rail. Whether AutoHire is on PayHold, Stripe, Flutterwave or
+                  nothing at all has no bearing on two people exchanging notes,
+                  so it renders on all four rather than once per branch.
+
+                  `acceptsCash` is the host's own answer for this car. The
+                  server checks it again — this only decides whether to offer. */}
+              {listing.acceptsCash && (
+                <div className="mt-4">
+                  <MethodRow
+                    selected={method === 'cash'}
+                    onSelect={() => setMethod('cash')}
+                    icon={<Banknote size={20} />}
+                    label="Cash on pickup"
+                  >
+                    <CashForm
+                      listingId={id}
+                      startDate={startDate}
+                      endDate={endDate}
+                      label={money(total)}
+                      instant={instant}
+                      disabled={!datesValid}
+                      onBooked={(booking) => {
+                        queryClient.invalidateQueries({ queryKey: ['bookings'] });
+                        navigate(`/trips/${booking.id}`);
+                      }}
+                    />
+                  </MethodRow>
+                </div>
               )}
 
               {/* The cards we take, drawn where the renter is deciding. On the
@@ -958,6 +991,74 @@ function FlutterwavePay({
 }
 
 /** Demo checkout — used when no payment provider is configured. No real charge. */
+/**
+ * Cash on pickup — the only "pay form" that collects nothing.
+ *
+ * There is no field here because there is nothing to type: the renter agrees to
+ * the estimate and hands over money at the kerb. What the button does is make a
+ * booking, so it says so, rather than borrowing the word "Pay" from the forms
+ * either side of it and promising something it will not do.
+ *
+ * The estimate is stated plainly, and stated as an estimate. It is the number
+ * the host will be expecting, and a renter who turns up with exactly it and is
+ * asked for more because the car came back late should have been told that here
+ * rather than there.
+ */
+function CashForm({
+  listingId,
+  startDate,
+  endDate,
+  label,
+  instant,
+  disabled,
+  onBooked,
+}: {
+  listingId: string;
+  startDate: string;
+  endDate: string;
+  label: string;
+  instant: boolean;
+  disabled: boolean;
+  onBooked: (booking: { id: string }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const booking = await client.bookCash({ listingId, startDate, endDate });
+      onBooked(booking);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not make the booking.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <p className="text-body-sm text-[var(--color-content-muted)]">
+        Pay the host directly when you collect the car. Nothing is charged now and
+        no card is needed.
+      </p>
+      <p className="mt-2 text-body-sm text-[var(--color-content)]">
+        Bring about <span className="font-semibold">{label}</span>. It is an estimate —
+        the final amount is settled with the host at the handoff, and can change if
+        you return the car late or early.
+      </p>
+      {error && (
+        <Notice tone="danger" className="mt-3">
+          {error}
+        </Notice>
+      )}
+      <Button className="mt-4 w-full" size="lg" disabled={disabled || busy} onClick={submit}>
+        {busy ? 'Booking…' : instant ? 'Book with cash' : 'Request with cash'}
+      </Button>
+    </div>
+  );
+}
+
 function DemoPayForm({ totalRwf, currency, onPaid, method, disabled }: PayProps & { method: Method; disabled: boolean }) {
   const { country: initial } = useCountry();
   const [country, setCountry] = useState(initial.code);

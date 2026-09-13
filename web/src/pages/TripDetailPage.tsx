@@ -728,6 +728,15 @@ function HandoffPanel({
   const [error, setError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [overageOverride, setOverageOverride] = useState('');
+  /**
+   * Cash trips: what the host says they were actually handed.
+   *
+   * Starts at the estimate because that is what both people agreed to and is
+   * the right answer on most trips — but it is an editable field rather than a
+   * checkbox, because the trips where it is wrong are the only ones this
+   * question exists for.
+   */
+  const [cashCollected, setCashCollected] = useState('');
 
   // Local previews for the not-yet-uploaded files — revoked as soon as the
   // selection changes so we don't leak blob URLs.
@@ -766,6 +775,16 @@ function HandoffPanel({
   // same units the listing itself is priced in — no currency conversion,
   // since `overage_override` is checked against the deal's own overage rate
   // before it is ever converted to what the renter was actually charged in.
+  // A cash trip the host has not yet reported on. `provider` is the server's
+  // word for how this booking was paid; `cashCollectedAt` is set once, by
+  // `settle-cash`, and is what stops the question being asked twice.
+  const cashPending =
+    isHost && phase === 'return' && booking.provider === 'cash' && !booking.cashCollectedAt;
+  const cashValue = cashCollected.trim();
+  const cashParsed = cashValue === '' ? undefined : Number(cashValue);
+  const cashValid =
+    !cashPending || (cashParsed !== undefined && Number.isInteger(cashParsed) && cashParsed >= 0);
+
   const overrideValue = overageOverride.trim();
   const overrideParsed = overrideValue === '' ? undefined : Number(overrideValue);
   const overrideValid =
@@ -776,6 +795,14 @@ function HandoffPanel({
     setBusy(true);
     setError(null);
     try {
+      // Before the handoff, not after. The second confirmation completes the
+      // trip, and once it has, the moment to ask what was handed over has gone
+      // — the host is walking away. If this fails the handoff does not happen
+      // and the question is still there to answer.
+      if (cashPending && cashParsed !== undefined) {
+        await client.settleCash({ bookingId: booking.id, collectedRwf: cashParsed });
+      }
+
       const urls = files.length > 0 ? await client.uploadPhotos(files) : [];
       await client.confirmHandoff(
         booking.id,
@@ -788,6 +815,7 @@ function HandoffPanel({
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       setFiles([]);
       setOverageOverride('');
+      setCashCollected('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not confirm the handoff.');
     } finally {
@@ -891,7 +919,32 @@ function HandoffPanel({
               </label>
             </div>
 
-            {isHost && phase === 'return' && (
+            {cashPending && (
+              <div className="space-y-1">
+                <label className="text-caption font-medium text-[var(--color-content)]" htmlFor="cash-collected">
+                  How much cash did you collect?
+                </label>
+                <Input
+                  id="cash-collected"
+                  type="number"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder={String(booking.cashEstimateRwf ?? booking.totalRwf ?? '')}
+                  value={cashCollected}
+                  onChange={(e) => setCashCollected(e.target.value)}
+                  disabled={busy}
+                  className="h-8 text-body-sm"
+                />
+                <p className="text-caption text-[var(--color-content-muted)]">
+                  This trip was booked as cash on pickup, so AutoHire never saw the money —
+                  this is the record of what you were actually handed. Enter 0 if the renter
+                  never paid; the trip stays unpaid and says so.
+                </p>
+              </div>
+            )}
+
+            {isHost && phase === 'return' && booking.provider !== 'cash' && (
               <div className="space-y-1">
                 <label className="text-caption font-medium text-[var(--color-content)]" htmlFor="overage-override">
                   Reduce or waive the overage charge (optional)
@@ -919,7 +972,7 @@ function HandoffPanel({
             <Button
               size="sm"
               className="w-full"
-              disabled={busy || !overrideValid}
+              disabled={busy || !overrideValid || !cashValid}
               onClick={confirm}
             >
               {busy

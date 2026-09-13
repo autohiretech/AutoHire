@@ -649,6 +649,59 @@ export const supabaseClient = {
   },
 
   /**
+   * Book a car with cash on pickup — no payment, no hold, no escrow.
+   *
+   * The renter is quoted an estimate and the car is held for the dates; the
+   * money changes hands in person at the kerb. The server checks that the CAR
+   * accepts cash, because that is the host's consent to handle banknotes and a
+   * client that simply asked for this path would be a way around it.
+   *
+   * Nothing here is a payment, so there is nothing to confirm afterwards. The
+   * booking comes back already made — `confirmed`, or `requested` if the host
+   * takes requests, exactly as their booking mode says for every other trip.
+   */
+  async bookCash(input: {
+    listingId: string;
+    startDate: string;
+    endDate: string;
+  }): Promise<Booking> {
+    const { data, error } = await getSupabase().functions.invoke('book-cash', { body: input });
+    if (error) {
+      throw await fnError(
+        error,
+        "Cash bookings aren't deployed yet — deploy the book-cash Edge Function.",
+      );
+    }
+    const payload = data as { booking?: Booking; error?: string };
+    if (payload?.error || !payload?.booking) {
+      throw new Error(payload?.error ?? 'Could not make the booking.');
+    }
+    return payload.booking;
+  },
+
+  /**
+   * Host records what they were actually handed on a cash trip.
+   *
+   * Asked rather than assumed: the estimate was a guess about a trip that had
+   * not happened yet, and this is a statement about one that has. Both are kept
+   * — the quote stays on the booking and this lands beside it.
+   *
+   * Zero is a legal answer and means the renter never paid. The trip stays
+   * unpaid and says so, rather than being quietly closed as though it were fine.
+   */
+  async settleCash(input: { bookingId: string; collectedRwf: number }): Promise<void> {
+    const { data, error } = await getSupabase().functions.invoke('settle-cash', { body: input });
+    if (error) {
+      throw await fnError(
+        error,
+        "Cash settlement isn't deployed yet — deploy the settle-cash Edge Function.",
+      );
+    }
+    const payload = data as { error?: string };
+    if (payload?.error) throw new Error(payload.error);
+  },
+
+  /**
    * Open an escrow hold on the external payment system. Returns whatever the
    * browser needs to finish it: a Stripe `clientSecret` (the external system
    * settles through Stripe), a `redirectUrl` to their hosted page, or neither
@@ -1827,6 +1880,7 @@ export const supabaseClient = {
       photos: 'photos',
       features: 'features',
       bookingMode: 'booking_mode',
+      acceptsCash: 'accepts_cash',
       blockedDates: 'blocked_dates',
       maintenanceUntil: 'maintenance_until',
       lat: 'lat',
