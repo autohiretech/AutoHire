@@ -34,7 +34,6 @@ import {
   CardBody,
   CardHeader,
   Chip,
-  ChipRow,
   Notice,
   Skeleton,
   toast,
@@ -291,12 +290,7 @@ export function EarningsPage() {
   // this" — and stacking both under one scroll made the figure they actually
   // came for compete for space with a list they were not reading yet.
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
-  // Which of the host's currencies is on screen. Null means "whatever's
-  // first" — most hosts only ever earn in one, so this never has to be
-  // touched; it only becomes a real choice once `shownBalances` has more than
-  // one entry, same "don't offer a pick nobody needs" rule as the payout
-  // destination above.
-  const [activeCurrency, setActiveCurrency] = useState<string | null>(null);
+
 
   const wallet = useQuery({
     queryKey: ['payholdWallet'],
@@ -403,9 +397,7 @@ export function EarningsPage() {
   // than staying null so a stale `activeCurrency` (a currency that stopped
   // having a row, e.g. once it clears to zero and drops out) doesn't leave
   // every currency-scoped card blank.
-  const currency = shownBalances.some((b) => b.currency === activeCurrency)
-    ? activeCurrency!
-    : (shownBalances[0]?.currency ?? null);
+  const currency = shownBalances[0]?.currency ?? null;
   const balanceForCurrency = shownBalances.find((b) => b.currency === currency) ?? null;
 
   /**
@@ -512,46 +504,12 @@ export function EarningsPage() {
           )}
         </div>
 
-        {/* Currency chips — only once there's more than one to choose
-            between. Sits inside the hero, beside the figure it controls,
-            rather than as a separate row a host has to connect to it. The
-            payout currency gets a dot: everything else on this row is money
-            still priced in whatever it was charged in, and converts into
-            that one the moment it releases (see the note on "Your money"). */}
-        {shownBalances.length > 1 && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] pt-4">
-            <Coins size={13} className="mr-0.5 text-[var(--color-content-subtle)]" />
-            <ChipRow>
-              {shownBalances.map((b) => {
-                const isPayoutCurrency = b.currency === primary?.payoutCurrency;
-                return (
-                  <Chip
-                    key={b.currency}
-                    selected={currency === b.currency}
-                    onClick={() => setActiveCurrency(b.currency)}
-                  >
-                    {isPayoutCurrency && (
-                      <span
-                        className={cn(
-                          'h-1.5 w-1.5 rounded-full',
-                          currency === b.currency
-                            ? 'bg-[var(--color-content-inverse)]'
-                            : 'bg-[var(--color-accent-on)]',
-                        )}
-                      />
-                    )}
-                    {b.currency}
-                  </Chip>
-                );
-              })}
-            </ChipRow>
-            {primary && (
-              <span className="ml-1 text-caption text-[var(--color-content-subtle)]">
-                · paid in {primary.payoutCurrency}
-              </span>
-            )}
-          </div>
-        )}
+        {/* The currency chips that used to sit here are gone. They selected
+            which single balance the "Your money" card rendered, which is the
+            mechanism that hid a host's second currency from them entirely —
+            every balance is on screen now, so a control for choosing one is a
+            control with nothing to do. "Ready to send" resolves its own
+            currency from the payout destination, as it always did. */}
       </div>
 
       {(wallet.isLoading || earnings.isLoading) && !notConfigured && <EarningsSkeleton />}
@@ -737,70 +695,92 @@ export function EarningsPage() {
               thing a host actually wants at a glance — how much of what they
               earned is still tied up versus ready — and three same-sized
               figures say that only if you do the arithmetic yourself. */}
-          {balanceForCurrency && (
+          {shownBalances.length > 0 && (
             <Card className="mt-4">
               <CardHeader className="flex items-center justify-between">
                 <h2 className="font-semibold text-[var(--color-content)]">Your money</h2>
-                <Badge tone="neutral">{balanceForCurrency.currency}</Badge>
-              </CardHeader>
-              <CardBody>
-                <BalanceBar balance={balanceForCurrency} />
-                <div className="mt-5 grid grid-cols-3 gap-3">
-                  <MoneyStat
-                    icon={Lock}
-                    tone="muted"
-                    label="On trips"
-                    value={money(balanceForCurrency.held, balanceForCurrency.currency)}
-                  />
-                  <MoneyStat
-                    icon={Clock}
-                    tone="amber"
-                    label="Clearing"
-                    value={money(balanceForCurrency.pendingClearance, balanceForCurrency.currency)}
-                  />
-                  <MoneyStat
-                    icon={CheckCircle2}
-                    tone="green"
-                    label="Available"
-                    value={money(balanceForCurrency.available, balanceForCurrency.currency)}
-                  />
-                </div>
-                {/* PayHold converts every trip into the payout destination's
-                    own currency the moment it releases (`releaseFigures` —
-                    convertOrThrow against `sellers.payout_currency`), so a
-                    balance shown in a different currency isn't a second
-                    wallet to manage — it's just what this trip happened to be
-                    charged in before that conversion runs. Only shown when
-                    it's actually true of this card, so a host who only ever
-                    sees their own payout currency never sees a sentence about
-                    conversion that doesn't apply to them. */}
-                {/* The exchange, not a sentence about one.
-                    This used to read "Converts to USD — the moment each trip
-                    releases", which told a host the mechanism and left them to
-                    wonder what their RF 405,347 was actually worth. The two
-                    figures and the rate between them are the answer, and they
-                    are the host's own realised numbers rather than a quote:
-                    what the trips were charged, what their payouts move. */}
-                {legs.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <p className="flex items-center gap-1.5 text-caption font-medium text-[var(--color-content-muted)]">
-                      <Coins size={13} className="shrink-0 text-[var(--color-content-subtle)]" />
-                      Converted for {primary?.label ?? 'your payout account'}
-                    </p>
-                    {legs.map((leg) => (
-                      <ExchangeRow key={`${leg.from}-${leg.to}`} leg={leg} />
-                    ))}
-                  </div>
+                {shownBalances.length > 1 && (
+                  <span className="text-caption text-[var(--color-content-muted)]">
+                    {shownBalances.length} currencies
+                  </span>
                 )}
-                {legs.length === 0 && primary &&
-                  balanceForCurrency.currency !== primary.payoutCurrency && (
-                    <p className="mt-4 flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2 text-caption text-[var(--color-content-muted)]">
-                      <Coins size={13} className="mt-0.5 shrink-0 text-[var(--color-content-subtle)]" />
-                      Converts to {primary.payoutCurrency} — what {primary.label ?? 'your payout method'}{' '}
-                      actually pays in — the moment each trip releases. Nothing has
-                      converted yet, so there is no rate to show.
-                    </p>
-                  )}
+              </CardHeader>
+              <CardBody className="space-y-6">
+                {/* **Every currency, at once.**
+                    This card used to render one — whichever chip was selected,
+                    defaulting to the first alphabetically — and a host who took
+                    a payment in a second currency simply could not see it. On
+                    2026-09-13 a $288.00 Stripe trip landed while RWF was on
+                    screen and the money was, as far as the page was concerned,
+                    missing. A wallet that hides balances is not a wallet.
+                    Most hosts still have exactly one, and one renders as it
+                    always did. */}
+                {shownBalances.map((balance) => {
+                  const legsFrom = legs.filter((l) => l.from === balance.currency);
+                  return (
+                    <div key={balance.currency}>
+                      <div className="mb-3 flex items-center gap-2">
+                        <Badge tone="neutral">{balance.currency}</Badge>
+                        {balance.currency === primary?.payoutCurrency && (
+                          <span className="text-caption text-[var(--color-content-muted)]">
+                            paid out as-is
+                          </span>
+                        )}
+                      </div>
+                      <BalanceBar balance={balance} />
+                      <div className="mt-5 grid grid-cols-3 gap-3">
+                        <MoneyStat
+                          icon={Lock}
+                          tone="muted"
+                          label="On trips"
+                          value={money(balance.held, balance.currency)}
+                        />
+                        <MoneyStat
+                          icon={Clock}
+                          tone="amber"
+                          label="Clearing"
+                          value={money(balance.pendingClearance, balance.currency)}
+                        />
+                        <MoneyStat
+                          icon={CheckCircle2}
+                          tone="green"
+                          label="Available"
+                          value={money(balance.available, balance.currency)}
+                        />
+                      </div>
+
+                      {/* The exchange, not a sentence about one.
+                          This used to read "Converts to USD — the moment each
+                          trip releases", which told a host the mechanism and
+                          left them to wonder what their RF 405,347 was actually
+                          worth. The two figures and the rate between them are
+                          the answer, and they are PayHold's own recorded
+                          conversion rather than anything derived here. Filtered
+                          to this currency so each balance carries its own. */}
+                      {legsFrom.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <p className="flex items-center gap-1.5 text-caption font-medium text-[var(--color-content-muted)]">
+                            <Coins size={13} className="shrink-0 text-[var(--color-content-subtle)]" />
+                            Converted for {primary?.label ?? 'your payout account'}
+                          </p>
+                          {legsFrom.map((leg) => (
+                            <ExchangeRow key={`${leg.from}-${leg.to}`} leg={leg} />
+                          ))}
+                        </div>
+                      )}
+                      {legsFrom.length === 0 && primary &&
+                        balance.currency !== primary.payoutCurrency && (
+                          <p className="mt-4 flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2 text-caption text-[var(--color-content-muted)]">
+                            <Coins size={13} className="mt-0.5 shrink-0 text-[var(--color-content-subtle)]" />
+                            Converts to {primary.payoutCurrency} — what{' '}
+                            {primary.label ?? 'your payout method'} actually pays in — the
+                            moment each trip releases. Nothing has converted yet, so there
+                            is no rate to show.
+                          </p>
+                        )}
+                    </div>
+                  );
+                })}
               </CardBody>
             </Card>
           )}
