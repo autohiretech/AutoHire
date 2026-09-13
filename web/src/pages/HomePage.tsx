@@ -274,6 +274,22 @@ export function HomePage() {
     resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  /**
+   * Bring the results up when a search starts.
+   *
+   * Hiding the rails makes the document shorter, and a renter who was scrolled
+   * down when they started typing is left looking at the blank space where the
+   * page used to continue. Their answer is above them and they have no way to
+   * know it.
+   *
+   * Keyed on `searching` rather than on the text, so it fires once when the
+   * box goes from empty to not — not on every keystroke, which would drag the
+   * page under the renter's thumb while they were still typing.
+   */
+  useEffect(() => {
+    if (searching) scrollToResults();
+  }, [searching]);
+
   // The server already filtered and ranked — flatten every page fetched so far.
   const results = infiniteData?.pages.flatMap((p) => p.items) ?? [];
   const total = infiniteData?.pages[0]?.total ?? 0;
