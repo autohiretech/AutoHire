@@ -99,7 +99,11 @@ export function BookingPage() {
     | null;
   const [startDate] = useState(() => picked?.startDate ?? addDays(todayISO(), 1));
   const [endDate] = useState(() => picked?.endDate ?? addDays(todayISO(), 4));
-  const [method, setMethod] = useState<Method>('card');
+  // `null` until the renter actively picks — set only when there's genuinely
+  // a choice to make. A car offering just one method never shows a picker at
+  // all (see `effectiveMethod` below), so this stays `null` for the whole
+  // life of that page and is never read.
+  const [method, setMethod] = useState<Method | null>(null);
 
   // Every booking now carries a pickup time — it's what a late daily return is
   // measured against, and what an hourly booking's timer starts from. Seeded
@@ -325,6 +329,121 @@ export function BookingPage() {
   // carry the same marks row by row; a second strip there would just repeat it.
   const pickerless = PAYMENTS_PAYHOLD || PAYMENTS_EXTERNAL || africanLive;
 
+  // A car's own answer (set on the listing form / dashboard) to "how can a
+  // renter pay for this one" — never both false; the listing form and the
+  // dashboard toggle both refuse that combination, and the DB constraint
+  // backs them up. `acceptsOnline` predates this column in a few rows that
+  // haven't round-tripped through Postgres yet, hence the `!== false`.
+  const onlineAvailable = listing.acceptsOnline !== false;
+  const cashAvailable = listing.acceptsCash;
+  const bothAvailable = onlineAvailable && cashAvailable;
+
+  // Nothing pre-selected while there's a genuine choice — a renter should
+  // pick online or cash on purpose, not discover they defaulted into one by
+  // not touching anything. `method` only ever becomes non-null when either
+  // there's just one method (it applies itself, below) or the renter clicks
+  // something. `!cashAvailable` and `!onlineAvailable` are also the
+  // (mutually exclusive, by the constraint above) single-method cases.
+  const effectiveMethod: Method | null =
+    method ?? (!cashAvailable ? 'card' : !onlineAvailable ? 'cash' : null);
+
+  const onlinePayment = pickerless ? (
+    PAYMENTS_PAYHOLD ? (
+      <PayholdPayment
+        listingId={id}
+        startDate={startDate}
+        endDate={endDate}
+        pickupTime={pickupTime}
+        rentalType={isHourly ? 'hourly' : 'daily'}
+        estimatedHours={isHourly ? estimatedHours : undefined}
+        listingCurrency={cur}
+        label={money(total)}
+        // The same number `label` is showing, unformatted — what the
+        // deal's own total is checked against before any card form
+        // opens. See PayholdPayment's `expectedTotal`.
+        expectedTotal={total}
+        disabled={!datesValid}
+        onCheckoutOpenChange={setCheckoutOpen}
+      />
+    ) : PAYMENTS_EXTERNAL ? (
+      <Elements stripe={stripePromise}>
+        <ExternalPay {...payProps} disabled={!datesValid} />
+      </Elements>
+    ) : (
+      <FlutterwavePay
+        listingId={id}
+        startDate={startDate}
+        endDate={endDate}
+        label={money(total)}
+        disabled={!datesValid}
+        onDemoFallback={() => mutation.mutateAsync(undefined)}
+      />
+    )
+  ) : (
+    <div>
+      {/* Card */}
+      <MethodRow
+        selected={effectiveMethod === 'card'}
+        onSelect={() => setMethod('card')}
+        icon={<CreditCard size={20} />}
+        label="Credit or debit card"
+        marks={
+          <>
+            <VisaMark />
+            <MastercardMark />
+            <AmexMark />
+            <DiscoverMark />
+          </>
+        }
+      >
+        {demo ? (
+          <DemoPayForm {...payProps} method="card" disabled={!datesValid} />
+        ) : (
+          <Elements stripe={stripePromise}>
+            <CardForm {...payProps} disabled={!datesValid} />
+          </Elements>
+        )}
+      </MethodRow>
+
+      {/* Mobile money — only where it's actually settled (African markets). */}
+      {isAfrican && (
+        <MethodRow
+          selected={effectiveMethod === 'momo'}
+          onSelect={() => setMethod('momo')}
+          icon={<Smartphone size={20} />}
+          label="Mobile Money"
+          marks={
+            <>
+              <MomoMark />
+              <AirtelMark />
+            </>
+          }
+        >
+          {demo ? (
+            <DemoPayForm {...payProps} method="momo" disabled={!datesValid} />
+          ) : (
+            <MomoForm totalRwf={total} currency={cur} />
+          )}
+        </MethodRow>
+      )}
+    </div>
+  );
+
+  const cashPayment = (
+    <CashForm
+      listingId={id}
+      startDate={startDate}
+      endDate={endDate}
+      label={money(total)}
+      instant={instant}
+      disabled={!datesValid}
+      onBooked={(booking) => {
+        queryClient.invalidateQueries({ queryKey: ['bookings'] });
+        navigate(`/trips/${booking.id}`);
+      }}
+    />
+  );
+
   return (
     <section className="mx-auto max-w-5xl px-4 py-8 sm:py-9">
       <button
@@ -392,9 +511,13 @@ export function BookingPage() {
                 {t('booking.howToPay')}
               </h2>
               <p className="mb-4 mt-1 text-body-sm text-[var(--color-content-muted)]">
-                {pickerless
-                  ? t('booking.choosePayOnNextStep')
-                  : 'Pick a method below and enter your details.'}
+                {bothAvailable
+                  ? t('booking.chooseOnlineOrCash')
+                  : onlineAvailable
+                    ? pickerless
+                      ? t('booking.choosePayOnNextStep')
+                      : 'Pick a method below and enter your details.'
+                    : t('booking.cashOnlyIntro')}
               </p>
 
               {!datesValid && (
@@ -407,121 +530,43 @@ export function BookingPage() {
                 </Notice>
               )}
 
-              {PAYMENTS_PAYHOLD ? (
-                <PayholdPayment
-                  listingId={id}
-                  startDate={startDate}
-                  endDate={endDate}
-                  pickupTime={pickupTime}
-                  rentalType={isHourly ? 'hourly' : 'daily'}
-                  estimatedHours={isHourly ? estimatedHours : undefined}
-                  listingCurrency={cur}
-                  label={money(total)}
-                  // The same number `label` is showing, unformatted — what the
-                  // deal's own total is checked against before any card form
-                  // opens. See PayholdPayment's `expectedTotal`.
-                  expectedTotal={total}
-                  disabled={!datesValid}
-                  onCheckoutOpenChange={setCheckoutOpen}
-                />
-              ) : PAYMENTS_EXTERNAL ? (
-                <Elements stripe={stripePromise}>
-                  <ExternalPay {...payProps} disabled={!datesValid} />
-                </Elements>
-              ) : africanLive ? (
-                <FlutterwavePay
-                  listingId={id}
-                  startDate={startDate}
-                  endDate={endDate}
-                  label={money(total)}
-                  disabled={!datesValid}
-                  onDemoFallback={() => mutation.mutateAsync(undefined)}
-                />
-              ) : (
-              <div>
-                {/* Card */}
-                <MethodRow
-                  selected={method === 'card'}
-                  onSelect={() => setMethod('card')}
-                  icon={<CreditCard size={20} />}
-                  label="Credit or debit card"
-                  marks={
-                    <>
-                      <VisaMark />
-                      <MastercardMark />
-                      <AmexMark />
-                      <DiscoverMark />
-                    </>
-                  }
-                >
-                  {demo ? (
-                    <DemoPayForm {...payProps} method="card" disabled={!datesValid} />
-                  ) : (
-                    <Elements stripe={stripePromise}>
-                      <CardForm {...payProps} disabled={!datesValid} />
-                    </Elements>
-                  )}
-                </MethodRow>
-
-                {/* Mobile money — only where it's actually settled (African markets). */}
-                {isAfrican && (
+              {/* Online and cash are the car's own two answers to "how can a
+                  renter pay" (set on the listing, never assumed here) — when
+                  both apply, they sit as one mutually-exclusive choice with
+                  nothing preselected, exactly like the card/momo split
+                  below. A car offering only one method skips the picker
+                  entirely rather than showing a "choice" of one. */}
+              {bothAvailable ? (
+                <div>
                   <MethodRow
-                    selected={method === 'momo'}
-                    onSelect={() => setMethod('momo')}
-                    icon={<Smartphone size={20} />}
-                    label="Mobile Money"
-                    marks={
-                      <>
-                        <MomoMark />
-                        <AirtelMark />
-                      </>
-                    }
+                    selected={effectiveMethod === 'card' || effectiveMethod === 'momo'}
+                    onSelect={() => setMethod('card')}
+                    icon={<Wallet size={20} />}
+                    label={t('booking.payOnline')}
                   >
-                    {demo ? (
-                      <DemoPayForm {...payProps} method="momo" disabled={!datesValid} />
-                    ) : (
-                      <MomoForm totalRwf={total} currency={cur} />
-                    )}
+                    {onlinePayment}
                   </MethodRow>
-                )}
-              </div>
-              )}
-
-              {/* ── Cash on pickup ────────────────────────────────────────
-                  Outside the rail branches above, and deliberately: this is not
-                  a rail. Whether AutoHire is on PayHold, Stripe, Flutterwave or
-                  nothing at all has no bearing on two people exchanging notes,
-                  so it renders on all four rather than once per branch.
-
-                  `acceptsCash` is the host's own answer for this car. The
-                  server checks it again — this only decides whether to offer. */}
-              {listing.acceptsCash && (
-                <div className="mt-4">
-                  <MethodRow
-                    selected={method === 'cash'}
-                    onSelect={() => setMethod('cash')}
-                    icon={<Banknote size={20} />}
-                    label="Cash on pickup"
-                  >
-                    <CashForm
-                      listingId={id}
-                      startDate={startDate}
-                      endDate={endDate}
-                      label={money(total)}
-                      instant={instant}
-                      disabled={!datesValid}
-                      onBooked={(booking) => {
-                        queryClient.invalidateQueries({ queryKey: ['bookings'] });
-                        navigate(`/trips/${booking.id}`);
-                      }}
-                    />
-                  </MethodRow>
+                  <div className="mt-4">
+                    <MethodRow
+                      selected={effectiveMethod === 'cash'}
+                      onSelect={() => setMethod('cash')}
+                      icon={<Banknote size={20} />}
+                      label="Cash on pickup"
+                    >
+                      {cashPayment}
+                    </MethodRow>
+                  </div>
                 </div>
+              ) : onlineAvailable ? (
+                onlinePayment
+              ) : (
+                cashPayment
               )}
 
               {/* The cards we take, drawn where the renter is deciding. On the
-                  picker rails the method rows already carry these marks. */}
-              {pickerless && (
+                  picker rails the method rows already carry these marks. Only
+                  worth showing at all when online payment is actually on offer. */}
+              {pickerless && onlineAvailable && (
                 <div className="mt-5 border-t border-[var(--color-line)] pt-4">
                   <p className="text-caption font-semibold uppercase tracking-wider text-[var(--color-content-subtle)]">
                     {t('payment.cardsAccepted')}
@@ -534,7 +579,7 @@ export function BookingPage() {
                   otherwise. Not on the PayHold rail: it names card, MTN and
                   Airtel whatever the renter's country is, and the marks above
                   now say the same thing truthfully. */}
-              {!africanLive && !PAYMENTS_EXTERNAL && !PAYMENTS_PAYHOLD && (
+              {onlineAvailable && !africanLive && !PAYMENTS_EXTERNAL && !PAYMENTS_PAYHOLD && (
                 isAfrican ? (
                   <p className="mt-4 text-center text-caption text-[var(--color-content-subtle)]">
                     Payments secured — card, MTN MoMo &amp; Airtel Money.

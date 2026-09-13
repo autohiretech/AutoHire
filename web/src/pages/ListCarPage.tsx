@@ -89,6 +89,11 @@ export function ListCarPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [features, setFeatures] = useState('');
+  // Both default on for a brand-new car — most hosts want the platform's own
+  // rail and nothing more — except `acceptsCash`, which stays off by default
+  // everywhere else in the app (nobody is volunteered for handling cash).
+  const [acceptsOnline, setAcceptsOnline] = useState(true);
+  const [acceptsCash, setAcceptsCash] = useState(false);
   // Only nag about what's missing after the host actually tries to submit —
   // showing a checklist of everything blank the moment the page loads would
   // just be noise on an empty form.
@@ -165,6 +170,8 @@ export function ListCarPage() {
     setMaintenanceUntil(existing.maintenanceUntil ?? '');
     setPhotoUrls(existing.photos);
     setFeatures(existing.features.join(', '));
+    setAcceptsOnline(existing.acceptsOnline);
+    setAcceptsCash(existing.acceptsCash);
   }, [existing]);
 
   // Country still drives the city list and the default currency (RW→RWF,
@@ -249,6 +256,7 @@ export function ListCarPage() {
   if (blockedNonElectric) missing.push('an electric vehicle — the fleet quota is full for other fuel types');
   if (photoUrls.length === 0) missing.push('at least one photo');
   if (uploading) missing.push('the photo upload to finish');
+  if (!acceptsOnline && !acceptsCash) missing.push('a way for renters to pay — online, cash, or both');
 
   const valid = missing.length === 0;
 
@@ -284,6 +292,8 @@ export function ListCarPage() {
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
       locationUrl: locationUrl.trim() ? normalizeUrl(locationUrl) : null,
+      acceptsOnline,
+      acceptsCash,
     });
   }
 
@@ -632,6 +642,46 @@ export function ListCarPage() {
                 </p>
               </div>
             )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <h2 className="font-semibold text-[var(--color-content)]">How renters pay</h2>
+            <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
+              Turn on at least one. Both is fine too — the renter picks at checkout.
+            </p>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <div className="flex gap-2">
+              <Chip
+                selected={acceptsOnline}
+                onClick={() => {
+                  if (acceptsOnline && !acceptsCash) return; // last method standing
+                  setAcceptsOnline((v) => !v);
+                }}
+                className="flex-1 justify-center"
+              >
+                Pay online
+              </Chip>
+              <Chip
+                selected={acceptsCash}
+                onClick={() => {
+                  if (acceptsCash && !acceptsOnline) return; // last method standing
+                  setAcceptsCash((v) => !v);
+                }}
+                className="flex-1 justify-center"
+              >
+                Cash on pickup
+              </Chip>
+            </div>
+            <p className="text-caption text-[var(--color-content-subtle)]">
+              {acceptsOnline && acceptsCash
+                ? 'Renters choose either at checkout: card / mobile money / wallet through AutoHire, or cash in person.'
+                : acceptsOnline
+                  ? 'Renters pay through AutoHire — card, mobile money or wallet, depending on where they are.'
+                  : 'Cash-only: renters book without paying online and hand you cash at the handoff. You record what you collected when the car comes back.'}
+            </p>
           </CardBody>
         </Card>
 

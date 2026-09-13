@@ -81,4 +81,8 @@ export interface CreateListingInput {
   lng?: number | null;
   /** Optional host-provided directions / arrival link. */
   locationUrl?: string | null;
+  /** Take cash at pickup for this car. Defaults to false — nobody is volunteered for it. */
+  acceptsCash?: boolean;
+  /** Take online payment for this car. Defaults to true; only turned off for a cash-only listing. */
+  acceptsOnline?: boolean;
 }

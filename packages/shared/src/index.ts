@@ -361,6 +361,16 @@ export interface Listing {
    * volunteer every host on the platform for it.
    */
   acceptsCash: boolean;
+  /**
+   * The host takes online payment (card / mobile money / wallet) for this car.
+   *
+   * On by default — it's the platform's own rail, not something a host has to
+   * opt into. A host can turn it off to run the car cash-only, but never both
+   * this and `acceptsCash` false at once: the booking form falls back to
+   * online if it ever sees that combination, since a car with no accepted
+   * payment method can't be booked at all.
+   */
+  acceptsOnline: boolean;
   ratingAvg: number;
   ratingCount: number;
   /** ISO dates the owner has blocked for personal use / existing trips. */

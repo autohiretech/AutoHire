@@ -1289,6 +1289,7 @@ function CarManage({ listing }: { listing: Listing }) {
           | 'status'
           | 'maintenanceUntil'
           | 'acceptsCash'
+          | 'acceptsOnline'
         >
       >,
     ) => client.updateListing(listing.id, patch),
@@ -1324,29 +1325,51 @@ function CarManage({ listing }: { listing: Listing }) {
         </Link>
       </div>
 
-      {/* Cash on pickup — the host's own answer, per car.
-          Per car rather than per account on purpose: a host may be happy taking
-          notes for a runabout and not for the expensive one, and the decision
-          is about a specific handover in a specific place. Off unless they say
-          otherwise; nobody is volunteered for cash by a default. */}
-      <div className="flex flex-col gap-2 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-body-sm font-medium text-[var(--color-content)]">Cash on pickup</p>
+      {/* How renters pay — the host's own answer, per car. Per car rather than
+          per account on purpose: a host may be happy taking notes for a
+          runabout and not for the expensive one, and the decision is about a
+          specific handover in a specific place.
+
+          The two toggles can't both go off — a car with no accepted payment
+          method can't be booked at all — so each button disables itself the
+          moment it's the last one standing rather than firing a request the
+          server would refuse anyway. */}
+      <div className="space-y-2 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] p-3">
+        <p className="text-body-sm font-medium text-[var(--color-content)]">How renters pay</p>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-caption text-[var(--color-content-muted)]">
+            {listing.acceptsOnline
+              ? 'Renters can pay through AutoHire — card, mobile money or wallet, depending on where they are.'
+              : 'Turned off — this car is cash-only.'}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={mutation.isPending || (listing.acceptsOnline && !listing.acceptsCash)}
+            onClick={() => mutation.mutate({ acceptsOnline: !listing.acceptsOnline })}
+          >
+            {listing.acceptsOnline ? 'Turn off online payment' : 'Accept online payment'}
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-caption text-[var(--color-content-muted)]">
             {listing.acceptsCash
-              ? 'Renters can book this car without paying online and hand you cash at the handoff. You record what you collected when the car comes back.'
+              ? 'Renters can book without paying online and hand you cash at the handoff. You record what you collected when the car comes back.'
               : 'Renters must pay through AutoHire to book this car.'}
           </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={mutation.isPending || (listing.acceptsCash && !listing.acceptsOnline)}
+            onClick={() => mutation.mutate({ acceptsCash: !listing.acceptsCash })}
+          >
+            {listing.acceptsCash ? 'Turn off cash' : 'Accept cash'}
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          disabled={mutation.isPending}
-          onClick={() => mutation.mutate({ acceptsCash: !listing.acceptsCash })}
-        >
-          {listing.acceptsCash ? 'Turn off' : 'Accept cash'}
-        </Button>
       </div>
 
       {/* Pricing — a car is priced by the day OR the hour, never both; which

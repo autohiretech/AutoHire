@@ -1857,6 +1857,8 @@ export const supabaseClient = {
         | 'lat'
         | 'lng'
         | 'locationUrl'
+        | 'acceptsCash'
+        | 'acceptsOnline'
       >
     >,
   ) {
@@ -1881,6 +1883,7 @@ export const supabaseClient = {
       features: 'features',
       bookingMode: 'booking_mode',
       acceptsCash: 'accepts_cash',
+      acceptsOnline: 'accepts_online',
       blockedDates: 'blocked_dates',
       maintenanceUntil: 'maintenance_until',
       lat: 'lat',
@@ -1978,6 +1981,8 @@ export const supabaseClient = {
           lat: input.lat ?? null,
           lng: input.lng ?? null,
           location_url: input.locationUrl || null,
+          accepts_cash: input.acceptsCash ?? false,
+          accepts_online: input.acceptsOnline ?? true,
         })
         .select('*')
         .single(),
