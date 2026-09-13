@@ -150,11 +150,24 @@ function rpcParamsOf(filters: ListingFilters): Record<string, unknown> {
 }
 
 /** Whether a search needs `search_available_listings` instead of a plain
- * table query — availability (both dates) and distance sort (both
- * coordinates) are independent, composable reasons, so either alone is
- * enough; neither excludes the other from also being applied by the RPC. */
-function needsAvailabilityOrDistanceRpc(filters: ListingFilters): boolean {
-  return !!(filters.startDate && filters.endDate) || (filters.nearLat != null && filters.nearLng != null);
+ * table query — availability (both dates), distance sort (both coordinates)
+ * and a typed query are independent, composable reasons, so any one alone is
+ * enough; none excludes the others from also being applied by the RPC.
+ *
+ * **A typed query belongs here now.** The plain-table path matches it with
+ * `ilike '%word%'` across five columns, which is a substring test: "corola"
+ * finds nothing, "suv" searches titles for three letters rather than reading
+ * the category column, and the host's name is not in the query at all. The
+ * RPC (migration 092/093) does all three, plus trigram similarity for the
+ * typo, plus orders by how well each row actually matched. Routing the search
+ * through it is what makes the box on the browse page and the one behind a
+ * date range behave the same way. */
+function needsRpc(filters: ListingFilters): boolean {
+  return (
+    !!(filters.startDate && filters.endDate) ||
+    (filters.nearLat != null && filters.nearLng != null) ||
+    !!filters.query?.trim()
+  );
 }
 
 /**
@@ -405,7 +418,7 @@ export const supabaseClient = {
     // distance sort matters (migration 075) — either alone routes through
     // the `search_available_listings` RPC instead of a plain table query.
     // Neither present falls through to exactly the query below, unchanged.
-    if (needsAvailabilityOrDistanceRpc(filters)) {
+    if (needsRpc(filters)) {
       const rows = await run(sb().rpc('search_available_listings', rpcParamsOf(filters)));
       return mapRows<Listing>(rows as Record<string, unknown>[]);
     }
@@ -441,7 +454,7 @@ export const supabaseClient = {
     // returns `setof listings` (a set-returning function), so supabase-js's
     // `.rpc()` builder supports `{ count: 'exact' }` and `.range()` exactly
     // like a table `.select()` does — no separate total_count column needed.
-    if (needsAvailabilityOrDistanceRpc(filters)) {
+    if (needsRpc(filters)) {
       const { data, error, count } = await sb()
         .rpc('search_available_listings', rpcParamsOf(filters), { count: 'exact' })
         .range(from, from + pageSize - 1);
