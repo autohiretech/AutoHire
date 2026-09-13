@@ -260,11 +260,16 @@ interface PayPalSdk {
     /**
      * The button's own look, not the popup it opens — PayPal never lets a
      * merchant restyle that part (see `PayPalButtons`'s own header comment).
-     * `color` is one of PayPal's fixed presets, not an arbitrary hex; AutoHire's
-     * brand teal (`#0e7c66`) has no match in that palette, so `black` is the
-     * closest neutral fit rather than PayPal's gold default clashing with
-     * everything else on the page. `rect` matches `rounded-lg`'s moderate
-     * corner — `pill` reads as a different button language entirely.
+     * `color` is one of PayPal's fixed presets, not an arbitrary hex. `black`
+     * was tried first as the neutral fit, but PayPal's "black" is a dark
+     * charcoal, not `#000` — next to this modal's near-black overlay
+     * (`--color-surface-overlay`, `#1f2724`) the two are barely
+     * distinguishable, so the primary action of the whole modal read as a
+     * faint outline. `white` is the one preset with guaranteed contrast
+     * against a dark surface regardless of theme, and reads as more
+     * premium here than PayPal's yellow/gold default. `rect` matches
+     * `rounded-lg`'s moderate corner — `pill` reads as a different button
+     * language entirely.
      */
     style?: {
       color?: 'gold' | 'blue' | 'silver' | 'white' | 'black';
@@ -503,7 +508,7 @@ function PayPalButtons({
       setState('ready');
       sdk
         .Buttons({
-          style: { color: 'black', shape: 'rect', label: 'paypal', height: 48 },
+          style: { color: 'white', shape: 'rect', label: 'paypal', height: 48 },
           createOrder: () => Promise.resolve(action.order),
           onApprove: (data) => {
             onApprovedRef.current(data.orderID ?? action.order);
