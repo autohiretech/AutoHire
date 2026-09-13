@@ -281,7 +281,8 @@ export const en = {
   'checkout.oneMoreStep': 'One more step',
   'checkout.paypalCouldNotOpen': "We couldn't open PayPal here. This link approves the same payment.",
   'checkout.continueWithPaypal': 'Continue with PayPal',
-  'checkout.approvePaypalBody': "Approve this booking in your PayPal account. You'll stay on this page.",
+  'checkout.approvePaypalBody':
+    "PayPal opens in a new window to approve this booking. This tab stays open — we'll pick up here once you're done.",
   'checkout.loadingPaypal': 'Loading PayPal…',
   'checkout.bankNeedsOwnPage': 'Your bank needs its own page to finish this payment securely.',
   'checkout.continueAmount': 'Continue · {amount}',

@@ -311,7 +311,8 @@ export const rw: Record<keyof typeof en, string> = {
   'checkout.oneMoreStep': 'Intambwe imwe isigaye',
   'checkout.paypalCouldNotOpen': "Ntitwashoboye gufungura PayPal hano. Iri huza remeza uru bwishyu nyine.",
   'checkout.continueWithPaypal': 'Komeza na PayPal',
-  'checkout.approvePaypalBody': "Emeza iyi gahunda kuri konti yawe ya PayPal. Uzaguma kuri uru rupapuro.",
+  'checkout.approvePaypalBody':
+    "PayPal izafungura mu idirishya rishya kugira ngo wemeze iyi gahunda. Iyi tabo izakomeza gufunguye — tuzakomeza hano nyuma yo kurangiza.",
   'checkout.loadingPaypal': 'PayPal irapakira…',
   'checkout.bankNeedsOwnPage': "Banki yawe ikeneye urupapuro rwayo kugira ngo irangize ubu bwishyu mu mutekano.",
   'checkout.continueAmount': 'Komeza · {amount}',
