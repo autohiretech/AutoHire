@@ -440,17 +440,14 @@ function PayoutSetupBody({
   });
 
   /**
-   * Connecting PayPal happens in a modal, the way paying does.
+   * Connecting PayPal happens in a modal, and the round trip never leaves
+   * the app.
    *
-   * This used to be a button on the form that called `window.open` on a
-   * consent URL — the host pressed Connect and a window to paypal.com appeared
-   * over a page that still looked like an unfinished form. `CheckoutModal`
-   * does not treat PayPal that way for a renter, and there is no reason the
-   * host side should: `PayPalConnectModal` owns the whole exchange now, and
-   * what is left here is the result, because the card below still has to show
-   * what was connected after the modal closes.
-   *
-   * PayPal's window is still PayPal's — it refuses to be framed, and should.
+   * `PayPalConnectModal` sends this tab to PayPal's page; PayPal sends it back
+   * to `/payouts/paypal/return`, which lands here with the answer in session
+   * storage. The effect below picks it up, so this screen shows the connected
+   * account the moment it mounts. No popup, on any device — the header of the
+   * modal says why.
    */
   const [paypalOpen, setPaypalOpen] = useState(false);
   const [paypalResult, setPaypalResult] = useState<PayPalConnectOutcome | null>(null);
@@ -1298,7 +1295,7 @@ function PayoutSetupBody({
         <PayPalConnectModal
           open={paypalOpen}
           onClose={() => setPaypalOpen(false)}
-          onResult={setPaypalResult}
+          outcome={paypalResult}
         />
       </div>
     </Root>

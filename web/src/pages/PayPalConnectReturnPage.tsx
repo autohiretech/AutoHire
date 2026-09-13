@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { client } from '@/lib/client';
@@ -55,29 +55,7 @@ export function PayPalConnectReturnPage() {
   const [stateMismatch, setStateMismatch] = useState(false);
   const sent = useRef(false);
 
-  /**
-   * Hand the outcome back to the page that opened us, and get out of the way.
-   *
-   * The connection runs in a popup so the host never leaves AutoHire — they
-   * are in the middle of setting up payouts, and bouncing the whole app out to
-   * paypal.com and back loses that place. So this page usually exists for
-   * about a second inside a small window: it posts the result to its opener
-   * and closes. Everything below it is the standalone rendering, for a popup
-   * that was blocked and became a redirect instead.
-   *
-   * `window.location.origin` as the target, never `'*'` — the result names a
-   * payout account, and a wildcard would hand it to whatever else is
-   * listening.
-   */
-  const reportToOpener = (payload: unknown): boolean => {
-    if (!window.opener || window.opener === window) return false;
-    window.opener.postMessage(
-      { type: 'paypal-connect', payload },
-      window.location.origin,
-    );
-    window.close();
-    return true;
-  };
+  const navigate = useNavigate();
 
   const complete = useMutation({
     mutationFn: (c: string) => client.completePayPalConnect(c),
@@ -85,40 +63,22 @@ export function PayPalConnectReturnPage() {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       queryClient.invalidateQueries({ queryKey: ['payholdEarnings'] });
       queryClient.invalidateQueries({ queryKey: ['payholdWallet'] });
-      if (reportToOpener({ ok: true, result })) return;
-      // No opener: this tab *is* the app, on a phone or in the installed PWA,
-      // and the host is going back to the payout screen they started from.
-      // The answer travels with them so that screen can show it the way the
-      // popup path shows it inside the modal.
+      // This tab *is* the app — there is no popup and no opener, on any
+      // device — and the host is going straight back to the payout screen
+      // they started from. The answer travels with them so that screen shows
+      // the connected account the moment it mounts, rather than this page
+      // asking them to find their own way back.
       try {
         sessionStorage.setItem(
           PAYPAL_CONNECT_HANDOFF,
           JSON.stringify({ ok: true, email: result.email, status: result.status }),
         );
       } catch {
-        // Storage refused — the screen simply shows the saved method instead.
+        // Storage refused — the payout screen simply shows the saved method.
       }
-    },
-    onError: (err) => {
-      reportToOpener({
-        ok: false,
-        message: err instanceof Error ? err.message : 'Could not connect that account.',
-      });
+      navigate('/payouts/setup', { replace: true });
     },
   });
-
-  // A host who cancelled at PayPal comes back with no code. Tell the opener so
-  // its button stops spinning, rather than leaving a dead popup on screen.
-  useEffect(() => {
-    if (code || sent.current) return;
-    sent.current = true;
-    reportToOpener({
-      ok: false,
-      cancelled: !deniedDetail,
-      message: deniedDetail ? `PayPal said: ${deniedDetail}` : undefined,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
 
   useEffect(() => {
     if (!code || sent.current) return;
@@ -126,7 +86,6 @@ export function PayPalConnectReturnPage() {
     sessionStorage.removeItem('paypalConnectState');
     if (expected && state !== expected) {
       setStateMismatch(true);
-      reportToOpener({ ok: false, message: "That sign-in didn't match the request we started." });
       return;
     }
     // Once. React 18 mounts effects twice in development and a code can only
