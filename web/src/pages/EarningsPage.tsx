@@ -716,7 +716,21 @@ export function EarningsPage() {
                     Most hosts still have exactly one, and one renders as it
                     always did. */}
                 {shownBalances.map((balance) => {
-                  const legsFrom = legs.filter((l) => l.from === balance.currency);
+                  // **Only when this currency has live money in it right now.**
+                  // `exchangeLegs` aggregates every trip that ever converted,
+                  // including ones already fully paid out — so a currency
+                  // sitting at 0/0/0 above (nothing on trips, nothing clearing,
+                  // nothing available) could still surface a historical
+                  // conversion below it, reading as though it described the
+                  // zero just shown. It doesn't; it's a record of money that
+                  // already left. This box is for money that is *about* to
+                  // convert or just did, not a permanent ledger entry, so it
+                  // only shows while there is something in this currency to
+                  // account for.
+                  const hasLiveMoney = balance.held + balance.pendingClearance + balance.available > 0;
+                  const legsFrom = hasLiveMoney
+                    ? legs.filter((l) => l.from === balance.currency)
+                    : [];
                   return (
                     <div key={balance.currency}>
                       <div className="mb-3 flex items-center gap-2">
@@ -768,7 +782,15 @@ export function EarningsPage() {
                           ))}
                         </div>
                       )}
-                      {legsFrom.length === 0 && primary &&
+                      {/* The "nothing has converted yet" hint is the same
+                          live-money question as the box above it: it promises
+                          a rate is coming once a trip releases, which is only
+                          true while this currency actually has a trip in it.
+                          A currency at 0/0/0 has no trip to release — showing
+                          the hint there would be a promise about money that
+                          does not exist, right next to three zeros already
+                          saying so. */}
+                      {hasLiveMoney && legsFrom.length === 0 && primary &&
                         balance.currency !== primary.payoutCurrency && (
                           <p className="mt-4 flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2 text-caption text-[var(--color-content-muted)]">
                             <Coins size={13} className="mt-0.5 shrink-0 text-[var(--color-content-subtle)]" />
