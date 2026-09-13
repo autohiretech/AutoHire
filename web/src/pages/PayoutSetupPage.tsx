@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   ArrowLeft,
   Banknote,
   Check,
@@ -436,13 +437,71 @@ function PayoutSetupBody({
       ),
   });
 
-  // Log in with PayPal. The state is kept for the return page to compare —
-  // a callback that does not check it accepts a code from anywhere.
+  /**
+   * Log in with PayPal, in a popup, so the host stays inside AutoHire.
+   *
+   * They are mid-way through setting up payouts; sending the whole app out to
+   * paypal.com and back loses their place, their scroll position and any other
+   * field they had filled in. A popup keeps this page exactly where it was and
+   * the result arrives by `postMessage` from `/payouts/paypal/return`.
+   *
+   * The redirect is still the fallback, because popups get blocked and a
+   * blocked popup must not become a dead button.
+   */
+  const [paypalResult, setPaypalResult] = useState<
+    | { ok: true; email: string | null; status: 'ready' | 'unverified_paypal_account' | 'unknown' }
+    | { ok: false; message: string }
+    | null
+  >(null);
+  const [paypalWaiting, setPaypalWaiting] = useState(false);
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      // Same-origin only: the payload names a payout account.
+      if (e.origin !== window.location.origin) return;
+      const data = e.data as { type?: string; payload?: Record<string, unknown> } | null;
+      if (data?.type !== 'paypal-connect') return;
+
+      setPaypalWaiting(false);
+      const payload = data.payload ?? {};
+
+      if (payload.cancelled) return; // They closed PayPal. Nothing to say.
+      if (payload.ok) {
+        const r = payload.result as {
+          email: string | null;
+          status: 'ready' | 'unverified_paypal_account' | 'unknown';
+        };
+        setPaypalResult({ ok: true, email: r.email, status: r.status });
+        queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      } else {
+        setPaypalResult({
+          ok: false,
+          message: String(payload.message ?? 'Could not connect that account.'),
+        });
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [queryClient]);
+
   const connectPayPal = useMutation({
     mutationFn: () => client.startPayPalConnect(),
     onSuccess: ({ url, state }) => {
       sessionStorage.setItem('paypalConnectState', state);
-      window.location.href = url;
+      setPaypalResult(null);
+      const popup = window.open(
+        url,
+        'paypal-connect',
+        'width=500,height=720,menubar=no,toolbar=no,location=no',
+      );
+      if (!popup) {
+        // Blocked. The whole-page redirect still works; the return page
+        // renders standalone when it has no opener to talk to.
+        window.location.href = url;
+        return;
+      }
+      setPaypalWaiting(true);
+      popup.focus();
     },
   });
 
@@ -1063,11 +1122,27 @@ function PayoutSetupBody({
                     <Button
                       type="button"
                       className="mt-2.5 w-full"
-                      disabled={connectPayPal.isPending}
+                      disabled={connectPayPal.isPending || paypalWaiting}
                       onClick={() => connectPayPal.mutate()}
                     >
-                      {connectPayPal.isPending ? 'Opening PayPal…' : 'Connect PayPal'}
+                      {connectPayPal.isPending
+                        ? 'Opening PayPal…'
+                        : paypalWaiting
+                          ? 'Waiting for PayPal…'
+                          : paypalResult?.ok
+                            ? 'Connect a different account'
+                            : 'Connect PayPal'}
                     </Button>
+
+                    {/* The popup is a separate window and easy to lose behind
+                        this one, so the waiting state says where it went. */}
+                    {paypalWaiting && (
+                      <p className="mt-2 text-caption text-[var(--color-content-muted)]">
+                        Finish signing in to PayPal in the window that opened. This page
+                        updates on its own.
+                      </p>
+                    )}
+
                     {connectPayPal.isError && (
                       <p className="mt-2 text-caption text-[var(--color-danger-500)]">
                         {connectPayPal.error instanceof Error
@@ -1075,6 +1150,54 @@ function PayoutSetupBody({
                           : "Couldn't start PayPal sign-in."}
                       </p>
                     )}
+
+                    {/* The outcome, in the page they started from — the whole
+                        reason this runs in a popup. `verified_account` is
+                        PayPal's own answer about whether money can reach this
+                        account, which is the one thing a typed address can
+                        never tell us. */}
+                    {paypalResult?.ok === true && (
+                      <div
+                        // One plain surface for both outcomes; the icon and
+                        // the sentence carry the difference. A tinted band per
+                        // state is exactly the brand-hue overuse the rest of
+                        // this screen avoids.
+                        className="mt-3 flex items-start gap-2 rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] px-3 py-2.5"
+                      >
+                        {paypalResult.status === 'ready' ? (
+                          <CheckCircle2
+                            size={15}
+                            className="mt-0.5 shrink-0 text-[var(--color-accent-on)]"
+                          />
+                        ) : (
+                          <AlertTriangle
+                            size={15}
+                            className="mt-0.5 shrink-0 text-[var(--color-warn-500)]"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-body-sm font-medium text-[var(--color-content)]">
+                            {paypalResult.status === 'ready'
+                              ? 'PayPal connected'
+                              : "Connected — but PayPal can't pay it yet"}
+                          </p>
+                          <p className="mt-0.5 text-caption text-[var(--color-content-muted)]">
+                            {paypalResult.status === 'ready'
+                              ? `${paypalResult.email ?? 'Your account'} is ready to receive payouts.`
+                              : paypalResult.status === 'unverified_paypal_account'
+                                ? "PayPal says this account isn't verified. Confirm your email with PayPal and connect again — until then a payment would sit unclaimed for 30 days and come back."
+                                : "PayPal didn't say whether this account can receive payments, so we've left it unverified."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {paypalResult?.ok === false && (
+                      <p className="mt-2 text-caption text-[var(--color-danger-500)]">
+                        {paypalResult.message}
+                      </p>
+                    )}
+
                     <p className="mt-2.5 text-caption text-[var(--color-content-subtle)]">
                       Or type your PayPal address below.
                     </p>

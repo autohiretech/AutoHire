@@ -31,14 +31,54 @@ export function PayPalConnectReturnPage() {
   const [stateMismatch, setStateMismatch] = useState(false);
   const sent = useRef(false);
 
+  /**
+   * Hand the outcome back to the page that opened us, and get out of the way.
+   *
+   * The connection runs in a popup so the host never leaves AutoHire — they
+   * are in the middle of setting up payouts, and bouncing the whole app out to
+   * paypal.com and back loses that place. So this page usually exists for
+   * about a second inside a small window: it posts the result to its opener
+   * and closes. Everything below it is the standalone rendering, for a popup
+   * that was blocked and became a redirect instead.
+   *
+   * `window.location.origin` as the target, never `'*'` — the result names a
+   * payout account, and a wildcard would hand it to whatever else is
+   * listening.
+   */
+  const reportToOpener = (payload: unknown): boolean => {
+    if (!window.opener || window.opener === window) return false;
+    window.opener.postMessage(
+      { type: 'paypal-connect', payload },
+      window.location.origin,
+    );
+    window.close();
+    return true;
+  };
+
   const complete = useMutation({
     mutationFn: (c: string) => client.completePayPalConnect(c),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       queryClient.invalidateQueries({ queryKey: ['payholdEarnings'] });
       queryClient.invalidateQueries({ queryKey: ['payholdWallet'] });
+      reportToOpener({ ok: true, result });
+    },
+    onError: (err) => {
+      reportToOpener({
+        ok: false,
+        message: err instanceof Error ? err.message : 'Could not connect that account.',
+      });
     },
   });
+
+  // A host who cancelled at PayPal comes back with no code. Tell the opener so
+  // its button stops spinning, rather than leaving a dead popup on screen.
+  useEffect(() => {
+    if (code || sent.current) return;
+    sent.current = true;
+    reportToOpener({ ok: false, cancelled: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
 
   useEffect(() => {
     if (!code || sent.current) return;
@@ -46,6 +86,7 @@ export function PayPalConnectReturnPage() {
     sessionStorage.removeItem('paypalConnectState');
     if (expected && state !== expected) {
       setStateMismatch(true);
+      reportToOpener({ ok: false, message: "That sign-in didn't match the request we started." });
       return;
     }
     // Once. React 18 mounts effects twice in development and a code can only
