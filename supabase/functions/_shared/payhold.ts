@@ -1060,6 +1060,56 @@ export function startConnectOnboarding(
   });
 }
 
+/**
+ * Log in with PayPal — a seller handing us their own account rather than
+ * typing an address at us.
+ *
+ * **Why this exists and a text field does not answer it.** PayPal accepts a
+ * payout to an address whose account is unconfirmed, calls the batch a
+ * success, holds the item UNCLAIMED for thirty days and then returns the
+ * money. Nothing about the address looks wrong at the time. Signing in
+ * returns the seller's `payer_id` — the identifier PayPal's own Payouts
+ * reference names — and `verified_account`, which is the only way to know
+ * before sending whether a payout can land at all.
+ */
+export interface PayPalConnectStart {
+  url: string;
+  /** Checked on the way back. A callback nobody checks accepts any code. */
+  state: string;
+}
+
+export function startPayPalConnect(
+  sellerId: string,
+  returnUrl: string,
+): Promise<PayPalConnectStart> {
+  return call(`/sellers/${encodeURIComponent(sellerId)}/paypal/connect`, {
+    method: 'POST',
+    body: { return_url: returnUrl },
+  });
+}
+
+export interface PayPalConnectResult {
+  destination_id: string;
+  payer_id: string;
+  email: string | null;
+  /** Null when PayPal did not say — treated as "not proven", never as yes. */
+  verified_account: boolean | null;
+  status: 'ready' | 'unverified_paypal_account' | 'unknown';
+}
+
+export function completePayPalConnect(
+  sellerId: string,
+  code: string,
+  returnUrl: string,
+): Promise<PayPalConnectResult> {
+  return call(`/sellers/${encodeURIComponent(sellerId)}/paypal/complete`, {
+    method: 'POST',
+    // `return_url` travels back because PayPal checks the code against the
+    // exact redirect it was issued for.
+    body: { code, return_url: returnUrl },
+  });
+}
+
 export interface ConnectSession {
   account_id: string;
   /**

@@ -1226,6 +1226,61 @@ export const supabaseClient = {
     return { outcome: payload.outcome, account: payload.account ?? null };
   },
 
+  /**
+   * Send the host to PayPal to hand over their own account.
+   *
+   * The typed-address field stays — most hosts know their email and nothing
+   * else. This is the better path when they take it: PayPal returns the payer
+   * id a payout actually wants, and `verified_account`, which is the only way
+   * to know before sending whether the money can land. A typed address that
+   * belongs to an unconfirmed account is accepted, reported as a success, held
+   * for thirty days and returned, and nothing about it looks wrong until then.
+   */
+  async startPayPalConnect(): Promise<{ url: string; state: string }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-paypal-connect', {
+      method: 'POST',
+    });
+    if (error) throw await fnError(error);
+    const payload = data as { url?: string; state?: string; error?: string };
+    if (payload?.error || !payload?.url || !payload?.state) {
+      throw new Error(payload?.error ?? "Couldn't start PayPal sign-in.");
+    }
+    return { url: payload.url, state: payload.state };
+  },
+
+  /**
+   * Turn the code PayPal sent the host back with into a payout destination.
+   *
+   * The code is exchanged server-side; nothing the browser carries is trusted
+   * as identity. `verifiedAccount === false` means PayPal itself says this
+   * account cannot receive a payout yet — the destination is still saved,
+   * because it is genuinely theirs, but it stays unverified so the eligibility
+   * gate stops the money here rather than PayPal stopping it for a month.
+   */
+  async completePayPalConnect(code: string): Promise<{
+    email: string | null;
+    verifiedAccount: boolean | null;
+    status: 'ready' | 'unverified_paypal_account' | 'unknown';
+  }> {
+    const { data, error } = await getSupabase().functions.invoke(
+      'payhold-paypal-connect?action=complete',
+      { method: 'POST', body: { code } },
+    );
+    if (error) throw await fnError(error);
+    const payload = data as {
+      email?: string | null;
+      verified_account?: boolean | null;
+      status?: 'ready' | 'unverified_paypal_account' | 'unknown';
+      error?: string;
+    };
+    if (payload?.error) throw new Error(payload.error);
+    return {
+      email: payload?.email ?? null,
+      verifiedAccount: payload?.verified_account ?? null,
+      status: payload?.status ?? 'unknown',
+    };
+  },
+
   async startStripeConnectOnboarding(): Promise<{ url: string }> {
     const { data, error } = await getSupabase().functions.invoke('payhold-stripe-connect', {
       method: 'POST',

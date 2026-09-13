@@ -436,6 +436,16 @@ function PayoutSetupBody({
       ),
   });
 
+  // Log in with PayPal. The state is kept for the return page to compare —
+  // a callback that does not check it accepts a code from anywhere.
+  const connectPayPal = useMutation({
+    mutationFn: () => client.startPayPalConnect(),
+    onSuccess: ({ url, state }) => {
+      sessionStorage.setItem('paypalConnectState', state);
+      window.location.href = url;
+    },
+  });
+
   const connectStripe = useMutation({
     mutationFn: () => client.startStripeConnectOnboarding(),
     onSuccess: ({ url }) => {
@@ -1027,6 +1037,47 @@ function PayoutSetupBody({
                         )}
                       </>
                     )}
+                  </div>
+                )}
+
+                {/* **Connect, offered before the field rather than instead of
+                    it.** A typed PayPal address is accepted by the API,
+                    reported as a successful batch, and then held unclaimed for
+                    thirty days if the account behind it is unconfirmed —
+                    nothing about it looks wrong at the time, and on
+                    2026-09-13 that happened to three payouts at once. Signing
+                    in returns the payer id a payout actually wants plus
+                    whether PayPal will let the money land, so the question is
+                    answered here instead of a month later. The field stays,
+                    because most hosts know their email and nothing else. */}
+                {selected === 'paypal' && (
+                  <div className="rounded-[var(--radius-control)] border border-[var(--color-line)] p-3">
+                    <p className="text-body-sm font-medium text-[var(--color-content)]">
+                      Connect your PayPal account
+                    </p>
+                    <p className="mt-0.5 text-caption text-[var(--color-content-muted)]">
+                      Sign in once and we'll check with PayPal that your account can
+                      actually receive payouts — rather than finding out after a payment
+                      sits unclaimed.
+                    </p>
+                    <Button
+                      type="button"
+                      className="mt-2.5 w-full"
+                      disabled={connectPayPal.isPending}
+                      onClick={() => connectPayPal.mutate()}
+                    >
+                      {connectPayPal.isPending ? 'Opening PayPal…' : 'Connect PayPal'}
+                    </Button>
+                    {connectPayPal.isError && (
+                      <p className="mt-2 text-caption text-[var(--color-danger-500)]">
+                        {connectPayPal.error instanceof Error
+                          ? connectPayPal.error.message
+                          : "Couldn't start PayPal sign-in."}
+                      </p>
+                    )}
+                    <p className="mt-2.5 text-caption text-[var(--color-content-subtle)]">
+                      Or type your PayPal address below.
+                    </p>
                   </div>
                 )}
 

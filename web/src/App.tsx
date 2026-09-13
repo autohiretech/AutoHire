@@ -14,6 +14,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { EarningsPage } from '@/pages/EarningsPage';
 import { PayoutSetupPage } from '@/pages/PayoutSetupPage';
 import { StripeConnectReturnPage } from '@/pages/StripeConnectReturnPage';
+import { PayPalConnectReturnPage } from '@/pages/PayPalConnectReturnPage';
 import { MessagesPage } from '@/pages/MessagesPage';
 import { TripsPage } from '@/pages/TripsPage';
 import { VerificationPage } from '@/pages/VerificationPage';
@@ -80,6 +81,17 @@ export default function App() {
           element={
             <RequireRole roles={['owner', 'admin']}>
               <PayoutSetupPage />
+            </RequireRole>
+          }
+        />
+        {/* Where PayPal sends a host back after they connect their account.
+            The redirect carries a code, not an identity — the page exchanges
+            it server-side before anything is written. */}
+        <Route
+          path="payouts/paypal/return"
+          element={
+            <RequireRole roles={['owner', 'admin']}>
+              <PayPalConnectReturnPage />
             </RequireRole>
           }
         />
