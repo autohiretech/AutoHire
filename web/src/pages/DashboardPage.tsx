@@ -1722,6 +1722,19 @@ function PayoutsView({
   const needle = q.trim().toLowerCase();
   const match = (p: Payout) =>
     !needle || (carOf(p) ?? '').toLowerCase().includes(needle);
+
+  /**
+   * Offered when there is more than one car to tell apart — not past some
+   * number of rows.
+   *
+   * The first version gated on `payouts.length > 5`, which was the wrong
+   * question and hid the box from the only host on the platform who has
+   * payouts at all: they have five, across three cars, and a filter is exactly
+   * what five near-identical amounts from three cars needs. Row count says
+   * nothing about whether filtering by car helps; the number of cars does, and
+   * with one car it helps not at all.
+   */
+  const carCount = new Set(payouts.map((p) => carOf(p)).filter(Boolean)).size;
   // Under PayHold these rows are a local shadow of a ledger it owns. The real
   // answer — what has cleared, what is still holding, when it lands — lives on
   // /earnings, so point there rather than letting a host trust a stale copy.
@@ -1818,10 +1831,7 @@ function PayoutsView({
           <span className="tabular">{formatDate(nextPayout)}</span>.
         </p>
       )}
-      {/* Only worth a search box once there is enough to lose something in.
-          Below that the list IS the answer, and a filter over four rows is a
-          control that costs more attention than it saves. */}
-      {payouts.length > 5 && (
+      {carCount > 1 && (
         <div className="relative">
           <Search
             size={16}
