@@ -477,9 +477,21 @@ function PayPalButtons({
 
   useEffect(() => {
     let cancelled = false;
+    // **`disable-funding=card`, deliberately.** Without it the SDK renders a
+    // second, black "Debit or Credit Card" button under the PayPal one, and
+    // that button does not open a window: it unfolds PayPal's guest card form
+    // *inline*, inside the buttons iframe, inside this modal — nine hundred
+    // pixels of email, card, expiry and billing address in a dialog capped at
+    // 88dvh, cut mid-field with the Pay button out of sight. It also
+    // duplicates a method this checkout already offers properly: a card is
+    // its own choice in the picker, on Stripe's fields. So the PayPal method
+    // is the PayPal button and nothing else, and it does what every other
+    // app's PayPal button does — opens PayPal's own window, where a renter
+    // without an account can still pay by card, on PayPal's page, sized for
+    // it. Nothing of PayPal's ever renders inline here.
     const src =
       `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(action.client_id)}` +
-      `&currency=${encodeURIComponent(action.currency)}&intent=capture`;
+      `&currency=${encodeURIComponent(action.currency)}&intent=capture&disable-funding=card`;
 
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
     const script = existing ?? document.createElement('script');
