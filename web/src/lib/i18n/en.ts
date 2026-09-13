@@ -162,7 +162,7 @@ export const en = {
   'car.addDate': 'Add date',
   'car.returnField': 'Return',
   'car.wontBeChargedYet': "You won't be charged yet",
-  'car.depositPlusFee': 'Deposit (50%) + service fee',
+  'car.depositLabel': 'Deposit (50%)',
   'car.dueNowLabel': 'Due now',
   'car.serviceFeeLabel': 'Service fee',
   'car.totalLabel': 'Total',

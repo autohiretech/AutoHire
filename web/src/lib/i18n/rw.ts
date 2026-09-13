@@ -185,7 +185,7 @@ export const rw: Record<keyof typeof en, string> = {
   'car.addDate': 'Ongeraho itariki',
   'car.returnField': 'Aho uyisubiza',
   'car.wontBeChargedYet': 'Ntabwo warishyuzwa ubu',
-  'car.depositPlusFee': "Incamake (50%) + amafaranga y'ubuyobozi",
+  'car.depositLabel': 'Incamake (50%)',
   'car.dueNowLabel': 'Ugomba kwishyura ubu',
   'car.serviceFeeLabel': "Amafaranga y'ubuyobozi",
   'car.totalLabel': 'Igiteranyo',

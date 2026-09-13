@@ -765,6 +765,13 @@ export function CarDetailPage() {
                   </p>
 
                   {datesChosen && isHourlyListing && (
+                    // `subtotal` (the 50% deposit) and `serviceFee` are two
+                    // different numbers that add up to `total` — showing
+                    // "Deposit + service fee" and "Due now" as separate rows
+                    // both holding `total` repeated the same amount twice in
+                    // a row, which read as a second charge rather than a
+                    // restatement. Broken into its two real parts instead,
+                    // matching how the confirm-and-pay page already does it.
                     <div className="space-y-2 border-t border-[var(--color-line)] pt-3 text-body-sm">
                       <div className="flex justify-between text-[var(--color-content-muted)]">
                         <span>
@@ -774,8 +781,12 @@ export function CarDetailPage() {
                         <span className="tabular">{money(estimatedTotal)}</span>
                       </div>
                       <div className="flex justify-between text-[var(--color-content-muted)]">
-                        <span>{t('car.depositPlusFee')}</span>
-                        <span className="tabular">{money(total)}</span>
+                        <span>{t('car.depositLabel')}</span>
+                        <span className="tabular">{money(subtotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-[var(--color-content-muted)]">
+                        <span>{t('car.serviceFeeLabel')}</span>
+                        <span className="tabular">{money(serviceFee)}</span>
                       </div>
                       <div className="flex justify-between border-t border-[var(--color-line)] pt-2 font-semibold text-[var(--color-content)]">
                         <span>{t('car.dueNowLabel')}</span>
