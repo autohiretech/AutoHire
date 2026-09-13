@@ -2,8 +2,8 @@
 // Rasterise the AutoHire mark into every icon the platforms want.
 //
 // The geometry is `src/components/BrandMark.tsx`'s, restated here because a
-// build-time script cannot import a React component: an "A" whose crossbar
-// is two road dashes. Change the glyph there and here together.
+// build-time script cannot import a React component: a fastback in profile
+// over two road dashes. Change the glyph there and here together.
 //
 //   node scripts/gen-brand.mjs            # writes into public/ and public-admin/
 //
@@ -37,19 +37,22 @@ const INK_DARK = '#0d1211';
 /** The glyph, in its own 64-unit box, filled with `color`. */
 function glyph(color) {
   return `
-    <path d="M15 53 L32 11 L49 53" fill="none" stroke="${color}" stroke-width="9"
-          stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="27.6" y="38.4" width="8.8" height="5.2" rx="1.8" fill="${color}"/>
-    <rect x="29.8" y="28.2" width="4.4" height="3.8" rx="1.3" fill="${color}"/>`;
+    <g fill="${color}" fill-rule="evenodd">
+      <path d="M 6 35.5 L 6 30.5 Q 6 26.5 10.5 26 L 17 25 Q 24 15 33 14.5 Q 39 14.5 43.5 17.5 L 47 21.5 L 55 23.5 Q 58 24 58 27 L 58 35.5 Q 58 38 55.5 38 L 8.5 38 Q 6 38 6 35.5 Z M 21 25 Q 27 18.5 33.5 18 L 38 18 L 43.5 23 Z M 11.8 38 A 7.2 7.2 0 0 1 26.2 38 Z M 38.8 38 A 7.2 7.2 0 0 1 53.2 38 Z"/>
+      <path d="M 13.8 38 a 5.2 5.2 0 1 0 10.4 0 a 5.2 5.2 0 1 0 -10.4 0 M 17.1 38 a 1.9 1.9 0 1 0 3.8 0 a 1.9 1.9 0 1 0 -3.8 0"/>
+      <path d="M 40.8 38 a 5.2 5.2 0 1 0 10.4 0 a 5.2 5.2 0 1 0 -10.4 0 M 44.1 38 a 1.9 1.9 0 1 0 3.8 0 a 1.9 1.9 0 1 0 -3.8 0"/>
+      <rect x="8" y="46" width="19" height="3.5" rx="1.75"/>
+      <rect x="32" y="46" width="10" height="3.5" rx="1.75"/>
+    </g>`;
 }
 
 /**
  * The tile: the glyph on a rounded brand square.
  *
  * `scale` is how much of the tile the glyph's box takes up. 1 is the `any`
- * icon — the glyph already sits at ~67% of its box, which is the proportion
- * a home-screen icon wants. Maskable icons get 0.72, which keeps the glyph's
- * far corners inside the 40%-radius safe circle Android masks to.
+ * icon — the car spans ~81% of its box wide and ~55% tall, which is the
+ * proportion a home-screen icon wants. Maskable icons get 0.78, which keeps
+ * the glyph's far corners inside the 40%-radius safe circle Android masks to.
  */
 function tile(size, { scale = 1, radius = 0.22 } = {}) {
   const r = size * radius;
@@ -63,7 +66,7 @@ function tile(size, { scale = 1, radius = 0.22 } = {}) {
 
 /** A maskable icon is the tile with no corner radius — the OS supplies the shape. */
 function maskable(size) {
-  return tile(size, { scale: 0.72, radius: 0 });
+  return tile(size, { scale: 0.78, radius: 0 });
 }
 
 /** An iOS launch screen: the tile centred on the app's light ground. */
