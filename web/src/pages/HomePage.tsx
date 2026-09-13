@@ -251,6 +251,16 @@ export function HomePage() {
     return () => clearTimeout(t);
   }, [queryText]);
 
+  /**
+   * Is the renter searching right now?
+   *
+   * Read from the typed text rather than from `filters.query`, so the page
+   * responds on the keystroke instead of 300ms later. The fetch can lag; the
+   * layout should not, or the rails sit there for a third of a second after
+   * you have clearly asked for something else.
+   */
+  const searching = queryText.trim().length > 0;
+
   function setFilter<K extends keyof ListingFilters>(key: K, value: ListingFilters[K]) {
     setFilters((prev) => {
       const next = { ...prev };
@@ -511,7 +521,15 @@ export function HomePage() {
         </div>
 
         {/* Rails — cars grouped by a reason, Turo-style, scrolling
-            horizontally rather than wrapping into another grid. */}
+            horizontally rather than wrapping into another grid.
+            
+            Hidden while searching. Each rail is its own fixed query — electric
+            cars, a city, this week's featured — and none of them answers what
+            was typed. Leaving them up meant you typed "hiace", the entire top
+            of the page carried on showing the same cars, and the one car that
+            matched was four screens down: it worked, and it did not look like
+            it worked, which for a search box is the same thing. */}
+        {!searching && (
         <div className="mt-2">
           <ListingRail
             title={`Electric cars in ${country.name}`}
@@ -536,9 +554,10 @@ export function HomePage() {
             />
           )}
         </div>
+        )}
 
         {/* Featured slideshow — a rotating BaT-style hero (auto every 3s) ─── */}
-        {(featured?.length ?? 0) > 0 && (
+        {!searching && (featured?.length ?? 0) > 0 && (
           <div className="mt-2">
             <h2 className="mb-3 text-h3">{t('home.featured')}</h2>
             <FeaturedSlideshow listings={featured ?? []} />
@@ -547,9 +566,18 @@ export function HomePage() {
 
         {/* Full results grid — the categories rail + electric/top-ranked
             chips filter this. */}
-        <section className="mt-8 min-w-0">
+        <section className={cn('min-w-0', searching ? 'mt-6' : 'mt-8')}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-h3">{topRanked ? 'Top ranked cars' : t('home.recommended')}</h2>
+            {/* A result set someone typed is not a recommendation, and calling
+                it one reads as the page ignoring them. Quoting it back is also
+                the only confirmation that the box did anything at all. */}
+            <h2 className="text-h3">
+              {searching
+                ? `Cars matching “${queryText.trim()}”`
+                : topRanked
+                  ? 'Top ranked cars'
+                  : t('home.recommended')}
+            </h2>
             <ChipRow>
               <Chip
                 selected={filters.fuel === 'electric'}
