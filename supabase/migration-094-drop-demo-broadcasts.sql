@@ -1,0 +1,31 @@
+-- 094 — the feed shows what people actually posted, and nothing else.
+--
+-- Migration 068 seeded nine host broadcasts so the feed had something in it
+-- before anyone had posted: weekend specials, a Land Cruiser back from
+-- service, Ramadan opening hours. Launch furniture. It did its job, and it is
+-- now the only thing in the feed — `trip_posts` has zero rows and every one of
+-- the nine `host_broadcasts` is a `demo-bcast-%`.
+--
+-- That is worse than an empty feed. An empty feed says "nobody has posted
+-- yet", which is true and which the page already says gracefully. Nine
+-- invented announcements say "this is what hosts are telling you", and a
+-- renter cannot tell they are reading fiction — broadcasts carry none of the
+-- verified styling a trip post does, and no `Sample` badge, because unlike
+-- `demo-post-%` there was never a flag for them.
+--
+-- 068 wrote the removal line itself, in its own header, for whenever this day
+-- came:
+--
+--     delete from host_broadcasts where id like 'demo-bcast-%';
+--
+-- As a migration rather than a one-off DELETE, because a fresh environment
+-- would otherwise replay 068 and seed the fiction all over again.
+--
+-- Nothing else is touched. Real broadcasts (`bcast-%`, minted by
+-- `createHostBroadcast`) and every trip post are left exactly as they are, and
+-- a host posting from the dashboard after this lands in an empty feed that is
+-- theirs.
+--
+-- Apply in the Supabase SQL editor or via `supabase db push`. Safe to re-run.
+
+delete from host_broadcasts where id like 'demo-bcast-%';
