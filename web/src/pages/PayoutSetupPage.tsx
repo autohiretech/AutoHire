@@ -1204,10 +1204,20 @@ function PayoutSetupBody({
                   // telling them to wait for something that is not coming.
                   selected === 'paypal' ? (
                     <Notice tone="warn">
-                      A typed address can't be checked with PayPal, so this one stays pending
-                      until someone reviews it — your earnings keep building up meanwhile.{' '}
-                      <strong>Connect PayPal above instead</strong> and it's ready straight away:
-                      PayPal tells us then and there whether payments can reach you.
+                      {/* One element, not a run of text nodes around a
+                          `<strong>`. `Notice` lays its children out with
+                          `flex`, so every child becomes a flex *item* — an
+                          inline emphasis in the middle of a sentence came out
+                          as a third column with the sentence broken around it.
+                          Every other Notice on this screen happens to pass a
+                          single text node, which is why nothing caught it. */}
+                      <span>
+                        A typed address can't be checked with PayPal, so this one stays
+                        pending until someone reviews it — your earnings keep building up
+                        meanwhile. <strong>Connect PayPal above instead</strong> and it's
+                        ready straight away: PayPal tells us then and there whether
+                        payments can reach you.
+                      </span>
                     </Notice>
                   ) : connected ? (
                     <Notice tone="warn">
