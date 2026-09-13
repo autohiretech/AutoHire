@@ -292,6 +292,11 @@ Deno.serve(async (req: Request) => {
         payoutAmount: payout?.amount ?? null,
         payoutCurrency: payout?.currency ?? null,
         railStatus: payout?.rail_status ?? null,
+        // The conversion as PayHold recorded it, not as anything derives it.
+        fxFromAmount: payout?.fx_from_amount ?? null,
+        fxFromCurrency: payout?.fx_from_currency ?? null,
+        fxRate: payout?.fx_rate ?? null,
+        fxRateSource: payout?.fx_rate_source ?? null,
 
         // AutoHire's own figure, in whole units — never converted through
         // toMinorUnits, never PayHold's. See EarningTrip's comment.

@@ -43,49 +43,61 @@ import {
 const money = formatMoneyMinor;
 
 /**
- * The same money, twice, and the rate between the two.
+ * The exchange PayHold actually performed, per currency pair.
  *
- * A host earning on a Kigali car and paid into a USD account has a wallet in
- * RWF and a payout in USD, and until now the page showed the first, showed the
- * second, and said nothing about the arithmetic joining them — so "RF 405,347
- * available" sat above "$282.37" with no way to tell whether that was a fair
- * conversion, a fee, or a bug.
+ * **Every figure here is recorded, none of it derived.** The obvious
+ * implementation — wallet balance over payout amount — is wrong and does not
+ * look wrong: RWF 405,347 over USD 282.37 gives 1,435.52, while the rate
+ * Flutterwave quoted was 1,503.77. The wallet figure has the provider's fee
+ * already taken out of it and the payout was converted from a figure that does
+ * not, so the quotient is a rate nobody quoted, about 5% off, and perfectly
+ * plausible on a screen. PayHold records the real conversion on the payout at
+ * the moment it converts, and this reads that.
  *
- * **The rate is realised, not quoted.** It is what actually happened, derived
- * from the two figures printed either side of it — sum of what the trips were
- * charged over sum of what their payouts move. A rate fetched fresh from
- * anywhere would be a different number from the one that produced these two,
- * and a host checking our arithmetic with a calculator would find us wrong.
- * PayHold locks a rate per trip at funding, so across several trips this is an
- * average and says so.
+ * Trips whose money never crossed a currency contribute nothing: a row saying
+ * "1 RWF = 1 RWF" is noise.
  */
 function exchangeLegs(trips: EarningTrip[]): {
   from: string;
   to: string;
   fromAmount: number;
   toAmount: number;
+  rate: number;
+  source: string | null;
   trips: number;
 }[] {
-  const pairs = new Map<string, { from: string; to: string; fromAmount: number; toAmount: number; trips: number }>();
+  const pairs = new Map<
+    string,
+    { from: string; to: string; fromAmount: number; toAmount: number; rate: number; source: string | null; trips: number }
+  >();
 
   for (const t of trips) {
-    // Only trips whose money has actually been converted: both legs present,
-    // and genuinely two currencies. A same-currency payout is not an exchange
-    // and a row saying "1 RWF = 1 RWF" is noise.
-    if (t.net == null || t.payoutAmount == null || !t.payoutCurrency) continue;
-    if (t.payoutCurrency === t.currency) continue;
+    if (t.fxFromAmount == null || !t.fxFromCurrency || t.payoutAmount == null || !t.payoutCurrency) {
+      continue;
+    }
+    if (t.fxFromCurrency === t.payoutCurrency) continue;
 
-    const key = `${t.currency}->${t.payoutCurrency}`;
+    const key = `${t.fxFromCurrency}->${t.payoutCurrency}`;
     const row = pairs.get(key) ?? {
-      from: t.currency,
+      from: t.fxFromCurrency,
       to: t.payoutCurrency,
       fromAmount: 0,
       toAmount: 0,
+      rate: 0,
+      source: t.fxRateSource,
       trips: 0,
     };
-    row.fromAmount += t.net;
+    row.fromAmount += t.fxFromAmount;
     row.toAmount += t.payoutAmount;
     row.trips += 1;
+    // Rates differ per trip — each is locked when that trip's money moves — so
+    // several trips share a row only in the two totals, and the rate shown is
+    // the one those two totals imply. Both sides are on the same basis here,
+    // which is exactly what makes that division legitimate and the wallet-over-
+    // payout one not. A single trip therefore shows its own quoted rate exactly.
+    row.rate = majorUnits(row.fromAmount, row.from) / majorUnits(row.toAmount, row.to);
+    // One rail quoting and another not is not a source anyone can name.
+    if (row.source !== t.fxRateSource) row.source = null;
     pairs.set(key, row);
   }
 
@@ -96,13 +108,16 @@ function exchangeLegs(trips: EarningTrip[]): {
 function ExchangeRow({
   leg,
 }: {
-  leg: { from: string; to: string; fromAmount: number; toAmount: number; trips: number };
+  leg: {
+    from: string;
+    to: string;
+    fromAmount: number;
+    toAmount: number;
+    rate: number;
+    source: string | null;
+    trips: number;
+  };
 }) {
-  // Minor units cancel in the ratio only when both currencies have the same
-  // exponent, which RWF (0) and USD (2) do not — so the rate is computed from
-  // major units, the same units it is quoted in.
-  const rate = majorUnits(leg.fromAmount, leg.from) / majorUnits(leg.toAmount, leg.to);
-
   return (
     <div className="rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -116,16 +131,20 @@ function ExchangeRow({
       </div>
       <p className="tabular mt-1 text-caption text-[var(--color-content-muted)]">
         1 {leg.to} ={' '}
-        {rate.toLocaleString(undefined, { maximumFractionDigits: rate >= 100 ? 2 : 4 })} {leg.from}
+        {leg.rate.toLocaleString(undefined, { maximumFractionDigits: leg.rate >= 100 ? 2 : 4 })}{' '}
+        {leg.from}
         {' · '}
+        {/* Who quoted it, because a rail's live rate and a fallback table are
+            not the same promise, and a host comparing our figure with their
+            provider's statement needs to know which one they are checking. */}
+        {leg.source ? `${leg.source}'s rate, ` : ''}
         {leg.trips === 1
-          ? 'locked when the trip released'
-          : `average across ${leg.trips} trips, each locked when it released`}
+          ? 'locked when the trip was paid out'
+          : `across ${leg.trips} trips, each locked when it was paid out`}
       </p>
     </div>
   );
 }
-
 
 /**
  * Every stage a host's money passes through, in order, each said plainly.

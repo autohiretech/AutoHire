@@ -823,6 +823,21 @@ export interface EarningTrip {
   payoutCurrency: string | null;
   /** What the rail last said about this one trip's transfer. */
   railStatus: string | null;
+  /**
+   * The conversion PayHold actually performed, as PayHold recorded it: what
+   * the payout was before it was converted, and the rate and quoting rail.
+   *
+   * Not derivable from anything else on this object, which is the point.
+   * `net` has the provider's fee taken out of it and `fxFromAmount` does not,
+   * so `net / payoutAmount` yields a rate roughly 5% away from the one the
+   * rail quoted — and a wrong exchange rate on a screen looks exactly as
+   * reasonable as a right one.
+   */
+  fxFromAmount: number | null;
+  fxFromCurrency: string | null;
+  fxRate: number | null;
+  /** Who quoted it — a rail's name, or the indicative table. */
+  fxRateSource: string | null;
   rentalType: BookingRentalType;
   /**
    * AutoHire's own figure, in WHOLE units of `currency` — unlike gross/net/etc

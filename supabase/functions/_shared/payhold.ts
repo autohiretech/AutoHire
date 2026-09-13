@@ -291,6 +291,17 @@ export interface Payout {
    */
   rail_status?: string | null;
   rail_status_at?: string | null;
+  /**
+   * What this payout was converted from, and at whose rate — recorded by
+   * PayHold where the conversion happened. Never derive these: the wallet
+   * balance a screen would divide by has the provider's fee already taken out
+   * and the converted figure does not, so the quotient is about 5% off the
+   * rate the rail actually quoted, and looks entirely plausible.
+   */
+  fx_from_amount?: number | null;
+  fx_from_currency?: string | null;
+  fx_rate?: number | null;
+  fx_rate_source?: string | null;
 }
 
 /** Per-deal money, every figure separately — PayHold derives these from its ledger. */
