@@ -120,7 +120,9 @@ function ExchangeRow({
   };
 }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5">
+    // Flush on a phone, boxed from `sm` — a third nested border inside a card
+    // inside a page costs width the rate line needs (see the destination row).
+    <div className="sm:rounded-[var(--radius-control)] sm:border sm:border-[var(--color-line)] sm:px-3 sm:py-2.5">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className="tabular text-body font-semibold text-[var(--color-content)]">
           {money(leg.fromAmount, leg.from)}
@@ -241,7 +243,13 @@ const UNKNOWN_STAGE = {
  * where they are not.
  *
  * `payoutStatus` is already on the wire, so this needs nothing new from
- * PayHold.
+ * PayHold. `payoutReasonCode` is: `blocked` alone was one more status hiding
+ * several unrelated facts — no verified destination, a route PayHold cannot
+ * complete, and (since PayHold's `hold_payout_unfunded`) our payment
+ * provider simply not having settled enough into a sendable balance yet.
+ * That last one is not "something is wrong" the way the others are; it is
+ * "not yet", and a host told to expect a route problem for what is really a
+ * clock would go looking for something to fix that isn't theirs to fix.
  *
  * **`holdReason` is deliberately not used.** It carries the rail's own words,
  * and the first version of this preferred it on the grounds that it is more
@@ -251,14 +259,24 @@ const UNKNOWN_STAGE = {
  * integrator — `payhold-backend/CLAUDE.md` is explicit that a host has not
  * seen the call their app made and cannot act on its vocabulary. The rail's
  * text still reaches the people who can use it, on PayHold's own Payouts
- * screen, which is where an operator already reads it.
+ * screen, which is where an operator already reads it. `payoutReasonCode` is
+ * the one exception: it is a stable code, not the rail's sentence, so
+ * switching on it carries none of that risk.
  *
  * The rule those sentences follow is `payhold-backend/CLAUDE.md`'s: name the
  * fact, then the action they can take. Never the mechanism — a host has not
  * seen `screen_payout` and cannot act on it — and never blame, because in four
  * of these five the hold is ours.
  */
-function holdSentence(payoutStatus: string | null): string {
+function holdSentence(payoutStatus: string | null, payoutReasonCode: string | null): string {
+  if (payoutStatus === 'blocked' && payoutReasonCode === 'rail_balance_short') {
+    // Nothing has been refused and no route is being searched for — we
+    // simply asked our payment provider first and it said this much is not
+    // sendable yet. Clearance is 14 days by default, so this is usually
+    // already resolved by the time a payout is due; when it isn't, it is
+    // still nothing the host caused or can hurry along.
+    return "Your payout is ready on our side, but our payment provider hasn't finished settling it into a sendable balance yet. This is temporary and clears on its own — nothing for you to do, and your money is not at risk. We check again automatically.";
+  }
   switch (payoutStatus) {
     case 'held_for_review':
       // A risk rule or a person stopped it, and only a person releases it
@@ -449,6 +467,56 @@ export function EarningsPage() {
     (withdrawable.length === 1 ? withdrawable[0] : null) ??
     null;
 
+  /**
+   * The headline figure and the button that acts on it, worked out once.
+   *
+   * These lived in two places — the hero at the top and the "Ready to send"
+   * card near the bottom — reading the same source, in the same currency, at
+   * the same moment, deliberately: the hero was changed to read
+   * `seller_withdrawable` precisely so the two could never disagree. Which
+   * means that on a phone, where nothing sits side by side, the page printed
+   * one number twice, thirteen hundred pixels apart, and put the only button
+   * that sends money below both — past the payout account, the balance bar and
+   * the exchange table. The thing a host opens this page to do was the last
+   * thing on it.
+   *
+   * So the figure and its button are one block now, at the top, and the card
+   * below keeps only what it alone knows: what is stuck, what the rail said,
+   * and how much is still on its way.
+   *
+   * **A zero is the wrong headline when the money is moving.** With everything
+   * in flight this read "Ready to send · $0.00" over a disabled button beside
+   * a wallet showing a real balance, which looks like the money went missing
+   * and the button broke. Both figures were right; the pairing was the lie.
+   */
+  const inFlightLeads =
+    !!withdrawableForCurrency &&
+    withdrawableForCurrency.availableAmount === 0 &&
+    withdrawableForCurrency.requestedAmount > 0;
+  const hasAvailable = (withdrawableForCurrency?.availableAmount ?? 0) > 0;
+  /**
+   * "Send it now" doubles as a retry: `request_withdrawal` claims payouts in
+   * `scheduled`, `blocked`, `needs_verification`, `failed` or `frozen`, not
+   * only ones already sitting at a sendable amount. Gating on
+   * `availableAmount > 0` alone left a host with everything stuck at `blocked`
+   * unable to attempt the one action that might unstick it — a live retry
+   * against production confirmed the call reaches the real payout rail even
+   * when `availableAmount` reads zero. `heldCount` stays out on purpose: a
+   * `held_for_review` payout waits on a named person clearing it (invariant
+   * 11), which a retry from here cannot do regardless of button state.
+   */
+  const hasRetriable =
+    (withdrawableForCurrency?.blockedCount ?? 0) > 0 ||
+    (withdrawableForCurrency?.needsVerificationCount ?? 0) > 0;
+  /** Whether the card below still has anything of its own left to say. */
+  const hasPayoutTrouble =
+    !!withdrawableForCurrency &&
+    (withdrawableForCurrency.stuckAmount > 0 ||
+      withdrawableForCurrency.heldCount > 0 ||
+      withdrawableForCurrency.needsVerificationCount > 0 ||
+      withdrawableForCurrency.blockedCount > 0 ||
+      withdrawableForCurrency.requestedCount > 0);
+
   return (
     <section className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
       <button
@@ -459,83 +527,133 @@ export function EarningsPage() {
         <ArrowLeft size={16} /> Back
       </button>
 
-      {/* Hero — a plain surface, not a tinted band: this is the one screen
-          where the balance figure genuinely is the point, so weight and size
-          carry it, not a green background behind it. */}
+      {/* The money, and the one thing you can do with it, in one block at the
+          top. On a phone this is the whole reason the page exists and it now
+          fits on the first screen; on a desktop it is the same block, wider.
+          A plain surface, not a tinted band — the figure's size and weight say
+          "this matters", and the send button already carries the page's one
+          accent. */}
       <div className="rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-5 py-6 sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
-              <Wallet size={20} />
-            </span>
-            <div>
-              <h1 className="text-h2 text-[var(--color-content)]">Earnings</h1>
-              <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
-                Every trip's money, and when it reaches you.
-              </p>
-            </div>
+        {/* The wallet icon and the strapline are desktop furniture: on a 390px
+            screen they cost a third of the first view to say what the heading
+            already says. Below `sm` the heading stands on its own. */}
+        <div className="flex items-center gap-3">
+          <span className="hidden h-11 w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)] sm:flex">
+            <Wallet size={20} />
+          </span>
+          <div>
+            <h1 className="text-h2 text-[var(--color-content)]">Earnings</h1>
+            <p className="mt-0.5 hidden text-body-sm text-[var(--color-content-muted)] sm:block">
+              Every trip's money, and when it reaches you.
+            </p>
           </div>
-
-          {/* The figure and its label have to come from the same question, and
-              for a while they did not. This read `balanceForCurrency.available`
-              — the wallet's own cleared figure, in the currency the renter was
-              charged — under the label "Available to send", which is
-              `seller_withdrawable`'s question and a different number in a
-              different currency on any cross-border trip. A host saw
-              "AVAILABLE TO SEND RF 405,347" here above "Ready to send to your
-              account RF 0" in the card below, both true of their own source and
-              flatly contradictory on one screen.
-
-              So the hero now reads the withdrawable figure: the same source,
-              currency and moment as the card, which is the only way the two
-              cannot disagree. `available` keeps its place in "Your money"
-              below, where it is labelled as the wallet's and belongs.
-
-              With no withdrawable row there is no payout destination and
-              nothing can be sent from anywhere, so the honest hero is a zero
-              rather than the wallet's figure wearing this label.
-
-              On a phone this block wraps onto its own line, and `text-right`
-              alone left it right-aligned inside a box only as wide as the
-              words — so the figure sat at an indent that matched nothing on
-              the card, neither its left edge nor its right. It takes the full
-              width and reads left below `sm`, and only becomes the right-hand
-              column when the hero is actually two columns. */}
-          {withdrawableForCurrency ? (
-            <div className="w-full text-left sm:w-auto sm:text-right">
-              <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
-                Available to send
-              </p>
-              <p className="tabular mt-0.5 text-display leading-tight text-[var(--color-content)]">
-                {money(withdrawableForCurrency.availableAmount, withdrawableForCurrency.currency)}
-              </p>
-            </div>
-          ) : balanceForCurrency ? (
-            <div className="w-full text-left sm:w-auto sm:text-right">
-              <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
-                Available to send
-              </p>
-              <p className="tabular mt-0.5 text-display leading-tight text-[var(--color-content)]">
-                {money(0, balanceForCurrency.currency)}
-              </p>
-            </div>
-          ) : (
-            (wallet.isLoading || earnings.isLoading) &&
-            !notConfigured && (
-              <div className="w-full text-left sm:w-auto sm:text-right" aria-busy="true" aria-label="Loading">
-                <Skeleton className="h-3 w-28 sm:ml-auto" />
-                <Skeleton className="mt-1.5 h-9 w-32 sm:ml-auto" />
-              </div>
-            )
-          )}
         </div>
+
+        {/* The figure and its label have to come from the same question, and
+            for a while they did not. This read `balanceForCurrency.available`
+            — the wallet's own cleared figure, in the currency the renter was
+            charged — under the label "Available to send", which is
+            `seller_withdrawable`'s question and a different number in a
+            different currency on any cross-border trip. A host saw "AVAILABLE
+            TO SEND RF 405,347" above "Ready to send to your account RF 0",
+            both true of their own source and flatly contradictory on one
+            screen. It reads the withdrawable row for that reason, and the
+            wallet's `available` keeps its place in "Your money" below, where
+            it is labelled as the wallet's and belongs. */}
+        {withdrawableForCurrency ? (
+          <div className="mt-5">
+            <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
+              {inFlightLeads ? 'On its way to your account' : 'Available to send'}
+            </p>
+            <p className="tabular mt-0.5 text-display leading-tight text-[var(--color-content)]">
+              {money(
+                inFlightLeads
+                  ? withdrawableForCurrency.requestedAmount
+                  : withdrawableForCurrency.availableAmount,
+                withdrawableForCurrency.currency,
+              )}
+            </p>
+            <p className="tabular mt-1.5 text-caption text-[var(--color-content-muted)]">
+              {inFlightLeads ? (
+                <>
+                  {withdrawableForCurrency.requestedCount} trip
+                  {withdrawableForCurrency.requestedCount === 1 ? '' : 's'} with{' '}
+                  {primary?.label ?? 'your payout provider'} — nothing left here to send
+                </>
+              ) : (
+                <>
+                  {withdrawableForCurrency.availableCount} trip
+                  {withdrawableForCurrency.availableCount === 1 ? '' : 's'}
+                  {withdrawableForCurrency.clearingAmount > 0 &&
+                    ` · ${money(withdrawableForCurrency.clearingAmount, withdrawableForCurrency.currency)} still clearing`}
+                  {withdrawableForCurrency.requestedCount > 0 &&
+                    ` · ${withdrawableForCurrency.requestedCount} already on the way`}
+                </>
+              )}
+            </p>
+
+            {/* Full width on a phone — it is the page's one action and the
+                thumb is already at that edge — and its own size from `sm`,
+                where a 700px button reads as a banner. */}
+            <Button
+              className="mt-4 w-full sm:w-auto"
+              disabled={
+                (!hasAvailable && !hasRetriable) || withdraw.isPending || !w?.canReceivePayouts
+              }
+              onClick={() => withdraw.mutate()}
+            >
+              <Send size={16} />
+              {withdraw.isPending
+                ? 'Sending…'
+                : hasAvailable
+                  ? 'Send it now'
+                  : hasRetriable
+                    ? 'Retry stuck payouts'
+                    : 'Send it now'}
+            </Button>
+
+            {/* One destination, so nothing to pick — just say where it's
+                going, because "Send it now" should never be the first time a
+                host finds out. */}
+            {primary && (
+              <p className="mt-2 text-caption text-[var(--color-content-muted)]">
+                {primaryReady
+                  ? `Going to ${primary.label ?? primary.maskedDestination}`
+                  : `${primary.label ?? primary.maskedDestination} isn't usable yet — ${
+                      !primary.verifiedAt
+                        ? 'still being verified'
+                        : `on hold until ${formatDate(primary.securityHoldUntil!)}`
+                    }.`}
+              </p>
+            )}
+          </div>
+        ) : balanceForCurrency ? (
+          /* No withdrawable row means no payout destination, so nothing can be
+             sent from anywhere: the honest headline is a zero rather than the
+             wallet's figure wearing this label. */
+          <div className="mt-5">
+            <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
+              Available to send
+            </p>
+            <p className="tabular mt-0.5 text-display leading-tight text-[var(--color-content)]">
+              {money(0, balanceForCurrency.currency)}
+            </p>
+          </div>
+        ) : (
+          (wallet.isLoading || earnings.isLoading) &&
+          !notConfigured && (
+            <div className="mt-5" aria-busy="true" aria-label="Loading">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="mt-1.5 h-9 w-40" />
+            </div>
+          )
+        )}
 
         {/* The currency chips that used to sit here are gone. They selected
             which single balance the "Your money" card rendered, which is the
             mechanism that hid a host's second currency from them entirely —
             every balance is on screen now, so a control for choosing one is a
-            control with nothing to do. "Ready to send" resolves its own
-            currency from the payout destination, as it always did. */}
+            control with nothing to do. */}
       </div>
 
       {(wallet.isLoading || earnings.isLoading) && !notConfigured && <EarningsSkeleton />}
@@ -670,8 +788,23 @@ export function EarningsPage() {
                     : "You don't have a payout method yet. Money from your trips will wait here until you add one."}
                 </p>
               )}
-              {primary && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5">
+              {primary && (() => {
+                const statusBadge = (
+                  <Badge tone={primaryReady ? 'success' : 'neutral'}>
+                    {primaryReady
+                      ? 'Ready'
+                      : !primary.verifiedAt
+                        ? 'Being verified'
+                        : `On hold until ${formatDate(primary.securityHoldUntil!)}`}
+                  </Badge>
+                );
+                return (
+                /* A box inside a box costs 24px of a 390px screen to draw a
+                   line around the only thing in the card. Below `sm` the row
+                   sits flush in the card body and the border starts at `sm`,
+                   where there is width to spare and it separates the row from
+                   the header. */
+                <div className="flex flex-wrap items-center justify-between gap-3 sm:rounded-[var(--radius-control)] sm:border sm:border-[var(--color-line)] sm:px-3 sm:py-2.5">
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
                       {/* A card reads as a card, a wallet as a wallet — not
@@ -684,8 +817,12 @@ export function EarningsPage() {
                       <PayoutMethodIcon size={16} />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-body-sm font-medium text-[var(--color-content)]">
+                      <p className="flex items-center gap-2 text-body-sm font-medium text-[var(--color-content)]">
                         {primary.label ?? primary.maskedDestination}
+                        {/* Beside the name on a phone, where the row has no
+                            second column and the badge was landing on a line
+                            of its own under a long email address. */}
+                        <span className="sm:hidden">{statusBadge}</span>
                       </p>
                       <p className="break-words text-caption text-[var(--color-content-muted)]">
                         {primary.maskedDestination} ·{' '}
@@ -704,15 +841,10 @@ export function EarningsPage() {
                       </p>
                     </div>
                   </div>
-                  <Badge tone={primaryReady ? 'success' : 'neutral'}>
-                    {primaryReady
-                      ? 'Ready'
-                      : !primary.verifiedAt
-                        ? 'Being verified'
-                        : `On hold until ${formatDate(primary.securityHoldUntil!)}`}
-                  </Badge>
+                  <span className="hidden sm:inline-flex">{statusBadge}</span>
                 </div>
-              )}
+                );
+              })()}
             </CardBody>
           </Card>
 
@@ -749,7 +881,10 @@ export function EarningsPage() {
                     onClick={() => setChangingCurrency(true)}
                   >
                     <ArrowLeftRight size={14} />
-                    Change currency
+                    {/* "Change currency" beside a card title is two thirds of a
+                        390px row; the icon and one word carry it there. */}
+                    <span className="sm:hidden">Currency</span>
+                    <span className="hidden sm:inline">Change currency</span>
                   </Button>
                 )}
               </CardHeader>
@@ -855,162 +990,80 @@ export function EarningsPage() {
             </Card>
           )}
 
-          {/* --- Where it goes, and sending it now -----------------------------
-              A plain surface, not a brand-filled banner — this is the one
-              action on Overview, and the "Send it now" button already carries
-              the page's one accent. A big surface behind it too would be
-              exactly the overuse the design system exists to remove; the
-              number's size and weight say "this matters" instead. */}
-          {withdrawableForCurrency && (() => {
-            // Nothing to send, and something already gone: the card is about
-            // the money in flight, not about the zero left behind it.
-            const inFlightLeads = withdrawableForCurrency.availableAmount === 0 &&
-              withdrawableForCurrency.requestedAmount > 0;
-            return (
+          {/* --- What is NOT moving, and why ------------------------------------
+              What is left of the old "Ready to send" card. Its headline figure
+              and its button moved into the hero, where a host looks first and
+              where a phone can reach them — see the note beside `inFlightLeads`.
+              What stays here is everything the hero cannot say in one line:
+              how much is stuck, the rail's own words for why, and the counts
+              behind it.
+
+              It renders only when there is something to report. A card headed
+              "Payout status" saying nothing is a card a host has to read to
+              discover it did not need reading. */}
+          {hasPayoutTrouble && withdrawableForCurrency && (
             <Card className="mt-4">
-              <CardBody className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  {/* **A zero is the wrong headline when the money is moving.**
-                      With everything in flight this card led with "Ready to
-                      send · $0.00" over a disabled button, beside a wallet
-                      reading $1,948.70 available — so it looked like the money
-                      had gone missing and the button was broken. Both figures
-                      were right and the pairing was the lie: nothing is ready
-                      to send precisely BECAUSE it has all been sent.
-                      So when there is nothing available and something is on
-                      its way, the thing on its way is the headline. */}
-                  <p className="text-body-sm text-[var(--color-content-muted)]">
-                    {inFlightLeads ? 'On its way to your account' : 'Ready to send to your account'}
+              <CardHeader>
+                <h2 className="font-semibold text-[var(--color-content)]">Payout status</h2>
+              </CardHeader>
+              <CardBody className="space-y-1.5">
+                {/* The figure first, then the reason. A count on its own —
+                    "1 on hold" — tells a host something is wrong and not how
+                    much of their money it is, which is the question they came
+                    to the page with. */}
+                {withdrawableForCurrency.stuckAmount > 0 && (
+                  <p className="tabular text-body-sm font-semibold text-[var(--color-warn-500)]">
+                    {money(withdrawableForCurrency.stuckAmount, withdrawableForCurrency.currency)}{' '}
+                    not moving yet
                   </p>
-                  <p className="tabular mt-0.5 text-h1 leading-tight text-[var(--color-content)]">
-                    {money(
-                      inFlightLeads
-                        ? withdrawableForCurrency.requestedAmount
-                        : withdrawableForCurrency.availableAmount,
-                      withdrawableForCurrency.currency,
-                    )}
+                )}
+                {withdrawableForCurrency.requestedAmount > 0 && (
+                  <p className="tabular text-body-sm text-[var(--color-content)]">
+                    {money(withdrawableForCurrency.requestedAmount, withdrawableForCurrency.currency)}{' '}
+                    on its way — {withdrawableForCurrency.requestedCount} trip
+                    {withdrawableForCurrency.requestedCount === 1 ? '' : 's'}
                   </p>
-                  <p className="tabular mt-1.5 text-caption text-[var(--color-content-muted)]">
-                    {inFlightLeads ? (
-                      <>
-                        {withdrawableForCurrency.requestedCount} trip
-                        {withdrawableForCurrency.requestedCount === 1 ? '' : 's'} with{' '}
-                        {primary?.label ?? 'your payout provider'} — nothing left here to send
-                      </>
-                    ) : (
-                      <>
-                        {withdrawableForCurrency.availableCount} trip
-                        {withdrawableForCurrency.availableCount === 1 ? '' : 's'}
-                        {withdrawableForCurrency.clearingAmount > 0 &&
-                          ` · ${money(withdrawableForCurrency.clearingAmount, withdrawableForCurrency.currency)} still clearing`}
-                        {withdrawableForCurrency.requestedCount > 0 &&
-                          ` · ${withdrawableForCurrency.requestedCount} already on the way`}
-                      </>
-                    )}
+                )}
+                {/* What the rail itself says, in its own words.
+                    "Not moving yet" with nothing under it is where this page
+                    left a host for twenty-six hours while PayPal held their
+                    $282.37: the dispatcher was asking every five minutes and
+                    the answer went nowhere. Shown verbatim — PayPal's "batch
+                    PENDING, item UNCLAIMED", Flutterwave's "Insufficient funds
+                    in wallet" — because a rail's own sentence is more use than
+                    our paraphrase, and the timestamp is the part that says
+                    somebody is still asking rather than that the job died. */}
+                {withdrawableForCurrency.railStatus && (
+                  <p className="text-caption text-[var(--color-content-muted)]">
+                    {primary?.label ?? 'The payout rail'} says: {withdrawableForCurrency.railStatus}
+                    {withdrawableForCurrency.railStatusAt &&
+                      ` · last checked ${timeAgo(withdrawableForCurrency.railStatusAt)}`}
                   </p>
-                  {/* The figure first, then the reason. A count on its own —
-                      "1 on hold" above a balance of nothing — tells a host
-                      something is wrong and not how much of their money it is,
-                      which is the question they came to the page with. */}
-                  {withdrawableForCurrency.stuckAmount > 0 && (
-                    <p className="tabular mt-1.5 text-body-sm font-semibold text-[var(--color-warn-500)]">
-                      {money(withdrawableForCurrency.stuckAmount, withdrawableForCurrency.currency)}{' '}
-                      not moving yet
-                    </p>
-                  )}
-                  {/* What the rail itself says, in its own words.
-                      "Not moving yet" with nothing under it is where this page
-                      left a host for twenty-six hours while PayPal held their
-                      $282.37: the dispatcher was asking every five minutes and
-                      the answer went nowhere. It is shown verbatim — PayPal's
-                      "batch PENDING, item UNCLAIMED", Flutterwave's
-                      "Insufficient funds in wallet" — because a rail's own
-                      sentence is more use than our paraphrase of it, and the
-                      timestamp is the part that says somebody is still asking
-                      rather than that the job died. */}
-                  {withdrawableForCurrency.railStatus && (
-                    <p className="mt-1 text-caption text-[var(--color-content-muted)]">
-                      {primary?.label ?? 'The payout rail'} says: {withdrawableForCurrency.railStatus}
-                      {withdrawableForCurrency.railStatusAt &&
-                        ` · last checked ${timeAgo(withdrawableForCurrency.railStatusAt)}`}
-                    </p>
-                  )}
-                  {withdrawableForCurrency.stuckSince && (
-                    <p className="mt-1 text-caption text-[var(--color-content-muted)]">
-                      Due since {formatDate(withdrawableForCurrency.stuckSince)}
-                    </p>
-                  )}
-                  {(withdrawableForCurrency.heldCount > 0 ||
-                    withdrawableForCurrency.needsVerificationCount > 0 ||
-                    withdrawableForCurrency.blockedCount > 0) && (
-                    <p className="tabular mt-1 text-caption text-[var(--color-warn-500)]">
-                      {[
-                        withdrawableForCurrency.heldCount > 0 &&
-                          `${withdrawableForCurrency.heldCount} on hold`,
-                        withdrawableForCurrency.needsVerificationCount > 0 &&
-                          `${withdrawableForCurrency.needsVerificationCount} needs verification`,
-                        withdrawableForCurrency.blockedCount > 0 &&
-                          `${withdrawableForCurrency.blockedCount} blocked`,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </p>
-                  )}
-                  {/* One destination, so nothing to pick — just say where it's
-                      going, because "send it now" should never be the first
-                      time a host finds out. */}
-                  {primary && (
-                    <p className="mt-2 text-caption text-[var(--color-content-muted)]">
-                      {primaryReady
-                        ? `Going to ${primary.label ?? primary.maskedDestination}`
-                        : `${primary.label ?? primary.maskedDestination} isn't usable yet — ${
-                            !primary.verifiedAt
-                              ? 'still being verified'
-                              : `on hold until ${formatDate(primary.securityHoldUntil!)}`
-                          }.`}
-                    </p>
-                  )}
-                </div>
-                {/* "Send it now" doubles as a retry: `request_withdrawal` claims
-                    payouts in `scheduled`, `blocked`, `needs_verification`,
-                    `failed` or `frozen`, not only ones already sitting at a
-                    sendable amount. Gating the button on `availableAmount > 0`
-                    alone made a host with everything stuck at `blocked` unable
-                    to even attempt the one action that might unstick it — a
-                    live retry against production confirmed the call goes
-                    through and reaches the real payout rail even when
-                    `availableAmount` reads zero. `heldCount` stays out of the
-                    condition on purpose: a `held_for_review` payout waits on a
-                    named person clearing it (invariant 11), and a retry from
-                    here cannot do that regardless of button state. */}
-                {(() => {
-                  const hasAvailable = withdrawableForCurrency.availableAmount > 0;
-                  const hasRetriable =
-                    withdrawableForCurrency.blockedCount > 0 ||
-                    withdrawableForCurrency.needsVerificationCount > 0;
-                  return (
-                    <Button
-                      className="w-full sm:w-auto"
-                      disabled={
-                        (!hasAvailable && !hasRetriable) || withdraw.isPending || !w?.canReceivePayouts
-                      }
-                      onClick={() => withdraw.mutate()}
-                    >
-                      <Send size={16} />
-                      {withdraw.isPending
-                        ? 'Sending…'
-                        : hasAvailable
-                          ? 'Send it now'
-                          : hasRetriable
-                            ? 'Retry stuck payouts'
-                            : 'Send it now'}
-                    </Button>
-                  );
-                })()}
+                )}
+                {withdrawableForCurrency.stuckSince && (
+                  <p className="text-caption text-[var(--color-content-muted)]">
+                    Due since {formatDate(withdrawableForCurrency.stuckSince)}
+                  </p>
+                )}
+                {(withdrawableForCurrency.heldCount > 0 ||
+                  withdrawableForCurrency.needsVerificationCount > 0 ||
+                  withdrawableForCurrency.blockedCount > 0) && (
+                  <p className="tabular text-caption text-[var(--color-warn-500)]">
+                    {[
+                      withdrawableForCurrency.heldCount > 0 &&
+                        `${withdrawableForCurrency.heldCount} on hold`,
+                      withdrawableForCurrency.needsVerificationCount > 0 &&
+                        `${withdrawableForCurrency.needsVerificationCount} needs verification`,
+                      withdrawableForCurrency.blockedCount > 0 &&
+                        `${withdrawableForCurrency.blockedCount} blocked`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                )}
               </CardBody>
             </Card>
-            );
-          })()}
+          )}
         </>
       )}
 
@@ -1124,16 +1177,9 @@ function EarningsSkeleton() {
         </CardBody>
       </Card>
 
-      <Card className="mt-4">
-        <CardBody className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="mt-1.5 h-9 w-32" />
-            <Skeleton className="mt-2 h-3 w-24" />
-          </div>
-          <Skeleton className="h-10 w-full sm:w-32" />
-        </CardBody>
-      </Card>
+      {/* No third card here any more: the figure and the send button moved
+          into the hero, which draws its own placeholder, and "Payout status"
+          only exists when something is actually stuck. */}
     </div>
   );
 }
@@ -1212,7 +1258,7 @@ function TripRow({ trip, payoutLabel }: { trip: EarningTrip; payoutLabel: string
 
         <p className="text-caption text-[var(--color-content-muted)]">
           {trip.stage === 'on_hold'
-            ? holdSentence(trip.payoutStatus)
+            ? holdSentence(trip.payoutStatus, trip.payoutReasonCode)
             : stage.hint}
           {/* The date is the part a host is really after — "clearing" without
               "until when" is the same as not knowing. */}
@@ -1393,10 +1439,13 @@ function MoneyStat({
       >
         <Icon size={15} />
       </span>
-      <p className="flex-1 text-caption font-medium tracking-wide text-[var(--color-content-subtle)] uppercase sm:mt-2 sm:flex-none">
+      <p className="min-w-0 flex-1 truncate text-caption font-medium tracking-wide text-[var(--color-content-subtle)] uppercase sm:mt-2 sm:flex-none">
         {label}
       </p>
-      <p className="tabular text-body font-bold leading-tight text-[var(--color-content)] sm:mt-0.5 sm:truncate">
+      {/* `min-w-0` and truncation on the phone row too, not only from `sm`:
+          these are RWF figures, and a host with RF 123,456,789 on trips was
+          one digit away from pushing the row past the card. */}
+      <p className="tabular min-w-0 truncate text-body font-bold leading-tight text-[var(--color-content)] sm:mt-0.5">
         {value}
       </p>
     </div>

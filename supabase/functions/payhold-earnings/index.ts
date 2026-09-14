@@ -300,6 +300,10 @@ Deno.serve(async (req: Request) => {
         paidAt: payout?.paid_at ?? null,
         holdReason: payout?.failure_reason ?? null,
         payoutStatus: payout?.status ?? null,
+        // The structured half of holdReason — see EarningsPage's
+        // holdSentence(), which switches on this rather than showing
+        // PayHold's own operator sentence.
+        payoutReasonCode: payout?.reason_code ?? null,
 
         // The payout leg — the same money in the currency it will actually
         // leave in. `net` above is what the renter was charged; on any

@@ -282,6 +282,14 @@ export interface Payout {
   scheduled_for: string | null;
   paid_at: string | null;
   failure_reason: string | null;
+  /**
+   * The same fact as `failure_reason`, as a code: `rail_balance_short`,
+   * `no_eligible_verified_destination`, `destination_not_verified`,
+   * `destination_in_security_hold`, a routing-engine reason, or
+   * `retries_exhausted`. Set only alongside `blocked`. Optional because a
+   * PayHold deployed before this column existed simply does not send it.
+   */
+  reason_code?: string | null;
   attempts: number;
   /**
    * Where the rail last said this transfer is, in the rail's own words —

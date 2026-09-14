@@ -333,6 +333,17 @@ export interface Listing {
   model: string;
   year: number;
   seats: number;
+  /**
+   * When the host took this car off AutoHire, or null while it is live.
+   *
+   * Not a delete. A listing with trips behind it cannot be deleted —
+   * `bookings.listing_id` cascades, and off bookings hang payouts, reviews and
+   * disputes — so removing such a car stamps this instead: gone from browse,
+   * search and booking, still attached to every trip that references it
+   * (migration 100). A listing with no bookings at all is deleted outright and
+   * never reaches this field.
+   */
+  retiredAt?: string | null;
   transmission: Transmission;
   fuel: FuelType;
   /**
@@ -871,6 +882,8 @@ export interface EarningTrip {
   paidAt: string | null;
   holdReason: string | null;
   payoutStatus: string | null;
+  /** The structured form of `holdReason` — see EarningsPage's holdSentence(). */
+  payoutReasonCode: string | null;
   /**
    * The payout leg of the same trip: what will actually leave, in the host's
    * own payout currency, once PayHold has converted `net`.
