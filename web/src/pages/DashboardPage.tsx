@@ -455,7 +455,6 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      {host && <ReconnectPayouts host={host} />}
       {host && <SetupChecklist host={host} listingCount={listings.length} />}
       {host && (
         <div className={cn(selected && 'hidden lg:block')}>
@@ -1481,44 +1480,6 @@ function CarManage({ listing }: { listing: Listing }) {
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * The one thing a host must redo when payments move to PayHold.
- *
- * PayHold tokenizes the RAW payout number, and AutoHire only ever stored a mask
- * (`••••4242`), so there is nothing to migrate — not by fetching, not by a
- * script. Each host enters their number once more or their cars stay
- * unbookable, because a PayHold deal names a seller and they do not have one.
- *
- * Deliberately NOT part of `SetupChecklist`: that hides itself once every step
- * is done, so a host who finished onboarding months ago — exactly the host this
- * affects — would never see it.
- */
-function ReconnectPayouts({ host }: { host: Host }) {
-  // Reconnecting happens here, over the dashboard. This tile exists because
-  // the host's cars are unbookable, so sending them to another page to fix it
-  // is a detour away from the notice explaining why.
-  const [open, setOpen] = useState(false);
-  if (!PAYMENTS_PAYHOLD || host.payholdSellerId) return null;
-
-  return (
-    <Notice tone="warn" className="mt-5 flex-wrap items-center justify-between gap-4">
-      <div className="flex items-start gap-3">
-        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-        <div>
-          <p className="font-semibold">Reconnect your payout account</p>
-          <p className="mt-0.5 max-w-xl text-body-sm">
-            We've moved to a new payments system that holds each renter's money until the trip is
-            done. For your security we never stored your full account number, so please enter it
-            once more. <span className="font-medium">Until you do, your cars can't be booked.</span>
-          </p>
-        </div>
-      </div>
-      <Button onClick={() => setOpen(true)}>Reconnect</Button>
-      <PayoutSetupModal open={open} onClose={() => setOpen(false)} />
-    </Notice>
   );
 }
 
