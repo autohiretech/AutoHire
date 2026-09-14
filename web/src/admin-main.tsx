@@ -88,7 +88,10 @@ createRoot(document.getElementById('root')!).render(
                       from `public/`, which this build replaces with
                       `public-admin/`. The file isn't served here, and an
                       admin tool shouldn't be selling a road trip anyway. */}
-                  <Route path="login" element={<LoginPage backdrop={false} />} />
+                  <Route
+                    path="login"
+                    element={<LoginPage backdrop={false} allowSignup={false} />}
+                  />
                   <Route
                     path="*"
                     element={

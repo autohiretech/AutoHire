@@ -42,20 +42,28 @@ const STEP_BLURB = [
  *
  * `initialMode` is what `/signup` passes, so creating an account is a real URL
  * someone can be sent to rather than a toggle hidden inside `/login`.
+ *
+ * `allowSignup` is off for the admin site. Creating an account there produced
+ * a marketplace account on an internal tool's origin, which `AdminGate` then
+ * refused with "This account isn't an admin" — never a hole, but a door that
+ * should not have been in the wall. Admins are made by admins, not by signing
+ * up at the admin door.
  */
 export function LoginPage({
   backdrop = true,
   initialMode = 'signin',
+  allowSignup = true,
 }: {
   backdrop?: boolean;
   initialMode?: Mode;
+  allowSignup?: boolean;
 }) {
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/';
 
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const [mode, setMode] = useState<Mode>(allowSignup ? initialMode : 'signin');
   const [accountType, setAccountType] = useState<AccountType>('personal');
   const [companyName, setCompanyName] = useState('');
   const [wantsToHost, setWantsToHost] = useState(false);
@@ -281,7 +289,17 @@ export function LoginPage({
               </ol>
             )}
 
-            <form onSubmit={onSubmit} className="mt-7 flex flex-col gap-5">
+            {/* `scroll-mb-32` on every field is what keeps the phone keyboard
+                off the thing you are typing into. When a field is focused the
+                browser scrolls it just barely into view, which on a phone means
+                flush against the top of the keyboard — measured at 390×420
+                (keyboard up) the phone field's bottom border sat exactly on the
+                fold and Continue was 100px under it, so submitting meant
+                dismissing the keyboard first. Scroll-margin makes that
+                scroll-into-view stop short, bringing the button up with it.
+                One rule on the form rather than five on the fields, so a field
+                added later is covered too. */}
+            <form onSubmit={onSubmit} className="mt-7 flex flex-col gap-5 [&_input]:scroll-mb-32">
               {/* `key` is what replays the animation: React tears the old
                   stage down and mounts the new one, so the CSS runs again. */}
               <div
@@ -478,16 +496,18 @@ export function LoginPage({
               </div>
             </form>
 
-            <p className="mt-6 text-center text-body-sm text-[var(--color-content-muted)]">
-              {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
-              <button
-                type="button"
-                onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
-                className="font-medium text-[var(--color-accent-on)] hover:underline"
-              >
-                {mode === 'signin' ? 'Sign up' : 'Sign in'}
-              </button>
-            </p>
+            {allowSignup && (
+              <p className="mt-6 text-center text-body-sm text-[var(--color-content-muted)]">
+                {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+                <button
+                  type="button"
+                  onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
+                  className="font-medium text-[var(--color-accent-on)] hover:underline"
+                >
+                  {mode === 'signin' ? 'Sign up' : 'Sign in'}
+                </button>
+              </p>
+            )}
           </div>
         </section>
       </div>

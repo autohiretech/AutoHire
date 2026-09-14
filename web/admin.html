@@ -3,7 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Same `interactive-widget=resizes-content` as the marketplace entry:
+         when the on-screen keyboard opens, Chrome on Android shrinks the
+         layout to the space above it, instead of shrinking only the visual
+         viewport and leaving the layout its full height. The sign-in screen
+         is shared with the marketplace and centres itself in the layout
+         viewport, so without this it centres against a height the keyboard is
+         covering the bottom of. iOS ignores it; `useVisualViewport` covers
+         Safari. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <!-- Tints the phone's own browser chrome to match the app shell, so the
          status bar doesn't sit as a white band above a dark page (or vice
          versa). Two tags, one per scheme — there is no token indirection here
