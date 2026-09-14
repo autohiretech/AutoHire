@@ -86,7 +86,30 @@ async function ensureProfile(user: User): Promise<void> {
             role: 'renter',
           };
 
-  await getSupabase().from('profiles').upsert(row, { onConflict: 'id', ignoreDuplicates: true });
+  const { error } = await getSupabase()
+    .from('profiles')
+    .upsert(row, { onConflict: 'id', ignoreDuplicates: true });
+  if (!error) return;
+
+  // `profiles_phone_unique` (migration 095) can refuse this row: the sign-up
+  // form checks the number against the database, but two people can pass that
+  // check in the same second, and an account created before the constraint
+  // existed may already hold the number.
+  //
+  // The auth user exists by now either way, so failing here would leave
+  // someone signed in with no profile at all — every screen that reads
+  // `useCurrentUser` blank, and no way out of it. The number is the one field
+  // that can be dropped and fixed later (Account → phone), so the row goes in
+  // without it rather than not at all.
+  if (error.code === '23505' && error.message.includes('profiles_phone_unique')) {
+    console.warn('ensureProfile: phone already registered, creating the profile without it');
+    const { error: retryError } = await getSupabase()
+      .from('profiles')
+      .upsert({ ...row, phone: '' }, { onConflict: 'id', ignoreDuplicates: true });
+    if (retryError) console.error('ensureProfile retry failed', retryError);
+    return;
+  }
+  console.error('ensureProfile failed', error);
 }
 
 interface SignUpDetails {

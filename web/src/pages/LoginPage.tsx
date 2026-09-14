@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Check, ChevronRight, Pencil, User } from 'lucide-react';
+import { ArrowLeft, Building2, Check, ChevronRight, Eye, EyeOff, Pencil, User } from 'lucide-react';
 import { AuthBackdrop } from '@/components/AuthBackdrop';
 import { BrandMark } from '@/components/BrandMark';
 import { CountryCombobox } from '@/components/CountryCombobox';
@@ -123,6 +123,17 @@ export function LoginPage({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  /**
+   * Typed a second time, and shown on request.
+   *
+   * A password you cannot see and only type once is a password you find out
+   * you mistyped at the sign-in screen, with no way to tell which of the two
+   * things went wrong. Both controls exist so that neither happens: the
+   * second field catches the typo now, and the reveal lets someone check
+   * their own work instead of guessing.
+   */
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +233,8 @@ export function LoginPage({
       }
       return null;
     }
+    if (password.length < 6) return 'Your password needs at least 6 characters.';
+    if (confirmPassword !== password) return "Those two passwords don't match.";
     if (!acceptedTerms) return 'Please accept the terms to continue.';
     return null;
   }
@@ -718,22 +731,66 @@ export function LoginPage({
                   <>
                     <div>
                       <Label htmlFor="password">Password</Label>
-                      <Input
-                        id="password"
-                        name="password"
-                        type="password"
-                        autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        minLength={6}
-                      />
+                      {/* The reveal is inside the field rather than a
+                          checkbox beside it, so the control is where the
+                          problem is. It toggles both boxes at once: checking
+                          one against the other is the whole reason to look. */}
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          name="password"
+                          type={showPassword ? 'text' : 'password'}
+                          autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                          minLength={6}
+                          className="pr-11"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          aria-pressed={showPassword}
+                          className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-r-[var(--radius-control)] text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
                       {mode === 'signup' && (
                         <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
                           At least 6 characters.
                         </p>
                       )}
                     </div>
+
+                    {mode === 'signup' && (
+                      <div>
+                        <Label htmlFor="confirmPassword">Confirm password</Label>
+                        <Input
+                          id="confirmPassword"
+                          type={showPassword ? 'text' : 'password'}
+                          autoComplete="new-password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          aria-invalid={confirmPassword.length > 0 && confirmPassword !== password}
+                          required
+                        />
+                        {/* Only once there is something to compare — nagging
+                            about a mismatch after the first keystroke of the
+                            second box is just describing an unfinished job. */}
+                        {confirmPassword.length > 0 && confirmPassword !== password && (
+                          <p className="mt-1 text-caption text-[var(--color-danger-500)]">
+                            These don't match yet.
+                          </p>
+                        )}
+                        {confirmPassword.length > 0 && confirmPassword === password && (
+                          <p className="mt-1 flex items-center gap-1 text-caption text-[var(--color-content-subtle)]">
+                            <Check size={12} /> Match.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {mode === 'signup' && (
                       <label className="flex items-start gap-2 text-body-sm text-[var(--color-content-muted)]">
