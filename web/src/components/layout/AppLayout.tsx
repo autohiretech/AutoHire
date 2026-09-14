@@ -10,6 +10,7 @@ import { BottomTabBar } from './BottomTabBar';
 import { NotificationsProvider } from '@/components/NotificationsProvider';
 import { LocationPrompt } from '@/components/marketplace/LocationPrompt';
 import { PwaInstallPrompt } from '@/components/PwaInstallPrompt';
+import { VerificationReminder } from '@/components/VerificationReminder';
 import { ScrollMemory } from '@/components/ScrollMemory';
 import { AiAssistantProvider } from '@/lib/aiAssistantContext';
 
@@ -62,6 +63,10 @@ export function AppLayout() {
           {/* Portal-rendered (see Modal), so its place in this tree is just
               "mounted once per app," not tied to fullBleed or page layout. */}
           <PwaInstallPrompt />
+          {/* Reminds, never gates — renting works at any verification status.
+              Once a week per account at most, and never on the page it is
+              pointing at. */}
+          <VerificationReminder />
           {/* Eco commitment banner — AutoHire's fleet is overwhelmingly clean-energy.
               This used to be a full-width solid brand-green bar above the
               header, which put the accent at the very top of every screen
