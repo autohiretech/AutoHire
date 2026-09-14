@@ -1103,6 +1103,36 @@ export const supabaseClient = {
   },
 
   /**
+   * The same two lists as `payholdPayoutCountries()` above, from a function a
+   * signed-OUT visitor can call.
+   *
+   * `payhold-payment-options` requires a user session — it reads the
+   * Authorization header as a user JWT and 401s on anything else — which is
+   * right for the payout screen and wrong for the country picker on /signup,
+   * where nobody has an account yet. Every signed-out load of that page got a
+   * 401, the picker's catch swallowed it, and the visitor was offered four
+   * hardcoded countries: a host in Nairobi or Lisbon was told at the door that
+   * AutoHire does not serve their market.
+   *
+   * `payhold-catalogue` is a separate, narrower endpoint that returns only the
+   * catalogue — no seller, no balances, no per-user anything — so it can be
+   * served without a session. It is still authenticated at the gateway by the
+   * app's anon key, which supabase-js sends for us when there is no user.
+   *
+   * Use this wherever the caller may not be signed in; `payholdPayoutCountries`
+   * stays for screens that are behind auth anyway.
+   */
+  async payholdCatalogue(): Promise<{ countries: PayoutCountry[]; currencies: string[] }> {
+    const { data, error } = await getSupabase().functions.invoke('payhold-catalogue', {
+      method: 'GET',
+    });
+    if (error) throw await fnError(error);
+    const payload = data as { countries?: PayoutCountry[]; currencies?: string[]; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return { countries: payload.countries ?? [], currencies: payload.currencies ?? [] };
+  },
+
+  /**
    * What THIS country can actually be paid with — `payoutRoute`'s own
    * decision, the same one `route_payout` would reach. The bulk list above can
    * only say whether a country is payable at all; this is what the payout

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { cn } from '@/lib/cn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,7 +15,6 @@ import { useCountry } from '@/lib/country';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { citiesFor } from '@/lib/cities';
 import { CAR_CATEGORIES, CATEGORY_GROUPS, isMachine } from '@/lib/categories';
-import { CURRENCIES, type CurrencyCode } from '@/lib/currency';
 
 const FUELS: { value: FuelType; label: string }[] = [
   { value: 'petrol', label: 'Petrol' },
@@ -75,7 +74,7 @@ export function ListCarPage() {
   // A car is registered in the host's account country — set on the Account
   // page, not chosen per-listing. That's the one thing that stops a host's
   // fleet from spreading across markets they don't actually operate in.
-  const { countries } = useCountry();
+  const { countries, currencies } = useCountry();
   const { data: me } = useCurrentUser();
   const accountCountry = me?.country;
 
@@ -229,6 +228,21 @@ export function ListCarPage() {
   const selectedCountry = countries.find((c) => c.code === accountCountry);
   const suggestedCurrency = selectedCountry?.currency ?? 'RWF';
   const currency = priceCurrencyTouched ? priceCurrency : suggestedCurrency;
+  /**
+   * What the currency picker offers: PayHold's collectible list, plus whatever
+   * this car is priced in today.
+   *
+   * The second half matters on edit. A `<select>` whose `value` is absent from
+   * its options renders as the first option instead, so a listing priced in a
+   * currency PayHold has since stopped collecting would silently reprice
+   * itself the moment its host opened the edit form to change something else.
+   * It stays in the list so the change is theirs to make, not ours to make for
+   * them. The market suggestion is included on the same reasoning.
+   */
+  const currencyOptions = useMemo(() => {
+    const codes = currencies.map((c) => c.currency);
+    return [...new Set([...codes, suggestedCurrency, ...(currency ? [currency] : [])])].sort();
+  }, [currencies, suggestedCurrency, currency]);
   const cities = accountCountry ? citiesFor(accountCountry) : [];
 
   // Default the city once the account country is known — but only for a new
@@ -720,11 +734,22 @@ export function ListCarPage() {
                   id="price-currency"
                   value={currency}
                   onChange={(e) => {
-                    setPriceCurrency(e.target.value as CurrencyCode);
+                    setPriceCurrency(e.target.value);
                     setPriceCurrencyTouched(true);
                   }}
                 >
-                  {Object.keys(CURRENCIES).map((code) => (
+                  {/* **PayHold's collectible currencies, not ours.**
+                      This listed `Object.keys(CURRENCIES)` — the four markets
+                      hardcoded in `lib/currency.ts`. That is a list of the
+                      places AutoHire sells in, which is not the question this
+                      control asks: it asks what a renter can be *charged*, and
+                      only PayHold knows that. The two came apart in both
+                      directions — a host could price a car in a currency no
+                      rail can collect, leaving a listing nobody is able to
+                      book, and a currency PayHold had since added could not be
+                      chosen at all. `currencies` is PayHold's own
+                      `payment-options` list (see lib/country.tsx). */}
+                  {currencyOptions.map((code) => (
                     <option key={code} value={code}>
                       {code}
                       {code === suggestedCurrency ? ' (your market)' : ''}

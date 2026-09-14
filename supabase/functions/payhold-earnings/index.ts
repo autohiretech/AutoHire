@@ -218,12 +218,18 @@ Deno.serve(async (req: Request) => {
     // Car titles in one query rather than one per row.
     const { data: listings } = await admin
       .from('listings')
-      .select('id, title, photos')
+      .select('id, title, photos, price_currency')
       .in('id', [...new Set(page.map((b) => b.listing_id))]);
     const titleById = new Map(
       (listings ?? []).map((l) => [
         l.id as string,
-        { title: l.title as string, photo: ((l.photos as string[]) ?? [])[0] ?? null },
+        {
+          title: l.title as string,
+          photo: ((l.photos as string[]) ?? [])[0] ?? null,
+          // The car's own currency — `listings.price_currency` is NOT NULL, so
+          // every listing has one. See the currency fallback chain below.
+          currency: l.price_currency as string,
+        },
       ]),
     );
 
@@ -268,7 +274,18 @@ Deno.serve(async (req: Request) => {
         stage: deal ? stageFor(deal.status, payout) : 'on_trip',
         dealStatus: deal?.status ?? null,
 
-        currency: deal?.amounts?.currency ?? deal?.currency ?? b.charge_currency ?? 'RWF',
+        // PayHold's own figure first, then what the booking was charged in,
+        // then the car's. The last link used to be the literal 'RWF': a
+        // Dubai or Nairobi car whose deal was unreachable and whose
+        // `charge_currency` predates that column had its figures labelled in
+        // a currency it has never been priced in — and the only figure that
+        // survives an unreachable deal is `amountOwedRwf`, which is AutoHire's
+        // own and is in the car's currency, so the constant was wrong exactly
+        // when it was the one being used. The listing knows; nothing here
+        // needs to guess.
+        currency:
+          deal?.amounts?.currency ?? deal?.currency ?? b.charge_currency ?? listing?.currency ??
+          'RWF',
         // What the renter paid, what we took, what the host earns. Separate
         // because a host querying a number is almost always querying the gap.
         gross: deal?.amounts?.buyer_paid ?? null,

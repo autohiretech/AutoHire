@@ -142,7 +142,20 @@ export function CountryProvider({ children }: { children: ReactNode }) {
     let active = true;
     (async () => {
       try {
-        const opts = await client.payholdPayoutCountries();
+        // **The public catalogue endpoint, not the authed one.**
+        //
+        // This provider wraps the whole app, signed-out pages included, and
+        // /signup asks it for the country list before anyone has an account.
+        // It used to call `payholdPayoutCountries()`, which goes to
+        // `payhold-payment-options` — a function that reads the Authorization
+        // header as a user JWT and returns 401 without a session. So on every
+        // signed-out load this threw, the catch below kept FALLBACK_COUNTRIES,
+        // and a visitor was offered exactly four countries by an app whose
+        // whole point is that it no longer guesses which markets exist.
+        //
+        // `payholdCatalogue()` returns the same two lists from an endpoint that
+        // serves catalogue data only and therefore needs no session.
+        const opts = await client.payholdCatalogue();
         if (!active) return;
         const next = toCountries(opts.countries);
         if (next.length) {
@@ -151,11 +164,33 @@ export function CountryProvider({ children }: { children: ReactNode }) {
           // country is no longer listed, fall back to the default.
           setCountryState(loadInitial(next));
         }
-        // Union with country-derived currencies as a defensive fallback —
-        // `opts.currencies` should already be a superset, but a market's own
-        // home currency should never go missing if that list is ever short.
-        const union = new Set([...opts.currencies, ...next.map((c) => c.currency)]);
-        if (union.size) setCurrencyCodes([...union]);
+        // **Both of PayHold's answers, because they answer different questions.**
+        //
+        // This started as a union of `opts.currencies` with every *available*
+        // country's home currency. I narrowed it to `opts.currencies` alone on
+        // the reasoning that `isAvailable` passes a country on
+        // `can_collect || can_payout`, so payout-only markets were contributing
+        // currencies to a list documented as "every currency PayHold can
+        // actually collect". That reasoning was right and the change was wrong,
+        // and the live catalogue is what showed it: PayHold's tenant
+        // `currencies` is EUR, USD, SLE, RWF — four codes — while AE and CN
+        // both come back `can_collect: true` with AED and CNY. AutoHire has 250
+        // AED cars and 250 CNY cars in production. Narrowing to the tenant list
+        // would have taken both currencies off the header picker and out of the
+        // listing form, for 500 live cars.
+        //
+        // The two fields are not a list and a shorter version of it. The tenant
+        // `currencies` is what this deployment's rails are configured to
+        // present in; a country's `currency` is what that market charges in.
+        // Neither contains the other, so the answer needs both — and the fix
+        // for the original complaint is to filter on `can_collect` here rather
+        // than to drop the country side, because *that* is what kept
+        // payout-only markets out.
+        const collectable = opts.countries
+          .filter((c) => c.can_collect && !c.restricted)
+          .map((c) => c.currency);
+        const supported = [...new Set([...opts.currencies, ...collectable])];
+        if (supported.length) setCurrencyCodes(supported);
       } catch {
         // Keep the fallback list — better a short list than none, and the
         // payout screen falls back to its own hardcoded rules otherwise.
