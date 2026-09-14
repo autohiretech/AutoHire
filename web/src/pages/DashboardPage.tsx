@@ -34,7 +34,7 @@ import { useMatchMedia } from '@/lib/useVisualViewport';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/format';
 import { bookingCurrency, formatAmount, formatTotals, sumByCurrency } from '@/lib/money';
-import { formatMoney } from '@/lib/currency';
+import { formatMoney, formatMoneyMinor } from '@/lib/currency';
 import { listingHeadlinePrice } from '@/lib/pricing';
 import { PAYMENTS_PAYHOLD } from '@/lib/payments';
 import { PAYOUT_CHANNEL_LABEL, PAYOUT_STATUS_META } from '@/lib/payouts';
@@ -154,6 +154,7 @@ function matchesFilter(filter: CarFilter, bookings: Booking[]) {
  * one place instead of tab-hopping across global lists.
  */
 export function DashboardPage() {
+  const navigate = useNavigate();
   const [view, setView] = useState<View>('cars');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -403,6 +404,14 @@ export function DashboardPage() {
     onClick: () => focusFilter('trip'),
     active: view === 'cars' && filter === 'trip',
   };
+  // The same query and key /earnings uses, so the tile and that page can
+  // never show two different "paid" figures for one host.
+  const wallet = useQuery({
+    queryKey: ['payholdWallet'],
+    queryFn: () => client.payholdBalance(),
+    enabled: !!host?.payholdSellerId,
+  });
+
   const overdueStat = {
     icon: AlertTriangle,
     label: 'Overdue',
@@ -412,11 +421,37 @@ export function DashboardPage() {
     onClick: () => focusFilter('overdue'),
     active: view === 'cars' && filter === 'overdue',
   };
-  const earnedStat = {
+  /**
+   * What reached the host, not what the renter was quoted.
+   *
+   * This tile said "Earned" and showed `sum(subtotalRwf)` over completed
+   * bookings — the car price before AutoHire's fee and before the rail's. For
+   * this account that read $4,975.00 while PayHold had actually paid the host
+   * $4,763.34, and /earnings one click away said $0.00 available: three money
+   * figures on two screens, and the one wearing the word "Earned" was the one
+   * nobody was ever going to receive. A host reads "Earned" as "mine".
+   *
+   * So the figure is PayHold's, read not computed: `withdrawable[].paidAmount`,
+   * in the host's OWN payout currency after FX — not `balances[].paid_out`,
+   * which is denominated in whatever the renter was charged (RWF on a Kigali
+   * car) and is a different number in a different currency for any
+   * cross-border host. That exact confusion is why the earnings hero was
+   * rewritten. Per currency, joined, never added across currencies. The
+   * booked figure keeps its place as the note, labelled for what it is.
+   */
+  const paid = wallet.data?.withdrawable ?? [];
+  const paidStat = {
     icon: Banknote,
-    label: 'Earned',
-    value: formatTotals(stats.earned, fallbackCurrency),
-    note: `${stats.completed} completed trip${stats.completed === 1 ? '' : 's'}`,
+    label: 'Paid to you',
+    value: wallet.isLoading
+      ? '…'
+      : paid.some((w) => w.paidAmount > 0)
+        ? paid.filter((w) => w.paidAmount > 0).map((w) => formatMoneyMinor(w.paidAmount, w.currency)).join(' · ')
+        : formatMoneyMinor(0, paid[0]?.currency ?? fallbackCurrency),
+    note: stats.completed
+      ? `${stats.completed} trip${stats.completed === 1 ? '' : 's'} · ${formatTotals(stats.earned, fallbackCurrency)} booked before fees`
+      : 'Nothing paid out yet',
+    onClick: () => navigate('/earnings'),
   };
   const payoutsStat = {
     icon: Wallet,
@@ -478,7 +513,7 @@ export function DashboardPage() {
       <div className={cn('mt-2 grid grid-cols-4 gap-1.5 sm:hidden', selected && 'hidden')}>
         <StatCard {...vehiclesStat} compact />
         <StatCard {...tripStat} compact />
-        <StatCard {...earnedStat} compact />
+        <StatCard {...paidStat} compact />
         <StatCard {...payoutsStat} compact />
       </div>
 
@@ -487,7 +522,7 @@ export function DashboardPage() {
         <StatCard {...requestsStat} />
         <StatCard {...tripStat} />
         <StatCard {...overdueStat} />
-        <StatCard {...earnedStat} />
+        <StatCard {...paidStat} />
         <StatCard {...payoutsStat} />
       </div>
 
@@ -1269,9 +1304,11 @@ function RequestRow({ booking, listing }: { booking: Booking; listing: Listing }
   );
 }
 
-/** Per-car settings: price, maintenance, blocked dates. */
-function CarManage({ listing }: { listing: Listing }) {
+/** Per-car settings: price, maintenance, blocked dates, and removing the car. */
+function CarManage({ listing, bookings }: { listing: Listing; bookings: Booking[] }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [removeOpen, setRemoveOpen] = useState(false);
   const [price, setPrice] = useState(String(listing.pricePerDayRwf));
   const [hourlyPrice, setHourlyPrice] = useState(String(listing.pricePerHourRwf ?? ''));
   const [newDate, setNewDate] = useState('');
