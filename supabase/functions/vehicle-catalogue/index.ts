@@ -568,18 +568,56 @@ function sparql(qid: string): string {
 
 type Binding = Record<string, { value: string } | undefined>;
 
+/**
+ * How long one class query gets, and why it is not 45 seconds any more.
+ *
+ * It was, and the car class kept losing. Timed against the live endpoint the
+ * full `Q3231690` pull takes **~33 seconds** for ~14,500 rows — comfortably
+ * inside 45 on a good run, and over it often enough that production kept
+ * reporting `wikidata: partial`. The budget was not generous, it was roughly
+ * the size of the job, so ordinary variance decided the outcome.
+ *
+ * 55s is the most that is available: Wikidata enforces its own 60-second
+ * ceiling, so anything higher is a number this side would never reach. The
+ * three classes still run in parallel, so the wall clock is the slowest of
+ * them, not their sum.
+ *
+ * **Making the query cheaper was tried first and rejected.** Replacing
+ * `SERVICE wikibase:label` with `rdfs:label` filtered to English runs in 10s —
+ * three times faster — and drops ~1,800 items, because an item whose English
+ * label is missing simply vanishes from the result. One of them is the
+ * Lamborghini Sesto Elemento, a real car whose name Wikidata now carries as a
+ * multilingual (`mul`) label rather than an English one. On the car side that
+ * trade buys speed with refusals: a host with a Sesto Elemento would be told
+ * their car does not exist. Accepting `en` and `mul` together restores it and
+ * costs 43s — slower than what we have, because each OPTIONAL then multiplies
+ * rows. The label service already resolves this fallback correctly, so it
+ * stays, and the budget moves instead.
+ */
+const WIKIDATA_QUERY_MS = 55_000;
+
 async function fetchClass(qid: string): Promise<Binding[]> {
   const url = `${WIKIDATA_ENDPOINT}?query=${encodeURIComponent(sparql(qid))}`;
-  const res = await fetch(url, {
-    headers: { Accept: 'application/sparql-results+json', 'User-Agent': WIKIDATA_UA },
-    // Wikidata's own ceiling is 60s. Giving up at 45 leaves the other classes
-    // time to finish inside one request rather than taking the whole build
-    // down with the slowest query.
-    signal: AbortSignal.timeout(45_000),
-  });
-  if (!res.ok) throw new Error(`Wikidata ${qid} answered ${res.status}`);
-  const body = (await res.json()) as { results?: { bindings?: Binding[] } };
-  return body.results?.bindings ?? [];
+  // One retry, because the failure this fixes is a slow minute rather than a
+  // broken query: the same request a moment later usually lands. It is not a
+  // loop — a second timeout means Wikidata is genuinely unwell, and the caller
+  // marks the index partial, which now only widens the search and can never
+  // produce a `false`.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: 'application/sparql-results+json', 'User-Agent': WIKIDATA_UA },
+        signal: AbortSignal.timeout(WIKIDATA_QUERY_MS),
+      });
+      if (!res.ok) throw new Error(`Wikidata ${qid} answered ${res.status}`);
+      const body = (await res.json()) as { results?: { bindings?: Binding[] } };
+      return body.results?.bindings ?? [];
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Wikidata ${qid} failed`);
 }
 
 /** A label the label-service could not resolve comes back as the bare QID. */
