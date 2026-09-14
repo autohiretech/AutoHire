@@ -97,36 +97,31 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'That is not an E.164 phone number.' }, 400);
   }
 
-  // `profiles` rather than `auth.users`: a row is created there for every
-  // account on its first authenticated load (`ensureProfile`), and reaching
-  // auth.users would need either a paginated admin listing or a new
-  // SECURITY DEFINER function — a migration, and a decision that isn't this
-  // function's to make. The gap is an account that has signed up but never
-  // once loaded the app; it reads as free here and is still caught at submit.
+  // `auth.users`, not `profiles`. A profile row is only written on the first
+  // authenticated page load, so asking `profiles` reported "free" for an
+  // account that existed and was signed in elsewhere at that moment — which
+  // is how this was found. Migration 096's SECURITY DEFINER functions reach
+  // the authoritative table; they are granted to `service_role` alone, so
+  // this function is the only way to ask and the per-IP limit above is not
+  // something a caller can step around by hitting the RPC directly.
   const result: { email: boolean | null; phone: boolean | null } = { email: null, phone: null };
 
   if (email) {
-    const { count, error } = await admin
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .ilike('email', email);
+    const { data, error } = await admin.rpc('account_exists_for_email', { p_email: email });
     if (error) {
       console.error('availability email lookup failed', error);
       return json({ error: 'Unavailable.' }, 503);
     }
-    result.email = (count ?? 0) > 0;
+    result.email = data === true;
   }
 
   if (phone) {
-    const { count, error } = await admin
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('phone', phone);
+    const { data, error } = await admin.rpc('account_exists_for_phone', { p_phone: phone });
     if (error) {
       console.error('availability phone lookup failed', error);
       return json({ error: 'Unavailable.' }, 503);
     }
-    result.phone = (count ?? 0) > 0;
+    result.phone = data === true;
   }
 
   return json(result, 200);
