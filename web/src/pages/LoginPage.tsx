@@ -1,11 +1,13 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Check, ChevronRight, User } from 'lucide-react';
+import { ArrowLeft, Building2, Check, ChevronRight, Pencil, User } from 'lucide-react';
 import { AuthBackdrop } from '@/components/AuthBackdrop';
 import { BrandMark } from '@/components/BrandMark';
+import { CountryCombobox } from '@/components/CountryCombobox';
 import { useAuth, type AccountType } from '@/lib/auth';
 import { cn } from '@/lib/cn';
-import { normalizePhone } from '@/lib/phone';
+import { useCountry } from '@/lib/country';
+import { dialCodeFor, normalizePhone, phoneProblem } from '@/lib/phone';
 import { Button, Input, Label } from '@/components/ui';
 
 type Mode = 'signin' | 'signup';
@@ -20,15 +22,43 @@ type Mode = 'signin' | 'signup';
  * thing at a time, say why it is wanted, and refuse to advance until the
  * stage is actually answered, so a mistake is caught on the screen that can
  * fix it rather than at the end.
+ *
+ * The two account facts come first: the country, because payout routing and
+ * the phone's own dialling code both read it, and the email, because it is
+ * the account's identity. The password waits until the end, where it belongs
+ * with the terms it is agreed alongside.
  */
-const STEPS = ['You', 'Details', 'Sign-in'];
+const STEPS = ['You', 'Details', 'Password'];
 
 /** One sentence per stage. The sentence is most of what makes a form feel easy. */
 const STEP_BLURB = [
-  'First, how will you use AutoHire? You can rent and host from the same account either way.',
-  'Who are you? Your name goes on your bookings, and hosts see it when you ask for their car.',
-  'Last one. This is what you will sign in with.',
+  'Where your account lives, and how we reach you.',
+  'Your name goes on your bookings; hosts see it when you ask for their car.',
+  'Last one — a password, and the terms.',
 ];
+
+/**
+ * Is this the "that email already has an account" refusal?
+ *
+ * Checked on the error's `code` first, because the message is English prose
+ * from the auth service and changes without warning; the message match is a
+ * fallback for older releases that send no code.
+ *
+ * **Only at submit, never as you type.** A field that tells an anonymous
+ * visitor whether an address has an account is an oracle anyone can poll for
+ * whoever they like; saying it to someone who has already typed that address
+ * and pressed the button is a far smaller surface, and it is the only moment
+ * the answer actually helps them.
+ */
+function isDuplicateAccount(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code ?? '';
+  const message = err instanceof Error ? err.message : '';
+  return (
+    code === 'user_already_exists' ||
+    code === 'email_exists' ||
+    /already\s*(been\s*)?registered|user already exists|email.*already/i.test(message)
+  );
+}
 
 /**
  * Sign in / sign up — the marketplace's front door, and also the admin site's
@@ -64,6 +94,22 @@ export function LoginPage({
   const from = (location.state as { from?: string } | null)?.from ?? '/';
 
   const [mode, setMode] = useState<Mode>(allowSignup ? initialMode : 'signin');
+  // The markets AutoHire actually serves, from PayHold's `payment-options` —
+  // never a list written here. `countries` is the same source the header's
+  // market selector and the Account page's country field read.
+  const { countries, country: browsingCountry } = useCountry();
+  /**
+   * Starts on the market they are already browsing rather than blank.
+   *
+   * An open search box with a country list under it is the single tallest
+   * thing on this stage, and it pushed Continue off the bottom of every phone
+   * — so the answer is shown, not asked for, and changing it is one tap. The
+   * default is not a guess about the person: it is the market the catalogue
+   * is already filtered to, which is the same value the header's selector and
+   * the saved preference drive.
+   */
+  const [country, setCountry] = useState(browsingCountry.code);
+  const [pickingCountry, setPickingCountry] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>('personal');
   const [companyName, setCompanyName] = useState('');
   const [wantsToHost, setWantsToHost] = useState(false);
@@ -86,6 +132,18 @@ export function LoginPage({
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const lastStep = step === STEPS.length;
 
+  const chosenCountry = useMemo(
+    () => countries.find((c) => c.code === country) ?? null,
+    [countries, country],
+  );
+  /**
+   * The phone prefix, from the country they just picked — libphonenumber's
+   * own calling code, so it cannot disagree with the rules the number is
+   * then validated against. Null for a country the metadata doesn't know, and
+   * then the field asks for a full international number instead.
+   */
+  const dialCode = dialCodeFor(country);
+
   function goToStep(n: number) {
     setDir(n > step ? 'fwd' : 'back');
     setStep(n);
@@ -107,6 +165,9 @@ export function LoginPage({
    */
   function blockerFor(n: number): string | null {
     if (n === 1) {
+      // The country is a button, not an input, so the browser's own required
+      // check never sees it — this is the only thing standing in for it.
+      if (!country) return 'Please choose the country your account is in.';
       if (accountType === 'company' && !companyName.trim()) return 'Please enter your company name.';
       return null;
     }
@@ -116,19 +177,41 @@ export function LoginPage({
           ? 'Please enter a contact name.'
           : 'Please enter your full name.';
       }
-      if (!normalizePhone(phone)) {
-        return 'Enter a valid phone number with country code, e.g. +250 788 123 456.';
-      }
+      // Judged by the country's own numbering rules, not by length alone.
+      const problem = phoneProblem(phone, country, chosenCountry?.name);
+      if (problem) return problem;
       return null;
     }
     if (!acceptedTerms) return 'Please accept the terms to continue.';
     return null;
   }
 
+  /**
+   * Copy whatever the browser autofilled into React's state.
+   *
+   * Autofill can set a field's value without firing `onChange`, which used to
+   * mean the first click submitted an empty email. Reading the form on submit
+   * fixed that — but email and password now live on different stages, so only
+   * the mounted one can be read, and it has to be read on the stage it is on
+   * rather than at the end. Hence a sync on every submit, whichever stage.
+   */
+  function syncAutofill(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const emailValue = (data.get('email') as string | null)?.trim();
+    const passwordValue = data.get('password') as string | null;
+    if (emailValue && emailValue !== email) setEmail(emailValue);
+    if (passwordValue && passwordValue !== password) setPassword(passwordValue);
+    return {
+      email: emailValue || email,
+      password: passwordValue || password,
+    };
+  }
+
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setInfo(null);
+    const filled = syncAutofill(e.currentTarget);
 
     // Enter inside a field submits the form, so mid-sign-up that has to mean
     // "next stage", not "create the account with half the answers".
@@ -142,15 +225,8 @@ export function LoginPage({
       return;
     }
 
-    // Read credentials straight from the form so browser-autofilled values are
-    // captured even when React's onChange hasn't fired yet. Without this the
-    // first click submits empty credentials (which fails) and the user has to
-    // click "Sign in" twice.
-    const data = new FormData(e.currentTarget);
-    const emailValue = ((data.get('email') as string | null) ?? email).trim();
-    const passwordValue = (data.get('password') as string | null) ?? password;
-    if (emailValue !== email) setEmail(emailValue);
-    if (passwordValue !== password) setPassword(passwordValue);
+    const emailValue = filled.email.trim();
+    const passwordValue = filled.password;
     if (mode === 'signup') {
       const blocker = blockerFor(step);
       if (blocker) {
@@ -167,8 +243,9 @@ export function LoginPage({
         const { needsConfirmation } = await signUp(emailValue, passwordValue, {
           accountType,
           companyName,
+          country,
           fullName,
-          phone: normalizePhone(phone) ?? phone,
+          phone: normalizePhone(phone, country) ?? phone,
           wantsToHost: accountType === 'personal' && wantsToHost,
         });
         if (needsConfirmation) {
@@ -183,14 +260,23 @@ export function LoginPage({
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      // The one refusal worth rewriting here, because it has an action
+      // attached: they already have an account, so send them to sign in with
+      // the address they just typed rather than restating the failure.
+      if (mode === 'signup' && isDuplicateAccount(err)) {
+        setError(null);
+        switchMode('signin');
+        setInfo('That email already has an AutoHire account — sign in below.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Something went wrong.');
+      }
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="relative flex min-h-full w-full flex-col justify-center px-4 py-10 sm:py-14">
+    <div className="relative flex min-h-full w-full flex-col justify-center px-4 py-6 [@media(max-height:680px)]:py-3 sm:py-14">
       {backdrop && <AuthBackdrop />}
 
       <div
@@ -221,7 +307,7 @@ export function LoginPage({
             className={cn(
               'flex flex-col',
               backdrop &&
-                'rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]/95 p-6 shadow-[var(--shadow-float)] backdrop-blur sm:p-9',
+                'rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]/95 p-5 shadow-[var(--shadow-float)] backdrop-blur [@media(max-height:680px)]:p-4 sm:p-9',
             )}
           >
             <Link
@@ -234,10 +320,14 @@ export function LoginPage({
               <span className="text-body-lg">AutoHire</span>
             </Link>
 
-            <h1 className="mt-7 text-center text-h2 text-[var(--color-content)]">
+            <h1 className="mt-4 text-center text-h3 text-[var(--color-content)] sm:mt-7 sm:text-h2">
               {mode === 'signin' ? 'Sign in' : 'Create your account'}
             </h1>
-            <p className="mt-2 text-center text-body-sm text-[var(--color-content-muted)]">
+            {/* On a short screen the stage sentence is the first thing to
+                go: the heading and the stepper already say where you are, and
+                a line of prose is not worth the primary action falling below
+                the fold. */}
+            <p className="mt-2 text-center text-body-sm text-[var(--color-content-muted)] [@media(max-height:680px)]:hidden">
               {mode === 'signin' ? 'Welcome back to AutoHire.' : STEP_BLURB[step - 1]}
             </p>
 
@@ -246,7 +336,7 @@ export function LoginPage({
                  the current one marked say in one glance how long this is.
                  A finished stage is clickable; a later one is not — forward
                  is earned by answering the stage you are on. */
-              <ol className="mt-6 flex items-center justify-center gap-1.5">
+              <ol className="mt-4 flex items-center justify-center gap-1.5 sm:mt-6">
                 {STEPS.map((label, i) => {
                   const n = i + 1;
                   const done = n < step;
@@ -299,18 +389,107 @@ export function LoginPage({
                 scroll-into-view stop short, bringing the button up with it.
                 One rule on the form rather than five on the fields, so a field
                 added later is covered too. */}
-            <form onSubmit={onSubmit} className="mt-7 flex flex-col gap-5 [&_input]:scroll-mb-32">
+            <form
+              onSubmit={onSubmit}
+              className="mt-4 flex flex-col gap-4 [&_input]:scroll-mb-32 [@media(max-height:680px)]:gap-3 sm:mt-7 sm:gap-5"
+            >
               {/* `key` is what replays the animation: React tears the old
                   stage down and mounts the new one, so the CSS runs again. */}
               <div
                 key={mode === 'signup' ? step : 'signin'}
                 className={cn(
-                  'flex flex-col gap-5',
+                  'flex flex-col gap-4 [@media(max-height:680px)]:gap-3 sm:gap-5',
                   mode === 'signup' && (dir === 'fwd' ? 'animate-step-in' : 'animate-step-back'),
                 )}
               >
                 {mode === 'signup' && step === 1 && (
                   <>
+                    <div>
+                      <Label>Your country</Label>
+                      {/* The list is PayHold's answer to "where can AutoHire
+                          take and send money", not a constant — so a market
+                          opening or closing changes this field with no edit
+                          here. Shown open until it is answered, because it is
+                          the first thing asked and an unanswered question
+                          should look like one. */}
+                      {/* The search floats over the panel instead of growing
+                          it. In flow it added 128px the instant it opened —
+                          the panel jumped and the page started scrolling on
+                          the very first interaction of the flow, then shrank
+                          back when a country was chosen. As a popover the
+                          panel's height never changes at all.
+
+                          `CountryCombobox`'s own default is deliberately the
+                          opposite (in flow, because it is used inside a
+                          scrolling modal where an absolute list is clipped at
+                          the modal's edge). This panel is not a scroll
+                          container, so here the overlay is free. */}
+                      <div className="relative mt-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setPickingCountry((v) => !v)}
+                          aria-expanded={pickingCountry}
+                          className="flex h-11 w-full items-center justify-between rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-raised)] px-3.5 text-body-sm text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]"
+                        >
+                          <span>
+                            {chosenCountry ? (
+                              <>
+                                {chosenCountry.flag} {chosenCountry.name}
+                              </>
+                            ) : (
+                              <span className="text-[var(--color-content-subtle)]">
+                                Choose your country
+                              </span>
+                            )}
+                          </span>
+                          <span className="flex items-center gap-1 text-caption text-[var(--color-content-muted)]">
+                            <Pencil size={13} /> Change
+                          </span>
+                        </button>
+
+                        {pickingCountry && (
+                          <>
+                            {/* A click anywhere else closes it, including on
+                                the fields underneath, which would otherwise
+                                be picking up taps meant to dismiss. */}
+                            <div
+                              className="fixed inset-0 z-30"
+                              aria-hidden
+                              onClick={() => setPickingCountry(false)}
+                            />
+                            <div className="absolute left-0 right-0 top-full z-40 mt-1 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-overlay)] p-2 shadow-[var(--shadow-float)]">
+                              <CountryCombobox
+                                countries={countries}
+                                autoFocus
+                                placeholder="Search countries…"
+                                onSelect={(code) => {
+                                  setCountry(code);
+                                  setPickingCountry(false);
+                                  setError(null);
+                                }}
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
+                        Sets your payout options and phone code. You can rent anywhere.
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+
                     <div>
                       <Label>Account type</Label>
                       <div className="mt-1.5 grid grid-cols-2 gap-2">
@@ -335,7 +514,7 @@ export function LoginPage({
                             type="button"
                             onClick={() => setAccountType(opt.value)}
                             className={cn(
-                              'flex flex-col items-start gap-1 rounded-[var(--radius-control)] border p-3 text-left transition-colors',
+                              'flex flex-col items-start gap-0.5 rounded-[var(--radius-control)] border p-2.5 text-left transition-colors sm:gap-1 sm:p-3',
                               accountType === opt.value
                                 ? 'border-[var(--color-accent-on)] bg-[var(--color-surface-sunken)]'
                                 : 'border-[var(--color-line-strong)] hover:bg-[var(--color-surface-sunken)]',
@@ -353,7 +532,7 @@ export function LoginPage({
                     </div>
 
                     {accountType === 'personal' && (
-                      <label className="flex items-start gap-2 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] p-3 text-body-sm text-[var(--color-content-muted)]">
+                      <label className="flex items-start gap-2 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] p-2.5 text-body-sm text-[var(--color-content-muted)] sm:p-3">
                         <input
                           type="checkbox"
                           checked={wantsToHost}
@@ -363,9 +542,9 @@ export function LoginPage({
                         <span>
                           <span className="font-medium text-[var(--color-content)]">
                             I want to rent out my vehicle or machine
-                          </span>{' '}
-                          — start as a host. You can switch between hosting and renting anytime from
-                          your profile.
+                          </span>
+                          <br />
+                          Start as a host — switch anytime.
                         </span>
                       </label>
                     )}
@@ -401,37 +580,59 @@ export function LoginPage({
 
                     <div>
                       <Label htmlFor="phone">Phone</Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        autoComplete="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+250 788 123 456"
-                      />
+                      {/* The country code is shown, not typed. It comes from
+                          the country chosen on the stage before, so the one
+                          part of a phone number people get wrong is the part
+                          they no longer have to enter — and a number typed
+                          with the code anyway, or a foreign number in full
+                          international form, is still accepted by
+                          `normalizePhone`. */}
+                      <div className="mt-1.5 flex items-stretch gap-2">
+                        {dialCode && (
+                          <span className="flex h-11 shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-3 text-body-sm text-[var(--color-content)]">
+                            {chosenCountry?.flag} {dialCode}
+                          </span>
+                        )}
+                        <Input
+                          id="phone"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          // No fake per-country example: an invented local
+                          // format is worse than none, and the prefix chip
+                          // already says which country's number this is.
+                          placeholder={dialCode ? 'Your number' : '+250 788 123 456'}
+                          className="mt-0"
+                        />
+                      </div>
                       <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
-                        Include your country code (e.g. +250 Rwanda, +1 US). Local 07… numbers also
-                        work.
+                        {dialCode
+                          ? `Just the local part — we add ${dialCode}. A number from another country works too, typed in full.`
+                          : 'Include your country code, e.g. +250 788 123 456.'}
                       </p>
                     </div>
                   </>
                 )}
 
+                {mode === 'signin' && (
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
+
                 {(mode === 'signin' || step === 3) && (
                   <>
-                    <div>
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                      />
-                    </div>
-
                     <div>
                       <Label htmlFor="password">Password</Label>
                       <Input
@@ -497,7 +698,7 @@ export function LoginPage({
             </form>
 
             {allowSignup && (
-              <p className="mt-6 text-center text-body-sm text-[var(--color-content-muted)]">
+                <p className="mt-4 text-center text-body-sm text-[var(--color-content-muted)] [@media(max-height:680px)]:mt-2 sm:mt-6">
                 {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
                 <button
                   type="button"

@@ -25,6 +25,11 @@ import { useAuth } from '@/lib/auth';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCountry, type Country } from '@/lib/country';
 import { normalizePhone } from '@/lib/phone';
+import {
+  docsAddedBetween,
+  verificationRoleFor,
+  type DocConfig,
+} from '@/lib/verification';
 import { PAYMENTS_PAYHOLD } from '@/lib/payments';
 import { useAddressSuggestions, reverseGeocode, type AddressSuggestion } from '@/lib/geocoding';
 import { useMyLocation } from '@/lib/useMyLocation';
@@ -138,7 +143,7 @@ export function AccountPage() {
 
           <ProfileCard profile={profile} email={user?.email ?? ''} />
 
-          <PhoneVerification defaultPhone={profile.phone ?? ''} />
+          <PhoneVerification defaultPhone={profile.phone ?? ''} country={profile.country} />
 
           <ListGroup label="Account">
             <ListRow icon={<ShieldCheck size={18} />} to="/verification">
@@ -293,6 +298,7 @@ function AccountSkeleton() {
 /** Editable profile: avatar + name, plus the host/renter role switch. */
 function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>; email: string }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const isCompany = profile.ownerType === 'business';
   const isHost = profile.role === 'owner';
   const displayName = profile.businessName ?? profile.fullName;
@@ -303,6 +309,11 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  /**
+   * What becoming a host just added to their verification, shown once, right
+   * after the switch. Null when nothing was added or they went the other way.
+   */
+  const [newHostDocs, setNewHostDocs] = useState<DocConfig[] | null>(null);
 
   useEffect(() => setName(currentName), [currentName]);
 
@@ -367,6 +378,19 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       await client.updateProfile(
         isHost ? { role: 'renter' } : { role: 'owner', ownerType: 'individual' },
       );
+
+      // A renter's licence and ID do not cover a car. Switching adds the
+      // vehicle's papers to what verification asks for, which silently
+      // un-completes a verification they had finished — so it is said out
+      // loud, here, at the moment it becomes true, rather than discovered on
+      // the verification page later or at the first booking request.
+      if (becomingHost) {
+        const added = docsAddedBetween(
+          verificationRoleFor({ role: profile.role, ownerType: profile.ownerType }),
+          verificationRoleFor({ role: 'owner', ownerType: 'individual' }),
+        );
+        if (added.length > 0) setNewHostDocs(added);
+      }
 
       // Becomes a PayHold seller with no payout destination yet — money can
       // start accruing against them the moment they list a car, rather than
@@ -503,6 +527,56 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
             </Button>
           </div>
         )}
+
+        {/* Said once, at the moment the switch lands. Dismissible rather than
+            blocking: hosting is not gated on verification (listing a car is
+            not, and renting never was), so this is news the account needs,
+            not a wall. */}
+        <Modal
+          open={newHostDocs !== null}
+          onClose={() => setNewHostDocs(null)}
+          title="You're a host now — two more documents"
+        >
+          <div className="space-y-4">
+            <p className="text-body-sm text-[var(--color-content-muted)]">
+              Your licence and ID still stand. Hosting asks for the car's papers on top of them,
+              so your verification now reads as incomplete until these are in:
+            </p>
+            <ul className="space-y-2">
+              {(newHostDocs ?? []).map((doc) => (
+                <li
+                  key={doc.type}
+                  className="rounded-[var(--radius-control)] border border-[var(--color-line)] p-3"
+                >
+                  <p className="text-body-sm font-medium text-[var(--color-content)]">{doc.label}</p>
+                  <p className="mt-0.5 text-caption text-[var(--color-content-muted)]">{doc.hint}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="text-caption text-[var(--color-content-subtle)]">
+              You can list a car before these are reviewed — renters just see an unverified host
+              until they are.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row-reverse">
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => {
+                  setNewHostDocs(null);
+                  navigate('/verification');
+                }}
+              >
+                Add them now
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full sm:w-auto"
+                onClick={() => setNewHostDocs(null)}
+              >
+                Later
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </CardBody>
     </Card>
   );
@@ -752,8 +826,21 @@ function LocationRow() {
   );
 }
 
-/** Verify the account's phone number by SMS one-time code. */
-function PhoneVerification({ defaultPhone }: { defaultPhone: string }) {
+/**
+ * Verify the account's phone number by SMS one-time code.
+ *
+ * `country` is the account's own country, and it is what a locally-typed
+ * number (leading 0, no country code) is joined to. Without it this assumed
+ * Rwanda for everyone, so an Emirati host typing their own number in the
+ * format they always write it got a +250 number and an SMS that never arrived.
+ */
+function PhoneVerification({
+  defaultPhone,
+  country,
+}: {
+  defaultPhone: string;
+  country?: string;
+}) {
   const { user, sendPhoneOtp, verifyPhoneOtp } = useAuth();
   const verified = Boolean(user?.phone_confirmed_at);
 
@@ -770,7 +857,7 @@ function PhoneVerification({ defaultPhone }: { defaultPhone: string }) {
 
   async function send() {
     setError(null);
-    const normalized = normalizePhone(phone);
+    const normalized = normalizePhone(phone, country);
     if (!normalized) {
       setError('Enter a valid phone number with country code, e.g. +250 788 123 456.');
       return;

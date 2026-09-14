@@ -21,6 +21,7 @@ async function ensureProfile(user: User): Promise<void> {
     name?: string;
     phone?: string;
     wants_to_host?: boolean;
+    country?: string;
     avatar_url?: string;
     picture?: string;
   };
@@ -36,11 +37,23 @@ async function ensureProfile(user: User): Promise<void> {
     typeof meta.phone === 'string' && meta.phone.trim() ? meta.phone.trim() : user.phone ?? '';
   const avatarUrl = meta.avatar_url?.trim() || meta.picture?.trim() || undefined;
 
+  // The account's country, chosen at sign-up. Payout routing reads this
+  // column, and a host whose account country is wrong is put on the wrong
+  // rail — which is why it is asked for before anything else rather than left
+  // to be discovered on the payout screen. Omitted rather than defaulted when
+  // absent (an account made before the field existed, or by a provider that
+  // doesn't supply one), so nothing silently claims to be Rwandan.
+  const country =
+    typeof meta.country === 'string' && /^[A-Za-z]{2}$/.test(meta.country.trim())
+      ? meta.country.trim().toUpperCase()
+      : undefined;
+
   const base = {
     id: user.id,
     email: user.email ?? '',
     phone,
     joined_at: new Date().toISOString().slice(0, 10),
+    ...(country ? { country } : {}),
     ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
   };
 
@@ -80,6 +93,8 @@ interface SignUpDetails {
   accountType: AccountType;
   fullName: string;
   phone: string;
+  /** ISO 3166-1 alpha-2. Required at sign-up — see `ensureProfile`. */
+  country: string;
   companyName?: string;
   /** Personal accounts can opt to be a host from the start. */
   wantsToHost?: boolean;
@@ -184,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_type: details.accountType,
           full_name: details.fullName.trim(),
           phone: details.phone.trim(),
+          country: details.country.trim().toUpperCase(),
           company_name: details.companyName?.trim() || undefined,
           wants_to_host: details.wantsToHost === true,
         },

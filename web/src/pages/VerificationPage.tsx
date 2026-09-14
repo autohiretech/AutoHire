@@ -15,9 +15,9 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { formatDate, timeAgo } from '@/lib/format';
 import {
   VERIFICATION_DOCS,
+  effectiveVerificationStatus,
   VERIFICATION_ROLE_META,
   VERIFICATION_STATUS_META,
-  overallStatus,
   verificationRoleFor,
   type DocConfig,
 } from '@/lib/verification';
@@ -71,14 +71,18 @@ export function VerificationPage() {
   const configs = VERIFICATION_DOCS[role];
   const docsByType = new Map((documents ?? []).map((d) => [d.type, d]));
   const statuses = configs.map((c) => docsByType.get(c.type)?.status ?? 'unverified');
-  const fromDocuments = overallStatus(statuses);
-  // The account's own status is the answer, not this page's arithmetic over
-  // the documents. They agree until a reviewer decides otherwise — and then
-  // this page used to keep saying "You're fully verified" to someone an admin
-  // had just marked unverified, because every document still said verified.
-  // The decision is the fact; the documents are how it is usually reached.
-  const overall = profile?.verification ?? fromDocuments;
   const decidedByAdmin = profile?.verificationOverride === true;
+  // The account's stored status and this role's documents, combined so that
+  // the worse of the two wins — see `effectiveVerificationStatus`. A reviewer's
+  // "no" still beats documents that all say yes (this page used to say "You're
+  // fully verified" to someone an admin had just marked unverified), and a
+  // renter's old approval no longer speaks for host documents nobody has
+  // looked at yet.
+  const overall = effectiveVerificationStatus({
+    accountStatus: profile?.verification,
+    decidedByAdmin,
+    docStatuses: statuses,
+  });
 
   // Why, in the reviewer's own words. An account-level decision leaves its
   // note nowhere else — a document's rejection note belongs to the document.
