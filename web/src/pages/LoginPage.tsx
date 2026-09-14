@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Building2, Check, ChevronRight, Pencil, User } from 'lucide-react';
 import { AuthBackdrop } from '@/components/AuthBackdrop';
@@ -7,7 +7,8 @@ import { CountryCombobox } from '@/components/CountryCombobox';
 import { useAuth, type AccountType } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { useCountry } from '@/lib/country';
-import { dialCodeFor, normalizePhone, phoneProblem } from '@/lib/phone';
+import { countryOfTyped, dialCodeFor, normalizePhone, phoneProblem } from '@/lib/phone';
+import { useAvailability, type Availability } from '@/lib/accountAvailability';
 import { describeAuthError } from '@/lib/authErrors';
 import { Button, Input, Label } from '@/components/ui';
 
@@ -37,6 +38,33 @@ const STEP_BLURB = [
   'Your name goes on your bookings; hosts see it when you ask for their car.',
   'Last one — a password, and the terms.',
 ];
+
+/**
+ * The live answer under a field, in one line.
+ *
+ * `'unknown'` renders nothing on purpose: the endpoint may be undeployed,
+ * rate-limited or unreachable, and a form that cannot check must say nothing
+ * rather than imply an address is free. `'checking'` is also silent — a
+ * flicker of "checking…" on every keystroke is noise, and the answer arrives
+ * in half a second.
+ */
+function FieldStatus({
+  state,
+  taken,
+  free,
+}: {
+  state: Availability;
+  taken: ReactNode;
+  free: ReactNode;
+}) {
+  if (state === 'taken') {
+    return <p className="mt-1 text-caption text-[var(--color-danger-500)]">{taken}</p>;
+  }
+  if (state === 'free') {
+    return <p className="mt-1 text-caption text-[var(--color-content-subtle)]">{free}</p>;
+  }
+  return null;
+}
 
 /**
  * Sign in / sign up — the marketplace's front door, and also the admin site's
@@ -122,6 +150,34 @@ export function LoginPage({
    */
   const dialCode = dialCodeFor(country);
 
+  /**
+   * When the number carries its own country code, that is the country it will
+   * be saved under — so it is the one the field shows. Selecting Burundi and
+   * typing +250 799 494 538 is a valid Rwandan number, and the old chip sat
+   * there reading "+257" next to it.
+   */
+  const typed = countryOfTyped(phone);
+  const shownDial = typed?.dialCode ?? dialCode;
+  const shownFlag = typed
+    ? (countries.find((c) => c.code === typed.country)?.flag ?? '🌍')
+    : chosenCountry?.flag;
+
+  /**
+   * Asked while they type, not at the end. Both only ask once the value is
+   * worth asking about — a valid address, a number that parses — so the
+   * endpoint never sees half-typed input.
+   */
+  const emailAvailability = useAvailability(
+    'email',
+    mode === 'signup' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())
+      ? email.trim().toLowerCase()
+      : '',
+  );
+  const phoneAvailability = useAvailability(
+    'phone',
+    mode === 'signup' ? (normalizePhone(phone, country) ?? '') : '',
+  );
+
   function goToStep(n: number) {
     setDir(n > step ? 'fwd' : 'back');
     setStep(n);
@@ -146,6 +202,9 @@ export function LoginPage({
       // The country is a button, not an input, so the browser's own required
       // check never sees it — this is the only thing standing in for it.
       if (!country) return 'Please choose the country your account is in.';
+      if (emailAvailability === 'taken') {
+        return 'That email already has an AutoHire account — sign in instead.';
+      }
       if (accountType === 'company' && !companyName.trim()) return 'Please enter your company name.';
       return null;
     }
@@ -158,6 +217,9 @@ export function LoginPage({
       // Judged by the country's own numbering rules, not by length alone.
       const problem = phoneProblem(phone, country, chosenCountry?.name);
       if (problem) return problem;
+      if (phoneAvailability === 'taken') {
+        return 'That phone number is already on an AutoHire account.';
+      }
       return null;
     }
     if (!acceptedTerms) return 'Please accept the terms to continue.';
@@ -478,7 +540,24 @@ export function LoginPage({
                         autoComplete="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        aria-invalid={emailAvailability === 'taken'}
                         required
+                      />
+                      <FieldStatus
+                        state={emailAvailability}
+                        taken={
+                          <>
+                            Already registered.{' '}
+                            <button
+                              type="button"
+                              onClick={() => switchMode('signin')}
+                              className="font-medium text-[var(--color-accent-on)] hover:underline"
+                            >
+                              Sign in instead
+                            </button>
+                          </>
+                        }
+                        free="Looks free."
                       />
                     </div>
 
@@ -580,9 +659,9 @@ export function LoginPage({
                           international form, is still accepted by
                           `normalizePhone`. */}
                       <div className="mt-1.5 flex items-stretch gap-2">
-                        {dialCode && (
+                        {shownDial && (
                           <span className="flex h-11 shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-3 text-body-sm text-[var(--color-content)]">
-                            {chosenCountry?.flag} {dialCode}
+                            {shownFlag} {shownDial}
                           </span>
                         )}
                         <Input
@@ -599,11 +678,23 @@ export function LoginPage({
                           className="mt-0"
                         />
                       </div>
-                      <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
-                        {dialCode
-                          ? `Just the local part — we add ${dialCode}. A number from another country works too, typed in full.`
-                          : 'Include your country code, e.g. +250 788 123 456.'}
-                      </p>
+                      {typed && typed.dialCode !== dialCode ? (
+                        <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
+                          Saving this as a {typed.dialCode} number, not a {dialCode} one — that's
+                          what you typed.
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
+                          {dialCode
+                            ? `Just the local part — we add ${dialCode}. A number from another country works too, typed in full.`
+                            : 'Include your country code, e.g. +250 788 123 456.'}
+                        </p>
+                      )}
+                      <FieldStatus
+                        state={phoneAvailability}
+                        taken="That number is already on an AutoHire account."
+                        free="Looks free."
+                      />
                     </div>
                   </>
                 )}

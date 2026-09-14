@@ -77,3 +77,21 @@ export function phoneProblem(
   const where = countryName ? `for ${countryName}` : 'for your country';
   return `That doesn't look like a valid number ${where}. Check the digits, or type it in full with its country code.`;
 }
+
+/**
+ * The country a fully-typed international number belongs to, or null.
+ *
+ * Only answers for input that carries its own `+` code — that is the case
+ * where the account's country and the number's country can disagree, and the
+ * field should show the number's, not the account's. Someone selecting
+ * Burundi and typing `+250 799 494 538` has typed a valid Rwandan number, and
+ * a chip reading `+257` beside it is the interface lying about what will be
+ * saved.
+ */
+export function countryOfTyped(raw: string): { country: string; dialCode: string } | null {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('+')) return null;
+  const parsed = parsePhoneNumberFromString(trimmed);
+  if (!parsed?.country) return null;
+  return { country: parsed.country, dialCode: `+${parsed.countryCallingCode}` };
+}
