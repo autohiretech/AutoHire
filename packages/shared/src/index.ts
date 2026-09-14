@@ -170,8 +170,25 @@ export interface AdminAction {
 export interface ElectricQuota {
   minPercent: number;
   totalCars: number;
+  /**
+   * Cars that are actually electric — still only electric, deliberately.
+   *
+   * Hybrids began counting toward the quota on 2026-09-14 (migration 098), and
+   * the tempting move was to fold them in here. It would have made every
+   * existing reader correct for free and made one of them a liar: an admin
+   * panel headed "Electric cars" reporting a figure with six hybrids inside it
+   * is the same quiet untruth the migration existed to remove — the site
+   * claimed "Electric, Hybrid" while the database enforced electric alone.
+   * The counts stay separate and the rule reads `qualifyingCars`.
+   */
   electricCars: number;
-  /** Whether a non-electric car may be listed right now without breaking the quota. */
+  hybridCars: number;
+  /** Electric + hybrid: the figure the quota is actually computed from. */
+  qualifyingCars: number;
+  /**
+   * Whether a car that is neither electric nor hybrid may be listed right now
+   * without breaking the quota.
+   */
   canAddNonElectric: boolean;
 }
 

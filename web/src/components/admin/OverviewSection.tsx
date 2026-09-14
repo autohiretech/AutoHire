@@ -325,26 +325,44 @@ function ElectricQuotaPanel() {
 
   const current = quota?.minPercent ?? 95;
   const value = pct === '' ? String(current) : pct;
+  // The share the RULE uses, which since migration 098 counts hybrids too.
+  // This read `electricCars` and so reported a percentage the trigger no
+  // longer enforces — an admin deciding where to set the threshold would have
+  // been reading one number and moving a different one.
   const share =
-    quota && quota.totalCars > 0 ? Math.round((quota.electricCars / quota.totalCars) * 100) : 0;
+    quota && quota.totalCars > 0 ? Math.round((quota.qualifyingCars / quota.totalCars) * 100) : 0;
   const invalid = value === '' || Number(value) < 0 || Number(value) > 100;
 
   return (
     <Panel
       title="Electric fleet rule"
-      description="Non-electric cars can't be listed if it would drop the fleet below this. Machinery is exempt."
+      description="A car that is neither electric nor hybrid can't be listed if it would drop the fleet below this. Machinery is exempt."
     >
+      {/* Electric and hybrid are shown apart, then as the total the rule reads.
+          Folding them into one "Electric cars" figure would have made this
+          panel state something untrue about the fleet — six of those cars are
+          hybrids — and an admin setting a threshold deserves to see which is
+          which before they move it.
+
+          Four cells, not five: `MetricGrid` is `grid-cols-2 sm:grid-cols-4`
+          over a line-coloured background with `gap-px`, so a fifth cell leaves
+          a visible empty block where the background shows through. "All cars"
+          therefore rides along in the qualifying cell, where it reads better
+          anyway — a percentage means more with its denominator beside it. */}
       <MetricGrid
         items={[
           { label: 'Electric cars', value: quota ? n(quota.electricCars) : '—' },
-          { label: 'All cars', value: quota ? n(quota.totalCars) : '—' },
-          { label: 'Electric now', value: quota ? `${share}%` : '—' },
+          { label: 'Hybrid cars', value: quota ? n(quota.hybridCars) : '—' },
+          {
+            label: 'Electric or hybrid',
+            value: quota ? `${share}% of ${n(quota.totalCars)}` : '—',
+          },
           { label: 'Required', value: `${current}%` },
         ]}
       />
       <div className="flex flex-wrap items-end gap-3 border-t border-[var(--color-line)] px-4 py-4 sm:px-5">
         <div>
-          <Label htmlFor="electric-pct">Required electric share</Label>
+          <Label htmlFor="electric-pct">Required electric or hybrid share</Label>
           <div className="flex items-center gap-2">
             <Input
               id="electric-pct"

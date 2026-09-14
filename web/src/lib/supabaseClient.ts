@@ -373,6 +373,48 @@ async function hydrateBroadcasts(rows: Record<string, unknown>[] | null): Promis
 }
 
 /** What `payhold-sync-verification` reports back. Mirrors `SyncResult` in its `sync.ts`. */
+/**
+ * One make+model as `vehicle-catalogue` reports it, straight off the wire.
+ *
+ * `fuel` and `category` are `string | null` here and not `FuelType |
+ * CarCategory` on purpose: they are whatever the `listings` rows hold, and this
+ * layer has not checked them against the unions yet. Typing them as the unions
+ * would be a lie the compiler then enforces everywhere downstream — the day
+ * someone adds a `car_category` enum value in a migration, every screen would
+ * believe an unknown string is a `CarCategory` it can switch on.
+ * `vehicleCatalogue.ts` does the narrowing, once, against the real lists.
+ */
+export interface VehicleCatalogueRow {
+  make: string;
+  model: string;
+  fuel: string | null;
+  category: string | null;
+  /** How many listings back this make+model. 0 for anything not from the fleet. */
+  count: number;
+  /**
+   * Which layer this came from. `autohire` is the fleet — the only layer that
+   * knows machinery and the only one carrying a real fuel and category.
+   * `wikidata` is the world catalogue, which knows whether a car exists and
+   * little else.
+   */
+  source?: 'autohire' | 'wikidata';
+}
+
+/**
+ * The answer to "is this a real car?".
+ *
+ * `matched` says how hard the index had to look: `exact` is the typed name
+ * itself, `loose` is a longer or shorter name for the same thing ("Land
+ * Cruiser" ↔ "Land Cruiser Prado"), `squash` is the same letters spaced
+ * differently ("MG4" ↔ "MG 4 EV"). Only `exact` carries a fuel back, because a
+ * loose match is a match on a *different* model.
+ */
+export interface KnownCarAnswer {
+  known: boolean;
+  matched: 'exact' | 'loose' | 'squash' | null;
+  entry: VehicleCatalogueRow | null;
+}
+
 /** Who an admin notification goes to. Resolved on the server (migration 078). */
 export type NotifyAudience = 'everyone' | 'hosts' | 'renters' | 'unverified' | 'unverified_hosts' | 'people';
 
@@ -1130,6 +1172,87 @@ export const supabaseClient = {
     const payload = data as { countries?: PayoutCountry[]; currencies?: string[]; error?: string };
     if (payload?.error) throw new Error(payload.error);
     return { countries: payload.countries ?? [], currencies: payload.currencies ?? [] };
+  },
+
+  /**
+   * Every make + model on the platform, with the fuel and category that real
+   * listings of each one use.
+   *
+   * This is the listing form's model picker. It used to read a 57-entry array
+   * in `carModels.ts` written when AutoHire rented only cars: production has 44
+   * distinct make+model pairs and 23 of them were missing from it, including
+   * every Caterpillar, John Deere, Grove, Hyster and Fendt — on a platform
+   * whose own copy says "rent out a car, a tractor or an excavator".
+   *
+   * Same auth story as `payholdCatalogue()` above: the function does no
+   * `getUser()`, the gateway check is satisfied by the anon key supabase-js
+   * sends anyway, and the body is an aggregate over rows any visitor can
+   * already read one at a time on /search.
+   */
+  async vehicleCatalogue(): Promise<{ entries: VehicleCatalogueRow[] }> {
+    const { data, error } = await getSupabase().functions.invoke('vehicle-catalogue', {
+      method: 'GET',
+    });
+    if (error) throw await fnError(error);
+    const payload = data as { entries?: VehicleCatalogueRow[]; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return { entries: payload.entries ?? [] };
+  },
+
+  /**
+   * The world catalogue, searched — every car model and tractor Wikidata knows,
+   * not just the ones AutoHire has.
+   *
+   * A separate call from `vehicleCatalogue()` above because of the size: the
+   * index behind this is ~11,700 models, and shipping that to every browser
+   * that opens the listing form to filter it locally would be a megabyte of
+   * JSON to save a host one request. The fleet is small and arrives up front;
+   * the long tail is asked for as somebody types.
+   *
+   * Query params go on the function name because that is how supabase-js builds
+   * the URL — the same trick as `payhold-seller/destinations` above.
+   */
+  async vehicleCatalogueSearch(
+    query: string,
+    limit = 20,
+  ): Promise<{ entries: VehicleCatalogueRow[] }> {
+    const qs = `q=${encodeURIComponent(query)}&limit=${limit}`;
+    const { data, error } = await getSupabase().functions.invoke(`vehicle-catalogue?${qs}`, {
+      method: 'GET',
+    });
+    if (error) throw await fnError(error);
+    const payload = data as { entries?: VehicleCatalogueRow[]; error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return { entries: payload.entries ?? [] };
+  },
+
+  /**
+   * Is this make+model a real car?
+   *
+   * Answered from Wikidata alone, never from AutoHire's own listings —
+   * `Ferrari 2000 / Y` and `Lamborghini Model4` are live listings and neither
+   * is a car, so a check that trusted the fleet would certify every fake the
+   * moment somebody saved it.
+   *
+   * **Throws when the index cannot be reached, and that is the point.** The
+   * server answers 502 rather than `known: false` precisely so that "we could
+   * not check" cannot be mistaken for "that car does not exist". Callers must
+   * fail OPEN — see `isKnownCarModel` in `vehicleCatalogue.ts`, which is what
+   * the UI should use.
+   */
+  async vehicleCatalogueKnownCar(make: string, model: string): Promise<KnownCarAnswer> {
+    const qs = `known=car&make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`;
+    const { data, error } = await getSupabase().functions.invoke(`vehicle-catalogue?${qs}`, {
+      method: 'GET',
+    });
+    if (error) throw await fnError(error);
+    const payload = data as Partial<KnownCarAnswer> & { error?: string };
+    if (payload?.error) throw new Error(payload.error);
+    return {
+      known: payload.known === true,
+      matched: payload.matched ?? null,
+      entry: payload.entry ?? null,
+    };
   },
 
   /**
@@ -2570,10 +2693,19 @@ export const supabaseClient = {
   async getElectricQuota(): Promise<ElectricQuota> {
     const rows = (await run(sb().rpc('electric_quota_status'))) as Record<string, unknown>[] | null;
     const r = rows?.[0];
+    const electricCars = Number(r?.electric_cars ?? 0);
     return {
       minPercent: Number(r?.min_percent ?? 95),
       totalCars: Number(r?.total_cars ?? 0),
-      electricCars: Number(r?.electric_cars ?? 0),
+      electricCars,
+      hybridCars: Number(r?.hybrid_cars ?? 0),
+      // A database still on migration 097 returns neither column. Falling back
+      // to the electric count alone reproduces exactly the old rule — the
+      // percentage reads low rather than high, so a stale deployment under-
+      // states the fleet's standing instead of claiming headroom the quota
+      // will not actually grant. Wrong in the direction that refuses a car
+      // rather than the one that lets a forbidden one through.
+      qualifyingCars: Number(r?.qualifying_cars ?? electricCars),
       canAddNonElectric: Boolean(r?.can_add_non_electric),
     };
   },
