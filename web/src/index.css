@@ -233,6 +233,15 @@
   --color-accent-on: var(--color-brand-600);
   --color-accent-contrast: #ffffff;
   color-scheme: light;
+
+  /* Scrims over the sign-in footage (`AuthBackdrop`). Both themes darken the
+     clip rather than tint it their own colour: a white veil over a sunset
+     turns it into haze, while darkening keeps the car readable and lets the
+     panel — white in this theme, near-black in the other — sit clearly in
+     front of it. Only the amount changes. `edge` is the top/bottom gradient,
+     heavier so the middle of the frame stays the brightest thing. */
+  --auth-scrim: rgb(13 18 17 / 0.2);
+  --auth-scrim-edge: rgb(13 18 17 / 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -258,6 +267,9 @@
     --color-info-tint: #14203a;
     --color-danger-500: #f08163;
     --color-danger-tint: #331810;
+
+    --auth-scrim: rgb(13 18 17 / 0.58);
+    --auth-scrim-edge: rgb(13 18 17 / 0.85);
 
     color-scheme: dark;
   }
@@ -285,6 +297,9 @@
   --color-info-tint: #14203a;
   --color-danger-500: #f08163;
   --color-danger-tint: #331810;
+
+  --auth-scrim: rgb(13 18 17 / 0.58);
+  --auth-scrim-edge: rgb(13 18 17 / 0.85);
 
   color-scheme: dark;
 }

@@ -89,7 +89,14 @@ interface AuthValue {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  /** Start the Google OAuth flow — redirects out, then back into the app. */
+  /**
+   * Start the Google OAuth flow — redirects out, then back into the app.
+   *
+   * Nothing calls this at the moment: the "Continue with Google" button was
+   * taken off the sign-in screen (2026-09-14, the user's call — "remove google
+   * for now"). The plumbing is deliberately left in place, because putting the
+   * button back is then one JSX element rather than a re-implementation.
+   */
   signInWithGoogle: () => Promise<void>;
   signUp: (
     email: string,

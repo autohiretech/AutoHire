@@ -35,8 +35,12 @@ import { RequireRole } from '@/components/RequireRole';
 export default function App() {
   return (
     <Routes>
-      {/* Public — outside the app shell */}
+      {/* Public — outside the app shell. Two routes, one screen: /signup opens
+          the same page already on its first sign-up stage, so "create an
+          account" is a link that can be sent to someone rather than a toggle
+          buried inside /login. */}
       <Route path="login" element={<LoginPage />} />
+      <Route path="signup" element={<LoginPage initialMode="signup" />} />
 
       {/* The app shell. Guests can browse it; account-only routes are gated
           individually with RequireAuth / RequireRole so a logged-out visitor

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Building2, User } from 'lucide-react';
+import { ArrowLeft, Building2, Check, ChevronRight, User } from 'lucide-react';
+import { AuthBackdrop } from '@/components/AuthBackdrop';
 import { BrandMark } from '@/components/BrandMark';
 import { useAuth, type AccountType } from '@/lib/auth';
 import { cn } from '@/lib/cn';
@@ -9,13 +10,52 @@ import { Button, Input, Label } from '@/components/ui';
 
 type Mode = 'signin' | 'signup';
 
-export function LoginPage() {
-  const { signIn, signInWithGoogle, signUp } = useAuth();
+/**
+ * Signing up is three stages, not one long form.
+ *
+ * The old screen asked for account type, host intent, name, email, phone,
+ * password and the terms all at once — nine controls stacked past the bottom
+ * of a phone, before the visitor had been told anything. Same fix, and the
+ * same reasoning, as the six-stage listing flow in `ListCarPage`: ask one
+ * thing at a time, say why it is wanted, and refuse to advance until the
+ * stage is actually answered, so a mistake is caught on the screen that can
+ * fix it rather than at the end.
+ */
+const STEPS = ['You', 'Details', 'Sign-in'];
+
+/** One sentence per stage. The sentence is most of what makes a form feel easy. */
+const STEP_BLURB = [
+  'First, how will you use AutoHire? You can rent and host from the same account either way.',
+  'Who are you? Your name goes on your bookings, and hosts see it when you ask for their car.',
+  'Last one. This is what you will sign in with.',
+];
+
+/**
+ * Sign in / sign up — the marketplace's front door, and also the admin site's
+ * (`admin-main.tsx` renders this same component).
+ *
+ * `backdrop` is what separates the two: the marketplace gets the driving
+ * footage behind the form, the admin tool does not. An admin signing in to
+ * moderate listings is at work, not being sold a road trip — and the clip
+ * lives in `public/`, which the admin build replaces with `public-admin/`,
+ * so over there the file genuinely isn't there to load.
+ *
+ * `initialMode` is what `/signup` passes, so creating an account is a real URL
+ * someone can be sent to rather than a toggle hidden inside `/login`.
+ */
+export function LoginPage({
+  backdrop = true,
+  initialMode = 'signin',
+}: {
+  backdrop?: boolean;
+  initialMode?: Mode;
+}) {
+  const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/';
 
-  const [mode, setMode] = useState<Mode>('signin');
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [accountType, setAccountType] = useState<AccountType>('personal');
   const [companyName, setCompanyName] = useState('');
   const [wantsToHost, setWantsToHost] = useState(false);
@@ -28,22 +68,72 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  async function onGoogle() {
+  /**
+   * Which stage of the sign-up we are on, and which way we last moved. `dir`
+   * is only for the animation: forward slides in from the right, Back from
+   * the left, which is what makes the movement read as a place you are in
+   * rather than a repaint.
+   */
+  const [step, setStep] = useState(1);
+  const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
+  const lastStep = step === STEPS.length;
+
+  function goToStep(n: number) {
+    setDir(n > step ? 'fwd' : 'back');
+    setStep(n);
+    setError(null);
+  }
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setStep(1);
+    setDir('fwd');
     setError(null);
     setInfo(null);
-    setBusy(true);
-    try {
-      await signInWithGoogle(); // redirects away to Google, then back into the app
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start Google sign-in.');
-      setBusy(false);
+  }
+
+  /**
+   * What this stage will not let past. Returns the sentence to show, or null
+   * when the stage is answered — so one function serves as both "can I
+   * continue?" and "why not?".
+   */
+  function blockerFor(n: number): string | null {
+    if (n === 1) {
+      if (accountType === 'company' && !companyName.trim()) return 'Please enter your company name.';
+      return null;
     }
+    if (n === 2) {
+      if (!fullName.trim()) {
+        return accountType === 'company'
+          ? 'Please enter a contact name.'
+          : 'Please enter your full name.';
+      }
+      if (!normalizePhone(phone)) {
+        return 'Enter a valid phone number with country code, e.g. +250 788 123 456.';
+      }
+      return null;
+    }
+    if (!acceptedTerms) return 'Please accept the terms to continue.';
+    return null;
   }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setInfo(null);
+
+    // Enter inside a field submits the form, so mid-sign-up that has to mean
+    // "next stage", not "create the account with half the answers".
+    if (mode === 'signup' && !lastStep) {
+      const blocker = blockerFor(step);
+      if (blocker) {
+        setError(blocker);
+        return;
+      }
+      goToStep(step + 1);
+      return;
+    }
+
     // Read credentials straight from the form so browser-autofilled values are
     // captured even when React's onChange hasn't fired yet. Without this the
     // first click submits empty credentials (which fails) and the user has to
@@ -54,20 +144,9 @@ export function LoginPage() {
     if (emailValue !== email) setEmail(emailValue);
     if (passwordValue !== password) setPassword(passwordValue);
     if (mode === 'signup') {
-      if (accountType === 'company' && !companyName.trim()) {
-        setError('Please enter your company name.');
-        return;
-      }
-      if (!fullName.trim()) {
-        setError(accountType === 'company' ? 'Please enter a contact name.' : 'Please enter your full name.');
-        return;
-      }
-      if (!normalizePhone(phone)) {
-        setError('Enter a valid phone number with country code, e.g. +250 788 123 456.');
-        return;
-      }
-      if (!acceptedTerms) {
-        setError('Please accept the terms to continue.');
+      const blocker = blockerFor(step);
+      if (blocker) {
+        setError(blocker);
         return;
       }
     }
@@ -86,7 +165,7 @@ export function LoginPage() {
         });
         if (needsConfirmation) {
           setInfo('Check your email to confirm your account, then sign in.');
-          setMode('signin');
+          switchMode('signin');
         } else if (accountType === 'company' || wantsToHost) {
           // Hosts (companies, or personal accounts that opted to host) land on
           // the dashboard — their Hosting experience.
@@ -103,213 +182,315 @@ export function LoginPage() {
   }
 
   return (
-    <section className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center px-4 py-16 sm:py-20">
-      <Link to="/" className="mb-10 flex items-center justify-center gap-2 font-semibold text-[var(--color-content)]">
-        <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
-          <BrandMark size={20} />
-        </span>
-        <span className="text-body-lg">AutoHire</span>
-      </Link>
+    <div className="relative flex min-h-full w-full flex-col justify-center px-4 py-10 sm:py-14">
+      {backdrop && <AuthBackdrop />}
 
-      <div className="text-center">
-        <h1 className="text-h2">{mode === 'signin' ? 'Sign in' : 'Create your account'}</h1>
-        <p className="mt-2 text-body-sm text-[var(--color-content-muted)]">
-          {mode === 'signin' ? 'Welcome back to AutoHire.' : 'Rent or host self-drive cars.'}
-        </p>
-      </div>
-
-      <div className="mt-8 flex flex-col gap-5">
-        <Button type="button" variant="outline" className="w-full" onClick={onGoogle} disabled={busy}>
-          <GoogleG /> Continue with Google
-        </Button>
-        <div className="flex items-center gap-3 text-caption text-[var(--color-content-subtle)]">
-          <span className="h-px flex-1 bg-[var(--color-line)]" /> or{' '}
-          <span className="h-px flex-1 bg-[var(--color-line)]" />
-        </div>
-
-        <form onSubmit={onSubmit} className="flex flex-col gap-5">
-          {mode === 'signup' && (
-            <div>
-              <Label>Account type</Label>
-              <div className="mt-1.5 grid grid-cols-2 gap-2">
-                {(
-                  [
-                    { value: 'personal', label: 'Personal', hint: 'Rent · or list your own car', icon: User },
-                    { value: 'company', label: 'Company', hint: 'Fleet / business host', icon: Building2 },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setAccountType(opt.value)}
-                    className={cn(
-                      'flex flex-col items-start gap-1 rounded-[var(--radius-control)] border p-3 text-left transition-colors',
-                      accountType === opt.value
-                        ? 'border-[var(--color-accent-on)] bg-[var(--color-surface-sunken)]'
-                        : 'border-[var(--color-line-strong)] hover:bg-[var(--color-surface-sunken)]',
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5 text-body-sm font-medium text-[var(--color-content)]">
-                      <opt.icon size={15} /> {opt.label}
-                    </span>
-                    <span className="text-caption text-[var(--color-content-muted)]">{opt.hint}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {mode === 'signup' && accountType === 'personal' && (
-            <label className="flex items-start gap-2 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] p-3 text-body-sm text-[var(--color-content-muted)]">
-              <input
-                type="checkbox"
-                checked={wantsToHost}
-                onChange={(e) => setWantsToHost(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-[var(--color-line-strong)] text-[var(--color-accent-on)] focus:ring-[var(--color-accent-on)]"
-              />
-              <span>
-                <span className="font-medium text-[var(--color-content)]">
-                  I want to rent out my vehicle or machine
-                </span>{' '}
-                — start as a host. You can switch between hosting and renting anytime from your
-                profile.
-              </span>
-            </label>
-          )}
-
-          {mode === 'signup' && accountType === 'company' && (
-            <div>
-              <Label htmlFor="company">Company name</Label>
-              <Input
-                id="company"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Kigali Car Rental Self Drive"
-                required
-              />
-            </div>
-          )}
-
-          {mode === 'signup' && (
-            <div>
-              <Label htmlFor="fullName">{accountType === 'company' ? 'Contact name' : 'Full name'}</Label>
-              <Input
-                id="fullName"
-                autoComplete="name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="As shown on your ID"
-                required
-              />
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+      <div
+        className={cn(
+          'mx-auto w-full',
+          // Two columns only once there is room for both: the line on the left
+          // is the reason the panel is allowed to sit off-centre over the
+          // footage, and below `lg` there is no left for it to sit beside.
+          backdrop && 'lg:grid lg:max-w-6xl lg:grid-cols-2 lg:items-center lg:gap-16',
+        )}
+      >
+        {backdrop && (
+          <div className="hidden lg:block">
+            <h2 className="text-display text-[var(--color-content)]">
+              Rent or host self-drive cars.
+            </h2>
+            <p className="mt-3 max-w-sm text-body-lg text-[var(--color-content-muted)]">
+              One account does both — rent from someone near you, and list your own car whenever you
+              want to.
+            </p>
           </div>
+        )}
 
-          {mode === 'signup' && (
-            <div>
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                type="tel"
-                autoComplete="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+250 788 123 456"
-                required
-              />
-              <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
-                Include your country code (e.g. +250 Rwanda, +1 US). Local 07… numbers also work.
-              </p>
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-            />
-          </div>
-
-          {mode === 'signup' && (
-            <label className="flex items-start gap-2 text-body-sm text-[var(--color-content-muted)]">
-              <input
-                type="checkbox"
-                checked={acceptedTerms}
-                onChange={(e) => setAcceptedTerms(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-[var(--color-line-strong)] text-[var(--color-accent-on)] focus:ring-[var(--color-accent-on)]"
-              />
-              <span>I agree to AutoHire's terms of service and privacy policy.</span>
-            </label>
-          )}
-
-          {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
-          {info && <p className="text-body-sm text-brand-700 dark:text-brand-300">{info}</p>}
-
-          {/* The one primary action on this screen — everything above it
-              (Google, account-type toggles) is secondary or a plain field. */}
-          <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Sign up'}
-          </Button>
-        </form>
-
-        <p className="text-center text-body-sm text-[var(--color-content-muted)]">
-          {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
-          <button
-            type="button"
-            onClick={() => {
-              setMode(mode === 'signin' ? 'signup' : 'signin');
-              setError(null);
-              setInfo(null);
-            }}
-            className="font-medium text-[var(--color-accent-on)] hover:underline"
+        {/* Everything a visitor has to read sits inside this panel, so nothing
+            is ever set directly on moving footage. */}
+        <section className={cn('w-full max-w-[27rem]', backdrop ? 'mx-auto lg:mx-0' : 'mx-auto')}>
+          <div
+            className={cn(
+              'flex flex-col',
+              backdrop &&
+                'rounded-[var(--radius-sheet)] border border-[var(--color-line)] bg-[var(--color-surface-raised)]/95 p-6 shadow-[var(--shadow-float)] backdrop-blur sm:p-9',
+            )}
           >
-            {mode === 'signin' ? 'Sign up' : 'Sign in'}
-          </button>
-        </p>
-      </div>
-    </section>
-  );
-}
+            <Link
+              to="/"
+              className="flex items-center justify-center gap-2 font-semibold text-[var(--color-content)]"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]">
+                <BrandMark size={20} />
+              </span>
+              <span className="text-body-lg">AutoHire</span>
+            </Link>
 
-/** Google's four-colour "G" mark, inline so we don't bundle a brand asset. */
-function GoogleG() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"
-      />
-      <path
-        fill="#34A853"
-        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"
-      />
-      <path
-        fill="#EA4335"
-        d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"
-      />
-    </svg>
+            <h1 className="mt-7 text-center text-h2 text-[var(--color-content)]">
+              {mode === 'signin' ? 'Sign in' : 'Create your account'}
+            </h1>
+            <p className="mt-2 text-center text-body-sm text-[var(--color-content-muted)]">
+              {mode === 'signin' ? 'Welcome back to AutoHire.' : STEP_BLURB[step - 1]}
+            </p>
+
+            {mode === 'signup' && (
+              /* The map of the job, before the job. Three named stages with
+                 the current one marked say in one glance how long this is.
+                 A finished stage is clickable; a later one is not — forward
+                 is earned by answering the stage you are on. */
+              <ol className="mt-6 flex items-center justify-center gap-1.5">
+                {STEPS.map((label, i) => {
+                  const n = i + 1;
+                  const done = n < step;
+                  const here = n === step;
+                  return (
+                    <li key={label} className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={n > step}
+                        onClick={() => goToStep(n)}
+                        className={cn(
+                          'flex items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-pill)] px-2.5 py-1 text-caption font-medium transition-colors',
+                          here && 'bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]',
+                          done && 'text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)]',
+                          !here && !done && 'text-[var(--color-content-subtle)]',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px]',
+                            here
+                              ? 'bg-[var(--color-accent-contrast)]/25'
+                              : done
+                                ? 'bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)]'
+                                : 'bg-[var(--color-surface-sunken)]',
+                          )}
+                        >
+                          {done ? <Check size={10} /> : n}
+                        </span>
+                        {/* Below ~380px the three labelled pills no longer fit
+                            the panel, and the numbers say the same thing. */}
+                        <span className="hidden min-[380px]:inline">{label}</span>
+                      </button>
+                      {n < STEPS.length && (
+                        <ChevronRight size={12} className="text-[var(--color-content-subtle)]" />
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+
+            <form onSubmit={onSubmit} className="mt-7 flex flex-col gap-5">
+              {/* `key` is what replays the animation: React tears the old
+                  stage down and mounts the new one, so the CSS runs again. */}
+              <div
+                key={mode === 'signup' ? step : 'signin'}
+                className={cn(
+                  'flex flex-col gap-5',
+                  mode === 'signup' && (dir === 'fwd' ? 'animate-step-in' : 'animate-step-back'),
+                )}
+              >
+                {mode === 'signup' && step === 1 && (
+                  <>
+                    <div>
+                      <Label>Account type</Label>
+                      <div className="mt-1.5 grid grid-cols-2 gap-2">
+                        {(
+                          [
+                            {
+                              value: 'personal',
+                              label: 'Personal',
+                              hint: 'Rent · or list your own car',
+                              icon: User,
+                            },
+                            {
+                              value: 'company',
+                              label: 'Company',
+                              hint: 'Fleet / business host',
+                              icon: Building2,
+                            },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setAccountType(opt.value)}
+                            className={cn(
+                              'flex flex-col items-start gap-1 rounded-[var(--radius-control)] border p-3 text-left transition-colors',
+                              accountType === opt.value
+                                ? 'border-[var(--color-accent-on)] bg-[var(--color-surface-sunken)]'
+                                : 'border-[var(--color-line-strong)] hover:bg-[var(--color-surface-sunken)]',
+                            )}
+                          >
+                            <span className="flex items-center gap-1.5 text-body-sm font-medium text-[var(--color-content)]">
+                              <opt.icon size={15} /> {opt.label}
+                            </span>
+                            <span className="text-caption text-[var(--color-content-muted)]">
+                              {opt.hint}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {accountType === 'personal' && (
+                      <label className="flex items-start gap-2 rounded-[var(--radius-control)] border border-[var(--color-line-strong)] p-3 text-body-sm text-[var(--color-content-muted)]">
+                        <input
+                          type="checkbox"
+                          checked={wantsToHost}
+                          onChange={(e) => setWantsToHost(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-[var(--color-line-strong)] text-[var(--color-accent-on)] focus:ring-[var(--color-accent-on)]"
+                        />
+                        <span>
+                          <span className="font-medium text-[var(--color-content)]">
+                            I want to rent out my vehicle or machine
+                          </span>{' '}
+                          — start as a host. You can switch between hosting and renting anytime from
+                          your profile.
+                        </span>
+                      </label>
+                    )}
+
+                    {accountType === 'company' && (
+                      <div>
+                        <Label htmlFor="company">Company name</Label>
+                        <Input
+                          id="company"
+                          value={companyName}
+                          onChange={(e) => setCompanyName(e.target.value)}
+                          placeholder="Kigali Car Rental Self Drive"
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {mode === 'signup' && step === 2 && (
+                  <>
+                    <div>
+                      <Label htmlFor="fullName">
+                        {accountType === 'company' ? 'Contact name' : 'Full name'}
+                      </Label>
+                      <Input
+                        id="fullName"
+                        autoComplete="name"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="As shown on your ID"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        autoComplete="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+250 788 123 456"
+                      />
+                      <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
+                        Include your country code (e.g. +250 Rwanda, +1 US). Local 07… numbers also
+                        work.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {(mode === 'signin' || step === 3) && (
+                  <>
+                    <div>
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        name="password"
+                        type="password"
+                        autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        minLength={6}
+                      />
+                      {mode === 'signup' && (
+                        <p className="mt-1 text-caption text-[var(--color-content-subtle)]">
+                          At least 6 characters.
+                        </p>
+                      )}
+                    </div>
+
+                    {mode === 'signup' && (
+                      <label className="flex items-start gap-2 text-body-sm text-[var(--color-content-muted)]">
+                        <input
+                          type="checkbox"
+                          checked={acceptedTerms}
+                          onChange={(e) => setAcceptedTerms(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-[var(--color-line-strong)] text-[var(--color-accent-on)] focus:ring-[var(--color-accent-on)]"
+                        />
+                        <span>I agree to AutoHire's terms of service and privacy policy.</span>
+                      </label>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
+              {info && <p className="text-body-sm text-brand-700 dark:text-brand-300">{info}</p>}
+
+              {/* The one primary action on this screen, and — while signing up
+                  — the way back to the stage before it. */}
+              <div className="flex flex-col gap-2">
+                <Button type="submit" className="w-full" disabled={busy}>
+                  {busy
+                    ? 'Please wait…'
+                    : mode === 'signin'
+                      ? 'Sign in'
+                      : lastStep
+                        ? 'Create account'
+                        : 'Continue'}
+                </Button>
+
+                {mode === 'signup' && step > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => goToStep(step - 1)}
+                    disabled={busy}
+                  >
+                    <ArrowLeft size={16} /> Back
+                  </Button>
+                )}
+              </div>
+            </form>
+
+            <p className="mt-6 text-center text-body-sm text-[var(--color-content-muted)]">
+              {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+              <button
+                type="button"
+                onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
+                className="font-medium text-[var(--color-accent-on)] hover:underline"
+              >
+                {mode === 'signin' ? 'Sign up' : 'Sign in'}
+              </button>
+            </p>
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
