@@ -8,6 +8,7 @@ import { useAuth, type AccountType } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { useCountry } from '@/lib/country';
 import { dialCodeFor, normalizePhone, phoneProblem } from '@/lib/phone';
+import { describeAuthError } from '@/lib/authErrors';
 import { Button, Input, Label } from '@/components/ui';
 
 type Mode = 'signin' | 'signup';
@@ -36,29 +37,6 @@ const STEP_BLURB = [
   'Your name goes on your bookings; hosts see it when you ask for their car.',
   'Last one — a password, and the terms.',
 ];
-
-/**
- * Is this the "that email already has an account" refusal?
- *
- * Checked on the error's `code` first, because the message is English prose
- * from the auth service and changes without warning; the message match is a
- * fallback for older releases that send no code.
- *
- * **Only at submit, never as you type.** A field that tells an anonymous
- * visitor whether an address has an account is an oracle anyone can poll for
- * whoever they like; saying it to someone who has already typed that address
- * and pressed the button is a far smaller surface, and it is the only moment
- * the answer actually helps them.
- */
-function isDuplicateAccount(err: unknown): boolean {
-  const code = (err as { code?: string } | null)?.code ?? '';
-  const message = err instanceof Error ? err.message : '';
-  return (
-    code === 'user_already_exists' ||
-    code === 'email_exists' ||
-    /already\s*(been\s*)?registered|user already exists|email.*already/i.test(message)
-  );
-}
 
 /**
  * Sign in / sign up — the marketplace's front door, and also the admin site's
@@ -240,15 +218,26 @@ export function LoginPage({
         await signIn(emailValue, passwordValue);
         navigate(from, { replace: true });
       } else {
-        const { needsConfirmation } = await signUp(emailValue, passwordValue, {
-          accountType,
-          companyName,
-          country,
-          fullName,
-          phone: normalizePhone(phone, country) ?? phone,
-          wantsToHost: accountType === 'personal' && wantsToHost,
-        });
-        if (needsConfirmation) {
+        const { needsConfirmation, alreadyRegistered } = await signUp(
+          emailValue,
+          passwordValue,
+          {
+            accountType,
+            companyName,
+            country,
+            fullName,
+            phone: normalizePhone(phone, country) ?? phone,
+            wantsToHost: accountType === 'personal' && wantsToHost,
+          },
+        );
+        // A sign-up that "succeeded" for an address that already has an
+        // account — the obfuscated answer GoTrue gives when confirmation is
+        // on. Nothing was created, so saying "check your email" would be a
+        // lie they would wait on.
+        if (alreadyRegistered) {
+          switchMode('signin');
+          setInfo('That email already has an AutoHire account — sign in below.');
+        } else if (needsConfirmation) {
           setInfo('Check your email to confirm your account, then sign in.');
           switchMode('signin');
         } else if (accountType === 'company' || wantsToHost) {
@@ -260,15 +249,18 @@ export function LoginPage({
         }
       }
     } catch (err) {
-      // The one refusal worth rewriting here, because it has an action
-      // attached: they already have an account, so send them to sign in with
-      // the address they just typed rather than restating the failure.
-      if (mode === 'signup' && isDuplicateAccount(err)) {
-        setError(null);
+      // Never the provider's own words. `describeAuthError` turns the auth
+      // service's error into one sentence a person can act on, matched on the
+      // error's `code` rather than its English text.
+      const failure = describeAuthError(err);
+      // "You already have an account" is the one failure with somewhere to
+      // send them, so it moves them there with the address they just typed
+      // rather than restating the refusal.
+      if (mode === 'signup' && failure.kind === 'email_taken') {
         switchMode('signin');
-        setInfo('That email already has an AutoHire account — sign in below.');
+        setInfo(failure.message);
       } else {
-        setError(err instanceof Error ? err.message : 'Something went wrong.');
+        setError(failure.message);
       }
     } finally {
       setBusy(false);

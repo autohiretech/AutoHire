@@ -117,7 +117,7 @@ interface AuthValue {
     email: string,
     password: string,
     details: SignUpDetails,
-  ) => Promise<{ needsConfirmation: boolean }>;
+  ) => Promise<{ needsConfirmation: boolean; alreadyRegistered: boolean }>;
   signOut: () => Promise<void>;
   /** Permanently delete the account (login + all data) via the Edge Function. */
   deleteAccount: () => Promise<void>;
@@ -160,7 +160,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signIn(email: string, password: string) {
     const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
-    if (error) throw new Error(error.message);
+    // The AuthError itself, not a copy of its message: `code` and `status` are
+    // what `describeAuthError` matches on, and `new Error(error.message)`
+    // threw them away and left it matching English prose instead.
+    if (error) throw error;
     // Adopt the session synchronously here (the same steps as the
     // onAuthStateChange handler) so a navigate() immediately after sign-in
     // doesn't race the async auth listener. Without this the user is still null
@@ -189,6 +192,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  /**
+   * Create an account.
+   *
+   * `alreadyRegistered` is the one answer that cannot be read from an error.
+   * With email confirmation ON, GoTrue deliberately does NOT fail a sign-up
+   * for an address that already exists — it returns success with an
+   * obfuscated user whose `identities` array is empty, precisely so sign-up
+   * cannot be used to enumerate accounts. With confirmation OFF it errors
+   * instead. Both are real configurations of this project, so both are
+   * reported, and the caller decides what to say.
+   */
   async function signUp(email: string, password: string, details: SignUpDetails) {
     const { data, error } = await getSupabase().auth.signUp({
       email,
@@ -205,7 +219,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       },
     });
-    if (error) throw new Error(error.message);
+    if (error) throw error;
+
+    // Empty `identities` on an otherwise-successful sign-up means the address
+    // is taken — see above. `identities` is optional on the type, so an
+    // undefined array is NOT treated as taken.
+    const alreadyRegistered = Boolean(data.user && data.user.identities?.length === 0);
+
     // When the account is auto-confirmed (no email step), adopt the session
     // synchronously so the navigate() after sign-up doesn't race the auth
     // listener and bounce off the AppLayout guard — same fix as signIn.
@@ -215,7 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user);
     }
     // No session means Supabase is set to require email confirmation.
-    return { needsConfirmation: !data.session };
+    return { needsConfirmation: !data.session, alreadyRegistered };
   }
 
   async function signOut() {
@@ -269,7 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       type: 'phone_change',
     });
-    if (error) throw new Error(error.message);
+    if (error) throw error;
     if (data.user) setUser(data.user);
   }
 
