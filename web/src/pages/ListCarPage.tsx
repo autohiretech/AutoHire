@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { cn } from '@/lib/cn';
@@ -127,6 +128,29 @@ function Req({ missing }: { missing: boolean }) {
     >
       Required
     </span>
+  );
+}
+
+/**
+ * The reason a field is wrong, under that field.
+ *
+ * The form already collected every problem into one list beside Continue, and
+ * that list is worth keeping — it is how a host knows what stage 4 still wants
+ * while they are looking at stage 1. But it was the ONLY place anything was
+ * said, so a host who typed a model and left the make empty saw two untouched
+ * boxes and a complaint at the far end of the page, with nothing joining the
+ * two. On a phone the summary is not even on screen at the same time as the
+ * field it describes.
+ *
+ * So the same fact is said twice, in two places that answer two different
+ * questions: "what is wrong with THIS box" here, and "what is left before I
+ * can publish" there.
+ */
+function FieldError({ children }: { children: ReactNode }) {
+  return (
+    <p role="alert" className="mt-1.5 text-caption font-medium text-[var(--color-danger-500)]">
+      {children}
+    </p>
   );
 }
 
@@ -416,6 +440,24 @@ export function ListCarPage() {
   });
 
   /**
+   * The make box searches the world too, and until now it did not.
+   *
+   * It offered the makes in `catalogue` — the fleet layer — which is 28 names,
+   * the makes AutoHire happens to have listings for. Everything else was told
+   * "No make called “Koenigsegg”", while the model box three inches away would
+   * happily return Koenigsegg Jesko, because that one searches the world index
+   * and this one never did. Two boxes describing one car disagreed about
+   * whether its manufacturer exists.
+   *
+   * A bigger limit than the model box gets: these collapse to distinct makes,
+   * and a query like "to" spreads twenty Toyota models across the results
+   * before reaching Tofas.
+   */
+  const { entries: worldMakes, isLoading: searchingMakes } = useVehicleSearch(make.trim(), {
+    limit: 24,
+  });
+
+  /**
    * What this vehicle is, from whichever layer knows it.
    *
    * The fleet first: only it carries an AutoHire body category, and its fuel is
@@ -619,8 +661,23 @@ export function ListCarPage() {
       if (at) at.count += e.count;
       else byMake.set(key, { key, make: e.make, fuel: null, category: null, count: e.count });
     }
-    return pickSuggestions([...byMake.values()], make, (s) => [s.make]);
-  }, [catalogue, make]);
+    const local = pickSuggestions([...byMake.values()], make, (s) => [s.make]);
+    // World makes fill in behind the fleet's own, which keep their lead
+    // because they are ranked by how many are actually listed — "Toyota" first
+    // for a Rwandan host is worth more than alphabetical order. A make already
+    // in the fleet is not repeated from the world index.
+    const seen = new Set(local.map((s) => s.make.trim().toLowerCase()));
+    const rest: Suggestion[] = [];
+    for (const e of worldMakes) {
+      const key = e.make.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      // `count: 0` is true and load-bearing: these have no listings behind
+      // them, and the row renders the fleet's badge off that number.
+      rest.push({ key: `w|${key}`, make: e.make, fuel: null, category: null, count: 0, world: true });
+    }
+    return [...local, ...rest.slice(0, 8)];
+  }, [catalogue, make, worldMakes]);
 
   /**
    * What the model box shows: what the platform knows first, then the world.
@@ -846,12 +903,13 @@ export function ListCarPage() {
                   onChange={setMake}
                   onPick={(s) => setMake(s.make)}
                   suggestions={makeSuggestions}
-                  loading={catalogueLoading}
+                  loading={catalogueLoading || searchingMakes}
                   invalid={showMissing && !make.trim()}
                   placeholder={machine ? 'Kubota' : 'Toyota'}
                   label="Makes"
                   emptyNote={`No make called “${make.trim()}”. Type it in full — the model box searches on its own.`}
                 />
+                {showMissing && !make.trim() && <FieldError>Enter the make.</FieldError>}
               </div>
               <div>
                 <Label htmlFor="model">
@@ -897,6 +955,14 @@ export function ListCarPage() {
                         : `No car called “${model.trim()}”. Check the spelling, or fill in the make first.`
                   }
                 />
+                {showMissing && !model.trim() && (
+                  <FieldError>
+                    {machine ? 'Enter the model.' : 'Pick the model from the list.'}
+                  </FieldError>
+                )}
+                {showMissing && !!model.trim() && unknownCarModel && !grandfatheredModel && (
+                  <FieldError>Not a car we can find — check the spelling.</FieldError>
+                )}
               </div>
               <div>
                 <Label htmlFor="category">Category</Label>
