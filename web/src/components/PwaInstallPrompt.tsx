@@ -15,6 +15,46 @@ const BACKOFF_MS = 14 * 24 * 60 * 60 * 1000;
 // reads as an interstitial ad, not something the app offers.
 const SHOW_DELAY_MS = 4000;
 
+/**
+ * Never on the first visit.
+ *
+ * Verified on the live site at 390px: a first-time visitor, logged out, had
+ * this sheet over the bottom third of the screen before a single car was in
+ * view — the only thing they had seen of AutoHire was a location card, a
+ * hero and a row of chips, and we were already asking them to install it.
+ * Nobody installs an app they have not used yet; they close the sheet, and
+ * the two-week backoff below then keeps us quiet for exactly the fortnight in
+ * which they might actually have wanted it.
+ *
+ * So the first load only stamps when this device first saw us, and the sheet
+ * is allowed from a *return* visit onward. "Return" is measured from that
+ * stamp, not from a session flag: a refresh, a second tab, or a long first
+ * browse all stay inside `RETURN_AFTER_MS`, while coming back later that day
+ * or tomorrow does not — which is the visit where someone who found a car
+ * they liked is worth asking. The alternative gate ("after a search or a
+ * car opened") would need those pages to report back here; this one is
+ * self-contained and needs no cooperation from anywhere else in the app.
+ *
+ * Storage that is blocked (private mode) reads as "first visit" every time,
+ * so in that mode the prompt simply never shows — the safe side to fail on.
+ */
+const FIRST_SEEN_KEY = 'autohire.first-seen-at';
+const RETURN_AFTER_MS = 6 * 60 * 60 * 1000;
+
+function isReturnVisit(): boolean {
+  try {
+    const raw = localStorage.getItem(FIRST_SEEN_KEY);
+    const at = Number(raw);
+    if (!raw || !Number.isFinite(at)) {
+      localStorage.setItem(FIRST_SEEN_KEY, String(Date.now()));
+      return false;
+    }
+    return Date.now() - at >= RETURN_AFTER_MS;
+  } catch {
+    return false;
+  }
+}
+
 function recentlyDismissed(): boolean {
   const raw = localStorage.getItem(DISMISS_KEY);
   if (!raw) return false;
@@ -31,8 +71,12 @@ export function PwaInstallPrompt() {
   const { installed, canPromptNatively, isIosSafari, promptInstall } = usePwaInstall();
   const [open, setOpen] = useState(false);
   const t = useT();
+  // Decided once per mount, not per render: the first call is also what
+  // writes the first-seen stamp, and re-evaluating it later in the same
+  // mount would turn a long first visit into a "return" mid-page.
+  const [returning] = useState(isReturnVisit);
 
-  const eligible = !installed && (canPromptNatively || isIosSafari);
+  const eligible = returning && !installed && (canPromptNatively || isIosSafari);
 
   useEffect(() => {
     if (!eligible || recentlyDismissed()) return;

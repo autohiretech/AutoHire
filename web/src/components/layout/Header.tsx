@@ -21,7 +21,7 @@ import { useNotifications } from '@/components/NotificationsProvider';
 import { CountrySelector } from '@/components/marketplace/CountrySelector';
 import { CurrencySelector } from '@/components/marketplace/CurrencySelector';
 import { LanguageSelector } from '@/components/marketplace/LanguageSelector';
-import { LANGUAGES, useLanguage } from '@/lib/i18n';
+import { LANGUAGES, useLanguage, type TranslationKey } from '@/lib/i18n';
 import { client } from '@/lib/client';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useCanRent } from '@/lib/account';
@@ -33,18 +33,18 @@ import { useAuth } from '@/lib/auth';
 // but get no renter actions (no "My trips", and booking is disabled). A personal
 // host switches back to renting from their profile. Renters get a "List your
 // car" entry to start hosting.
-const NAV_BY_MODE: Record<AppMode, { to: string; label: string; end?: boolean }[]> = {
+const NAV_BY_MODE: Record<AppMode, { to: string; label: TranslationKey; end?: boolean }[]> = {
   renter: [
-    { to: '/', label: 'Explore', end: true },
-    { to: '/trips', label: 'My trips' },
+    { to: '/', label: 'nav.explore', end: true },
+    { to: '/trips', label: 'nav.myTrips' },
     // Renters can't list cars directly — they become a host first.
-    { to: '/account', label: 'Become a host' },
+    { to: '/account', label: 'nav.becomeHost' },
   ],
   host: [
-    { to: '/dashboard', label: 'Dashboard' },
-    { to: '/earnings', label: 'Earnings' },
-    { to: '/', label: 'Explore', end: true },
-    { to: '/verification', label: 'Verification' },
+    { to: '/dashboard', label: 'nav.dashboard' },
+    { to: '/earnings', label: 'nav.earnings' },
+    { to: '/', label: 'nav.explore', end: true },
+    { to: '/verification', label: 'nav.verification' },
   ],
 };
 
@@ -85,7 +85,7 @@ export function Header() {
 
   // Guests get no nav links — the logo already goes home, so "Explore" is
   // redundant, and account actions are gated. They sign in / sign up when ready.
-  const navItems: { to: string; label: string; end?: boolean }[] = user
+  const navItems: { to: string; label: TranslationKey; end?: boolean }[] = user
     ? NAV_BY_MODE[mode]
     : [];
   const identityName =
@@ -122,7 +122,7 @@ export function Header() {
                 )
               }
             >
-              {item.label}
+              {t(item.label)}
             </NavLink>
           ))}
         </nav>
@@ -163,7 +163,7 @@ export function Header() {
                 <a
                   href={ADMIN_URL}
                   className="rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)]"
-                  aria-label="Admin panel"
+                  aria-label={t('nav.adminPanel')}
                 >
                   <ShieldCheck size={20} />
                 </a>
@@ -174,8 +174,8 @@ export function Header() {
                 <Link
                   to="/watchlist"
                   className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] lg:block"
-                  aria-label="Cars you're watching"
-                  title="Watching"
+                  aria-label={t('nav.watchingAria')}
+                  title={t('nav.watching')}
                 >
                   <Star size={20} />
                 </Link>
@@ -183,8 +183,8 @@ export function Header() {
               <Link
                 to="/feed"
                 className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] lg:block"
-                aria-label="Feed"
-                title="Feed"
+                aria-label={t('nav.feed')}
+                title={t('nav.feed')}
               >
                 <Rss size={20} />
               </Link>
@@ -192,8 +192,8 @@ export function Header() {
               <Link
                 to="/circles"
                 className="hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] lg:block"
-                aria-label="Your circles"
-                title="Circles"
+                aria-label={t('nav.circlesAria')}
+                title={t('nav.circles')}
               >
                 <Users size={20} />
               </Link>
@@ -226,15 +226,15 @@ export function Header() {
                   </span>
                 )}
               </button>
-              <Link to="/account" aria-label="Account" className="ml-1 hidden md:block">
+              <Link to="/account" aria-label={t('nav.account')} className="ml-1 hidden md:block">
                 <Avatar name={identityName} src={mode === 'host' ? host?.avatarUrl : me?.avatarUrl} size="sm" />
               </Link>
               <button
                 type="button"
                 onClick={() => signOut()}
                 className="ml-1 hidden rounded-[var(--radius-control)] p-2 text-[var(--color-content-subtle)] hover:bg-[var(--color-surface-sunken)] md:block"
-                aria-label="Sign out"
-                title={user.email ?? 'Sign out'}
+                aria-label={t('nav.signOut')}
+                title={user.email ?? t('nav.signOut')}
               >
                 <LogOut size={18} />
               </button>
@@ -243,11 +243,11 @@ export function Header() {
             <div className="hidden items-center gap-2 md:flex">
               <Link to="/login">
                 <Button size="sm" variant="outline">
-                  Sign in
+                  {t('nav.signIn')}
                 </Button>
               </Link>
               <Link to="/login" state={{ from: pathname }}>
-                <Button size="sm">Sign up</Button>
+                <Button size="sm">{t('nav.signUp')}</Button>
               </Link>
             </div>
           )}
@@ -306,7 +306,7 @@ export function Header() {
                 )
               }
             >
-              {item.label}
+              {t(item.label)}
             </NavLink>
           ))}
           {canRent && (
@@ -380,17 +380,17 @@ export function Header() {
               }}
               className="flex w-full items-center gap-2 rounded-[var(--radius-control)] px-3 py-2.5 text-left text-body-sm font-semibold text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)]"
             >
-              <LogOut size={16} /> Sign out
+              <LogOut size={16} /> {t('nav.signOut')}
             </button>
           ) : (
             <div className="flex flex-col gap-2 px-1 py-1">
               <Link to="/login" onClick={closeMenu}>
                 <Button variant="outline" className="w-full">
-                  Sign in
+                  {t('nav.signIn')}
                 </Button>
               </Link>
               <Link to="/login" state={{ from: pathname }} onClick={closeMenu}>
-                <Button className="w-full">Sign up</Button>
+                <Button className="w-full">{t('nav.signUp')}</Button>
               </Link>
             </div>
           )}

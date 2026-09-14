@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/cn';
+import { useT } from '@/lib/i18n';
 import { ChipRow } from '@/components/ui';
 
 /**
@@ -30,6 +31,7 @@ export function BrowseTabs() {
           ? 'cities'
           : null;
 
+  const t = useT();
   const tab = (active: boolean) =>
     cn(
       'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[var(--radius-pill)] px-3.5',
@@ -42,13 +44,13 @@ export function BrowseTabs() {
   return (
     <ChipRow className="justify-center">
       <Link to="/" className={tab(section === 'cars')}>
-        Cars
+        {t('home.tabCars')}
       </Link>
       <Link to="/hosts" className={tab(section === 'hosts')}>
-        Hosts
+        {t('home.tabHosts')}
       </Link>
       <Link to="/cities" className={tab(section === 'cities')}>
-        Cities
+        {t('home.tabCities')}
       </Link>
     </ChipRow>
   );

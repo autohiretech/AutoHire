@@ -290,14 +290,15 @@ export function CarDetailPage() {
           reference pattern: the car sells itself before you read a word. */}
       <PhotoGallery photos={photos} title={listing.title} onOpen={(i) => setLightbox(i)} />
 
-      {/* Title block — h1, then a meta row (year · rating · trips · host badge). */}
+      {/* Title block — h1, then a meta row (rating · trips · host badge). The
+          year is not in the row: the subtitle directly above it already reads
+          "2023 Polestar 2", and the row repeating "2023 ·" under it printed the
+          same fact twice, two lines apart, on every car page. */}
       <div className="mt-5 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-h1 text-[var(--color-content)]">{listing.title}</h1>
           <p className="mt-1 text-body-sm capitalize text-[var(--color-content-muted)]">{subtitle}</p>
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-body-sm text-[var(--color-content-muted)]">
-            <span>{listing.year}</span>
-            <span aria-hidden="true">·</span>
             {listing.ratingCount ? (
               <span className="tabular inline-flex items-center gap-1 font-medium text-[var(--color-content)]">
                 <Star size={14} className="fill-[var(--color-content)]" /> {listing.ratingAvg?.toFixed(2)}

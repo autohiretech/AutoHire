@@ -19,10 +19,10 @@ import type { Listing } from '@autohire/shared';
 import type { ListingFilters } from '@/lib/types';
 import { mergeAiFilters } from '@/lib/aiFilters';
 import { loadHomeLocation, subscribeHomeLocation } from '@/lib/homeLocation';
-import { useT } from '@/lib/i18n';
+import { isTranslationKey, useT } from '@/lib/i18n';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { CAR_CATEGORIES } from '@/lib/categories';
+import { CAR_CATEGORIES, categoryLabelKey, isMachine } from '@/lib/categories';
 import { Badge, Chip, ChipRow, Input } from '@/components/ui';
 import { SearchBar } from '@/components/research/SearchBar';
 import { ListingCardSkeleton } from '@/components/skeletons';
@@ -64,6 +64,25 @@ const PAGE_SIZE = 36;
  * drops below the size that argument was defending.
  */
 const CARD_GRID = 'listing-grid grid grid-cols-2 gap-5';
+
+/**
+ * The word at the head of each category row ("Cars", "Machines"). A fixed
+ * minimum width so the two rows' chips start on the same vertical line; the
+ * width is the longer of the two words in either language plus room, and
+ * `shrink-0` so the scrolling row can never squeeze it into a wrap.
+ */
+const GROUP_LABEL =
+  'min-w-[4.5rem] shrink-0 text-caption font-medium uppercase tracking-wide text-[var(--color-content-subtle)]';
+
+/**
+ * The category list split the way the listing form already splits it (see
+ * `CATEGORY_GROUPS` / `<optgroup>` in ListCarPage): road vehicles in one row,
+ * cultivating + building machinery in the other. Derived from
+ * `CAR_CATEGORIES` at module load — never a second hand-written list — so a
+ * category added to the enum lands in the right row on its own.
+ */
+const vehicleCategories = CAR_CATEGORIES.filter((c) => !isMachine(c.value));
+const machineCategories = CAR_CATEGORIES.filter((c) => isMachine(c.value));
 
 /**
  * The browse state we remember (per session) so clicking into a car and
@@ -229,7 +248,7 @@ export function HomePage() {
   );
 
   /**
-   * The typed-in search under the category chips.
+   * The typed-in filter in the results grid's header.
    *
    * Held separately from `filters.query` and pushed across on a delay. The
    * results grid is a server query keyed on the whole filter object, so
@@ -363,14 +382,14 @@ export function HomePage() {
                 to="/cars/new"
                 className="flex shrink-0 items-center gap-1.5 text-body-sm font-semibold text-white hover:text-white/80"
               >
-                <PlusCircle size={16} /> List your car
+                <PlusCircle size={16} /> {t('nav.listYourCar')}
               </Link>
             ) : (
               <Link
                 to="/account"
                 className="flex shrink-0 items-center gap-1.5 text-body-sm font-semibold text-white hover:text-white/80"
               >
-                <PlusCircle size={16} /> Become a host
+                <PlusCircle size={16} /> {t('nav.becomeHost')}
               </Link>
             )}
           </div>
@@ -479,76 +498,88 @@ export function HomePage() {
                     return next;
                   })
                 }
-                placeholder="Anything else? SUV, under 150k, automatic…"
+                placeholder={t('home.searchAiPlaceholder')}
               />
             </div>
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <Badge tone="overlay">
-              <Leaf size={12} /> 90% electric, hybrid &amp; ecological
+              <Leaf size={12} /> {t('home.ecoBadge')}
             </Badge>
             <span className="flex items-center gap-1 text-caption text-white/80">
-              <ShieldCheck size={13} /> All hosts verified
+              <ShieldCheck size={13} /> {t('home.allHostsVerified')}
             </span>
           </div>
         </div>
       </section>
 
       <div ref={resultsRef} className="mx-auto max-w-[1500px] scroll-mt-4 px-4 py-6">
-        {/* Category chip row — directly under the search, and the one filter
+        {/* Category chips — directly under the search, and the one filter
             control every breakpoint shares. Previously this was a desktop
             accordion sidebar *and* a separate mobile rail carrying the same
-            list twice; one scrolling row replaces both. */}
-        <ChipRow className="-mx-4 px-4 pb-1">
-          <Chip
-            selected={!filters.category}
-            onClick={() => {
-              setFilter('category', undefined);
-              scrollToResults();
-            }}
-          >
-            <LayoutGrid size={14} /> All
-          </Chip>
-          {CAR_CATEGORIES.map(({ value, label, icon: Icon }) => {
-            const active = filters.category === value;
-            return (
-              <Chip
-                key={value}
-                selected={active}
-                onClick={() => {
-                  setFilter('category', active ? undefined : value);
-                  scrollToResults();
-                }}
-              >
-                <Icon size={14} /> {label}
-              </Chip>
-            );
-          })}
-        </ChipRow>
+            list twice; one scrolling row replaced both.
 
-        {/* Typed search, under the chips and deliberately small.
-            The hero search above takes a place and dates; it has never taken
-            words, so "Hiace" or "Kigali airport" had nowhere to go and the
-            only way to a specific car was scrolling a row of fifteen
-            categories. Full width on a phone — a field sharing a row with
-            anything at that size is too narrow to read back what you typed —
-            and capped on desktop so it reads as a refinement of the chips
-            above rather than a second hero. */}
-        <div className="relative mt-3 sm:max-w-sm">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
-          />
-          <Input
-            type="search"
-            inputMode="search"
-            placeholder="Search cars by name, make or city"
-            aria-label="Search cars by name, make or city"
-            value={queryText}
-            onChange={(e) => setQueryText(e.target.value)}
-            className="pl-9"
-          />
+            Two rows now, not one. The single row carried all sixteen
+            categories — Sedan through Forklift — in one horizontal scroll,
+            and on a phone that is nine screens of chips with a tractor
+            somewhere in the middle, cars and construction plant
+            indistinguishable except by icon. The listing form already draws
+            these as two `<optgroup>`s from the same `group` field; the home
+            page now splits on the same fact (`isMachine`), so the two can't
+            disagree about what counts as a machine. Each row leads with its
+            group's name in caption type, which is what makes a second row
+            read as "and here are the machines" rather than "more of the
+            same". "All" clears the category filter entirely — it sits at the
+            head of the cars row because that is where a renter's eye lands
+            first, not because it means "all cars". Both rows still scroll
+            independently on a phone; at desktop widths each fits unscrolled. */}
+        <div className="space-y-2">
+          <ChipRow className="-mx-4 px-4 pb-1">
+            <span className={GROUP_LABEL}>{t('home.groupCars')}</span>
+            <Chip
+              selected={!filters.category}
+              onClick={() => {
+                setFilter('category', undefined);
+                scrollToResults();
+              }}
+            >
+              <LayoutGrid size={14} /> {t('home.chipAll')}
+            </Chip>
+            {vehicleCategories.map(({ value, icon: Icon }) => {
+              const active = filters.category === value;
+              return (
+                <Chip
+                  key={value}
+                  selected={active}
+                  onClick={() => {
+                    setFilter('category', active ? undefined : value);
+                    scrollToResults();
+                  }}
+                >
+                  <Icon size={14} /> {t(categoryLabelKey(value))}
+                </Chip>
+              );
+            })}
+          </ChipRow>
+          <ChipRow className="-mx-4 px-4 pb-1">
+            <span className={GROUP_LABEL}>{t('home.groupMachines')}</span>
+            {machineCategories.map(({ value, icon: Icon }) => {
+              const active = filters.category === value;
+              return (
+                <Chip
+                  key={value}
+                  selected={active}
+                  onClick={() => {
+                    setFilter('category', active ? undefined : value);
+                    scrollToResults();
+                  }}
+                >
+                  <Icon size={14} /> {t(categoryLabelKey(value))}
+                </Chip>
+              );
+            })}
+          </ChipRow>
         </div>
 
         {/* Rails — cars grouped by a reason, Turo-style, scrolling
@@ -563,14 +594,14 @@ export function HomePage() {
         {!filtering && (
         <div className="mt-2">
           <ListingRail
-            title={`Electric cars in ${country.name}`}
+            title={t('home.electricTitle', { country: country.name })}
             subtitle={t('home.electricSubtitle')}
             listings={electricCars}
             isLoading={electricLoading}
           />
           {cityA && (
             <ListingRail
-              title={`Popular in ${cityA}`}
+              title={t('home.popularIn', { city: cityA })}
               subtitle={t('home.topRatedNearYou')}
               listings={cityACars}
               isLoading={cityALoading}
@@ -578,7 +609,7 @@ export function HomePage() {
           )}
           {cityB && (
             <ListingRail
-              title={`Popular in ${cityB}`}
+              title={t('home.popularIn', { city: cityB })}
               subtitle={t('home.topRatedNearYou')}
               listings={cityBCars}
               isLoading={cityBLoading}
@@ -604,26 +635,56 @@ export function HomePage() {
                 the only confirmation that the box did anything at all. */}
             <h2 className="text-h3">
               {searching
-                ? `Cars matching “${queryText.trim()}”`
+                ? t('home.matching', { query: queryText.trim() })
                 : topRanked
-                  ? 'Top ranked cars'
+                  ? t('home.topRankedTitle')
                   : t('home.recommended')}
             </h2>
-            <ChipRow>
-              <Chip
-                selected={filters.fuel === 'electric'}
-                onClick={() => setFilter('fuel', filters.fuel === 'electric' ? undefined : 'electric')}
-              >
-                <Zap size={14} /> Electric
-              </Chip>
-              <Chip selected={topRanked} onClick={() => setTopRanked((v) => !v)}>
-                <TrendingUp size={14} /> Top ranked
-              </Chip>
-            </ChipRow>
+            {/* The typed filter lives here, in the grid's own header, and
+                nowhere higher. It used to sit directly under the category
+                chips as a second full-width search box — "Search cars by
+                name, make or city" a hand's width below a hero that had just
+                asked "Where" — and on a 390px phone the two together read as
+                one search that had been built twice. It filters *this grid*
+                (a server query on `filters.query`, make/model/city), so it
+                belongs to the grid: a renter meets it when they reach the
+                results, as a compact refinement beside the Electric / Top
+                ranked chips, not as a second hero on the way down. Chip
+                height (h-9), not field height, for the same reason. Full
+                width on a phone — a field sharing a row with anything at that
+                size is too narrow to read back what you typed. */}
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-content-subtle)]"
+                />
+                <Input
+                  type="search"
+                  inputMode="search"
+                  placeholder={t('home.filterPlaceholder')}
+                  aria-label={t('home.filterPlaceholder')}
+                  value={queryText}
+                  onChange={(e) => setQueryText(e.target.value)}
+                  className="h-9 pl-9"
+                />
+              </div>
+              <ChipRow>
+                <Chip
+                  selected={filters.fuel === 'electric'}
+                  onClick={() => setFilter('fuel', filters.fuel === 'electric' ? undefined : 'electric')}
+                >
+                  <Zap size={14} /> {t('home.chipElectric')}
+                </Chip>
+                <Chip selected={topRanked} onClick={() => setTopRanked((v) => !v)}>
+                  <TrendingUp size={14} /> {t('home.chipTopRanked')}
+                </Chip>
+              </ChipRow>
+            </div>
           </div>
 
           {isLoading ? (
-            <div className={CARD_GRID} aria-busy="true" aria-label="Loading cars">
+            <div className={CARD_GRID} aria-busy="true" aria-label={t('home.loadingCars')}>
               {Array.from({ length: 9 }, (_, i) => (
                 <ListingCardSkeleton key={i} />
               ))}
@@ -638,7 +699,7 @@ export function HomePage() {
                   Array.from({ length: 3 }, (_, i) => <ListingCardSkeleton key={`more-${i}`} />)}
               </div>
               <p className="tabular mt-6 text-center text-body-sm text-[var(--color-content-muted)]">
-                Showing {results.length} of {total} cars
+                {t('home.showingCount', { shown: results.length, total })}
               </p>
               {/* No visible content — an IntersectionObserver trigger, not a
                   "load more" button. Sits below the grid so it enters the
@@ -654,20 +715,20 @@ export function HomePage() {
             // time, and without this branch it silently rendered as "No cars
             // match your search. Clear filters" — true-looking and wrong.
             <EmptyState
-              label="Couldn't load cars right now. Please try again."
+              label={t('home.loadErrorBody')}
               action={
                 <button
                   type="button"
                   onClick={() => refetch()}
                   className="text-body-sm font-semibold text-[var(--color-accent-on)] hover:underline"
                 >
-                  Retry
+                  {t('home.retry')}
                 </button>
               }
             />
           ) : (
             <EmptyState
-              label="No cars match your search."
+              label={t('home.noResultsBody')}
               action={
                 Object.keys(filters).length > 0 ? (
                   <button
@@ -675,7 +736,7 @@ export function HomePage() {
                     onClick={() => setFilters({})}
                     className="text-body-sm font-semibold text-[var(--color-accent-on)] hover:underline"
                   >
-                    Clear filters
+                    {t('home.clearFilters')}
                   </button>
                 ) : undefined
               }
@@ -704,6 +765,7 @@ function ListingRail({
   listings?: Listing[];
   isLoading: boolean;
 }) {
+  const t = useT();
   if (!isLoading && (listings?.length ?? 0) === 0) return null;
   return (
     <section className="mb-8">
@@ -727,7 +789,7 @@ function ListingRail({
         <div
           className="relative -mx-4 mt-3 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           aria-busy="true"
-          aria-label="Loading cars"
+          aria-label={t('home.loadingCars')}
         >
           {Array.from({ length: 4 }, (_, i) => (
             // Bumped from 240px (`sm:w-60`) — six-plus cards fit across a
@@ -765,9 +827,19 @@ const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
  * progress dots let you drive it manually.
  */
 function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
+  const t = useT();
   const items = listings.slice(0, 5);
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
+
+  // `fuel` and `transmission` are enum values the API supplies, and the
+  // dictionary has a word for each member this build knows about. A value it
+  // doesn't know (a newer migration widened the enum) falls back to the raw
+  // value, capitalised — never to the dictionary key itself.
+  const enumLabel = (prefix: 'fuel' | 'transmission', value: string) => {
+    const key = `${prefix}.${value}`;
+    return isTranslationKey(key) ? t(key) : cap(value);
+  };
 
   // Restart at the first car whenever the set changes (e.g. switching country).
   useEffect(() => {
@@ -785,7 +857,7 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
   const car = items[i] ?? items[0];
   const others = items.filter((_, idx) => idx !== i).slice(0, 4);
   const go = (d: number) => setI((v) => (v + d + items.length) % items.length);
-  const subtitle = `${car.year} · ${cap(car.transmission)} · ${cap(car.fuel)} · ${car.seats} seats`;
+  const subtitle = `${car.year} · ${enumLabel('transmission', car.transmission)} · ${enumLabel('fuel', car.fuel)} · ${t('car.seats', { count: car.seats })}`;
 
   return (
     <div
@@ -809,7 +881,7 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
               unknown photo, same reasoning as Badge's `overlay` tone. */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/45" />
           <span className="absolute left-4 top-4 rounded bg-black/85 px-2.5 py-1 text-caption font-bold uppercase tracking-wide text-white">
-            Featured
+            {t('home.featuredBadge')}
           </span>
           <div className="absolute right-4 top-3 max-w-[56%] text-right text-white sm:max-w-[75%]">
             <p className="line-clamp-1 text-body-lg font-bold drop-shadow">{car.title}</p>
@@ -831,7 +903,7 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
               <button
                 type="button"
                 onClick={() => go(-1)}
-                aria-label="Previous car"
+                aria-label={t('home.previousCar')}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
               >
                 <ChevronLeft size={18} />
@@ -839,7 +911,7 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
               <button
                 type="button"
                 onClick={() => go(1)}
-                aria-label="Next car"
+                aria-label={t('home.nextCar')}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
               >
                 <ChevronRight size={18} />
@@ -863,7 +935,7 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
                 type="button"
                 onClick={() => setI(idx)}
                 className="group relative min-h-0 overflow-hidden"
-                aria-label={`Show ${o.title}`}
+                aria-label={t('home.showCar', { title: o.title })}
               >
                 <Img
                   src={o.photos[0]}
@@ -888,7 +960,7 @@ function FeaturedSlideshow({ listings }: { listings: Listing[] }) {
               key={idx}
               type="button"
               onClick={() => setI(idx)}
-              aria-label={`Go to slide ${idx + 1}`}
+              aria-label={t('home.goToSlide', { n: idx + 1 })}
               className={cn(
                 'h-1.5 rounded-full transition-all',
                 idx === i ? 'w-5 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/70',

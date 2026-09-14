@@ -34,6 +34,7 @@ import { PAYMENTS_PAYHOLD } from '@/lib/payments';
 import { useAddressSuggestions, reverseGeocode, type AddressSuggestion } from '@/lib/geocoding';
 import { useMyLocation } from '@/lib/useMyLocation';
 import { loadHomeLocation, saveHomeLocation, clearHomeLocation, type HomeLocation } from '@/lib/homeLocation';
+import { useT, type TranslationKey } from '@/lib/i18n';
 import {
   Avatar,
   Badge,
@@ -58,6 +59,7 @@ export function AccountPage() {
   // A company account's profile row carries the host columns (owner_type, etc.).
   const profile = data as (UserProfile & Partial<Host>) | undefined;
   const navigate = useNavigate();
+  const t = useT();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
@@ -75,7 +77,7 @@ export function AccountPage() {
       await deleteAccount();
       navigate('/login', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete the account.');
+      setError(err instanceof Error ? err.message : t('account.deleteFailed'));
       setBusy(false);
     }
   }
@@ -87,9 +89,9 @@ export function AccountPage() {
 
   return (
     <section className="mx-auto max-w-2xl px-4 py-8 sm:py-10">
-      <h1 className="text-h1">Account</h1>
+      <h1 className="text-h1">{t('account.title')}</h1>
       <p className="mt-1 text-body-sm text-[var(--color-content-muted)]">
-        Manage your AutoHire account.
+        {t('account.subtitle')}
       </p>
 
       {isLoading || !profile ? (
@@ -104,8 +106,8 @@ export function AccountPage() {
               <div className="flex-1">
                 <p className="font-semibold">
                   {profile.payoutStatus === 'pending'
-                    ? 'Your payout method is being verified'
-                    : 'Tell us where to send your earnings'}
+                    ? t('account.payoutVerifyingTitle')
+                    : t('account.payoutMissingTitle')}
                 </p>
                 {/* Not "you can't earn until you do this" — that was never true
                     after PayHold started holding money against a seller with no
@@ -114,8 +116,8 @@ export function AccountPage() {
                     earning. */}
                 <p className="mt-0.5">
                   {profile.payoutStatus === 'pending'
-                    ? 'Earnings keep building up in the meantime.'
-                    : "Your earnings build up from your first booking — add a payout method whenever you like, and we’ll send them on."}
+                    ? t('account.payoutVerifyingBody')
+                    : t('account.payoutMissingBody')}
                 </p>
                 {profile.payoutStatus !== 'pending' && (
                   <button
@@ -123,7 +125,7 @@ export function AccountPage() {
                     onClick={() => setPayoutOpen(true)}
                     className="mt-2 inline-block text-body-sm font-semibold underline underline-offset-2"
                   >
-                    Set up payouts
+                    {t('account.setUpPayouts')}
                   </button>
                 )}
               </div>
@@ -133,10 +135,8 @@ export function AccountPage() {
             <Notice tone="info">
               <Phone size={18} className="mt-0.5 shrink-0" />
               <div>
-                <p className="font-semibold">Verify your phone number</p>
-                <p className="mt-0.5">
-                  Get booking and pickup updates by SMS — see the Phone section below.
-                </p>
+                <p className="font-semibold">{t('account.verifyPhoneTitle')}</p>
+                <p className="mt-0.5">{t('account.verifyPhoneBody')}</p>
               </div>
             </Notice>
           )}
@@ -145,14 +145,14 @@ export function AccountPage() {
 
           <PhoneVerification defaultPhone={profile.phone ?? ''} country={profile.country} />
 
-          <ListGroup label="Account">
+          <ListGroup label={t('account.title')}>
             <ListRow icon={<ShieldCheck size={18} />} to="/verification">
-              Verification & documents
+              {t('account.verificationDocs')}
             </ListRow>
             {/* Watching is a renter's tool — hosts and companies can't book. */}
             {!isHost && !isCompany && (
               <ListRow icon={<Star size={18} />} to="/watchlist">
-                Cars you're watching
+                {t('account.carsWatching')}
               </ListRow>
             )}
             <LocationRow />
@@ -162,20 +162,20 @@ export function AccountPage() {
               inline in the Profile card above (it needs explanatory copy a
               plain row can't carry) — this group only holds the payout row. */}
           {isHost && (
-            <ListGroup label="Hosting">
+            <ListGroup label={t('account.groupHosting')}>
               <ListRow
                 icon={<Banknote size={18} />}
                 onClick={() => setPayoutOpen(true)}
-                value={payoutStatusLabel(profile.payoutStatus)}
+                value={t(payoutStatusKey(profile.payoutStatus))}
               >
-                Payout method
+                {t('account.payoutMethod')}
               </ListRow>
             </ListGroup>
           )}
 
-          <ListGroup label="Support">
+          <ListGroup label={t('account.groupSupport')}>
             <ListRow icon={<LogOut size={18} />} onClick={onSignOut}>
-              Sign out
+              {t('account.signOut')}
             </ListRow>
           </ListGroup>
 
@@ -184,12 +184,10 @@ export function AccountPage() {
           <Notice tone="danger" className="flex-col items-stretch">
             <div className="flex items-center gap-2">
               <ShieldAlert size={18} className="shrink-0" />
-              <h2 className="text-body font-semibold">Delete account</h2>
+              <h2 className="text-body font-semibold">{t('account.deleteAccount')}</h2>
             </div>
             <p className="mt-1">
-              Permanently deletes your login and all of your data —{' '}
-              {isCompany ? 'fleet listings' : 'listings'}, bookings, messages, reviews, documents,
-              and notifications. This cannot be undone.
+              {isCompany ? t('account.deleteBodyCompany') : t('account.deleteBodyPersonal')}
             </p>
             <Button
               variant="danger"
@@ -197,35 +195,40 @@ export function AccountPage() {
               className="mt-3 self-start"
               onClick={() => setConfirmOpen(true)}
             >
-              Delete my account
+              {t('account.deleteMyAccount')}
             </Button>
           </Notice>
         </div>
       )}
 
-      <Modal open={confirmOpen} onClose={() => !busy && setConfirmOpen(false)} title="Delete account?">
+      <Modal
+        open={confirmOpen}
+        onClose={() => !busy && setConfirmOpen(false)}
+        title={t('account.deleteConfirmTitle')}
+      >
         <div className="space-y-4">
           <p className="text-body-sm text-[var(--color-content-muted)]">
-            This is permanent. Type{' '}
-            <span className="font-semibold text-[var(--color-content)]">DELETE</span> to confirm.
+            {t('account.deleteTypeBefore')}
+            <span className="font-semibold text-[var(--color-content)]">DELETE</span>
+            {t('account.deleteTypeAfter')}
           </p>
           <Input
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
             placeholder="DELETE"
-            aria-label="Type DELETE to confirm"
+            aria-label={t('account.typeDeleteToConfirm')}
           />
           {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={busy}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant="danger"
               disabled={confirmText !== 'DELETE' || busy}
               onClick={onDelete}
             >
-              {busy ? 'Deleting…' : 'Permanently delete'}
+              {busy ? t('account.deleting') : t('account.permanentlyDelete')}
             </Button>
           </div>
         </div>
@@ -236,10 +239,10 @@ export function AccountPage() {
   );
 }
 
-function payoutStatusLabel(status?: string): string {
-  if (status === 'active') return 'Active';
-  if (status === 'pending') return 'Verifying';
-  return 'Not set';
+function payoutStatusKey(status?: string): TranslationKey {
+  if (status === 'active') return 'account.payoutActive';
+  if (status === 'pending') return 'account.payoutVerifying';
+  return 'account.notSet';
 }
 
 /**
@@ -249,8 +252,9 @@ function payoutStatusLabel(status?: string): string {
  * profile arrives and reveals which sections (Hosting, watchlist row) apply.
  */
 function AccountSkeleton() {
+  const t = useT();
   return (
-    <div className="mt-6 flex flex-col gap-6" aria-busy="true" aria-label="Loading">
+    <div className="mt-6 flex flex-col gap-6" aria-busy="true" aria-label={t('common.loading')}>
       <Card>
         <CardBody className="space-y-5">
           <div className="flex items-center justify-between gap-2">
@@ -277,7 +281,7 @@ function AccountSkeleton() {
         </CardBody>
       </Card>
 
-      <ListGroup label="Account">
+      <ListGroup label={t('account.title')}>
         <ListRow icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />} chevron={false}>
           <Skeleton className="h-4 w-40" />
         </ListRow>
@@ -286,7 +290,7 @@ function AccountSkeleton() {
         </ListRow>
       </ListGroup>
 
-      <ListGroup label="Support">
+      <ListGroup label={t('account.groupSupport')}>
         <ListRow icon={<Skeleton className="h-[18px] w-[18px] rounded-full" />} chevron={false}>
           <Skeleton className="h-4 w-24" />
         </ListRow>
@@ -299,6 +303,7 @@ function AccountSkeleton() {
 function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>; email: string }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const t = useT();
   const isCompany = profile.ownerType === 'business';
   const isHost = profile.role === 'owner';
   const displayName = profile.businessName ?? profile.fullName;
@@ -347,7 +352,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       refresh();
       setSaved(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save your name.');
+      setError(e instanceof Error ? e.message : t('account.nameSaveFailed'));
     } finally {
       setBusy(false);
     }
@@ -364,7 +369,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       await client.updateProfile({ avatarUrl: url });
       refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not upload the picture.');
+      setError(e instanceof Error ? e.message : t('account.pictureUploadFailed'));
     } finally {
       setUploading(false);
     }
@@ -427,7 +432,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
       // The dashboard checklist and the payout banner are where it is asked
       // for now: a prompt they can act on, not a redirect they cannot refuse.
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not switch your account.');
+      setError(e instanceof Error ? e.message : t('account.switchFailed'));
     } finally {
       setBusy(false);
     }
@@ -437,15 +442,17 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
     <Card>
       <CardBody className="space-y-5">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-h4">Profile</h2>
+          <h2 className="text-h4">{t('account.profile')}</h2>
           <Badge tone={isCompany ? 'brand' : 'neutral'}>
             {isCompany ? (
               <span className="flex items-center gap-1">
-                <Building2 size={13} /> Company {isHost ? '· host' : ''}
+                <Building2 size={13} />{' '}
+                {isHost ? t('account.badgeCompanyHost') : t('account.badgeCompany')}
               </span>
             ) : (
               <span className="flex items-center gap-1">
-                <User size={13} /> Personal {isHost ? '· host' : '· renter'}
+                <User size={13} />{' '}
+                {isHost ? t('account.badgePersonalHost') : t('account.badgePersonalRenter')}
               </span>
             )}
           </Badge>
@@ -470,7 +477,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
             <p className="font-medium text-[var(--color-content)]">{displayName}</p>
             {uploading && (
               <p className="mt-1 text-caption text-[var(--color-content-muted)]">
-                Uploading photo…
+                {t('account.uploadingPhoto')}
               </p>
             )}
           </div>
@@ -478,7 +485,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
 
         {/* Editable name */}
         <div>
-          <Label htmlFor="display-name">{isCompany ? 'Company name' : 'Full name'}</Label>
+          <Label htmlFor="display-name">{isCompany ? t('account.companyName') : t('account.fullName')}</Label>
           <div className="flex items-center gap-2">
             <Input
               id="display-name"
@@ -490,19 +497,19 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
               className="max-w-sm"
             />
             <Button size="sm" disabled={!nameChanged || busy} onClick={saveName}>
-              {busy ? 'Saving…' : 'Save'}
+              {busy ? t('account.saving') : t('account.save')}
             </Button>
             {saved && !nameChanged && (
               <span className="flex items-center gap-1 text-body-sm text-brand-700 dark:text-brand-300">
-                <CheckCircle2 size={14} /> Saved
+                <CheckCircle2 size={14} /> {t('account.saved')}
               </span>
             )}
           </div>
         </div>
 
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Email">{email || '—'}</Field>
-          <Field label="Phone">{profile.phone || 'Not set'}</Field>
+          <Field label={t('account.email')}>{email || '—'}</Field>
+          <Field label={t('account.phone')}>{profile.phone || t('account.notSet')}</Field>
         </dl>
 
         <CountryField profile={profile} />
@@ -515,15 +522,13 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
         {!isCompany && (
           <div className="rounded-[var(--radius-card)] bg-[var(--color-surface-sunken)] p-3">
             <p className="text-body-sm font-medium text-[var(--color-content)]">
-              {isHost ? 'Hosting account' : 'Renter account'}
+              {isHost ? t('account.hostingAccount') : t('account.renterAccount')}
             </p>
             <p className="mt-0.5 text-body-sm text-[var(--color-content-muted)]">
-              {isHost
-                ? 'You manage listings. Switch to renting to book cars (your listings are kept).'
-                : 'You rent cars. Become a host to list your own vehicle.'}
+              {isHost ? t('account.hostingAccountBody') : t('account.renterAccountBody')}
             </p>
             <Button variant="outline" size="sm" className="mt-2" disabled={busy} onClick={toggleRole}>
-              <ArrowLeftRight size={14} /> {isHost ? 'Switch to renting' : 'Become a host'}
+              <ArrowLeftRight size={14} /> {isHost ? t('account.switchToRenting') : t('nav.becomeHost')}
             </Button>
           </div>
         )}
@@ -535,12 +540,11 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
         <Modal
           open={newHostDocs !== null}
           onClose={() => setNewHostDocs(null)}
-          title="You're a host now — two more documents"
+          title={t('account.newHostDocsTitle')}
         >
           <div className="space-y-4">
             <p className="text-body-sm text-[var(--color-content-muted)]">
-              Your licence and ID still stand. Hosting asks for the car's papers on top of them,
-              so your verification now reads as incomplete until these are in:
+              {t('account.newHostDocsBody')}
             </p>
             <ul className="space-y-2">
               {(newHostDocs ?? []).map((doc) => (
@@ -554,8 +558,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
               ))}
             </ul>
             <p className="text-caption text-[var(--color-content-subtle)]">
-              You can list a car before these are reviewed — renters just see an unverified host
-              until they are.
+              {t('account.newHostDocsNote')}
             </p>
             <div className="flex flex-col gap-2 sm:flex-row-reverse">
               <Button
@@ -565,14 +568,14 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
                   navigate('/verification');
                 }}
               >
-                Add them now
+                {t('account.addThemNow')}
               </Button>
               <Button
                 variant="ghost"
                 className="w-full sm:w-auto"
                 onClick={() => setNewHostDocs(null)}
               >
-                Later
+                {t('account.later')}
               </Button>
             </div>
           </div>
@@ -594,6 +597,7 @@ function ProfileCard({ profile, email }: { profile: UserProfile & Partial<Host>;
 function CountryField({ profile }: { profile: UserProfile }) {
   const { countries } = useCountry();
   const queryClient = useQueryClient();
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -637,7 +641,7 @@ function CountryField({ profile }: { profile: UserProfile }) {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setSaved(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save your country.');
+      setError(e instanceof Error ? e.message : t('account.countrySaveFailed'));
     } finally {
       setBusy(false);
     }
@@ -650,7 +654,7 @@ function CountryField({ profile }: { profile: UserProfile }) {
 
   return (
     <div ref={boxRef} className="relative">
-      <Label htmlFor="account-country">Country</Label>
+      <Label htmlFor="account-country">{t('account.country')}</Label>
       <Input
         id="account-country"
         value={query}
@@ -679,7 +683,7 @@ function CountryField({ profile }: { profile: UserProfile }) {
             setOpen(false);
           }
         }}
-        placeholder="Search countries…"
+        placeholder={t('account.searchCountries')}
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"
@@ -689,7 +693,7 @@ function CountryField({ profile }: { profile: UserProfile }) {
         <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-control)] border border-[var(--color-line)] bg-[var(--color-surface-raised)] py-1 shadow-[var(--shadow-float)]">
           {results.length === 0 ? (
             <li className="px-3 py-4 text-center text-body-sm text-[var(--color-content-subtle)]">
-              No countries match &ldquo;{query}&rdquo;
+              {t('account.noCountriesMatch', { query })}
             </li>
           ) : (
             results.map((c, i) => (
@@ -713,13 +717,11 @@ function CountryField({ profile }: { profile: UserProfile }) {
         </ul>
       )}
       <p className="mt-1 text-caption text-[var(--color-content-muted)]">
-        {profile.role === 'owner'
-          ? 'Where you get paid — it decides which payout methods you can use.'
-          : 'Where you pay from — it decides which payment methods you can use.'}
+        {profile.role === 'owner' ? t('account.countryHintHost') : t('account.countryHintRenter')}
       </p>
       {saved && (
         <p className="mt-1 flex items-center gap-1 text-caption text-brand-700 dark:text-brand-300">
-          <CheckCircle2 size={13} /> Saved
+          <CheckCircle2 size={13} /> {t('account.saved')}
         </p>
       )}
       {error && <p className="mt-1 text-caption text-[var(--color-danger-500)]">{error}</p>}
@@ -743,6 +745,7 @@ function LocationRow() {
   const [resolving, setResolving] = useState(false);
   const { suggestions, searching } = useAddressSuggestions(text);
   const { locating, locate } = useMyLocation();
+  const t = useT();
 
   function pick(loc: HomeLocation) {
     saveHomeLocation(loc);
@@ -760,7 +763,13 @@ function LocationRow() {
       setResolving(true);
       try {
         const resolved = await reverseGeocode(p.lat, p.lng);
-        pick({ lat: p.lat, lng: p.lng, label: resolved?.label ?? `Current location (${p.lat.toFixed(4)}, ${p.lng.toFixed(4)})` });
+        pick({
+          lat: p.lat,
+          lng: p.lng,
+          label:
+            resolved?.label ??
+            t('account.currentLocationAt', { lat: p.lat.toFixed(4), lng: p.lng.toFixed(4) }),
+        });
       } finally {
         setResolving(false);
       }
@@ -769,21 +778,25 @@ function LocationRow() {
 
   return (
     <>
-      <ListRow icon={<MapPin size={18} />} value={saved?.label.split(',')[0] ?? 'Not set'} onClick={() => setOpen(true)}>
-        Your location
+      <ListRow
+        icon={<MapPin size={18} />}
+        value={saved?.label.split(',')[0] ?? t('account.notSet')}
+        onClick={() => setOpen(true)}
+      >
+        {t('account.yourLocation')}
       </ListRow>
-      <Modal open={open} onClose={() => setOpen(false)} title="Your location">
-        <p className="text-body-sm text-[var(--color-content-muted)]">
-          Used to show cars closest to you first. Saved on this device only.
-        </p>
+      <Modal open={open} onClose={() => setOpen(false)} title={t('account.yourLocation')}>
+        <p className="text-body-sm text-[var(--color-content-muted)]">{t('account.locationHint')}</p>
         <div className="mt-4 flex flex-col gap-3">
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Type an address or city"
-            aria-label="Your address"
+            placeholder={t('account.addressPlaceholder')}
+            aria-label={t('account.yourAddress')}
           />
-          {searching && <p className="text-caption text-[var(--color-content-subtle)]">Searching…</p>}
+          {searching && (
+            <p className="text-caption text-[var(--color-content-subtle)]">{t('account.searching')}</p>
+          )}
           {suggestions.length > 0 && (
             <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--color-line)]">
               {suggestions.map((s, i) => (
@@ -805,7 +818,8 @@ function LocationRow() {
             onClick={useCurrentLocation}
             disabled={locating || resolving}
           >
-            <Navigation size={16} /> {locating || resolving ? 'Finding you…' : 'Use my current location'}
+            <Navigation size={16} />{' '}
+            {locating || resolving ? t('account.findingYou') : t('account.useCurrentLocation')}
           </Button>
           {saved && (
             <button
@@ -817,7 +831,7 @@ function LocationRow() {
               }}
               className="flex items-center justify-center gap-1.5 text-body-sm font-semibold text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
             >
-              <X size={14} /> Remove saved location
+              <X size={14} /> {t('account.removeLocation')}
             </button>
           )}
         </div>
@@ -843,6 +857,7 @@ function PhoneVerification({
 }) {
   const { user, sendPhoneOtp, verifyPhoneOtp } = useAuth();
   const verified = Boolean(user?.phone_confirmed_at);
+  const t = useT();
 
   const [phone, setPhone] = useState(defaultPhone);
   const [codeSent, setCodeSent] = useState(false);
@@ -859,7 +874,7 @@ function PhoneVerification({
     setError(null);
     const normalized = normalizePhone(phone, country);
     if (!normalized) {
-      setError('Enter a valid phone number with country code, e.g. +250 788 123 456.');
+      setError(t('account.phoneInvalid'));
       return;
     }
     setBusy(true);
@@ -868,7 +883,7 @@ function PhoneVerification({
       setPhone(normalized);
       setCodeSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send the code.');
+      setError(err instanceof Error ? err.message : t('account.codeSendFailed'));
     } finally {
       setBusy(false);
     }
@@ -882,7 +897,7 @@ function PhoneVerification({
       setCodeSent(false);
       setCode('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid or expired code.');
+      setError(err instanceof Error ? err.message : t('account.codeInvalid'));
     } finally {
       setBusy(false);
     }
@@ -893,12 +908,12 @@ function PhoneVerification({
       <CardBody className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-h4">
-            <Phone size={16} className="text-[var(--color-accent-on)]" /> Phone verification
+            <Phone size={16} className="text-[var(--color-accent-on)]" /> {t('account.phoneVerification')}
           </h2>
           {verified && (
             <Badge tone="success">
               <span className="flex items-center gap-1">
-                <CheckCircle2 size={13} /> Verified
+                <CheckCircle2 size={13} /> {t('account.verified')}
               </span>
             </Badge>
           )}
@@ -906,19 +921,19 @@ function PhoneVerification({
 
         {verified ? (
           <p className="text-body-sm text-[var(--color-content-muted)]">
-            Your phone number is verified. SMS updates will go to{' '}
+            {t('account.phoneVerifiedBefore')}
             <span className="font-medium text-[var(--color-content)]">
               {defaultPhone || user?.phone}
             </span>
-            .
+            {t('account.phoneVerifiedAfter')}
           </p>
         ) : !codeSent ? (
           <>
             <p className="text-body-sm text-[var(--color-content-muted)]">
-              Verify your number so we can send booking and pickup updates by SMS.
+              {t('account.verifyNumberBody')}
             </p>
             <div>
-              <Label htmlFor="verify-phone">Phone number</Label>
+              <Label htmlFor="verify-phone">{t('account.phoneNumber')}</Label>
               <Input
                 id="verify-phone"
                 type="tel"
@@ -929,17 +944,18 @@ function PhoneVerification({
             </div>
             {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
             <Button onClick={send} disabled={busy}>
-              {busy ? 'Sending…' : 'Send code'}
+              {busy ? t('account.sending') : t('account.sendCode')}
             </Button>
           </>
         ) : (
           <>
             <p className="text-body-sm text-[var(--color-content-muted)]">
-              Enter the 6-digit code we sent to{' '}
-              <span className="font-medium text-[var(--color-content)]">{phone}</span>.
+              {t('account.enterCodeBefore')}
+              <span className="font-medium text-[var(--color-content)]">{phone}</span>
+              {t('account.enterCodeAfter')}
             </p>
             <div>
-              <Label htmlFor="otp">Verification code</Label>
+              <Label htmlFor="otp">{t('account.verificationCode')}</Label>
               <Input
                 id="otp"
                 inputMode="numeric"
@@ -951,10 +967,10 @@ function PhoneVerification({
             {error && <p className="text-body-sm text-[var(--color-danger-500)]">{error}</p>}
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setCodeSent(false)} disabled={busy}>
-                Back
+                {t('common.back')}
               </Button>
               <Button onClick={verify} disabled={busy || code.trim().length < 4}>
-                {busy ? 'Verifying…' : 'Verify'}
+                {busy ? t('account.verifying') : t('account.verify')}
               </Button>
             </div>
           </>

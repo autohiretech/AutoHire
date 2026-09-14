@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { CarCategory } from '@autohire/shared';
+import type { TranslationKey } from '@/lib/i18n';
 
 /** Top-level catalogue groups: road vehicles vs rentable machinery. */
 export type CategoryGroup = 'Vehicles' | 'Cultivating' | 'Building';
@@ -50,6 +51,22 @@ export const CAR_CATEGORIES: {
   { value: 'crane', label: 'Crane', icon: Construction, group: 'Building' },
   { value: 'forklift', label: 'Forklift', icon: Forklift, group: 'Building' },
 ];
+
+/**
+ * The dictionary key for a category's display name — `t(categoryLabelKey(v))`
+ * where the screen speaks the renter's language; `label` above is the
+ * English source for screens that have not been translated yet.
+ *
+ * The return type is deliberately the template literal, not `string`: it is
+ * only assignable to `TranslationKey` while `en.ts` has a `category.<value>`
+ * line for *every* member of `CarCategory`. Adding a category to the enum
+ * without adding its words is then a compile error here rather than a chip
+ * that reads "category.trailer" on the home page.
+ */
+export function categoryLabelKey(value: CarCategory): TranslationKey {
+  const key: `category.${CarCategory}` = `category.${value}`;
+  return key;
+}
 
 /** Category groups in display order — used to render grouped category lists. */
 export const CATEGORY_GROUPS: CategoryGroup[] = ['Vehicles', 'Cultivating', 'Building'];

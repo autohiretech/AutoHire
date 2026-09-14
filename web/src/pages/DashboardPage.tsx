@@ -440,14 +440,23 @@ export function DashboardPage() {
    * booked figure keeps its place as the note, labelled for what it is.
    */
   const paid = wallet.data?.withdrawable ?? [];
+  const paidAmounts = paid.some((w) => w.paidAmount > 0)
+    ? paid.filter((w) => w.paidAmount > 0).map((w) => formatMoneyMinor(w.paidAmount, w.currency))
+    : [formatMoneyMinor(0, paid[0]?.currency ?? fallbackCurrency)];
   const paidStat = {
     icon: Banknote,
     label: 'Paid to you',
-    value: wallet.isLoading
-      ? '…'
-      : paid.some((w) => w.paidAmount > 0)
-        ? paid.filter((w) => w.paidAmount > 0).map((w) => formatMoneyMinor(w.paidAmount, w.currency)).join(' · ')
-        : formatMoneyMinor(0, paid[0]?.currency ?? fallbackCurrency),
+    value: wallet.isLoading ? '…' : paidAmounts.join(' · '),
+    // The phone tile is 71px wide; two amounts joined on one line truncated
+    // to "$4,763...." and silently lost the second currency. Stack them one
+    // per line there instead — the tile grows down, never sideways, so the
+    // four-across strip stays on one row. Past two, say how many are hidden
+    // rather than clip; /earnings has the full list.
+    compactValue: wallet.isLoading
+      ? ['…']
+      : paidAmounts.length > 2
+        ? [paidAmounts[0], `+${paidAmounts.length - 1} more`]
+        : paidAmounts,
     note: stats.completed
       ? `${stats.completed} trip${stats.completed === 1 ? '' : 's'} · ${formatTotals(stats.earned, fallbackCurrency)} booked before fees`
       : 'Nothing paid out yet',
@@ -729,10 +738,13 @@ function StatCard({
   onClick,
   active = false,
   compact = false,
+  compactValue,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
+  /** Per-line values for the phone tile, when one line cannot hold `value`. */
+  compactValue?: string[];
   note?: string;
   noteTone?: NoteTone;
   onClick?: () => void;
@@ -743,8 +755,15 @@ function StatCard({
     const inner = (
       <>
         <Icon size={14} className="text-[var(--color-content-muted)]" />
-        <p className="tabular mt-1 w-full truncate text-body-sm font-semibold leading-tight text-[var(--color-content)]">
-          {value}
+        <p
+          className="tabular mt-1 w-full text-body-sm font-semibold leading-tight tracking-tight text-[var(--color-content)]"
+          title={value}
+        >
+          {(compactValue ?? [value]).map((line, i) => (
+            <span key={i} className="block truncate">
+              {line}
+            </span>
+          ))}
         </p>
         <p className="w-full truncate text-caption font-medium text-[var(--color-content-subtle)]">{label}</p>
       </>
@@ -1304,11 +1323,9 @@ function RequestRow({ booking, listing }: { booking: Booking; listing: Listing }
   );
 }
 
-/** Per-car settings: price, maintenance, blocked dates, and removing the car. */
-function CarManage({ listing, bookings }: { listing: Listing; bookings: Booking[] }) {
+/** Per-car settings: price, maintenance, blocked dates. */
+function CarManage({ listing }: { listing: Listing }) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [removeOpen, setRemoveOpen] = useState(false);
   const [price, setPrice] = useState(String(listing.pricePerDayRwf));
   const [hourlyPrice, setHourlyPrice] = useState(String(listing.pricePerHourRwf ?? ''));
   const [newDate, setNewDate] = useState('');

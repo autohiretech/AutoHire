@@ -2,10 +2,12 @@ import { Link } from 'react-router-dom';
 import { Building2, Star } from 'lucide-react';
 import type { Listing } from '@autohire/shared';
 import { cn } from '@/lib/cn';
+import { useT } from '@/lib/i18n';
 import { Img } from '@/components/Img';
 import { Price } from '@/components/Price';
 import { WatchButton } from '@/components/WatchButton';
 import { listingHeadlinePrice } from '@/lib/pricing';
+import { hiddenVehicleName } from '@/lib/vehicleName';
 import { Badge } from '@/components/ui';
 
 /**
@@ -28,6 +30,10 @@ import { Badge } from '@/components/ui';
  * • the **host type** is now an overlay badge only for business hosts. Every
  *   card saying "Individual host" was a label on the default case, which is
  *   noise; "Business host" is the exception worth flagging.
+ * • the **make and model** join the year on that same line, but only when
+ *   the host's own title doesn't already say them. Model designations are
+ *   search terms — somebody looking for an E30 types "e30" — and the card was
+ *   the one place that term never appeared; see `lib/vehicleName.ts`.
  * • the **spec line** (category · transmission · seats) is gone from the card.
  *   Nobody chooses between two cars on transmission at grid scale, and it cost
  *   a line on every card to say so. It lives on the detail page.
@@ -57,10 +63,15 @@ export function ListingCard({
    * only the day/hour rate, same as before there was a trip to total. */
   tripUnits?: number;
 }) {
+  const t = useT();
   const isBusiness = listing.ownerType === 'business';
   const price = listingHeadlinePrice(listing);
   const row = layout === 'row';
   const showTotal = !!tripUnits && tripUnits > 0;
+  // "Toyota Corolla E120" — printed only when the host's title doesn't already
+  // say it. A model designation is a search term (see `vehicleName.ts`), and a
+  // card that can't show the term it was found by reads as a wrong result.
+  const vehicle = hiddenVehicleName(listing);
 
   return (
     <Link
@@ -95,7 +106,7 @@ export function ListingCard({
         />
         {isBusiness && (
           <Badge tone="overlay" className="absolute top-2 left-2">
-            <Building2 size={11} /> Business
+            <Building2 size={11} /> {t('car.businessShort')}
           </Badge>
         )}
         <WatchButton id={listing.id} variant="icon" className="absolute top-2 right-2" />
@@ -111,19 +122,27 @@ export function ListingCard({
           {listing.title}
         </h3>
 
-        {/* Year + rating on one line, read as one property of the car —
-            "2020 · 5.0 (126)" — rather than the rating sharing the title's
-            line. No rating yet (a brand-new listing) just drops that half. */}
-        <p className="mt-0.5 flex items-center gap-1 truncate text-caption text-[var(--color-content-muted)] sm:text-body-sm">
-          <span className="tabular">{listing.year}</span>
+        {/* Year, what the car actually is, and the rating on one line — read
+            as one property of the car, "2020 Toyota Corolla E120 · 5.0 (126)",
+            rather than the rating sharing the title's line. No rating yet (a
+            brand-new listing) just drops that half.
+            The make+model is the only thing here that can be long, so it is
+            the only thing allowed to truncate: the rating is what the line is
+            for and must not be pushed off the end of a phone by a long model
+            name. */}
+        <p className="mt-0.5 flex items-center gap-1 text-caption text-[var(--color-content-muted)] sm:text-body-sm">
+          <span className="tabular shrink-0">{listing.year}</span>
+          {vehicle && <span className="min-w-0 truncate">{vehicle}</span>}
           {listing.ratingCount > 0 && (
             <>
-              <span aria-hidden>·</span>
-              <span className="tabular flex items-center gap-1 font-semibold text-[var(--color-content)]">
+              <span aria-hidden className="shrink-0">
+                ·
+              </span>
+              <span className="tabular flex shrink-0 items-center gap-1 font-semibold text-[var(--color-content)]">
                 <Star size={12} className="fill-current text-[var(--color-accent-on)]" />
                 {listing.ratingAvg.toFixed(1)}
               </span>
-              <span>({listing.ratingCount})</span>
+              <span className="shrink-0">({listing.ratingCount})</span>
             </>
           )}
         </p>
@@ -143,7 +162,7 @@ export function ListingCard({
             </span>
             <span className="text-caption text-[var(--color-content-muted)] sm:text-body-sm">
               {' '}
-              / {price.unit}
+              / {t(price.unit === 'day' ? 'car.unitDay' : 'car.unitHour')}
             </span>
           </span>
           {showTotal && (

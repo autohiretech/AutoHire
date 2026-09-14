@@ -33,6 +33,18 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 function initialLanguage(): Language {
   try {
+    // `?lang=rw` on the URL wins, and is persisted exactly as the switcher
+    // would persist it. A link can then carry its language — support sending
+    // a Kinyarwanda link to a Kinyarwanda speaker, a WhatsApp share landing
+    // in the reader's language rather than the sharer's — and the choice
+    // survives the first in-app navigation instead of snapping back to
+    // whatever this device last used. Only the two real codes count;
+    // anything else is ignored rather than trusted.
+    const fromUrl = new URLSearchParams(window.location.search).get('lang');
+    if (fromUrl === 'en' || fromUrl === 'rw') {
+      localStorage.setItem(STORAGE_KEY, fromUrl);
+      return fromUrl;
+    }
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved === 'en' || saved === 'rw') return saved;
     // No stored choice: follow the browser. `rw-RW` or a bare `rw` both mean
@@ -91,6 +103,18 @@ export function useLanguage(): LanguageContextValue {
 /** Shorthand for the common case — `const t = useT()` then `t('nav.trips')`. */
 export function useT() {
   return useLanguage().t;
+}
+
+/**
+ * Is this string one of the dictionary's keys? For labels built from a value
+ * the API supplied (`fuel.${listing.fuel}`): the type system can promise the
+ * enum's known members are all covered, but a row written by a newer
+ * migration can carry a value this build has never heard of, and `t()` on an
+ * unknown key returns the key itself — "fuel.lpg" on a card. Callers check
+ * here first and fall back to showing the raw value.
+ */
+export function isTranslationKey(key: string): key is TranslationKey {
+  return key in en;
 }
 
 export type { TranslationKey };

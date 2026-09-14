@@ -37,6 +37,7 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { cn } from '@/lib/cn';
 import { formatDayLabel, formatTime, timeAgo } from '@/lib/format';
 import { Avatar, Skeleton } from '@/components/ui';
+import { useT } from '@/lib/i18n';
 import { useMatchMedia, useVisualViewport } from '@/lib/useVisualViewport';
 
 type Party = UserProfile & Partial<Host>;
@@ -46,8 +47,8 @@ const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 /** The composer's tallest, px — about five lines — before it scrolls. Matches `max-h-32`. */
 const COMPOSER_MAX_PX = 128;
 
-function partyName(p?: Party): string {
-  return p?.businessName ?? p?.fullName ?? 'User';
+function partyName(p: Party | undefined, fallback: string): string {
+  return p?.businessName ?? p?.fullName ?? fallback;
 }
 
 /**
@@ -66,6 +67,7 @@ export function MessagesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const { data: me } = useCurrentUser();
+  const t = useT();
   // On a phone an open thread fills the *visible* screen — the part above the
   // keyboard — rather than the layout, which extends behind it.
   const isPhone = useMatchMedia('(max-width: 767px)');
@@ -116,11 +118,11 @@ export function MessagesPage() {
     if (!q) return conversations ?? [];
     return (conversations ?? []).filter(
       (c) =>
-        partyName(partyOf(c)).toLowerCase().includes(q) ||
+        partyName(partyOf(c), t('messages.userFallback')).toLowerCase().includes(q) ||
         c.lastMessagePreview.toLowerCase().includes(q),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations, profiles, search, me?.id]);
+  }, [conversations, profiles, search, me?.id, t]);
 
   const selected = conversations?.find((c) => c.id === id);
   // The conversation with AutoHire itself. `false` means "do not mark it
@@ -153,22 +155,17 @@ export function MessagesPage() {
           )}
         >
           <div className="flex items-center justify-between border-b border-[var(--color-line)] px-4 py-3">
-            <h1 className="text-h3 text-[var(--color-content)]">Messages</h1>
+            <h1 className="text-h3 text-[var(--color-content)]">{t('nav.messages')}</h1>
             {(conversations?.length ?? 0) > 0 && (
               <button
                 type="button"
                 onClick={() => {
-                  if (
-                    window.confirm(
-                      'Delete ALL conversations? This removes them for both sides and cannot be undone.',
-                    )
-                  )
-                    deleteAll.mutate();
+                  if (window.confirm(t('messages.deleteAllConfirm'))) deleteAll.mutate();
                 }}
                 disabled={deleteAll.isPending}
                 className="inline-flex items-center gap-1 rounded-[var(--radius-control)] px-2 py-1 text-caption font-medium text-[var(--color-danger-500)] hover:bg-[var(--color-danger-tint)] disabled:opacity-50"
               >
-                <Trash2 size={14} /> Delete all
+                <Trash2 size={14} /> {t('messages.deleteAll')}
               </button>
             )}
           </div>
@@ -178,8 +175,8 @@ export function MessagesPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search conversations"
-                aria-label="Search conversations"
+                placeholder={t('messages.searchConversations')}
+                aria-label={t('messages.searchConversations')}
                 // 16px on phones: iOS Safari zooms the page into any field
                 // whose text is smaller, and doesn't zoom back out.
                 className="w-full bg-transparent text-base text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] md:text-body-sm"
@@ -214,14 +211,16 @@ export function MessagesPage() {
                       </span>
                       <span className="block truncate text-caption text-[var(--color-content-muted)]">
                         {supportLast
-                          ? `${supportLast.fromAdmin ? '' : 'You: '}${supportLast.body}`
-                          : 'Questions about your account, verification or a booking'}
+                          ? supportLast.fromAdmin
+                            ? supportLast.body
+                            : t('messages.youPreview', { body: supportLast.body })
+                          : t('messages.supportIntro')}
                       </span>
                     </span>
                     {(support?.unreadForUser ?? 0) > 0 && (
                       <span
                         className="h-2.5 w-2.5 shrink-0 rounded-[var(--radius-pill)] bg-[var(--color-accent-on)]"
-                        aria-label="Unread"
+                        aria-label={t('messages.unread')}
                       />
                     )}
                   </Link>
@@ -240,15 +239,14 @@ export function MessagesPage() {
                     active={c.id === id}
                     unread={unreadMap?.[c.id] ?? 0}
                     onDelete={() => {
-                      if (window.confirm('Delete this conversation for both sides?'))
-                        deleteOne.mutate(c.id);
+                      if (window.confirm(t('messages.deleteOneConfirm'))) deleteOne.mutate(c.id);
                     }}
                   />
                 ))}
               </ul>
             ) : (
               <p className="p-6 text-body-sm text-[var(--color-content-muted)]">
-                {search ? 'No conversations match.' : 'No conversations with hosts yet.'}
+                {search ? t('messages.noMatch') : t('messages.noneYet')}
               </p>
             )}
           </div>
@@ -287,7 +285,7 @@ export function MessagesPage() {
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-[var(--color-content-subtle)]">
               <MessageSquare size={28} />
-              <p className="text-body-sm">Select a conversation to start chatting.</p>
+              <p className="text-body-sm">{t('messages.selectPrompt')}</p>
             </div>
           )}
         </div>
@@ -300,8 +298,9 @@ export function MessagesPage() {
  * a shorter preview line beneath it — so the list doesn't resize once
  * conversations land. */
 function ConversationListSkeleton() {
+  const t = useT();
   return (
-    <ul aria-busy="true" aria-label="Loading">
+    <ul aria-busy="true" aria-label={t('common.loading')}>
       {[0, 1, 2, 3, 4].map((i) => (
         <li key={i} className="flex items-center gap-3 border-b border-[var(--color-line)] px-4 py-3">
           <Skeleton className="h-10 w-10 shrink-0 rounded-[var(--radius-pill)]" />
@@ -344,6 +343,7 @@ function SupportThread({
   viewportHeight?: number;
 }) {
   const queryClient = useQueryClient();
+  const t = useT();
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -389,7 +389,7 @@ function SupportThread({
         <Link
           to="/messages"
           className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] md:hidden"
-          aria-label="Back to conversations"
+          aria-label={t('messages.backToConversations')}
         >
           <ArrowLeft size={20} />
         </Link>
@@ -399,7 +399,7 @@ function SupportThread({
         <div className="min-w-0">
           <p className="truncate font-medium text-[var(--color-content)]">AutoHire</p>
           <p className="truncate text-caption text-[var(--color-content-muted)]">
-            {shown ? shown.subject : 'Ask us anything about your account'}
+            {shown ? shown.subject : t('messages.supportSubtitle')}
           </p>
         </div>
       </div>
@@ -407,7 +407,7 @@ function SupportThread({
       <div
         ref={scrollRef}
         className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain bg-[var(--color-surface)] p-4"
-        {...(loading && !shown ? { 'aria-busy': 'true', 'aria-label': 'Loading' } : {})}
+        {...(loading && !shown ? { 'aria-busy': 'true', 'aria-label': t('common.loading') } : {})}
       >
         {loading && !shown ? (
           <ThreadSkeleton />
@@ -415,10 +415,10 @@ function SupportThread({
           <div className="m-auto max-w-xs text-center">
             <LifeBuoy size={26} className="mx-auto text-[var(--color-content-subtle)]" />
             <p className="mt-2 text-body-sm font-medium text-[var(--color-content)]">
-              No messages yet
+              {t('messages.noMessagesYet')}
             </p>
             <p className="mt-1 text-caption text-[var(--color-content-muted)]">
-              Write to us about your account, your documents or a booking. An admin answers here.
+              {t('messages.supportEmptyBody')}
             </p>
           </div>
         ) : (
@@ -439,7 +439,7 @@ function SupportThread({
                   m.fromAdmin ? 'text-[var(--color-content-subtle)]' : 'text-[var(--color-accent-contrast)]/70',
                 )}
               >
-                {m.fromAdmin ? 'AutoHire' : 'You'} · {timeAgo(m.createdAt)}
+                {m.fromAdmin ? 'AutoHire' : t('messages.you')} · {timeAgo(m.createdAt)}
               </p>
             </div>
           ))
@@ -448,7 +448,7 @@ function SupportThread({
 
       {send.isError && (
         <p className="border-t border-[var(--color-line)] px-4 py-1.5 text-body-sm text-[var(--color-danger-500)]">
-          {send.error instanceof Error ? send.error.message : "Couldn't send that."}
+          {send.error instanceof Error ? send.error.message : t('messages.sendFailed')}
         </p>
       )}
 
@@ -468,7 +468,7 @@ function SupportThread({
           }}
           rows={1}
           maxLength={2000}
-          placeholder="Message AutoHire…"
+          placeholder={t('messages.supportPlaceholder')}
           // 16px on phones, same reason as the search field above: iOS zooms
           // into anything smaller and never zooms back out.
           className="max-h-32 min-h-11 flex-1 resize-none rounded-[var(--radius-card)] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-3.5 py-2.5 text-base text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] md:text-body-sm"
@@ -478,7 +478,7 @@ function SupportThread({
           onPointerDown={(e) => e.preventDefault()}
           disabled={!draft.trim() || send.isPending}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] disabled:opacity-40"
-          aria-label="Send"
+          aria-label={t('messages.send')}
         >
           <Send size={18} />
         </button>
@@ -521,7 +521,8 @@ function ConversationRow({
   unread: number;
   onDelete: () => void;
 }) {
-  const name = partyName(party);
+  const t = useT();
+  const name = partyName(party, t('messages.userFallback'));
   const unread = unreadCount > 0;
 
   return (
@@ -554,7 +555,7 @@ function ConversationRow({
               unread ? 'font-medium text-[var(--color-content)]' : 'text-[var(--color-content-muted)]',
             )}
           >
-            {conversation.lastMessagePreview || 'No messages yet'}
+            {conversation.lastMessagePreview || t('messages.noMessagesYet')}
           </p>
         </div>
         {unread && (
@@ -573,8 +574,8 @@ function ConversationRow({
         // Hover reveals it on desktop; a touch screen has no hover, so there
         // it is simply always there.
         className="absolute bottom-2.5 right-3 rounded-[var(--radius-control)] p-1 text-[var(--color-content-subtle)] opacity-0 transition-opacity hover:bg-[var(--color-danger-tint)] hover:text-[var(--color-danger-500)] group-hover:opacity-100 [@media(hover:none)]:p-2 [@media(hover:none)]:opacity-100"
-        aria-label="Delete conversation"
-        title="Delete conversation"
+        aria-label={t('messages.deleteConversation')}
+        title={t('messages.deleteConversation')}
       >
         <Trash2 size={15} />
       </button>
@@ -594,6 +595,7 @@ function Thread({
 }) {
   const queryClient = useQueryClient();
   const { data: me } = useCurrentUser();
+  const t = useT();
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -701,13 +703,13 @@ function Thread({
       const up = await client.uploadChatFile(file);
       send('', { attachmentUrl: up.url, attachmentType: up.type, attachmentName: up.name });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload the file.');
+      setError(err instanceof Error ? err.message : t('messages.uploadFailed'));
     } finally {
       setUploading(false);
     }
   }
 
-  const name = partyName(party);
+  const name = partyName(party, t('messages.userFallback'));
 
   return (
     <>
@@ -716,7 +718,7 @@ function Thread({
         <Link
           to="/messages"
           className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-content)] hover:bg-[var(--color-surface-sunken)] md:hidden"
-          aria-label="Back to conversations"
+          aria-label={t('messages.backToConversations')}
         >
           <ArrowLeft size={20} />
         </Link>
@@ -725,7 +727,7 @@ function Thread({
           <p className="truncate font-medium text-[var(--color-content)]">{name}</p>
           {listingQuery.data && (
             <p className="truncate text-caption text-[var(--color-content-muted)]">
-              About: {listingQuery.data.title}
+              {t('messages.about', { title: listingQuery.data.title })}
             </p>
           )}
         </div>
@@ -735,7 +737,7 @@ function Thread({
       <div
         ref={scrollRef}
         className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain bg-[var(--color-surface)] p-4"
-        {...(messagesQuery.isLoading ? { 'aria-busy': 'true', 'aria-label': 'Loading' } : {})}
+        {...(messagesQuery.isLoading ? { 'aria-busy': 'true', 'aria-label': t('common.loading') } : {})}
       >
         {messagesQuery.isLoading ? (
           <ThreadSkeleton />
@@ -761,17 +763,20 @@ function Thread({
           <CornerUpLeft size={15} className="shrink-0 text-[var(--color-content-muted)]" />
           <div className="min-w-0 flex-1">
             <p className="text-caption font-medium text-[var(--color-content)]">
-              Replying to {replyTo.senderId === me?.id ? 'yourself' : name}
+              {replyTo.senderId === me?.id
+                ? t('messages.replyingToYourself')
+                : t('messages.replyingTo', { name })}
             </p>
             <p className="truncate text-caption text-[var(--color-content-muted)]">
-              {replyTo.body || (replyTo.attachmentType === 'image' ? '📷 Photo' : '📎 Attachment')}
+              {replyTo.body ||
+                (replyTo.attachmentType === 'image' ? t('messages.photo') : t('messages.attachment'))}
             </p>
           </div>
           <button
             type="button"
             onClick={() => setReplyTo(null)}
             className="rounded-[var(--radius-control)] p-1 text-[var(--color-content-subtle)] hover:bg-[var(--color-line)]"
-            aria-label="Cancel reply"
+            aria-label={t('messages.cancelReply')}
           >
             <X size={15} />
           </button>
@@ -804,8 +809,8 @@ function Thread({
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] text-[var(--color-content-muted)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-50"
-          aria-label="Attach file"
-          title="Attach a photo or file"
+          aria-label={t('messages.attachFile')}
+          title={t('messages.attachHint')}
         >
           <Paperclip size={20} />
         </button>
@@ -816,8 +821,8 @@ function Thread({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onComposerKeyDown}
           enterKeyHint="send"
-          placeholder={uploading ? 'Uploading…' : 'Type a message…'}
-          aria-label="Message"
+          placeholder={uploading ? t('messages.uploading') : t('messages.typeMessage')}
+          aria-label={t('messages.messageLabel')}
           // 16px on phones, or iOS zooms the page into the field on focus.
           className="block max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-[1.375rem] border border-[var(--color-line-strong)] bg-[var(--color-surface-sunken)] px-4 py-2.5 text-base leading-6 text-[var(--color-content)] outline-none placeholder:text-[var(--color-content-subtle)] focus:border-[var(--color-accent-on)] md:text-body-sm md:leading-6"
         />
@@ -825,7 +830,7 @@ function Thread({
           type="submit"
           onPointerDown={(e) => e.preventDefault()}
           disabled={!draft.trim() || sendMutation.isPending}
-          aria-label="Send"
+          aria-label={t('messages.send')}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--color-accent-on)] text-[var(--color-accent-contrast)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Send size={18} />
@@ -852,6 +857,7 @@ function MessageBubble({
   onReact: (emoji: string) => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   const [showPicker, setShowPicker] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const mine = message.senderId === myId;
@@ -909,7 +915,8 @@ function MessageBubble({
                 )}
               >
                 <p className="truncate">
-                  {repliedTo.body || (repliedTo.attachmentType === 'image' ? '📷 Photo' : '📎 Attachment')}
+                  {repliedTo.body ||
+                    (repliedTo.attachmentType === 'image' ? t('messages.photo') : t('messages.attachment'))}
                 </p>
               </div>
             )}
@@ -919,7 +926,7 @@ function MessageBubble({
               <a href={message.attachmentUrl} target="_blank" rel="noreferrer noopener">
                 <img
                   src={message.attachmentUrl}
-                  alt={message.attachmentName ?? 'image'}
+                  alt={message.attachmentName ?? t('messages.imageAlt')}
                   className="mb-1 max-h-60 rounded-[var(--radius-control)] object-cover"
                 />
               </a>
@@ -935,7 +942,7 @@ function MessageBubble({
                 )}
               >
                 <FileText size={16} />
-                <span className="max-w-40 truncate text-caption">{message.attachmentName ?? 'File'}</span>
+                <span className="max-w-40 truncate text-caption">{message.attachmentName ?? t('messages.file')}</span>
                 <Download size={14} />
               </a>
             )}
@@ -1008,6 +1015,7 @@ function BubbleActions({
   showPicker: boolean;
   setShowPicker: (v: boolean) => void;
 }) {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -1015,14 +1023,14 @@ function BubbleActions({
         open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100',
       )}
     >
-      <IconBtn label="React" onClick={() => setShowPicker(!showPicker)}>
+      <IconBtn label={t('messages.react')} onClick={() => setShowPicker(!showPicker)}>
         <Smile size={15} />
       </IconBtn>
-      <IconBtn label="Reply" onClick={onReply}>
+      <IconBtn label={t('messages.reply')} onClick={onReply}>
         <CornerUpLeft size={15} />
       </IconBtn>
       {mine && (
-        <IconBtn label="Delete" onClick={onDelete}>
+        <IconBtn label={t('messages.delete')} onClick={onDelete}>
           <Trash2 size={15} />
         </IconBtn>
       )}

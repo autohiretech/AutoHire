@@ -45,12 +45,20 @@ export const rw: Record<keyof typeof en, string> = {
   'nav.signIn': 'Injira',
   'nav.dashboard': 'Imbonerahamwe',
   'nav.earnings': 'Amafaranga winjije',
-  'nav.becomeHost': "Ba nyir'imodoka",
+  'nav.becomeHost': 'Kodesha imodoka yawe',
   'nav.myTrips': 'Ingendo zanjye',
   'nav.listYourCar': 'Andika imodoka yawe',
   'nav.browseCars': 'Reba imodoka',
   'nav.researchWithAi': 'Shakisha ukoresheje AI',
   'nav.verification': 'Kugenzurwa',
+  'nav.signUp': 'Iyandikishe',
+  'nav.signOut': 'Sohoka',
+  'nav.adminPanel': 'Admin panel', // TODO translate
+  'nav.watching': 'Izo ukurikirana',
+  'nav.watchingAria': 'Imodoka ukurikirana',
+  'nav.feed': 'Amakuru',
+  'nav.circles': 'Circles', // TODO translate
+  'nav.circlesAria': 'Circles zawe', // TODO translate
 
   // --- Language / preferences --------------------------------------------
   'lang.label': 'Ururimi',
@@ -74,6 +82,73 @@ export const rw: Record<keyof typeof en, string> = {
   'home.ecoBannerLead': "90% ni iz'amashanyarazi n'izitanduza.",
   'home.ecoBannerRest': 'Tugana kuri 100% bitangiza ibidukikije mu 2030.',
   'home.allHostsVerified': "Ba nyir'imodoka bose baragenzuwe",
+  'home.ecoBadge': "90% z'amashanyarazi n'izitanduza",
+  // "otomatike" is the everyday loanword for an automatic gearbox; "SUV" and
+  // "150k" are read as-is.
+  'home.searchAiPlaceholder': 'Ikindi? SUV, munsi ya 150k, otomatike…',
+  'home.chipAll': 'Byose',
+  'home.groupCars': 'Imodoka',
+  'home.groupMachines': 'Imashini',
+  'home.filterPlaceholder': 'Shakisha imodoka ku izina, ubwoko cyangwa umujyi',
+  'home.matching': 'Imodoka zihuye na “{query}”',
+  // TODO translate — "top ranked" has no settled Kinyarwanda phrasing I am
+  // sure of ("iza mbere"? "nziza kurusha izindi"?); left in English rather
+  // than guessed, per the convention at the top of this file.
+  'home.topRankedTitle': en['home.topRankedTitle'],
+  'home.chipElectric': 'Amashanyarazi',
+  'home.chipTopRanked': en['home.chipTopRanked'], // TODO translate (see above)
+  'home.loadingCars': 'Imodoka zirapakira',
+  'home.showingCount': 'Imodoka {shown} muri {total}',
+  'home.loadErrorBody': 'Ntitwabashije kubona imodoka ubu. Ongera ugerageze.',
+  'home.noResultsBody': 'Nta modoka ihuye n’ibyo washatse.',
+  'home.clearFilters': 'Siba ibyo wahisemo',
+  'home.featuredBadge': 'Byatoranyijwe',
+  'home.previousCar': 'Imodoka ibanziriza',
+  'home.nextCar': 'Imodoka ikurikira',
+  'home.showCar': 'Erekana {title}',
+  'home.goToSlide': en['home.goToSlide'], // TODO translate — no natural word for "slide"
+
+  // --- Location strip (under the header, every browse page) --------------
+  'location.nearYou': 'Reba imodoka ziri hafi yawe',
+  'location.useMyLocation': 'Koresha aho ndi',
+  'location.detecting': 'Turagushakisha…',
+  // Names a currency — money-adjacent, so English pending native review
+  // rather than a guess (same rule as the payhold.* disclosures below).
+  'location.showingNear': en['location.showingNear'], // TODO translate
+  'location.notOperating': 'Ntiturakorera muri {place} — hitamo igihugu kugira ngo urebe imodoka.',
+  'location.yourArea': 'aho uri',
+  'location.detectFailed': 'Ntitwabashije kumenya aho uri — hitamo igihugu cyawe.',
+  'location.denied': 'Nta kibazo — hitamo igihugu cyawe hejuru iburyo igihe cyose.',
+
+  // --- Catalogue enums ----------------------------------------------------
+  // TODO translate — vehicle body types are known in Rwanda by their English
+  // (or French) trade names, and the Kinyarwanda coinages I could offer
+  // ("pikipiki" is a motorcycle, not a pickup) would mislead a renter about
+  // which car they are booking. Every one of these is deliberately English
+  // until a native speaker decides, per term, whether a loanword or a
+  // translation is what the market actually says.
+  'category.sedan': en['category.sedan'],
+  'category.suv': en['category.suv'],
+  'category.4x4': en['category.4x4'],
+  'category.hatchback': en['category.hatchback'],
+  'category.pickup': en['category.pickup'],
+  'category.van': en['category.van'],
+  'category.minibus': en['category.minibus'],
+  'category.luxury': en['category.luxury'],
+  'category.tractor': en['category.tractor'],
+  'category.harvester': en['category.harvester'],
+  'category.tiller': en['category.tiller'],
+  'category.excavator': en['category.excavator'],
+  'category.bulldozer': en['category.bulldozer'],
+  'category.loader': en['category.loader'],
+  'category.crane': en['category.crane'],
+  'category.forklift': en['category.forklift'],
+  'fuel.petrol': 'Esanse',
+  'fuel.diesel': 'Mazutu',
+  'fuel.hybrid': 'Hybrid', // TODO translate — loanword in everyday use; no Kinyarwanda term
+  'fuel.electric': 'Amashanyarazi',
+  'transmission.automatic': 'Otomatike',
+  'transmission.manual': en['transmission.manual'], // TODO translate ("manuel"? "iy'intoki"?) — unsure
 
   // --- Search bar ---------------------------------------------------------
   'search.modeSearch': 'Shakisha',
@@ -129,6 +204,7 @@ export const rw: Record<keyof typeof en, string> = {
   'car.pickupLocationTitle': 'Aho uzayikura',
   'car.meetYourHost': "Menya nyir'imodoka",
   'car.businessHost': 'Ikigo gikodesha',
+  'car.businessShort': 'Ikigo',
   'car.individualHost': 'Umuntu ukodesha',
   'car.verified': 'Yagenzuwe',
   'car.reviewsStat': 'Ibitekerezo',
@@ -376,6 +452,61 @@ export const rw: Record<keyof typeof en, string> = {
   'checkout.temporaryTryAgain': 'Nta kintu cyishyuwe kandi imodoka iracyaboneka. Ibi akenshi biba by’igihe gito — ongera ugerageze mu kanya.',
   'checkout.starting': 'Biratangira…',
 
+  // --- Trips ("My trips" list) -------------------------------------------
+  'trips.upcoming': 'Iziri imbere',
+  'trips.ended': 'Izarangiye',
+  'trips.searchByCar': 'Shakisha ukurikije imodoka',
+  'trips.noTripsYet': 'Nta rugendo urakora',
+  'trips.noTripsBody': 'Reba imodoka maze ufate urugendo rwawe rwa mbere.',
+  'trips.exploreListings': 'Reba imodoka',
+  'trips.group.upcoming': 'Iziri imbere',
+  'trips.group.active': 'Izirimo gukorwa',
+  'trips.group.past': 'Izarangiye n’izashize',
+  'trips.noUpcomingMatch': 'Nta rugendo ruri imbere ruhuye na “{query}”.',
+  'trips.noPastMatch': 'Nta rugendo rwashize ruhuye na “{query}”.',
+  'trips.noUpcoming': 'Nta rugendo ruri imbere ufite.',
+  'trips.noPast': 'Nta rugendo rwarangiye urafite.',
+
+  // --- Messages -------------------------------------------------------------
+  'messages.deleteAll': 'Siba byose',
+  'messages.deleteAllConfirm': 'Siba ibiganiro BYOSE? Bizasibwa ku mpande zombi kandi ntibishobora gusubizwaho.',
+  'messages.deleteOneConfirm': 'Siba iki kiganiro ku mpande zombi?',
+  'messages.searchConversations': 'Shakisha mu biganiro',
+  'messages.youPreview': 'Wowe: {body}',
+  'messages.supportIntro': 'Ibibazo ku konti yawe, kugenzurwa cyangwa gahunda yo gukodesha',
+  'messages.unread': 'Ntibirasomwa',
+  'messages.noMatch': 'Nta kiganiro gihuye n’ibyo washatse.',
+  'messages.noneYet': "Nta kiganiro na nyir'imodoka urafite.",
+  'messages.selectPrompt': 'Hitamo ikiganiro kugira ngo utangire kuganira.',
+  'messages.backToConversations': 'Subira ku biganiro',
+  'messages.supportSubtitle': 'Tubaze ikibazo cyose ku konti yawe',
+  'messages.noMessagesYet': 'Nta butumwa burahaba',
+  'messages.supportEmptyBody':
+    'Twandikire ku konti yawe, inyandiko zawe cyangwa gahunda yo gukodesha. Umuyobozi agusubiza hano.',
+  'messages.you': 'Wowe',
+  'messages.sendFailed': 'Ntibyashobotse kohereza.',
+  'messages.supportPlaceholder': 'Andikira AutoHire…',
+  'messages.send': 'Ohereza',
+  'messages.deleteConversation': 'Siba ikiganiro',
+  'messages.about': 'Ibyerekeye: {title}',
+  'messages.replyingTo': 'Usubiza {name}',
+  'messages.replyingToYourself': 'Usubiza ubutumwa bwawe',
+  'messages.photo': '📷 Ifoto',
+  'messages.attachment': '📎 Umugereka',
+  'messages.cancelReply': 'Hagarika gusubiza',
+  'messages.uploadFailed': 'Ntibyashobotse kohereza dosiye.',
+  'messages.attachFile': 'Ongeraho dosiye',
+  'messages.attachHint': 'Ongeraho ifoto cyangwa dosiye',
+  'messages.uploading': 'Birimo koherezwa…',
+  'messages.typeMessage': 'Andika ubutumwa…',
+  'messages.messageLabel': 'Ubutumwa',
+  'messages.imageAlt': 'ifoto',
+  'messages.file': 'Dosiye',
+  'messages.react': en['messages.react'], // TODO translate — emoji "reaction" has no settled Kinyarwanda word
+  'messages.reply': 'Subiza',
+  'messages.delete': 'Siba',
+  'messages.userFallback': 'Umukoresha',
+
   // --- Account ------------------------------------------------------------
   'account.title': 'Konti',
   'account.subtitle': 'Genzura konti yawe ya AutoHire.',
@@ -396,6 +527,81 @@ export const rw: Record<keyof typeof en, string> = {
   'account.verificationDocs': 'Kugenzurwa n’inyandiko',
   'account.carsWatching': 'Imodoka ukurikirana',
   'account.payoutMethod': 'Uburyo bwo kwishyurwa',
+  'account.deleteFailed': 'Ntibyashobotse gusiba konti.',
+  'account.payoutVerifyingTitle': 'Uburyo bwawe bwo kwishyurwa burimo kugenzurwa',
+  'account.payoutMissingTitle': 'Tubwire aho twakohereza amafaranga winjije',
+  'account.payoutVerifyingBody': 'Amafaranga winjije akomeza kwiyongera muri icyo gihe.',
+  'account.payoutMissingBody':
+    'Amafaranga winjije atangira kwiyongera kuva ku gahunda ya mbere — ongeraho uburyo bwo kwishyurwa igihe ushakiye, tuzayakohereza.',
+  'account.setUpPayouts': 'Shyiraho uburyo bwo kwishyurwa',
+  'account.verifyPhoneTitle': 'Emeza nimero ya telefone yawe',
+  'account.verifyPhoneBody': 'Uzahabwa amakuru ku gahunda no gufata imodoka kuri SMS — reba igice cya Telefone hano hepfo.',
+  'account.groupHosting': 'Gutanga imodoka',
+  'account.groupSupport': 'Ubufasha',
+  'account.deleteAccount': 'Siba konti',
+  'account.deleteBodyPersonal':
+    'Bisiba burundu uburyo winjira n’amakuru yawe yose — amatangazo, gahunda, ubutumwa, ibitekerezo, inyandiko n’imenyesha. Ibi ntibishobora gusubizwaho.',
+  'account.deleteBodyCompany':
+    'Bisiba burundu uburyo winjira n’amakuru yawe yose — amatangazo y’imodoka zawe zose, gahunda, ubutumwa, ibitekerezo, inyandiko n’imenyesha. Ibi ntibishobora gusubizwaho.',
+  'account.deleteMyAccount': 'Siba konti yanjye',
+  'account.deleteConfirmTitle': 'Gusiba konti?',
+  'account.deleteTypeBefore': 'Ibi ni burundu. Andika ',
+  'account.deleteTypeAfter': ' kugira ngo wemeze.',
+  // "DELETE" is the token the field checks for, so it stays in English here.
+  'account.typeDeleteToConfirm': 'Andika DELETE kugira ngo wemeze',
+  'account.deleting': 'Birasibwa…',
+  'account.permanentlyDelete': 'Siba burundu',
+  'account.payoutActive': 'Birakora',
+  'account.payoutVerifying': 'Birimo kugenzurwa',
+  'account.nameSaveFailed': 'Ntibyashobotse kubika izina ryawe.',
+  'account.pictureUploadFailed': 'Ntibyashobotse kohereza ifoto.',
+  'account.switchFailed': 'Ntibyashobotse guhindura konti yawe.',
+  'account.badgeCompany': 'Ikigo',
+  'account.badgeCompanyHost': "Ikigo · nyir'imodoka",
+  'account.badgePersonalHost': "Umuntu · nyir'imodoka",
+  'account.badgePersonalRenter': 'Umuntu · ukodesha',
+  'account.uploadingPhoto': 'Ifoto irimo koherezwa…',
+  'account.companyName': "Izina ry'ikigo",
+  'account.saving': 'Birabikwa…',
+  'account.saved': 'Byabitswe',
+  'account.hostingAccount': "Konti ya nyir'imodoka",
+  'account.renterAccount': "Konti y'ukodesha",
+  'account.hostingAccountBody':
+    'Ucunga amatangazo yawe. Hindukira mu gukodesha kugira ngo ufate imodoka (amatangazo yawe abikwa).',
+  'account.renterAccountBody': "Ukodesha imodoka. Ba nyir'imodoka kugira ngo utangaze imodoka yawe.",
+  'account.switchToRenting': 'Hindukira mu gukodesha',
+  'account.newHostDocsTitle': "Ubu uri nyir'imodoka — inyandiko ebyiri zindi zirakenewe",
+  'account.newHostDocsBody':
+    "Uruhushya rwo gutwara n'indangamuntu yawe biracyemewe. Gutanga imodoka bisaba n'impapuro z'imodoka, bityo kugenzurwa kwawe kugaragara nk'ukutuzuye kugeza izi zishyizwemo:",
+  'account.newHostDocsNote':
+    "Ushobora gutangaza imodoka mbere y'uko izi zisuzumwa — abakodesha babona gusa nyir'imodoka utaragenzurwa kugeza zisuzumwe.",
+  'account.addThemNow': 'Zongereho ubu',
+  'account.later': 'Nyuma',
+  'account.countrySaveFailed': 'Ntibyashobotse kubika igihugu cyawe.',
+  'account.searchCountries': 'Shakisha ibihugu…',
+  'account.noCountriesMatch': 'Nta gihugu gihuye na “{query}”',
+  'account.countryHintHost': 'Aho wishyurwa — kigena uburyo bwo kwishyurwa ushobora gukoresha.',
+  'account.countryHintRenter': 'Aho wishyura uhereye — kigena uburyo bwo kwishyura ushobora gukoresha.',
+  'account.currentLocationAt': 'Aho ndi ubu ({lat}, {lng})',
+  'account.yourAddress': 'Aderesi yawe',
+  'account.searching': 'Turashakisha…',
+  'account.findingYou': 'Turagushakisha…',
+  'account.phoneInvalid': 'Andika nimero ya telefone yuzuye ifite kode y’igihugu, urugero +250 788 123 456.',
+  'account.codeSendFailed': 'Ntibyashobotse kohereza kode.',
+  'account.codeInvalid': 'Kode si yo cyangwa yarangiye.',
+  'account.phoneVerification': 'Kwemeza telefone',
+  'account.verified': 'Yemejwe',
+  'account.phoneVerifiedBefore': 'Nimero ya telefone yawe yemejwe. Ubutumwa bwa SMS buzajya kuri ',
+  'account.phoneVerifiedAfter': '.',
+  'account.verifyNumberBody': 'Emeza nimero yawe kugira ngo tubashe kukohereza amakuru ku gahunda no gufata imodoka kuri SMS.',
+  'account.phoneNumber': 'Nimero ya telefone',
+  'account.sending': 'Birimo koherezwa…',
+  'account.sendCode': 'Ohereza kode',
+  'account.enterCodeBefore': 'Andika kode y’imibare 6 twohereje kuri ',
+  'account.enterCodeAfter': '.',
+  'account.verificationCode': 'Kode yo kwemeza',
+  'account.verifying': 'Turemeza…',
+  'account.verify': 'Emeza',
 
   // --- Common actions -----------------------------------------------------
   'common.cancel': 'Hagarika',

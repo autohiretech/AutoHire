@@ -3,28 +3,46 @@ import { MapPin, X } from 'lucide-react';
 import { useCountry } from '@/lib/country';
 import { saveHomeLocation } from '@/lib/homeLocation';
 import { useMyLocation } from '@/lib/useMyLocation';
-import { toast, Notice, Button } from '@/components/ui';
+import { useT } from '@/lib/i18n';
+import { toast } from '@/components/ui';
 
 const DISMISS_KEY = 'autohire.locationPrompted';
 
 /**
- * Slim, dismissible banner that asks for the visitor's location so we can show
- * cars and prices for their country ("tell them you need this"). Purely additive:
- * declining just leaves the manual header country selector in charge. Shows once
- * (choice persists in localStorage). Uses the browser Geolocation API + a free,
- * keyless reverse-geocode to map coordinates → country.
+ * One dismissible line under the header that offers to locate the visitor so
+ * we can show cars near them, in their market and their currency ("tell them
+ * you need this"). Purely additive: declining just leaves the manual header
+ * country selector in charge. Shows once (choice persists in localStorage).
+ * Uses the browser Geolocation API + a free, keyless reverse-geocode to map
+ * coordinates → country.
+ *
+ * **Why a line and not a card.** This used to be a `Notice` card — icon, two
+ * sentences, a full-width button, a dismiss row — and on a 390px phone it
+ * stood ~150px tall *above the hero*. Measured on the live site: with it, the
+ * eco banner, the header and the hero, the first car started at y≈693 of an
+ * 844px viewport, i.e. a first-time visitor scrolled past two interruptions
+ * before seeing what the site sells. The hero's own "Where" field already
+ * carries a "use my current location" button (SearchBar) for the renter who
+ * wants to search from where they stand; what this strip uniquely adds is the
+ * market + currency switch below, and that offer fits in one line. So: one
+ * line, ~34px, caption type, the action as a text button — the shape of the
+ * eco banner directly above it rather than a second hero. Every string is
+ * from the dictionary, because this is the first thing a Kinyarwanda reader
+ * sees under the header and it used to be the first thing that wasn't in
+ * their language.
  *
  * The coordinate itself is kept, not just the country it resolves to. The copy
- * below says "cars near you", and until this saved it, the banner delivered a
+ * says "cars near you", and until this saved it, the banner delivered a
  * market and a currency — a whole country is not "near you". `saveHomeLocation`
  * is what Home's grid seeds `nearLat`/`nearLng` from, so accepting here is what
  * turns "Recommended" into cars actually ranked by distance from the renter,
  * for this visit and every one after it.
  */
 export function LocationPrompt() {
-  const { country, setCountry, countries, setCurrency } = useCountry();
+  const { setCountry, countries, setCurrency } = useCountry();
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -74,16 +92,20 @@ export function LocationPrompt() {
           if (match) {
             setCountry(match.code);
             // Geolocation is as strong a signal of "their currency" as it gets —
-            // matches the promise in the banner's own copy above.
+            // matches the promise in the strip's own copy above.
             setCurrency(match.currency);
-            toast.success(`Showing cars near you in ${match.name}, prices in ${match.currency}.`);
+            toast.success(
+              t('location.showingNear', { country: match.name, currency: match.currency }),
+            );
           } else {
             toast.info(
-              `We don't operate in ${data.countryName ?? 'your area'} yet — pick a country to browse.`,
+              t('location.notOperating', {
+                place: data.countryName ? String(data.countryName) : t('location.yourArea'),
+              }),
             );
           }
         } catch {
-          toast.error("Couldn't detect your location — pick your country instead.");
+          toast.error(t('location.detectFailed'));
         } finally {
           setBusy(false);
           done();
@@ -92,9 +114,9 @@ export function LocationPrompt() {
       (reason) => {
         setBusy(false);
         if (reason === 'denied') {
-          toast.info('No problem — pick your country from the top-right selector any time.');
+          toast.info(t('location.denied'));
         } else {
-          toast.error("Couldn't detect your location — pick your country instead.");
+          toast.error(t('location.detectFailed'));
         }
         done();
       },
@@ -104,47 +126,35 @@ export function LocationPrompt() {
   if (!show) return null;
 
   return (
-    // Info tone (Notice), not a green-tinted bar — this is a prompt/
-    // opportunity, not the page's action, so "Use my location" is an
-    // `outline` button rather than the accent. Edge-to-edge and squared off
-    // (no card radius) since this sits as a full-width strip under the
-    // header, not a floating card.
-    //
-    // Stacked on mobile: at 390px a row squeezed the copy into a ~110px
-    // column that wrapped to seven lines. Below `sm:` it's text, then the
-    // button full-width, then the dismiss X on its own trailing row.
-    <div className="border-b border-[var(--color-line)]">
-      <div className="mx-auto max-w-[1500px] px-4 py-2.5">
-        <Notice
-          tone="info"
-          className="items-start rounded-none p-0 sm:items-center"
+    // Same surface and type as the eco banner above it (sunken ground, caption
+    // text), so the two read as one quiet band of standing facts under the
+    // header rather than a banner and then a card. The action is a text
+    // button in the accent — the accent is spent on it because it is the
+    // only thing on this line that does anything — and the copy is a single
+    // short clause that stays on one line at 320px; anything longer truncates
+    // rather than wrapping, since a second line is exactly what this replaced.
+    <div className="border-b border-[var(--color-line)] bg-[var(--color-surface-sunken)]">
+      <div className="mx-auto flex max-w-[1500px] items-center gap-2 px-4 py-1.5">
+        <MapPin size={14} className="shrink-0 text-[var(--color-info-500)]" />
+        <p className="min-w-0 flex-1 truncate text-caption text-[var(--color-content-muted)]">
+          {t('location.nearYou')}
+        </p>
+        <button
+          type="button"
+          onClick={detect}
+          disabled={busy}
+          className="shrink-0 whitespace-nowrap text-caption font-semibold text-[var(--color-accent-on)] hover:underline disabled:opacity-60"
         >
-          <MapPin size={16} className="mt-0.5 shrink-0 text-[var(--color-info-500)] sm:mt-0" />
-          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <p className="flex-1 text-[var(--color-content-muted)]">
-              Share your location so we show cars near you with prices in your currency. You're
-              browsing <span className="font-medium text-[var(--color-content)]">{country.name}</span> now.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={detect}
-              disabled={busy}
-              className="w-full sm:w-auto"
-            >
-              {busy ? 'Detecting…' : 'Use my location'}
-            </Button>
-          </div>
-          <button
-            type="button"
-            onClick={done}
-            aria-label="Dismiss"
-            className="shrink-0 self-start rounded-[var(--radius-pill)] p-1.5 text-[var(--color-content-subtle)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-content)] sm:self-center"
-          >
-            <X size={16} />
-          </button>
-        </Notice>
+          {busy ? t('location.detecting') : t('location.useMyLocation')}
+        </button>
+        <button
+          type="button"
+          onClick={done}
+          aria-label={t('search.dismiss')}
+          className="shrink-0 rounded-[var(--radius-pill)] p-1 text-[var(--color-content-subtle)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-content)]"
+        >
+          <X size={14} />
+        </button>
       </div>
     </div>
   );

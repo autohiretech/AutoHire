@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Leaf } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { useT } from '@/lib/i18n';
 import { useRealtime } from '@/lib/useRealtime';
 import { Header } from './Header';
 import { Footer } from './Footer';
@@ -16,6 +17,7 @@ import { AiAssistantProvider } from '@/lib/aiAssistantContext';
 
 export function AppLayout() {
   const { pathname } = useLocation();
+  const t = useT();
 
   // Tracks the path being left, not just the one arrived at — useBackToBrowse
   // reads this to tell whether history.back() would land somewhere that's
@@ -83,9 +85,9 @@ export function AppLayout() {
               <Leaf size={13} className="shrink-0 text-[var(--color-accent-on)]" />
               <span>
                 <span className="font-semibold text-[var(--color-content)]">
-                  90% Electric, Hybrid &amp; Ecological.
+                  {t('home.ecoBannerLead')}
                 </span>{' '}
-                On the road to 100% environmentally friendly by 2030.
+                {t('home.ecoBannerRest')}
               </span>
             </p>
           </div>
