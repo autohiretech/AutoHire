@@ -23,6 +23,7 @@ import {
   lookupVehicle,
   type CatalogueEntry,
 } from '@/lib/vehicleCatalogue';
+import { CurrencyCombobox } from '@/components/CurrencyCombobox';
 import { LocationPicker, type LatLng } from '@/components/map/LocationPicker';
 import { extractLatLngFromMapsUrl, isGoogleMapsLink, isLikelyUrl, isShortMapsLink, normalizeUrl } from '@/lib/location';
 import { useCountry } from '@/lib/country';
@@ -484,20 +485,41 @@ export function ListCarPage() {
    *   model they can no longer submit — it is flagged, not blocked, until they
    *   touch the make or model themselves.
    */
+  /**
+   * The pair actually sent for checking, a beat behind the keystrokes.
+   *
+   * `useIsKnownCarModel` caches per make+model, which means every keystroke is
+   * a distinct query and a distinct request: typing "Corolla" would ask the
+   * index seven questions, six of them about strings the host was in the
+   * middle of. The search endpoint debounces itself for exactly this reason;
+   * this check does not, so it is debounced here instead of being hammered.
+   */
+  const [checkedPair, setCheckedPair] = useState({ make: '', model: '' });
+  useEffect(() => {
+    const t = setTimeout(() => setCheckedPair({ make, model }), 400);
+    return () => clearTimeout(t);
+  }, [make, model]);
   const { known: carModelKnown, isChecking: checkingCarModel } = useIsKnownCarModel(
     // Never ask about machinery: Wikidata models tractors thinly and
     // excavators, cranes and forklifts not at all, so every Caterpillar and
     // Grove on the platform would come back `false` — a correct answer to a
     // question nobody asked.
-    machine ? '' : make,
-    machine ? '' : model,
+    machine ? '' : checkedPair.make,
+    machine ? '' : checkedPair.model,
   );
+  /** The answer is about what was typed 400ms ago; ignore it if that has moved on. */
+  const checkIsCurrent = checkedPair.make === make && checkedPair.model === model;
   const sameAsSaved =
     !!existing &&
     existing.make.trim().toLowerCase() === make.trim().toLowerCase() &&
     existing.model.trim().toLowerCase() === model.trim().toLowerCase();
   const unknownCarModel =
-    !machine && !!make.trim() && !!model.trim() && carModelKnown === false && !catalogueHit;
+    !machine &&
+    !!make.trim() &&
+    !!model.trim() &&
+    checkIsCurrent &&
+    carModelKnown === false &&
+    !catalogueHit;
   /** Flagged but not blocked: a listing that was already saved this way. */
   const grandfatheredModel = unknownCarModel && sameAsSaved;
 
@@ -657,10 +679,15 @@ export function ListCarPage() {
     // Say it is still looking rather than leaving the line blank: this is the
     // gap where the answer is "we don't know yet", and an empty space there
     // reads as "nothing to say about your car".
-    if (!machine && make.trim() && model.trim() && (searchingModels || checkingCarModel))
+    if (
+      !machine &&
+      make.trim() &&
+      model.trim() &&
+      (searchingModels || checkingCarModel || !checkIsCurrent)
+    )
       return 'Checking the model…';
-    if (!machine && carModelKnown === true && make.trim() && model.trim())
-      return `${make.trim()} ${model.trim()} is a real model. Set the fuel and category below — the catalogue doesn’t know this one’s.`;
+    if (!machine && checkIsCurrent && carModelKnown === true && make.trim() && model.trim())
+      return `${make.trim()} ${model.trim()} is a real model — AutoHire just hasn’t had one listed yet, so set the fuel and category below yourself.`;
     if (!make.trim() && !model.trim())
       return machine
         ? 'Type the make and model. If the catalogue knows it, the power and category fill in.'
@@ -676,6 +703,7 @@ export function ListCarPage() {
     model,
     searchingModels,
     checkingCarModel,
+    checkIsCurrent,
     carModelKnown,
   ]);
 
@@ -822,6 +850,7 @@ export function ListCarPage() {
                   invalid={showMissing && !make.trim()}
                   placeholder={machine ? 'Kubota' : 'Toyota'}
                   label="Makes"
+                  emptyNote={`No make called “${make.trim()}”. Type it in full — the model box searches on its own.`}
                 />
               </div>
               <div>
@@ -853,6 +882,20 @@ export function ListCarPage() {
                   verified={!!catalogueHit}
                   placeholder={machine ? 'T1400' : 'RAV4'}
                   label="Models"
+                  // The same empty result means opposite things either side of
+                  // `machine`, so it must not say the same sentence. A crane
+                  // nobody has listed is expected — no catalogue on earth holds
+                  // Grove model numbers — and the honest answer is "type it".
+                  // A car nobody can find is usually a typo, and saying "keep
+                  // typing" there walks a host into a listing that will be
+                  // refused six stages later.
+                  emptyNote={
+                    machine
+                      ? `No match for “${model.trim()}” — type it in full and carry on, machinery isn’t in the catalogue.`
+                      : make.trim()
+                        ? `No car called “${make.trim()} ${model.trim()}”. Check the spelling, or try the model on its own.`
+                        : `No car called “${model.trim()}”. Check the spelling, or fill in the make first.`
+                  }
                 />
               </div>
               <div>
@@ -1183,32 +1226,32 @@ export function ListCarPage() {
               )}
               <div>
                 <Label htmlFor="price-currency">Currency</Label>
-                <Select
+                {/* **PayHold's collectible currencies, not ours.**
+                    This listed `Object.keys(CURRENCIES)` — the four markets
+                    hardcoded in `lib/currency.ts`. That is a list of the
+                    places AutoHire sells in, which is not the question this
+                    control asks: it asks what a renter can be *charged*, and
+                    only PayHold knows that. The two came apart in both
+                    directions — a host could price a car in a currency no
+                    rail can collect, leaving a listing nobody is able to
+                    book, and a currency PayHold had since added could not be
+                    chosen at all. `currencies` is PayHold's own
+                    `payment-options` list (see lib/country.tsx).
+
+                    Which is also why this is no longer a `<select>`: that
+                    list is 141 codes today and grows with every market
+                    PayHold opens, and a native select has no search — see
+                    `CurrencyCombobox`. */}
+                <CurrencyCombobox
                   id="price-currency"
                   value={currency}
-                  onChange={(e) => {
-                    setPriceCurrency(e.target.value);
+                  onChange={(code) => {
+                    setPriceCurrency(code);
                     setPriceCurrencyTouched(true);
                   }}
-                >
-                  {/* **PayHold's collectible currencies, not ours.**
-                      This listed `Object.keys(CURRENCIES)` — the four markets
-                      hardcoded in `lib/currency.ts`. That is a list of the
-                      places AutoHire sells in, which is not the question this
-                      control asks: it asks what a renter can be *charged*, and
-                      only PayHold knows that. The two came apart in both
-                      directions — a host could price a car in a currency no
-                      rail can collect, leaving a listing nobody is able to
-                      book, and a currency PayHold had since added could not be
-                      chosen at all. `currencies` is PayHold's own
-                      `payment-options` list (see lib/country.tsx). */}
-                  {currencyOptions.map((code) => (
-                    <option key={code} value={code}>
-                      {code}
-                      {code === suggestedCurrency ? ' (your market)' : ''}
-                    </option>
-                  ))}
-                </Select>
+                  options={currencyOptions}
+                  suggested={suggestedCurrency}
+                />
               </div>
             </div>
 
@@ -1728,6 +1771,7 @@ function CatalogueCombobox({
   loading = false,
   invalid = false,
   verified = false,
+  emptyNote,
 }: {
   id: string;
   value: string;
@@ -1741,6 +1785,16 @@ function CatalogueCombobox({
   invalid?: boolean;
   /** Shows the field has resolved to a real catalogue entry. */
   verified?: boolean;
+  /**
+   * What to say when the search is finished and found nothing.
+   *
+   * Without it the list simply closed on an empty result, which is the one
+   * moment a host most needs an answer: they typed a model, the box went
+   * blank, and nothing said whether it was still looking, whether the model
+   * was wrong, or whether typing it was allowed. Silence reads as a broken
+   * control, and it is also what makes a real car feel rejected.
+   */
+  emptyNote?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -1769,7 +1823,13 @@ function CatalogueCombobox({
   // Open with nothing in it while the search is still out: closing the list
   // between keystrokes makes the box flicker and steals the tap that was
   // aimed at the row that is about to appear.
-  const showList = open && (suggestions.length > 0 || loading);
+  //
+  // It also stays open on a finished, empty search — see `emptyNote`. A list
+  // that vanishes is the same gesture as a list that never opened, and the
+  // host cannot tell "still looking" from "nothing there" from "this control
+  // is broken".
+  const showEmpty = open && !loading && suggestions.length === 0 && !!value.trim() && !!emptyNote;
+  const showList = open && (suggestions.length > 0 || loading || showEmpty);
 
   return (
     <div ref={boxRef} className="relative">
@@ -1878,11 +1938,19 @@ function CatalogueCombobox({
                   </span>
                   {s.fuel && (
                     <span
+                      // Tokens, not `dark:` utilities. This file has no
+                      // `@custom-variant dark`, so Tailwind's `dark:` is the
+                      // OS media query while the app's theme is an attribute —
+                      // the two disagree for anyone running a light page on a
+                      // dark desktop, and the badge came out dark-green-on-
+                      // white with the label barely legible. `accent-on`
+                      // promotes itself per theme and needs no second rule.
                       className={cn(
                         'shrink-0 rounded-[var(--radius-pill)] px-2 py-0.5 text-caption font-medium',
+                        'bg-[var(--color-surface-sunken)]',
                         electric || hybrid
-                          ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300'
-                          : 'bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]',
+                          ? 'text-[var(--color-accent-on)]'
+                          : 'text-[var(--color-content-muted)]',
                       )}
                     >
                       {FUEL_LABEL[s.fuel]}
@@ -1892,6 +1960,11 @@ function CatalogueCombobox({
               </li>
             );
           })}
+          {showEmpty && (
+            <li className="px-3 py-2.5 text-body-sm text-[var(--color-content-muted)]">
+              {emptyNote}
+            </li>
+          )}
           {loading && (
             // The world search is debounced and goes over the network, so the
             // list can sit on local matches for a beat. Without this the box
