@@ -1,11 +1,25 @@
 import type { CarCategory, FuelType } from '@autohire/shared';
 
 /**
- * Curated list of common car models for the listing picker. Each entry knows
- * its make, typical fuel and body category, so choosing a model auto-fills
- * those fields. Electric models are listed first and badged in the UI to steer
- * hosts toward the platform's electric goal. Hosts can still type a custom
- * make/model if theirs isn't here.
+ * The curated seed, no longer the catalogue.
+ *
+ * This list WAS the listing picker: 57 cars, hand-written when AutoHire rented
+ * only cars. It is now the bottom layer of `vehicleCatalogue.ts`, under the
+ * live fleet and the world catalogue — see the header there for why the picker
+ * had to stop being a hardcoded array (23 of production's 44 make+model pairs
+ * are not in this file, and every Caterpillar, John Deere, Grove and Hyster the
+ * platform rents is among them).
+ *
+ * It is kept rather than deleted for one reason the other layers cannot cover:
+ * it knows which models are ELECTRIC for cars nobody has listed here yet. The
+ * listings table can only describe the fleet that exists, and Wikidata — which
+ * knows a Renault Zoe exists — carries a usable powertrain for only about a
+ * third of its models. Delete this and the first host to arrive with a Zoe gets
+ * a form that knows the car is real and still leaves fuel on `petrol`.
+ *
+ * So: do not add to it, and do not reach for it directly. New knowledge belongs
+ * in the listings, which every layer above reads. Entries here are merged in
+ * only where nothing better exists, and lose every field to live data.
  */
 export interface CarModel {
   make: string;
