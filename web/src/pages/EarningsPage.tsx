@@ -25,7 +25,7 @@ import {
 import type { EarningStage, EarningTrip, PayholdBalance } from '@autohire/shared';
 import { client } from '@/lib/client';
 import { cn } from '@/lib/cn';
-import { formatMoney, formatMoneyMinor, majorUnits } from '@/lib/currency';
+import { formatMoney, formatMoneyMinor, majorUnits, minorUnitDigits } from '@/lib/currency';
 import { formatDate, timeAgo } from '@/lib/format';
 import { PAYOUT_METHOD_ICON } from '@/lib/payments';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -454,7 +454,7 @@ export function EarningsPage() {
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="mb-4 inline-flex items-center gap-1.5 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
+        className="-m-2 mb-2 inline-flex items-center gap-1.5 p-2 text-body-sm text-[var(--color-content-muted)] hover:text-[var(--color-content)]"
       >
         <ArrowLeft size={16} /> Back
       </button>
@@ -493,9 +493,16 @@ export function EarningsPage() {
 
               With no withdrawable row there is no payout destination and
               nothing can be sent from anywhere, so the honest hero is a zero
-              rather than the wallet's figure wearing this label. */}
+              rather than the wallet's figure wearing this label.
+
+              On a phone this block wraps onto its own line, and `text-right`
+              alone left it right-aligned inside a box only as wide as the
+              words — so the figure sat at an indent that matched nothing on
+              the card, neither its left edge nor its right. It takes the full
+              width and reads left below `sm`, and only becomes the right-hand
+              column when the hero is actually two columns. */}
           {withdrawableForCurrency ? (
-            <div className="text-right">
+            <div className="w-full text-left sm:w-auto sm:text-right">
               <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
                 Available to send
               </p>
@@ -504,7 +511,7 @@ export function EarningsPage() {
               </p>
             </div>
           ) : balanceForCurrency ? (
-            <div className="text-right">
+            <div className="w-full text-left sm:w-auto sm:text-right">
               <p className="text-caption font-semibold tracking-wide text-[var(--color-content-subtle)] uppercase">
                 Available to send
               </p>
@@ -515,9 +522,9 @@ export function EarningsPage() {
           ) : (
             (wallet.isLoading || earnings.isLoading) &&
             !notConfigured && (
-              <div className="text-right" aria-busy="true" aria-label="Loading">
-                <Skeleton className="ml-auto h-3 w-28" />
-                <Skeleton className="ml-auto mt-1.5 h-9 w-32" />
+              <div className="w-full text-left sm:w-auto sm:text-right" aria-busy="true" aria-label="Loading">
+                <Skeleton className="h-3 w-28 sm:ml-auto" />
+                <Skeleton className="mt-1.5 h-9 w-32 sm:ml-auto" />
               </div>
             )
           )}
@@ -591,7 +598,7 @@ export function EarningsPage() {
             <AlertTriangle size={16} /> Payouts are on hold
           </p>
           {w.reasons.length > 0 && (
-            <ul className="ml-1 list-inside list-disc text-body-sm">
+            <ul className="list-outside list-disc space-y-1 pl-5 text-body-sm">
               {w.reasons.map((r) => (
                 <li key={r}>{r}</li>
               ))}
@@ -600,7 +607,7 @@ export function EarningsPage() {
           {w.routeReasons.length > 0 && (
             <>
               <p className="pt-1 text-body-sm font-medium">On our side:</p>
-              <ul className="ml-1 list-inside list-disc text-body-sm">
+              <ul className="list-outside list-disc space-y-1 pl-5 text-body-sm">
                 {w.routeReasons.map((r) => (
                   <li key={r}>{r}</li>
                 ))}
@@ -665,7 +672,7 @@ export function EarningsPage() {
               )}
               {primary && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--color-line)] px-3 py-2.5">
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-surface-sunken)] text-[var(--color-content-muted)]">
                       {/* A card reads as a card, a wallet as a wallet — not
                           the same banknote icon regardless of method. This
@@ -676,11 +683,11 @@ export function EarningsPage() {
                           methods. */}
                       <PayoutMethodIcon size={16} />
                     </span>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-body-sm font-medium text-[var(--color-content)]">
                         {primary.label ?? primary.maskedDestination}
                       </p>
-                      <p className="text-caption text-[var(--color-content-muted)]">
+                      <p className="break-words text-caption text-[var(--color-content-muted)]">
                         {primary.maskedDestination} ·{' '}
                         {/* The currency is a control here, not a label.
                             This is the moment the decision belongs to — the
@@ -716,7 +723,7 @@ export function EarningsPage() {
               figures say that only if you do the arithmetic yourself. */}
           {shownBalances.length > 0 && (
             <Card className="mt-4">
-              <CardHeader className="flex items-center justify-between gap-3">
+              <CardHeader className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold text-[var(--color-content)]">Your money</h2>
                   {shownBalances.length > 1 && (
@@ -783,7 +790,7 @@ export function EarningsPage() {
                         )}
                       </div>
                       <BalanceBar balance={balance} />
-                      <div className="mt-5 grid grid-cols-3 gap-3">
+                      <div className="mt-5 grid gap-2 sm:grid-cols-3 sm:gap-3">
                         <MoneyStat
                           icon={Lock}
                           tone="muted"
@@ -862,7 +869,7 @@ export function EarningsPage() {
             return (
             <Card className="mt-4">
               <CardBody className="flex flex-wrap items-start justify-between gap-4">
-                <div>
+                <div className="min-w-0 flex-1">
                   {/* **A zero is the wrong headline when the money is moving.**
                       With everything in flight this card led with "Ready to
                       send · $0.00" over a disabled button, beside a wallet
@@ -983,6 +990,7 @@ export function EarningsPage() {
                     withdrawableForCurrency.needsVerificationCount > 0;
                   return (
                     <Button
+                      className="w-full sm:w-auto"
                       disabled={
                         (!hasAvailable && !hasRetriable) || withdraw.isPending || !w?.canReceivePayouts
                       }
@@ -1104,12 +1112,12 @@ function EarningsSkeleton() {
         </CardHeader>
         <CardBody>
           <Skeleton className="h-2 w-full rounded-[var(--radius-pill)]" />
-          <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="mt-5 grid gap-2 sm:grid-cols-3 sm:gap-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i}>
-                <Skeleton className="h-8 w-8" />
-                <Skeleton className="mt-2 h-3 w-14" />
-                <Skeleton className="mt-1.5 h-5 w-16" />
+              <div key={i} className="flex items-center gap-3 sm:block">
+                <Skeleton className="h-8 w-8 shrink-0" />
+                <Skeleton className="h-3 w-14 flex-1 sm:mt-2 sm:w-14 sm:flex-none" />
+                <Skeleton className="h-5 w-16 sm:mt-1.5" />
               </div>
             ))}
           </div>
@@ -1118,12 +1126,12 @@ function EarningsSkeleton() {
 
       <Card className="mt-4">
         <CardBody className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <Skeleton className="h-4 w-40" />
             <Skeleton className="mt-1.5 h-9 w-32" />
             <Skeleton className="mt-2 h-3 w-24" />
           </div>
-          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-full sm:w-32" />
         </CardBody>
       </Card>
     </div>
@@ -1159,7 +1167,14 @@ function TripRow({ trip, payoutLabel }: { trip: EarningTrip; payoutLabel: string
       <CardBody className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate font-medium text-[var(--color-content)]">{trip.car}</p>
+            {/* One line and an ellipsis leaves a phone with "Tesla Model 3 —
+                elec…": the car is how a host recognises which trip this row
+                is, and at 360px more than half of that name was being cut.
+                Two lines on a phone, one from `sm` where a line is wide
+                enough to carry the name whole. */}
+            <p className="line-clamp-2 font-medium text-[var(--color-content)] sm:truncate">
+              {trip.car}
+            </p>
             <p className="tabular text-caption text-[var(--color-content-muted)]">
               {formatDate(trip.startDate)} – {formatDate(trip.endDate)} · {trip.days} day
               {trip.days === 1 ? '' : 's'}
@@ -1226,11 +1241,18 @@ function TripRow({ trip, payoutLabel }: { trip: EarningTrip; payoutLabel: string
         {trip.amountOwedRwf > 0 && (
           <p className="flex items-start gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-warn-tint)] p-2 text-caption text-[var(--color-warn-500)]">
             <ShieldAlert size={13} className="mt-0.5 shrink-0" />
-            <span className="tabular">{formatMoney(trip.amountOwedRwf, trip.currency)}</span> still to pay
+            <span className="tabular">
+              {formatMoney(trip.amountOwedRwf, trip.currency, {
+                decimals: minorUnitDigits(trip.currency),
+              })}
+            </span>{' '}
+            still to pay
             {trip.rentalType === 'hourly' ? ' for time beyond the deposit' : ' for a late return'}
             {!!trip.amountExceededRwf &&
               trip.amountExceededRwf > trip.amountOwedRwf &&
-              ` (exceeded by ${formatMoney(trip.amountExceededRwf, trip.currency)} — you've already reduced this)`}
+              ` (exceeded by ${formatMoney(trip.amountExceededRwf, trip.currency, {
+                decimals: minorUnitDigits(trip.currency),
+              })} — you've already reduced this)`}
             . Open the trip to mark it collected or reduce it further.
           </p>
         )}
@@ -1338,8 +1360,18 @@ const MONEY_STAT_CHIP: Record<'muted' | 'amber' | 'green', string> = {
   green: 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300',
 };
 
-/** One balance figure as a tinted icon chip — the same shape the host
- * dashboard's stat cards use, so this page reads as the same product. */
+/**
+ * One balance figure as a tinted icon chip — the same shape the host
+ * dashboard's stat cards use, so this page reads as the same product.
+ *
+ * Three of these across a phone gave each figure about 100px, and the figure
+ * was truncated to fit: a host with a seven-figure RWF balance read
+ * "RF 1,405,…", which is not a number and not something to do that to on the
+ * one screen that tells them what they have. Below `sm` they stack instead and
+ * each becomes a row — chip and label left, figure right, the shape a
+ * statement uses — so the figure has the full card width and never needs
+ * cutting. From `sm` up the tile is unchanged.
+ */
 function MoneyStat({
   icon: Icon,
   tone,
@@ -1352,19 +1384,19 @@ function MoneyStat({
   value: string;
 }) {
   return (
-    <div>
+    <div className="flex items-center gap-3 sm:block">
       <span
         className={cn(
-          'flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)]',
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)]',
           MONEY_STAT_CHIP[tone],
         )}
       >
         <Icon size={15} />
       </span>
-      <p className="mt-2 text-caption font-medium tracking-wide text-[var(--color-content-subtle)] uppercase">
+      <p className="flex-1 text-caption font-medium tracking-wide text-[var(--color-content-subtle)] uppercase sm:mt-2 sm:flex-none">
         {label}
       </p>
-      <p className="tabular mt-0.5 truncate text-body font-bold leading-tight text-[var(--color-content)]">
+      <p className="tabular text-body font-bold leading-tight text-[var(--color-content)] sm:mt-0.5 sm:truncate">
         {value}
       </p>
     </div>
